@@ -80,6 +80,7 @@ No queda cap decisio estructural necessaria per crear el monorepo i l'esquema in
 - Crear `.env.example` i validacio de configuracio en arrencar.
 - Configurar Vitest, Testcontainers i Playwright.
 - Crear CI amb install, lint, typecheck, tests, build i secret scan.
+- Activar Dependabot per npm i Docker quan existeixin els manifests corresponents.
 
 ### Entregables
 
