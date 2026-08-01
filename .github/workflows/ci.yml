@@ -99,6 +99,9 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout full history
         uses: actions/checkout@v7
@@ -106,3 +109,5 @@ jobs:
           fetch-depth: 0
       - name: Scan repository
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
