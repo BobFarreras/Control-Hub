@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-Projecte en fase de fonaments i especificacio arquitectonica. Encara no hi ha una aplicacio executable.
+La Fase 1 proporciona un nucli executable: web, API, worker, PostgreSQL, Valkey, Mailpit, migracio inicial, healthchecks i Docker Compose.
 
 Control Hub es construeix des del primer increment com a producte professional instal·lable. El roadmap es incremental, pero no utilitza prototips descartables ni una implementacio reduida que requereixi reconstruir el nucli.
 
@@ -38,13 +38,22 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`docs/README.md`](docs/README.md): index d'ADR, especificacions, seguretat, runbooks i plantilles.
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): requisits, ordres, URLs i troubleshooting local.
 
+## Arrencada local
+
+```powershell
+corepack enable
+Copy-Item .env.example .env.local
+pnpm install --frozen-lockfile
+pnpm dev:all
+```
+
+Control Hub queda disponible a `http://localhost:3000`. Per executar tot el core en contenidors: `docker compose up --build`.
+
 ## Roadmap immediat
 
-1. Crear ADR detallats per tenancy, connectors, secrets i desplegament.
-2. Inicialitzar monorepo, toolchain i Docker Compose.
-3. Implementar autenticacio, tenant context, permisos i auditoria.
-4. Construir els primers moduls de negoci.
-5. Afegir connectors sobre contractes estables.
+1. Implementar autenticacio, tenant context, permisos i auditoria.
+2. Construir els primers moduls de negoci.
+3. Afegir connectors sobre contractes estables.
 
 ## Seguretat
 

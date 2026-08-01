@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori encara es documental: no existeixen `package.json`, aplicacions ni contenidors executables. Les URLs i ordres d'aquest document son l'objectiu aprovat per a la Fase 1, no estan disponibles fins que aquesta fase les implementi.
+El repositori disposa del nucli executable de la Fase 1. Les aplicacions encara mostren estat fundacional i no inclouen funcionalitat de negoci ni autenticacio, que corresponen a fases posteriors.
 
 ## Requisits
 
@@ -22,6 +22,12 @@ Les versions exactes quedaran fixades a `package.json`, `engines`, `packageManag
 corepack enable
 pnpm install --frozen-lockfile
 pnpm dev:all
+```
+
+En entorns Windows on Node no reconegui una CA corporativa o del sistema, mantenir la validacio TLS activa i executar abans d'instal·lar:
+
+```powershell
+$env:NODE_OPTIONS='--use-system-ca'
 ```
 
 `dev:all` aixecara infraestructura local i els tres processos d'aplicacio amb logs visibles.
@@ -129,7 +135,7 @@ Afegir validacions de seguretat, migracions, integracio o E2E segons el risc. In
 
 ## Troubleshooting previst
 
-- `3000` ocupat: aturar el proces conflictiu; els ports canonics no canvien silenciosament.
+- Port ocupat: aturar el proces conflictiu o definir `POSTGRES_PORT`, `REDIS_PORT`, `MAILPIT_SMTP_PORT` o `MAILPIT_UI_PORT`; els valors canonics no canvien silenciosament.
 - Readiness falla: revisar PostgreSQL, cua i migracions.
 - Correu no arriba: revisar Mailpit abans del proveidor SMTP.
 - Cookies no persisteixen: comprovar que el browser entra per `localhost:3000`.

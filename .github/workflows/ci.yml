@@ -65,6 +65,16 @@ jobs:
     name: Application checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -82,4 +92,17 @@ jobs:
           pnpm lint
           pnpm typecheck
           pnpm test
+          pnpm test:integration
           pnpm build
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan repository
+        uses: gitleaks/gitleaks-action@v2

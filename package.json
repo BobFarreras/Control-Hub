@@ -1,0 +1,28 @@
+{
+  "name": "control-hub",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.26.0",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:all": "pnpm infra:up && pnpm dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:integration": "turbo test:integration",
+    "test:e2e": "playwright test",
+    "test:visual": "playwright test --grep @visual",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "infra:up": "docker compose up -d postgres valkey mailpit",
+    "infra:down": "docker compose down",
+    "infra:reset": "docker compose down -v"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@playwright/test": "^1.56.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.0"
+  }
+}

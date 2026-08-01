@@ -4,6 +4,10 @@ node_modules/
 dist/
 coverage/
 .turbo/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.pnpm-store/
 
 # Local configuration and secrets
 .env
