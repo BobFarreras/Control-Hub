@@ -1,6 +1,6 @@
 # ADR-0007 - Docker Compose portable
 
-**Estat:** proposada
+**Estat:** aprovada
 
 ## Decisio
 

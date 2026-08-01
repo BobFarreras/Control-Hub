@@ -1,6 +1,6 @@
 # ADR-0005 - Secrets de plataforma i credencials de connectors
 
-**Estat:** proposada
+**Estat:** aprovada
 
 ## Decisio
 

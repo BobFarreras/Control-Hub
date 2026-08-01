@@ -1,6 +1,6 @@
 # ADR-0002 - Single-tenant desplegable i domini tenant-aware
 
-**Estat:** proposada
+**Estat:** aprovada
 
 ## Decisio
 

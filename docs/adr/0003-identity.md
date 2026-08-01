@@ -1,12 +1,12 @@
 # ADR-0003 - Implementacio d'identitat
 
-**Estat:** pendent de decisio
+**Estat:** aprovada
 
 ## Requisits
 
 Correu/contrasenya, verificacio, TOTP, recovery codes, passkeys, sessions revocables, service accounts, rate limiting, reautenticacio i futura autoritzacio OAuth per MCP.
 
-## Opcio recomanada - Better Auth integrat
+## Decisio - Better Auth integrat
 
 - Runtime TypeScript dins l'API Fastify.
 - Dades d'identitat al PostgreSQL de Control Hub.
@@ -16,7 +16,7 @@ Correu/contrasenya, verificacio, TOTP, recovery codes, passkeys, sessions revoca
 
 Risc: el producte assumeix mes responsabilitat operativa sobre fluxos d'identitat i upgrades de la llibreria.
 
-## Alternativa - Keycloak extern
+## Alternativa descartada inicialment - Keycloak extern
 
 - Servidor d'identitat independent amb OIDC/OAuth/SAML.
 - TOTP, recovery codes, passkeys, identity brokering i federacio.
@@ -24,9 +24,9 @@ Risc: el producte assumeix mes responsabilitat operativa sobre fluxos d'identita
 
 Risc: mes consum, backups, configuracio, branding i upgrades; duplica part de l'administracio d'usuaris per una instal·lacio inicial de dues persones.
 
-## Criteri
+## Motiu
 
-Escollir Better Auth si es prioritza portabilitat i simplicitat. Escollir Keycloak si federacio empresarial i separacio completa d'identitat son requisits immediats.
+Es prioritzen portabilitat, integracio Fastify i baixa carrega operativa. Keycloak es reconsiderara si federacio empresarial, SAML, LDAP o separacio completa d'identitat es converteixen en requisits.
 
 ## Controls independents de l'opcio
 

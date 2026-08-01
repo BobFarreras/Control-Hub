@@ -1,6 +1,6 @@
 # ADR-0004 - Connectors per ports i adaptadors
 
-**Estat:** proposada
+**Estat:** aprovada
 
 ## Decisio
 

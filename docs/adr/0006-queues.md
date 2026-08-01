@@ -1,6 +1,6 @@
 # ADR-0006 - Redis-compatible i BullMQ
 
-**Estat:** proposada
+**Estat:** aprovada
 
 ## Decisio
 

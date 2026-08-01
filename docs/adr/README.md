@@ -3,11 +3,11 @@
 | ADR | Decisio | Estat |
 |---|---|---|
 | 0001 | Monolit modular | Aprovada |
-| 0002 | Tenancy | Proposada |
-| 0003 | Identitat | Pendent de decisio |
-| 0004 | Connectors | Proposada |
-| 0005 | Secrets | Proposada |
-| 0006 | Cues i jobs | Proposada |
-| 0007 | Desplegament | Proposada |
+| 0002 | Tenancy | Aprovada |
+| 0003 | Better Auth integrat | Aprovada |
+| 0004 | Connectors | Aprovada |
+| 0005 | Secrets | Aprovada |
+| 0006 | Cues i jobs | Aprovada |
+| 0007 | Desplegament | Aprovada |
 
 Una ADR acceptada no s'edita per canviar la decisio; es crea una ADR nova que la substitueix.

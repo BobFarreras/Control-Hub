@@ -25,16 +25,16 @@ Convertir la visio de Control Hub en decisions, contractes i controls implementa
 - Correu/contrasenya, MFA i compatibilitat amb passkeys.
 - Docker Compose, monolit modular i connectors opcionals.
 
-## Decisions pendents d'aprovacio
+## Decisions aprovades en revisio
 
-1. ADR-0002: tenancy.
-2. ADR-0003: Better Auth integrat o Keycloak extern.
-3. ADR-0004: connectors compilats, sense plugins arbitraris runtime.
-4. ADR-0005: xifrat de credencials i custodia de clau mestra.
-5. ADR-0006: BullMQ amb servidor Redis-compatible i outbox PostgreSQL.
-6. ADR-0007: Ubuntu LTS x86_64 com a plataforma certificada inicial.
-7. Matriu inicial de permisos.
-8. SLO i capacitat de referencia.
+- ADR-0002: tenancy.
+- ADR-0003: Better Auth integrat.
+- ADR-0004: connectors compilats, sense plugins arbitraris runtime.
+- ADR-0005: xifrat de credencials i custodia de clau mestra.
+- ADR-0006: BullMQ amb servidor Redis-compatible i outbox PostgreSQL.
+- ADR-0007: Ubuntu LTS x86_64 com a plataforma certificada inicial.
+- Matriu inicial de permisos.
+- SLO i capacitat de referencia.
 
 ## Evidencia
 
@@ -51,4 +51,4 @@ Convertir la visio de Control Hub en decisions, contractes i controls implementa
 
 ## Estat
 
-**Pendent d'aprovacio.** No iniciar Fase 1 fins tancar les decisions pendents.
+**Acceptada.** La PR es pot fusionar a `develop` quan CI estigui en verd.
