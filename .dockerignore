@@ -1,0 +1,11 @@
+.git
+.github
+.next
+.turbo
+node_modules
+coverage
+playwright-report
+test-results
+.env*
+!.env.example
+stitch_avant_business_ecosystem
