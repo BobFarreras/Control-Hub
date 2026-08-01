@@ -11,7 +11,7 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 
 ## Abans de modificar codi
 
-- Llegir `README.md`, `DEVELOPMENT.md`, `PRODUCT_REQUIREMENTS.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
+- Llegir `README.md`, `DEVELOPMENT.md`, `SECURITY_ARCHITECTURE.md`, `PRODUCT_REQUIREMENTS.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
 - Seguir `BRANCHING.md` i `CONTRIBUTING.md` per branques, commits i pull requests.
 - Revisar `git status` i no revertir canvis aliens.
 - Localitzar les proves i convencions del modul afectat.
@@ -57,6 +57,8 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 - Les URLs externes configurables han de validar esquema i host per evitar SSRF i open redirects.
 - Les accions destructives requereixen permisos explicits i auditoria.
 - No reduir controls de seguretat per fer passar una prova.
+- Tot connector compleix `docs/specifications/connector-security.md`; URLs i redirects es tracten com entrada SSRF no fiable.
+- Tot contenidor de produccio compleix `docs/security/container-checklist.md` o documenta una excepcio aprovada.
 
 ## Dades i migracions
 

@@ -37,8 +37,11 @@ jobs:
             PRODUCT_REQUIREMENTS.md
             README.md
             SECURITY.md
+            SECURITY_ARCHITECTURE.md
             docs/README.md
+            docs/security/container-checklist.md
             docs/security/threat-model.md
+            docs/specifications/connector-security.md
             docs/specifications/permissions.md
           )
           for file in "${required[@]}"; do

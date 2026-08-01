@@ -150,6 +150,10 @@ La internacionalitzacio es defineix a `INTERNATIONALIZATION.md`. `packages/i18n`
 - Backups externs xifrats i restauracions provades.
 - Migracions expand/contract per mantenir compatibilitat durant actualitzacions.
 
+## Seguretat
+
+`SECURITY_ARCHITECTURE.md` defineix el baseline obligatori. `docs/specifications/connector-security.md` regula ingress, egress, SSRF, webhooks i credencials. Cap servei web disposa de Docker socket, SSH, SQL arbitrari o acces generic a xarxes internes.
+
 ## Evolucio
 
 Un modul nomes es separara en servei quan existeixi una necessitat mesurable d'escalat, aillament, disponibilitat o propietat d'equip. La separacio conservara els contractes d'aplicacio existents i no duplicara dades sense una estrategia explicita de consistencia.
