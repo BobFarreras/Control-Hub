@@ -33,6 +33,7 @@ jobs:
             DESIGN_SYSTEM.md
             IMPLEMENTATION_PLAN.md
             INTERNATIONALIZATION.md
+            PRODUCT_REQUIREMENTS.md
             README.md
             SECURITY.md
           )
