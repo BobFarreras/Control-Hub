@@ -11,7 +11,7 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 
 ## Abans de modificar codi
 
-- Llegir `README.md`, `PRODUCT_REQUIREMENTS.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
+- Llegir `README.md`, `DEVELOPMENT.md`, `PRODUCT_REQUIREMENTS.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
 - Seguir `BRANCHING.md` i `CONTRIBUTING.md` per branques, commits i pull requests.
 - Revisar `git status` i no revertir canvis aliens.
 - Localitzar les proves i convencions del modul afectat.

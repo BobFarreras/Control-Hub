@@ -31,11 +31,15 @@ jobs:
             ARCHITECTURE.md
             BRANCHING.md
             DESIGN_SYSTEM.md
+            DEVELOPMENT.md
             IMPLEMENTATION_PLAN.md
             INTERNATIONALIZATION.md
             PRODUCT_REQUIREMENTS.md
             README.md
             SECURITY.md
+            docs/README.md
+            docs/security/threat-model.md
+            docs/specifications/permissions.md
           )
           for file in "${required[@]}"; do
             test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
