@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+coverage/
+.turbo/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data and backups
+*.log
+*.pid
+*.dump
+*.sql.gz
+backups/
+data/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local tooling state
+.codex/
