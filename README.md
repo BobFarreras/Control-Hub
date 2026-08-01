@@ -34,6 +34,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.
 - [`SECURITY.md`](SECURITY.md): reporting privat i politica de seguretat.
 - [`PRODUCT_REQUIREMENTS.md`](PRODUCT_REQUIREMENTS.md): visio, Release 1.0, usuaris, moduls i connectors.
+- [`docs/README.md`](docs/README.md): index d'ADR, especificacions, seguretat, runbooks i plantilles.
 
 ## Roadmap immediat
 

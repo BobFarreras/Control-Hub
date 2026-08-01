@@ -36,6 +36,9 @@ jobs:
             PRODUCT_REQUIREMENTS.md
             README.md
             SECURITY.md
+            docs/README.md
+            docs/security/threat-model.md
+            docs/specifications/permissions.md
           )
           for file in "${required[@]}"; do
             test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
