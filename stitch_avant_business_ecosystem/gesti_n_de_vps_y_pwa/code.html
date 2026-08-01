@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(16, 19, 26, 0.6);
+            backdrop-filter: blur(32px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow-cyan {
+            box-shadow: 0 0 15px rgba(0, 218, 248, 0.3);
+        }
+        .neon-border-cyan {
+            border: 1px solid rgba(0, 218, 248, 0.3);
+        }
+        .status-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .5; transform: scale(1.1); }
+        }
+        .terminal-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background: rgba(186, 242, 255, 0.2);
+            border-radius: 2px;
+        }
+        body {
+            background-color: #0b0e14;
+            color: #e1e2eb;
+            overflow: hidden;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#363940",
+                        "tertiary-fixed-dim": "#d1bcff",
+                        "tertiary-container": "#d6c3ff",
+                        "background": "#10131a",
+                        "inverse-surface": "#e1e2eb",
+                        "on-error": "#690005",
+                        "surface-container-low": "#191c22",
+                        "surface-variant": "#32353c",
+                        "tertiary-fixed": "#e9ddff",
+                        "tertiary": "#efe4ff",
+                        "secondary-fixed": "#dde1ff",
+                        "surface": "#10131a",
+                        "on-tertiary-fixed": "#23005b",
+                        "on-primary-fixed": "#001f25",
+                        "secondary-fixed-dim": "#b7c4ff",
+                        "surface-dim": "#10131a",
+                        "primary-container": "#00e0ff",
+                        "primary": "#baf2ff",
+                        "on-secondary-fixed": "#001452",
+                        "on-tertiary-container": "#6900f1",
+                        "on-surface": "#e1e2eb",
+                        "on-secondary": "#002682",
+                        "error-container": "#93000a",
+                        "on-primary": "#00363f",
+                        "on-primary-container": "#005f6d",
+                        "on-primary-fixed-variant": "#004e5a",
+                        "surface-container-highest": "#32353c",
+                        "on-tertiary-fixed-variant": "#5700c9",
+                        "inverse-on-surface": "#2e3037",
+                        "surface-tint": "#00daf8",
+                        "outline": "#859397",
+                        "on-secondary-fixed-variant": "#0038b6",
+                        "surface-container": "#1d2026",
+                        "secondary-container": "#0052fe",
+                        "primary-fixed": "#a5eeff",
+                        "inverse-primary": "#006877",
+                        "on-secondary-container": "#dfe3ff",
+                        "surface-container-high": "#272a31",
+                        "secondary": "#b7c4ff",
+                        "outline-variant": "#3b494c",
+                        "error": "#ffb4ab",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#0b0e14",
+                        "on-tertiary": "#3c0090",
+                        "primary-fixed-dim": "#00daf8",
+                        "on-background": "#e1e2eb",
+                        "on-surface-variant": "#bac9cd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-edge": "40px",
+                        "panel-gap": "12px",
+                        "sidebar-width": "280px",
+                        "gutter": "24px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["64px", {"lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.6", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                        "data-mono": ["14px", {"lineHeight": "1.5", "letterSpacing": "0em", "fontWeight": "500"}],
+                        "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-margin-edge h-screen flex gap-panel-gap overflow-hidden">
+<!-- Atmospheric WebGL Background Proxy -->
+<!-- SideNavBar Component -->
+<aside class="fixed h-[calc(100vh-80px)] left-10 top-10 w-[280px] rounded-xl glass-panel border-r border-white/10 shadow-[0_0_15px_rgba(0,218,248,0.1)] flex flex-col gap-3 p-4 z-50">
+<div class="mb-8 px-2">
+<h1 class="font-display-xl text-headline-lg font-bold text-primary-fixed">Obsidian Flux</h1>
+<p class="font-label-caps text-[10px] text-on-surface-variant tracking-widest uppercase">Admin Terminal</p>
+</div>
+<nav class="flex-1 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-body-md text-body-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary-fixed bg-primary-container/20 border-r-2 border-primary-fixed active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">dns</span>
+<span class="font-body-md text-body-md">VPS Nodes</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="font-body-md text-body-md">Workflows</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="font-body-md text-body-md">Analytics</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">shield</span>
+<span class="font-body-md text-body-md">Security</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</nav>
+<div class="mt-auto flex flex-col gap-1">
+<button class="w-full mb-4 py-3 px-4 bg-primary-fixed text-on-primary-fixed rounded font-label-caps text-label-caps neon-glow-cyan hover:opacity-90 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span> Deploy Node
+            </button>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+<span class="font-label-caps text-xs">Support</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+<span class="font-label-caps text-xs">Logs</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-[304px] flex-1 flex flex-col gap-panel-gap">
+<!-- TopAppBar Component -->
+<header class="h-16 rounded-xl glass-panel border-b border-white/10 flex justify-between items-center px-gutter w-full shadow-sm">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-fixed flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-fixed text-[20px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<span class="font-display-xl text-headline-lg text-primary-fixed">Flux Command</span>
+</div>
+<div class="flex gap-4 items-center">
+<span class="font-label-caps text-label-caps text-primary-fixed border-b border-primary-fixed cursor-pointer">Cluster-01</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors cursor-pointer">EU-West</span>
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 bg-primary-fixed rounded-full status-pulse neon-glow-cyan"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Status: Stable</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-[20px]">search</span>
+<input class="bg-surface-container/50 border-none border-b border-white/10 text-on-surface font-body-md text-sm pl-10 pr-4 py-2 rounded focus:ring-0 focus:border-primary-fixed transition-all w-64" placeholder="Search Infrastructure..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors">grid_view</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary-fixed/30 cursor-pointer">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a technical system administrator with sharp features, wearing dark modern apparel. The lighting is low-key with a subtle cyan rim light that matches the cyber-professional aesthetic of the UI. The background is a soft-blurred technical environment with server lights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBM07Kcx194qfu6zN36-T9eLIVJWFkNCZDZsocbbfP41T7t_m8FiFvO-DQ85bSCNCcV1e_F7zKVZFuA0Solvi_PBG-ooNm5GAHlpArX-WKhLmh-uNMu5hH1LahcaO9B_fiFK7FKA849C-5JiuhsCJpvU4AKzCwWROO1Mg2blzrdF0x-zmm82hIHwDRr3zArGpdeNxVcLnQb7g7tqJdTBmC1A7snHrQPUkCq76lwdCf54CKC81TrGbvY8g"/>
+</div>
+</div>
+</header>
+<!-- Dynamic Content Grid -->
+<div class="flex-1 grid grid-cols-12 grid-rows-6 gap-panel-gap min-h-0 overflow-hidden">
+<!-- Nodes Overview List (Bento Left) -->
+<section class="col-span-4 row-span-4 glass-panel rounded-xl p-4 flex flex-col">
+<div class="flex justify-between items-center mb-4">
+<h2 class="font-headline-lg text-lg text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed">storage</span> Active Nodes
+                    </h2>
+<span class="font-data-mono text-[10px] bg-primary-container/10 text-primary-fixed px-2 py-1 rounded">24 ACTIVE</span>
+</div>
+<div class="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 terminal-scroll">
+<!-- Node Item 1 -->
+<div class="p-3 rounded bg-surface-container/40 border border-white/5 hover:border-primary-fixed/30 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-label-caps text-sm text-primary-fixed">VPS-NODE-ALPHA-01</h3>
+<p class="font-data-mono text-[10px] text-on-surface-variant">UUID: 8821-FX-0092</p>
+</div>
+<div class="w-2 h-2 rounded bg-primary-fixed status-pulse neon-glow-cyan"></div>
+</div>
+<div class="grid grid-cols-2 gap-4 mt-2">
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>CPU</span><span>42%</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-primary-fixed w-[42%]"></div></div>
+</div>
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>RAM</span><span>12GB</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-tertiary-fixed-dim w-[65%]"></div></div>
+</div>
+</div>
+</div>
+<!-- Node Item 2 -->
+<div class="p-3 rounded bg-surface-container/20 border border-white/5 hover:border-primary-fixed/30 transition-all cursor-pointer group opacity-80">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-label-caps text-sm text-on-surface">VPS-NODE-BETA-04</h3>
+<p class="font-data-mono text-[10px] text-on-surface-variant">UUID: 9942-FX-1105</p>
+</div>
+<div class="w-2 h-2 rounded bg-primary-fixed/50"></div>
+</div>
+<div class="grid grid-cols-2 gap-4 mt-2">
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>CPU</span><span>18%</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-primary-fixed w-[18%]"></div></div>
+</div>
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>RAM</span><span>4GB</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-tertiary-fixed-dim w-[25%]"></div></div>
+</div>
+</div>
+</div>
+<!-- Node Item 3 (Alert State) -->
+<div class="p-3 rounded bg-error-container/10 border border-error/20 hover:border-error transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-label-caps text-sm text-error">VPS-NODE-SIGMA-02</h3>
+<p class="font-data-mono text-[10px] text-on-error-container">UUID: 4431-FX-9921</p>
+</div>
+<div class="w-2 h-2 rounded bg-error shadow-[0_0_10px_#ffb4ab]"></div>
+</div>
+<p class="font-label-caps text-[10px] text-error mt-2">I/O THRESHOLD EXCEEDED</p>
+</div>
+<!-- Node Item 4 -->
+<div class="p-3 rounded bg-surface-container/20 border border-white/5 hover:border-primary-fixed/30 transition-all cursor-pointer group opacity-80">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-label-caps text-sm text-on-surface">VPS-NODE-THETA-09</h3>
+<p class="font-data-mono text-[10px] text-on-surface-variant">UUID: 2210-FX-0556</p>
+</div>
+<div class="w-2 h-2 rounded bg-primary-fixed/50"></div>
+</div>
+<div class="grid grid-cols-2 gap-4 mt-2">
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>CPU</span><span>89%</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-primary-fixed w-[89%]"></div></div>
+</div>
+<div>
+<div class="flex justify-between font-label-caps text-[9px] text-on-surface-variant mb-1"><span>RAM</span><span>28GB</span></div>
+<div class="h-1 bg-surface-variant rounded-full overflow-hidden"><div class="h-full bg-tertiary-fixed-dim w-[92%]"></div></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Real-time Performance Visualizer (Bento Middle Top) -->
+<section class="col-span-8 row-span-3 glass-panel rounded-xl p-6 relative overflow-hidden">
+<div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary-fixed/30 to-transparent"></div>
+<div class="flex justify-between items-end mb-6">
+<div>
+<h2 class="font-headline-lg text-xl text-primary-fixed">Global Cluster Load</h2>
+<p class="font-label-caps text-xs text-on-surface-variant">AGGREGATE TELEMETRY • LIVE UPDATES</p>
+</div>
+<div class="flex gap-4">
+<div class="text-right">
+<span class="block font-label-caps text-[10px] text-on-surface-variant">LATENCY</span>
+<span class="block font-data-mono text-xl text-primary-fixed">24ms</span>
+</div>
+<div class="text-right border-l border-white/10 pl-4">
+<span class="block font-label-caps text-[10px] text-on-surface-variant">THROUGHPUT</span>
+<span class="block font-data-mono text-xl text-tertiary-fixed-dim">1.2 GB/s</span>
+</div>
+</div>
+</div>
+<!-- Performance Chart Visualization Proxy -->
+<div class="w-full h-48 bg-surface-container-low/30 rounded flex items-end gap-1 p-2 border border-white/5 relative group">
+<!-- Simulated Neon Line Chart with Glow -->
+<svg class="absolute inset-0 w-full h-full preserve-3d" viewbox="0 0 1000 200">
+<path d="M0,150 Q100,80 200,120 T400,60 T600,140 T800,40 T1000,90" fill="none" stroke="rgba(186, 242, 255, 0.4)" stroke-width="4"></path>
+<path class="neon-glow-cyan" d="M0,150 Q100,80 200,120 T400,60 T600,140 T800,40 T1000,90" fill="none" stroke="#00daf8" stroke-width="2"></path>
+<circle class="status-pulse" cx="800" cy="40" fill="#00daf8" r="4"></circle>
+</svg>
+<!-- Grid Lines -->
+<div class="absolute inset-0 grid grid-rows-4 pointer-events-none">
+<div class="border-b border-white/5 w-full"></div>
+<div class="border-b border-white/5 w-full"></div>
+<div class="border-b border-white/5 w-full"></div>
+</div>
+</div>
+<div class="flex gap-6 mt-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-sm bg-primary-fixed"></div>
+<span class="font-label-caps text-xs text-on-surface-variant">CPU UTILIZATION</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-sm bg-tertiary-fixed-dim"></div>
+<span class="font-label-caps text-xs text-on-surface-variant">MEMORY FOOTPRINT</span>
+</div>
+</div>
+</section>
+<!-- Resource Distribution (Bento Right Side) -->
+<section class="col-span-3 row-span-3 glass-panel rounded-xl p-4 flex flex-col">
+<h3 class="font-label-caps text-xs text-on-surface-variant mb-4 tracking-widest uppercase">PWA Status</h3>
+<div class="flex-1 flex flex-col justify-center items-center">
+<!-- Donut Chart Proxy -->
+<div class="relative w-32 h-32 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<circle cx="18" cy="18" fill="none" r="16" stroke="rgba(255,255,255,0.05)" stroke-width="3"></circle>
+<circle class="neon-glow-cyan" cx="18" cy="18" fill="none" r="16" stroke="#00daf8" stroke-dasharray="85, 100" stroke-width="3"></circle>
+</svg>
+<div class="absolute flex flex-col items-center">
+<span class="font-display-xl text-2xl text-primary-fixed">98%</span>
+<span class="font-label-caps text-[8px] text-on-surface-variant">UPTIME</span>
+</div>
+</div>
+<div class="mt-6 w-full space-y-3">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-[10px] text-on-surface-variant">SERVICE WORKER</span>
+<span class="font-data-mono text-[10px] text-primary-fixed">ACTIVE</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-[10px] text-on-surface-variant">CACHE SIZE</span>
+<span class="font-data-mono text-[10px] text-on-surface">1.4 GB</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-[10px] text-on-surface-variant">SYNC STATUS</span>
+<span class="font-data-mono text-[10px] text-primary-fixed">SYNCED</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Terminal System Logs (Bento Bottom Center) -->
+<section class="col-span-5 row-span-3 glass-panel rounded-xl p-0 flex flex-col overflow-hidden border border-primary-fixed/10">
+<div class="bg-surface-container px-4 py-2 flex items-center justify-between border-b border-white/10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed text-sm">terminal</span>
+<span class="font-label-caps text-[11px] text-on-surface tracking-wider">SYSTEM_LOGS_STREAM</span>
+</div>
+<div class="flex gap-1">
+<div class="w-2 h-2 rounded-full bg-surface-variant"></div>
+<div class="w-2 h-2 rounded-full bg-surface-variant"></div>
+<div class="w-2 h-2 rounded-full bg-surface-variant"></div>
+</div>
+</div>
+<div class="flex-1 p-4 font-data-mono text-[12px] overflow-y-auto terminal-scroll space-y-1 bg-[#0b0e14]/80">
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:01]</span>
+<span class="text-primary-fixed">INIT_PROCESS: Checking kernel integrity...</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:03]</span>
+<span class="text-on-surface">SUCCESS: Secure boot verified.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:05]</span>
+<span class="text-tertiary-fixed-dim">NETWORK: Establishing handshake with EU-WEST-01...</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:08]</span>
+<span class="text-primary-fixed">CONN_STABLE: SSL Handshake complete. 256-bit AES active.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:15]</span>
+<span class="text-error">WARN: Node VPS-ALPHA high memory pressure detected.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:22:20]</span>
+<span class="text-on-surface">AUTOSCALE: Provisioning temporary swap space on Node-ALPHA.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:23:01]</span>
+<span class="text-primary-fixed">METRIC: System load 0.42 [stable].</span>
+</div>
+<div class="flex gap-3">
+<span class="text-on-surface-variant shrink-0">[14:23:12]</span>
+<span class="text-on-surface-variant animate-pulse">_</span>
+</div>
+</div>
+</section>
+<!-- Quick Actions / Command Console (Bento Bottom Right) -->
+<section class="col-span-3 row-span-2 glass-panel rounded-xl p-4 flex flex-col gap-3">
+<h3 class="font-label-caps text-xs text-on-surface-variant tracking-widest uppercase mb-1">Quick Actions</h3>
+<button class="w-full flex items-center justify-between px-4 py-3 rounded bg-surface-container-high/40 hover:bg-primary-container/10 border border-white/5 hover:border-primary-fixed transition-all group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed">refresh</span>
+<span class="font-body-md text-sm text-on-surface">Reboot Cluster</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between px-4 py-3 rounded bg-surface-container-high/40 hover:bg-primary-container/10 border border-white/5 hover:border-primary-fixed transition-all group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed">cleaning_services</span>
+<span class="font-body-md text-sm text-on-surface">Purge Cache</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between px-4 py-3 rounded bg-surface-container-high/40 hover:bg-primary-container/10 border border-white/5 hover:border-primary-fixed transition-all group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed">history</span>
+<span class="font-body-md text-sm text-on-surface">Rollback Snap</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+</section>
+</div>
+</main>
+<!-- Micro-interaction Scripts -->
+<script>
+        // Simulate real-time metric updates
+        setInterval(() => {
+            const nodes = document.querySelectorAll('.font-data-mono.text-xl');
+            nodes.forEach(node => {
+                const current = parseFloat(node.innerText);
+                const variance = (Math.random() - 0.5) * 2;
+                if(node.innerText.includes('ms')) {
+                    node.innerText = Math.max(15, Math.min(60, Math.round(current + variance))) + 'ms';
+                }
+            });
+        }, 3000);
+
+        // Interactive cursor effect for glass panels
+        document.addEventListener('mousemove', (e) => {
+            const panels = document.querySelectorAll('.glass-panel');
+            panels.forEach(panel => {
+                const rect = panel.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (x > 0 && x < rect.width && y > 0 && y < rect.height) {
+                    panel.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(186, 242, 255, 0.05), transparent 40%)`;
+                } else {
+                    panel.style.background = 'rgba(16, 19, 26, 0.6)';
+                }
+            });
+        });
+    </script>
+</body></html>

@@ -6,6 +6,8 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 Projecte en fase de fonaments i especificacio arquitectonica. Encara no hi ha una aplicacio executable.
 
+Control Hub es construeix des del primer increment com a producte professional instal·lable. El roadmap es incremental, pero no utilitza prototips descartables ni una implementacio reduida que requereixi reconstruir el nucli.
+
 ## Direccio tecnica
 
 - Monolit modular TypeScript.
@@ -25,6 +27,12 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`Control_Hub_decisio_arquitectura.md`](Control_Hub_decisio_arquitectura.md): decisions aprovades i roadmap.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): arquitectura logica i fonaments tecnics.
 - [`AGENTS.md`](AGENTS.md): normes per als agents que modifiquin el repositori.
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md): fases, entregables, proves i punts d'aprovacio.
+- [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md): sistema visual, temes, components, motion i accessibilitat.
+- [`INTERNATIONALIZATION.md`](INTERNATIONALIZATION.md): catala, castella, angles i regles de localitzacio.
+- [`BRANCHING.md`](BRANCHING.md): branques, pull requests, releases i hotfixes.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.
+- [`SECURITY.md`](SECURITY.md): reporting privat i politica de seguretat.
 
 ## Roadmap immediat
 

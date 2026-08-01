@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-standards:
+    name: Repository standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            AGENTS.md
+            ARCHITECTURE.md
+            BRANCHING.md
+            DESIGN_SYSTEM.md
+            IMPLEMENTATION_PLAN.md
+            INTERNATIONALIZATION.md
+            README.md
+            SECURITY.md
+          )
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
+          done
+
+      - name: Reject conflict markers and trailing whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nI -E '^(<<<<<<<|=======|>>>>>>>)' -- .; then
+            echo "Merge conflict marker found"
+            exit 1
+          fi
+          if git grep -nI -E '[[:blank:]]+$' -- '*.md' '*.yml' '*.yaml'; then
+            echo "Trailing whitespace found"
+            exit 1
+          fi
+
+  application:
+    name: Application checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run checks when the workspace exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f package.json ]]; then
+            echo "Application workspace not initialized; documentation checks only."
+            exit 0
+          fi
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build

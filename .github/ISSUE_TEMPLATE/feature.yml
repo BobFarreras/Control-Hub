@@ -1,0 +1,49 @@
+name: Feature
+description: Proposar una capacitat o canvi funcional.
+title: "feat: "
+labels: ["type: feature", "status: triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Quin problema real s'ha de resoldre i per a quin usuari?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Resultat esperat
+      description: Com sabrem que la capacitat funciona?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criteris d'acceptacio
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Restriccions i riscos
+      description: Tenancy, permisos, dades, seguretat, UX, operacio o compatibilitat.
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Fase
+      options:
+        - Fase 0 - Governanca
+        - Fase 1 - Fonaments
+        - Fase 2 - Identitat
+        - Fase 3 - CRM
+        - Fase 4 - Productes
+        - Fase 5 - Suport
+        - Fase 6 - Connectors
+        - Fase 7 - Infraestructura
+        - Fase 8 - Correu i IA
+        - Fase 9 - Distribucio
+        - Fase 10 - MCP i portal
+    validations:
+      required: true

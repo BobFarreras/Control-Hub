@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Control Hub - Connectors &amp; Integrations</title>
+<!-- Fonts & Icons -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-tint": "#6d3bd7",
+                    "background": "#f7f9fb",
+                    "surface": "#f7f9fb",
+                    "surface-bright": "#f7f9fb",
+                    "secondary-fixed-dim": "#4cd7f6",
+                    "on-secondary": "#ffffff",
+                    "tertiary": "#855000",
+                    "on-tertiary-fixed": "#2c1700",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-container-high": "#e6e8ea",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "tertiary-container": "#a76500",
+                    "on-surface": "#191c1e",
+                    "outline-variant": "#cbc3d7",
+                    "error-container": "#ffdad6",
+                    "secondary": "#00687a",
+                    "on-secondary-fixed-variant": "#004e5c",
+                    "on-error": "#ffffff",
+                    "secondary-container": "#57dffe",
+                    "on-tertiary-fixed-variant": "#673d00",
+                    "primary-fixed-dim": "#d0bcff",
+                    "on-background": "#191c1e",
+                    "inverse-primary": "#d0bcff",
+                    "inverse-surface": "#2d3133",
+                    "inverse-on-surface": "#eff1f3",
+                    "on-secondary-container": "#006172",
+                    "surface-container": "#eceef0",
+                    "primary-container": "#8455ef",
+                    "on-error-container": "#93000a",
+                    "outline": "#7b7486",
+                    "on-tertiary": "#ffffff",
+                    "on-primary-container": "#fffbff",
+                    "on-surface-variant": "#494454",
+                    "on-primary-fixed": "#23005c",
+                    "primary-fixed": "#e9ddff",
+                    "surface-container-highest": "#e0e3e5",
+                    "on-primary-fixed-variant": "#5516be",
+                    "secondary-fixed": "#acedff",
+                    "primary": "#6b38d4",
+                    "error": "#ba1a1a",
+                    "surface-dim": "#d8dadc",
+                    "surface-container-low": "#f2f4f6",
+                    "surface-variant": "#e0e3e5",
+                    "tertiary-fixed": "#ffdcbb",
+                    "on-secondary-fixed": "#001f26",
+                    "tertiary-fixed-dim": "#ffb869"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "unit": "8px",
+                    "margin-desktop": "40px",
+                    "container-max": "1440px",
+                    "gutter": "24px",
+                    "margin-mobile": "16px"
+            },
+            "fontFamily": {
+                    "body-md": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "label-sm": ["Hanken Grotesk"],
+                    "mono-data": ["JetBrains Mono"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "display": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "body-lg": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-sm": ["13px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "mono-data": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        /* Luminous Precision Utilities */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            border: none;
+        }
+
+        .glass-card:hover {
+            box-shadow: 0 20px 40px rgba(107, 56, 212, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            transform: translateY(-4px);
+        }
+
+        .ambient-glow {
+            box-shadow: 0 0 40px -10px var(--tw-shadow-color);
+        }
+
+        /* Neural Map Animations */
+        @keyframes flow {
+            to { stroke-dashoffset: -40; }
+        }
+        .data-flow-line {
+            stroke-dasharray: 8 8;
+            animation: flow 1.5s linear infinite;
+        }
+        .data-flow-fast {
+            stroke-dasharray: 12 12;
+            animation: flow 0.8s linear infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 8px rgba(87, 223, 254, 0.4)); }
+            50% { filter: drop-shadow(0 0 16px rgba(87, 223, 254, 0.8)); }
+        }
+        .node-active {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- SideNavBar (Shared Component) -->
+<aside class="fixed left-0 top-0 bottom-0 z-40 p-unit bg-white/80 dark:bg-white/10 backdrop-blur-xl h-screen w-72 flex-col border-r border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.04)] hidden md:flex">
+<!-- Header -->
+<div class="px-4 py-6 mb-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">dataset</span>
+</div>
+<div>
+<h1 class="font-display text-[24px] text-primary tracking-tight font-bold leading-none">Control Hub</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-1">Enterprise Admin</p>
+</div>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<nav class="flex-1 space-y-2 px-2">
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-body-md text-body-md">Dashboard</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">insights</span>
+<span class="font-body-md text-body-md">Analytics</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span class="font-body-md text-body-md">Nodes</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">security</span>
+<span class="font-body-md text-body-md">Security</span>
+</a>
+<!-- ACTIVE TAB -->
+<a class="text-primary font-bold flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-container-low transition-transform duration-200 ease-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dns</span>
+<span class="font-body-md text-body-md">Systems</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</nav>
+<!-- Footer / Bottom CTA -->
+<div class="px-4 pb-6 pt-4 border-t border-surface-variant/50">
+<button class="w-full mb-4 bg-primary text-white font-label-sm text-label-sm py-3 rounded-xl hover:bg-primary-container hover:text-on-primary-container transition-all shadow-md hover:shadow-lg hover:-translate-y-1 duration-200">
+                Upgrade Plan
+            </button>
+<div class="space-y-1">
+<a class="text-on-surface-variant flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+<span class="font-body-md text-[14px]">Support</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+<span class="font-body-md text-[14px]">Logout</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Wrapper (Offsets for SideNav) -->
+<div class="md:ml-72 flex flex-col min-h-screen">
+<!-- TopNavBar (Shared Component) -->
+<header class="sticky top-0 z-30 flex items-center justify-between px-margin-desktop w-full h-20 bg-white/70 dark:bg-white/5 backdrop-blur-md border-b border-white/10 shadow-sm">
+<!-- Left: Search placeholder since rule specifies 'search_bar: on_left' conceptually -->
+<div class="flex items-center flex-1">
+<div class="relative w-64 group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-secondary transition-colors">search</span>
+<input class="w-full bg-surface-container-lowest/50 border-none rounded-full py-2 pl-10 pr-4 font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-secondary/50 focus:bg-surface-container-lowest transition-all shadow-inner" placeholder="Search systems..." type="text"/>
+</div>
+</div>
+<!-- Right: Actions & Status -->
+<div class="flex items-center gap-6">
+<div class="hidden lg:flex items-center gap-2 bg-surface-container-low px-4 py-1.5 rounded-full border border-surface-variant/30">
+<div class="w-2 h-2 rounded-full bg-secondary-container shadow-[0_0_8px_rgba(87,223,254,0.8)] animate-pulse"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">System Status: Healthy</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90 relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border border-white"></span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 p-margin-mobile md:p-margin-desktop w-full max-w-container-max mx-auto">
+<!-- Page Header -->
+<div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h2 class="font-headline-lg text-headline-lg md:font-display md:text-display text-on-surface font-bold">Connectors &amp; Integrations</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-2 max-w-2xl">Manage your ecosystem topology, monitor real-time data flow, and configure active service nodes.</p>
+</div>
+<button class="bg-primary text-white font-label-sm text-label-sm px-6 py-3 rounded-xl shadow-[0_10px_20px_rgba(107,56,212,0.2)] hover:shadow-[0_15px_30px_rgba(107,56,212,0.3)] hover:-translate-y-1 transition-all duration-200 flex items-center gap-2 w-fit">
+<span class="material-symbols-outlined">add</span>
+                    Add Connection
+                </button>
+</div>
+<!-- Workflow Neural Map (Bento Hero) -->
+<section class="glass-card rounded-2xl p-6 md:p-8 mb-gutter relative overflow-hidden min-h-[400px] flex flex-col transition-all duration-300">
+<!-- Ambient background glow for the map -->
+<div class="absolute inset-0 bg-gradient-to-br from-surface-container-lowest via-surface-container-lowest to-surface opacity-90 z-0 pointer-events-none"></div>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-secondary-container/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
+<div class="relative z-10 flex justify-between items-start mb-6">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">device_hub</span>
+                            Neural Workflow Topology
+                        </h3>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Live data routing and node health.</p>
+</div>
+<div class="flex gap-2">
+<span class="px-3 py-1 rounded-full bg-secondary-container/10 text-on-secondary-container font-mono-data text-[12px] flex items-center gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary-container animate-ping"></div> Syncing
+                        </span>
+</div>
+</div>
+<!-- Map Canvas Area -->
+<div class="relative flex-1 w-full flex items-center justify-center py-12 z-10">
+<!-- SVG Connecting Lines -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" preserveaspectratio="none">
+<defs>
+<lineargradient id="glowGradient" x1="0%" x2="100%" y1="0%" y2="0%">
+<stop offset="0%" stop-color="#cbc3d7" stop-opacity="0.3"></stop>
+<stop offset="50%" stop-color="#57dffe" stop-opacity="0.8"></stop>
+<stop offset="100%" stop-color="#6b38d4" stop-opacity="0.5"></stop>
+</lineargradient>
+<filter height="140%" id="neon-glow" width="140%" x="-20%" y="-20%">
+<fegaussianblur result="blur" stddeviation="4"></fegaussianblur>
+<fecomposite in="SourceGraphic" in2="blur" operator="over"></fecomposite>
+</filter>
+</defs>
+<!-- Base paths -->
+<path d="M 25% 50% C 40% 50%, 40% 50%, 50% 50%" fill="none" stroke="#e0e3e5" stroke-width="2"></path>
+<path d="M 50% 50% C 60% 50%, 60% 50%, 75% 50%" fill="none" stroke="#e0e3e5" stroke-width="2"></path>
+<!-- Animated flow lines -->
+<path class="data-flow-line" d="M 25% 50% C 40% 50%, 40% 50%, 50% 50%" fill="none" filter="url(#neon-glow)" stroke="url(#glowGradient)" stroke-width="3"></path>
+<path class="data-flow-fast" d="M 50% 50% C 60% 50%, 60% 50%, 75% 50%" fill="none" filter="url(#neon-glow)" stroke="#57dffe" stroke-width="2.5"></path>
+</svg>
+<!-- Nodes Container -->
+<div class="w-full max-w-4xl flex justify-between items-center relative z-20 px-8">
+<!-- Node 1: Stripe -->
+<div class="node-active flex flex-col items-center group cursor-pointer">
+<div class="w-20 h-20 rounded-2xl bg-white shadow-lg border border-surface-variant flex items-center justify-center relative transition-transform group-hover:scale-110 duration-300 z-10">
+<span class="material-symbols-outlined text-[32px] text-[#635BFF]">payments</span>
+<!-- Status indicator -->
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-secondary rounded-full border-2 border-white"></div>
+</div>
+<div class="mt-4 text-center">
+<div class="font-label-sm text-label-sm text-on-surface">Stripe</div>
+<div class="font-mono-data text-[11px] text-on-surface-variant mt-1">Source • Active</div>
+</div>
+</div>
+<!-- Node 2: n8n (Central Processor) -->
+<div class="node-active flex flex-col items-center group cursor-pointer scale-110">
+<div class="w-24 h-24 rounded-2xl bg-surface-container-lowest shadow-xl border border-secondary/30 flex items-center justify-center relative transition-transform group-hover:scale-105 duration-300 z-10 bg-gradient-to-br from-white to-surface-container-low">
+<!-- Subtle glowing backdrop for main node -->
+<div class="absolute inset-0 rounded-2xl shadow-[0_0_30px_rgba(87,223,254,0.3)] opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<span class="material-symbols-outlined text-[40px] text-primary relative z-10">cable</span>
+</div>
+<div class="mt-5 text-center">
+<div class="font-label-sm text-label-sm text-on-surface font-bold">n8n Engine</div>
+<div class="font-mono-data text-[11px] text-secondary mt-1">Processing 420 ops/s</div>
+</div>
+</div>
+<!-- Node 3: AWS -->
+<div class="flex flex-col items-center group cursor-pointer">
+<div class="w-20 h-20 rounded-2xl bg-white shadow-lg border border-surface-variant flex items-center justify-center relative transition-transform group-hover:scale-110 duration-300 z-10">
+<span class="material-symbols-outlined text-[32px] text-[#FF9900]">cloud</span>
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-secondary rounded-full border-2 border-white"></div>
+</div>
+<div class="mt-4 text-center">
+<div class="font-label-sm text-label-sm text-on-surface">AWS S3</div>
+<div class="font-mono-data text-[11px] text-on-surface-variant mt-1">Destination • Idle</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Connector Detail Cards (Bento Grid Bottom) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<!-- Stripe Detail Card -->
+<div class="glass-card rounded-2xl p-6 transition-all duration-300 group">
+<div class="flex justify-between items-start mb-6">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-surface-container-low flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition-all">
+<span class="material-symbols-outlined text-[#635BFF]">payments</span>
+</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-surface leading-tight">Stripe API</h4>
+<span class="font-mono-data text-[12px] text-on-surface-variant">v2023-10-16</span>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<div class="space-y-6">
+<!-- Uptime Wave -->
+<div>
+<div class="flex justify-between text-[12px] font-mono-data text-on-surface-variant mb-2">
+<span>Latency</span>
+<span class="text-secondary">24ms</span>
+</div>
+<svg class="w-full h-10" preserveaspectratio="none" viewbox="0 0 200 40">
+<path d="M0 30 Q 10 10, 20 25 T 40 20 T 60 35 T 80 15 T 100 25 T 120 10 T 140 30 T 160 20 T 180 35 T 200 15" fill="none" stroke="#cbc3d7" stroke-width="1.5"></path>
+<circle cx="200" cy="15" fill="#57dffe" r="3"></circle>
+</svg>
+</div>
+<!-- Task Volume -->
+<div>
+<div class="flex justify-between text-[12px] font-label-sm text-on-surface mb-2">
+<span>Payload Volume</span>
+<span>1.2 GB/h</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden flex">
+<div class="h-full bg-primary w-[45%] rounded-l-full"></div>
+<div class="h-full bg-secondary-container w-[15%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- n8n Detail Card (Highlighted) -->
+<div class="glass-card rounded-2xl p-6 transition-all duration-300 group relative overflow-hidden">
+<!-- Subtle accent gradient for the primary engine -->
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full pointer-events-none"></div>
+<div class="flex justify-between items-start mb-6 relative z-10">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
+<span class="material-symbols-outlined text-primary group-hover:text-white transition-colors">cable</span>
+</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-surface leading-tight">n8n Engine</h4>
+<span class="font-mono-data text-[12px] text-secondary flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Cluster Active
+                                </span>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<div class="space-y-6 relative z-10">
+<!-- Uptime Wave (More active) -->
+<div>
+<div class="flex justify-between text-[12px] font-mono-data text-on-surface-variant mb-2">
+<span>Execution Time</span>
+<span class="text-primary font-bold">112ms avg</span>
+</div>
+<svg class="w-full h-10" preserveaspectratio="none" viewbox="0 0 200 40">
+<path d="M0 20 L 20 25 L 40 10 L 60 30 L 80 15 L 100 35 L 120 5 L 140 25 L 160 10 L 180 30 L 200 15" fill="none" stroke="#6b38d4" stroke-linejoin="round" stroke-width="1.5"></path>
+<circle class="animate-pulse" cx="200" cy="15" fill="#6b38d4" r="3.5"></circle>
+</svg>
+</div>
+<!-- Task Volume -->
+<div>
+<div class="flex justify-between text-[12px] font-label-sm text-on-surface mb-2">
+<span>Active Workflows</span>
+<span>84 / 100 limit</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden flex">
+<div class="h-full bg-secondary w-[84%] rounded-full relative">
+<div class="absolute top-0 right-0 bottom-0 w-4 bg-white/30 animate-[flow_2s_linear_infinite]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- AWS Detail Card -->
+<div class="glass-card rounded-2xl p-6 transition-all duration-300 group">
+<div class="flex justify-between items-start mb-6">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-surface-container-low flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition-all">
+<span class="material-symbols-outlined text-[#FF9900]">cloud</span>
+</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-surface leading-tight">AWS S3</h4>
+<span class="font-mono-data text-[12px] text-on-surface-variant">us-east-1</span>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<div class="space-y-6">
+<!-- Uptime Wave (Flat/Idle) -->
+<div>
+<div class="flex justify-between text-[12px] font-mono-data text-on-surface-variant mb-2">
+<span>Write Latency</span>
+<span>45ms</span>
+</div>
+<svg class="w-full h-10" preserveaspectratio="none" viewbox="0 0 200 40">
+<path d="M0 35 L 50 34 L 100 35 L 150 33 L 200 35" fill="none" stroke="#cbc3d7" stroke-width="1.5"></path>
+<circle cx="200" cy="35" fill="#cbc3d7" r="2"></circle>
+</svg>
+</div>
+<!-- Task Volume -->
+<div>
+<div class="flex justify-between text-[12px] font-label-sm text-on-surface mb-2">
+<span>Storage Used</span>
+<span>4.2 TB</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden flex">
+<div class="h-full bg-surface-variant w-[20%] rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

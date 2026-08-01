@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Control Hub - Leads &amp; Tickets</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-tint": "#6d3bd7",
+                        "background": "#f7f9fb",
+                        "surface": "#f7f9fb",
+                        "surface-bright": "#f7f9fb",
+                        "secondary-fixed-dim": "#4cd7f6",
+                        "on-secondary": "#ffffff",
+                        "tertiary": "#855000",
+                        "on-tertiary-fixed": "#2c1700",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-container-high": "#e6e8ea",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "tertiary-container": "#a76500",
+                        "on-surface": "#191c1e",
+                        "outline-variant": "#cbc3d7",
+                        "error-container": "#ffdad6",
+                        "secondary": "#00687a",
+                        "on-secondary-fixed-variant": "#004e5c",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#57dffe",
+                        "on-tertiary-fixed-variant": "#673d00",
+                        "primary-fixed-dim": "#d0bcff",
+                        "on-background": "#191c1e",
+                        "inverse-primary": "#d0bcff",
+                        "inverse-surface": "#2d3133",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-secondary-container": "#006172",
+                        "surface-container": "#eceef0",
+                        "primary-container": "#8455ef",
+                        "on-error-container": "#93000a",
+                        "outline": "#7b7486",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-container": "#fffbff",
+                        "on-surface-variant": "#494454",
+                        "on-primary-fixed": "#23005c",
+                        "primary-fixed": "#e9ddff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-primary-fixed-variant": "#5516be",
+                        "secondary-fixed": "#acedff",
+                        "primary": "#6b38d4",
+                        "error": "#ba1a1a",
+                        "surface-dim": "#d8dadc",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-variant": "#e0e3e5",
+                        "tertiary-fixed": "#ffdcbb",
+                        "on-secondary-fixed": "#001f26",
+                        "tertiary-fixed-dim": "#ffb869"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    spacing: {
+                        "unit": "8px",
+                        "margin-desktop": "40px",
+                        "container-max": "1440px",
+                        "gutter": "24px",
+                        "margin-mobile": "16px"
+                    },
+                    fontFamily: {
+                        "body-md": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "label-sm": ["Hanken Grotesk"],
+                        "mono-data": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "display": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "body-lg": ["Hanken Grotesk"]
+                    },
+                    fontSize: {
+                        "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+                        "headline-md": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+                        "label-sm": ["13px", { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "600" }],
+                        "mono-data": ["14px", { lineHeight: "20px", fontWeight: "500" }],
+                        "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600" }],
+                        "display": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700" }],
+                        "headline-lg-mobile": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+                        "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }]
+                    },
+                    boxShadow: {
+                        'ambient-violet': '0 20px 40px -10px rgba(107, 56, 212, 0.08), 0 10px 20px -5px rgba(107, 56, 212, 0.04)',
+                        'orbit-glow': '0 0 30px rgba(107, 56, 212, 0.15)',
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #f7f9fb; }
+
+        /* Orbit Chart Animations & Styles */
+        .orbit-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 1px dashed rgba(123, 116, 134, 0.2);
+            pointer-events: none;
+        }
+
+        .orbit-node {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease-out;
+            cursor: pointer;
+        }
+
+        .orbit-node:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(107, 56, 212, 0.4);
+        }
+
+        .pulse-core {
+            animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        /* Heatmap background gradients */
+        .heatmap-critical { background: linear-gradient(90deg, rgba(255, 218, 214, 0.6) 0%, rgba(255, 255, 255, 0) 100%); }
+        .heatmap-high { background: linear-gradient(90deg, rgba(255, 220, 187, 0.4) 0%, rgba(255, 255, 255, 0) 100%); }
+        .heatmap-medium { background: linear-gradient(90deg, rgba(233, 221, 255, 0.3) 0%, rgba(255, 255, 255, 0) 100%); }
+    </style>
+</head>
+<body class="text-on-background font-body-md antialiased overflow-x-hidden">
+<!-- SideNavBar (from JSON) -->
+<nav class="bg-white/80 dark:bg-white/10 backdrop-blur-xl font-body-md text-body-md h-screen w-72 flex-col border-r border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.04)] fixed left-0 top-0 bottom-0 z-40 p-unit hidden md:flex">
+<div class="px-4 py-6 mb-4 flex items-center gap-4">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">widgets</span>
+</div>
+<div>
+<h1 class="font-display text-headline-md text-primary tracking-tight leading-tight">Control Hub</h1>
+<p class="font-label-sm text-on-surface-variant uppercase">Enterprise Admin</p>
+</div>
+</div>
+<div class="flex-1 flex flex-col gap-2 overflow-y-auto mt-4 px-2">
+<!-- Active Tab: Dashboard -->
+<a class="text-primary font-bold flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-container-low transition-transform duration-200 ease-out" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">insights</span>
+<span>Analytics</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span>Nodes</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">security</span>
+<span>Security</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">dns</span>
+<span>Systems</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</div>
+<div class="mt-auto px-2 pb-4 flex flex-col gap-2 border-t border-white/20 pt-4">
+<button class="w-full py-3 px-4 bg-primary text-on-primary font-label-sm rounded-xl hover:bg-primary-container hover:text-on-primary-container transition-colors shadow-sm mb-4">
+                Upgrade Plan
+            </button>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-body-md">Support</span>
+</a>
+<a class="text-on-surface-variant flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-surface-container-high hover:-translate-y-1 transition-all duration-200" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-body-md">Logout</span>
+</a>
+</div>
+</nav>
+<!-- TopNavBar (from JSON) -->
+<header class="bg-white/70 dark:bg-white/5 backdrop-blur-md font-headline-md text-headline-md w-full h-20 border-b border-white/10 shadow-sm sticky top-0 right-0 z-30 flex items-center justify-between px-margin-desktop ml-72" style="width: calc(100% - 18rem);">
+<div class="flex items-center gap-6">
+<!-- Search on left as requested, minimalist style -->
+<div class="relative flex items-center w-64 group">
+<span class="material-symbols-outlined absolute left-0 text-outline group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-transparent border-0 border-b-2 border-transparent focus:border-secondary focus:ring-0 pl-8 pb-1 text-body-md text-on-surface transition-colors placeholder:text-outline-variant" placeholder="Search parameters..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden lg:flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-container-low border border-white/40">
+<div class="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></div>
+<span class="font-label-sm text-on-surface-variant uppercase tracking-wider">System Status: Healthy</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lowest transition-colors scale-95 active:scale-90 transition-transform ml-2">
+<img class="w-8 h-8 rounded-full object-cover" data-alt="A professional headshot of a female tech executive in a brightly lit, modern office with subtle minimalist decor, conveying authority and focus." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJtHC5tWl8YonOpPaW_HuVPjhO9gagg7tUeJ6MQ--hI-93UyxJw2bJxkaguAXK0ISePh_JCHfvCpaLhhNtQPnBWRIklpI615mGrKT3gxl7xUd7xaH98zQDz-YDdn0EIYnspiBRY5GSXLZBlgtVnexuJZ2UvVPvuLFruq4uNZKjNDvw2bOKhzYN1_IgQnmsBEqXy5PsjGupEjhfIi2Bmh14wUl5iAJffstBa9kdXPfH4rJ6RIVh9Cr3ww"/>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="md:ml-72 pt-8 px-margin-mobile md:px-margin-desktop pb-20 max-w-[1600px] mx-auto min-h-screen">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h2 class="font-headline-lg text-on-surface">Acquisition &amp; Triage</h2>
+<p class="font-body-md text-on-surface-variant mt-1">Real-time lead confidence monitoring and support ticket prioritization.</p>
+</div>
+<div class="flex gap-4">
+<button class="px-6 py-2 rounded-lg font-label-sm text-secondary border border-secondary hover:bg-secondary/5 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-size: 18px;">filter_list</span>
+                    FILTER
+                </button>
+<button class="px-6 py-2 rounded-lg font-label-sm text-white bg-primary hover:bg-surface-tint shadow-lg hover:shadow-[0_10px_20px_rgba(107,56,212,0.3)] hover:-translate-y-0.5 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-size: 18px;">add</span>
+                    NEW LEAD
+                </button>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Lead Orbit Chart (Left panel, span 8) -->
+<section class="lg:col-span-7 xl:col-span-8">
+<div class="bg-surface-container-lowest rounded-2xl p-8 h-[600px] flex flex-col shadow-ambient-violet relative overflow-hidden">
+<!-- Card Header -->
+<div class="flex justify-between items-start z-10">
+<div>
+<h3 class="font-headline-md text-on-surface flex items-center gap-2">
+                                Lead Orbit Matrix
+                                <span class="material-symbols-outlined text-primary" style="font-size: 20px;">radar</span>
+</h3>
+<p class="font-label-sm text-on-surface-variant uppercase mt-1 tracking-widest">AI Confidence Proximity</p>
+</div>
+<div class="flex gap-3">
+<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-primary"></div><span class="font-label-sm text-outline">High Intent</span></div>
+<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-secondary"></div><span class="font-label-sm text-outline">Engaged</span></div>
+<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-outline-variant"></div><span class="font-label-sm text-outline">Cold</span></div>
+</div>
+</div>
+<!-- Orbit Visualization Area -->
+<div class="flex-1 relative mt-8 flex items-center justify-center">
+<!-- The Rings -->
+<div class="orbit-ring w-[150px] h-[150px]"></div>
+<div class="orbit-ring w-[280px] h-[280px]"></div>
+<div class="orbit-ring w-[420px] h-[420px]"></div>
+<!-- Center Core -->
+<div class="absolute w-12 h-12 rounded-full bg-primary-container flex items-center justify-center z-20 shadow-orbit-glow">
+<span class="material-symbols-outlined text-on-primary-container">target</span>
+<div class="absolute inset-0 rounded-full bg-primary-container pulse-core"></div>
+</div>
+<!-- Data Nodes (Simulated placement) -->
+<!-- High Intent (Inner Ring) -->
+<div class="orbit-node w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shadow-md font-mono-data text-xs z-10" style="top: 35%; left: 45%;">
+<span class="material-symbols-outlined" style="font-size: 16px;">business</span>
+</div>
+<div class="orbit-node w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shadow-md font-mono-data text-xs z-10" style="top: 60%; left: 60%;">
+<span class="material-symbols-outlined" style="font-size: 14px;">person</span>
+</div>
+<!-- Engaged (Middle Ring) -->
+<div class="orbit-node w-7 h-7 rounded-full bg-secondary text-white flex items-center justify-center shadow-md z-10" style="top: 25%; left: 65%;">
+<span class="material-symbols-outlined" style="font-size: 14px;">storefront</span>
+</div>
+<div class="orbit-node w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center shadow-md z-10" style="top: 75%; left: 35%;">
+<span class="material-symbols-outlined" style="font-size: 14px;">person</span>
+</div>
+<div class="orbit-node w-8 h-8 rounded-full bg-secondary text-white flex items-center justify-center shadow-md z-10" style="top: 45%; left: 20%;">
+<img class="w-full h-full rounded-full object-cover p-0.5 bg-white" data-alt="A small, stylized logo of a fictional tech startup, featuring geometric shapes in vibrant blue and green, set against a pristine white background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCF_piHDfAQxlg6jQOK2pzqorOfC0F6uj2EBkyMKuutn__o3zfznpdFpdtPdT9-1sLa1X65P1X-HbLKphGL5YocfrjDCoHVD8JjPz7keqLVCaEvlF0hBUUVWVHCUN6TlAw9fI1ooBYxYZQ0qbhrDVdExqkH_EDuDo-Yo5dUUfItjTQQWY_uV9EVqmlX5Qx8WhGZ74GeuW-vZsMHS7eS8PA4fIQf1mHMy5vcv-DpvLfg10ra32yxmHnfeg"/>
+</div>
+<!-- Cold (Outer Ring) -->
+<div class="orbit-node w-5 h-5 rounded-full bg-outline-variant text-white flex items-center justify-center shadow-sm z-10" style="top: 15%; left: 30%;"></div>
+<div class="orbit-node w-6 h-6 rounded-full bg-outline-variant text-white flex items-center justify-center shadow-sm z-10" style="top: 85%; left: 70%;"></div>
+<div class="orbit-node w-5 h-5 rounded-full bg-outline-variant text-white flex items-center justify-center shadow-sm z-10" style="top: 65%; left: 10%;"></div>
+</div>
+</div>
+</section>
+<!-- Support Tickets Heatmap (Right panel, span 4) -->
+<section class="lg:col-span-5 xl:col-span-4 flex flex-col gap-gutter">
+<!-- Summary Card -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient-violet flex justify-between items-center relative overflow-hidden">
+<div class="absolute right-0 top-0 w-32 h-32 bg-primary/5 rounded-bl-[100px] -z-0"></div>
+<div class="relative z-10">
+<p class="font-label-sm text-on-surface-variant uppercase mb-1">Active Queue</p>
+<h4 class="font-display text-4xl text-on-surface">24</h4>
+</div>
+<div class="text-right relative z-10">
+<span class="px-3 py-1 bg-error-container text-on-error-container font-label-sm rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined" style="font-size: 14px; font-variation-settings: 'FILL' 1;">warning</span>
+                            3 CRITICAL
+                        </span>
+</div>
+</div>
+<!-- Heatmap List -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-ambient-violet flex-1 flex flex-col">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-headline-md text-on-surface">Priority Heatmap</h3>
+<button class="text-secondary hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+<div class="flex flex-col gap-3 flex-1 overflow-y-auto pr-2" style="max-height: 400px;">
+<!-- Critical Item -->
+<div class="heatmap-critical rounded-xl p-4 border-l-4 border-error hover:-translate-y-0.5 transition-transform cursor-pointer group shadow-sm bg-white">
+<div class="flex justify-between items-start mb-2">
+<span class="font-mono-data text-xs text-error font-bold">TCK-8922</span>
+<span class="font-label-sm text-outline-variant text-xs">2m ago</span>
+</div>
+<h4 class="font-headline-md text-sm leading-tight text-on-surface group-hover:text-primary transition-colors">Node API Latency Spike</h4>
+<div class="flex items-center gap-2 mt-3">
+<span class="w-6 h-6 rounded-full bg-error/10 text-error flex items-center justify-center"><span class="material-symbols-outlined" style="font-size: 12px;">speed</span></span>
+<span class="font-label-sm text-xs text-on-surface-variant">System Instability</span>
+</div>
+</div>
+<!-- High Item -->
+<div class="heatmap-high rounded-xl p-4 border-l-4 border-tertiary hover:-translate-y-0.5 transition-transform cursor-pointer group shadow-sm bg-white">
+<div class="flex justify-between items-start mb-2">
+<span class="font-mono-data text-xs text-tertiary font-bold">TCK-8915</span>
+<span class="font-label-sm text-outline-variant text-xs">14m ago</span>
+</div>
+<h4 class="font-headline-md text-sm leading-tight text-on-surface group-hover:text-primary transition-colors">Enterprise Billing Failure</h4>
+<div class="flex items-center gap-2 mt-3">
+<span class="w-6 h-6 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center"><span class="material-symbols-outlined" style="font-size: 12px;">payments</span></span>
+<span class="font-label-sm text-xs text-on-surface-variant">Account: Acme Corp</span>
+</div>
+</div>
+<!-- Medium Item -->
+<div class="heatmap-medium rounded-xl p-4 border-l-4 border-primary hover:-translate-y-0.5 transition-transform cursor-pointer group shadow-sm bg-white">
+<div class="flex justify-between items-start mb-2">
+<span class="font-mono-data text-xs text-primary font-bold">TCK-8890</span>
+<span class="font-label-sm text-outline-variant text-xs">1h ago</span>
+</div>
+<h4 class="font-headline-md text-sm leading-tight text-on-surface group-hover:text-primary transition-colors">User Role Synchronization Error</h4>
+<div class="flex items-center gap-2 mt-3">
+<span class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center"><span class="material-symbols-outlined" style="font-size: 12px;">sync_problem</span></span>
+<span class="font-label-sm text-xs text-on-surface-variant">Access Control</span>
+</div>
+</div>
+<!-- Low Item (No specific heatmap bg, just card) -->
+<div class="bg-surface-container-low rounded-xl p-4 border-l-4 border-outline-variant hover:-translate-y-0.5 transition-transform cursor-pointer group">
+<div class="flex justify-between items-start mb-2">
+<span class="font-mono-data text-xs text-outline font-bold">TCK-8855</span>
+<span class="font-label-sm text-outline-variant text-xs">4h ago</span>
+</div>
+<h4 class="font-headline-md text-sm leading-tight text-on-surface group-hover:text-primary transition-colors">Request: Feature Documentation</h4>
+<div class="flex items-center gap-2 mt-3">
+<span class="w-6 h-6 rounded-full bg-surface-variant text-outline flex items-center justify-center"><span class="material-symbols-outlined" style="font-size: 12px;">description</span></span>
+<span class="font-label-sm text-xs text-on-surface-variant">General Inquiry</span>
+</div>
+</div>
+</div>
+<button class="w-full mt-4 py-2 font-label-sm text-primary hover:bg-primary/5 rounded-lg transition-colors border border-dashed border-primary/30">
+                        VIEW ALL TICKETS
+                    </button>
+</div>
+</section>
+</div>
+</main>
+</body></html>

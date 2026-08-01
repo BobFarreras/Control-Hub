@@ -1,0 +1,37 @@
+name: Bug
+description: Reportar un comportament incorrecte no sensible.
+title: "fix: "
+labels: ["type: bug", "status: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: No incloguis secrets, dades personals ni vulnerabilitats. Utilitza GitHub Security Advisories per problemes de seguretat.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportament actual
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportament esperat
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Passos per reproduir
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versio o commit
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context addicional
+      description: Navegador, sistema, logs redaccionats o captures.

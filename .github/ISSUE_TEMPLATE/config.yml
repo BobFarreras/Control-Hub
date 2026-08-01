@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilitat de seguretat
+    url: https://github.com/BobFarreras/Control-Hub/security/advisories/new
+    about: Envia un informe privat; no publiquis vulnerabilitats en issues.

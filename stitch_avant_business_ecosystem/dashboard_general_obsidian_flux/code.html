@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Obsidian Flux | Dashboard General</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            background-color: #0b0e14;
+            color: #e1e2eb;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(16, 19, 26, 0.6);
+            backdrop-filter: blur(32px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow-primary {
+            box-shadow: 0 0 15px rgba(0, 218, 248, 0.2);
+        }
+        .radar-grid {
+            stroke: rgba(133, 147, 151, 0.2);
+            stroke-width: 1;
+        }
+        .radar-area {
+            fill: rgba(0, 218, 248, 0.2);
+            stroke: #00daf8;
+            stroke-width: 2;
+        }
+        .mesh-gradient {
+            background: radial-gradient(circle at 20% 20%, rgba(0, 224, 255, 0.05) 0%, transparent 40%),
+                        radial-gradient(circle at 80% 80%, rgba(0, 82, 254, 0.05) 0%, transparent 40%);
+        }
+        .pulse-cyan {
+            animation: pulse-cyan 2s infinite;
+        }
+        @keyframes pulse-cyan {
+            0% { transform: scale(0.95); opacity: 1; }
+            70% { transform: scale(1.1); opacity: 0.5; }
+            100% { transform: scale(0.95); opacity: 1; }
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(133, 147, 151, 0.3); border-radius: 10px; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#363940",
+                        "tertiary-fixed-dim": "#d1bcff",
+                        "tertiary-container": "#d6c3ff",
+                        "background": "#10131a",
+                        "inverse-surface": "#e1e2eb",
+                        "on-error": "#690005",
+                        "surface-container-low": "#191c22",
+                        "surface-variant": "#32353c",
+                        "tertiary-fixed": "#e9ddff",
+                        "tertiary": "#efe4ff",
+                        "secondary-fixed": "#dde1ff",
+                        "surface": "#10131a",
+                        "on-tertiary-fixed": "#23005b",
+                        "on-primary-fixed": "#001f25",
+                        "secondary-fixed-dim": "#b7c4ff",
+                        "surface-dim": "#10131a",
+                        "primary-container": "#00e0ff",
+                        "primary": "#baf2ff",
+                        "on-secondary-fixed": "#001452",
+                        "on-tertiary-container": "#6900f1",
+                        "on-surface": "#e1e2eb",
+                        "on-secondary": "#002682",
+                        "error-container": "#93000a",
+                        "on-primary": "#00363f",
+                        "on-primary-container": "#005f6d",
+                        "on-primary-fixed-variant": "#004e5a",
+                        "surface-container-highest": "#32353c",
+                        "on-tertiary-fixed-variant": "#5700c9",
+                        "inverse-on-surface": "#2e3037",
+                        "surface-tint": "#00daf8",
+                        "outline": "#859397",
+                        "on-secondary-fixed-variant": "#0038b6",
+                        "surface-container": "#1d2026",
+                        "secondary-container": "#0052fe",
+                        "primary-fixed": "#a5eeff",
+                        "inverse-primary": "#006877",
+                        "on-secondary-container": "#dfe3ff",
+                        "surface-container-high": "#272a31",
+                        "secondary": "#b7c4ff",
+                        "outline-variant": "#3b494c",
+                        "error": "#ffb4ab",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#0b0e14",
+                        "on-tertiary": "#3c0090",
+                        "primary-fixed-dim": "#00daf8",
+                        "on-background": "#e1e2eb",
+                        "on-surface-variant": "#bac9cd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-edge": "40px",
+                        "panel-gap": "12px",
+                        "sidebar-width": "280px",
+                        "gutter": "24px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["64px", {"lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.6", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                        "data-mono": ["14px", {"lineHeight": "1.5", "letterSpacing": "0em", "fontWeight": "500"}],
+                        "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="font-body-md text-body-md mesh-gradient min-h-screen">
+<!-- Sidebar Navigation -->
+<aside class="fixed h-[calc(100vh-24px)] left-3 top-3 w-sidebar-width rounded-xl bg-surface/60 backdrop-blur-xl border-r border-white/10 shadow-[0_0_15px_rgba(0,218,248,0.1)] flex flex-col gap-panel-gap p-4 z-50">
+<div class="mb-6 px-2">
+<h1 class="font-display-xl text-headline-lg font-bold text-primary-fixed">Obsidian Flux</h1>
+<p class="font-label-caps text-[10px] text-outline tracking-widest uppercase">Admin Terminal</p>
+</div>
+<nav class="flex-1 space-y-1">
+<!-- Active Tab: Dashboard -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-primary-fixed bg-primary-container/20 border-r-2 border-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-body-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dns">dns</span>
+<span class="font-body-md">VPS Nodes</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="font-body-md">Workflows</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
+<span class="font-body-md">Analytics</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+<span class="font-body-md">Security</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed transition-all active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-body-md">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-4 border-t border-white/5 space-y-1">
+<button class="w-full mb-4 py-3 bg-primary-container text-on-primary-fixed font-label-caps text-center rounded-lg neon-glow-primary active:scale-95 transition-transform">
+                Deploy Node
+            </button>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-label-caps">Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+<span class="font-label-caps">Logs</span>
+</a>
+</div>
+</aside>
+<!-- Top App Bar -->
+<header class="fixed top-3 right-3 left-[calc(280px+24px)] h-16 rounded-xl bg-surface/60 backdrop-blur-xl border-b border-white/10 shadow-sm flex justify-between items-center px-gutter z-40">
+<div class="flex items-center gap-8">
+<h2 class="font-display-xl text-headline-lg text-primary-fixed">Dashboard General</h2>
+<nav class="hidden md:flex items-center gap-6">
+<a class="font-label-caps text-primary-fixed border-b border-primary-fixed py-1" href="#">Cluster-01</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary transition-colors" href="#">EU-West</a>
+<span class="flex items-center gap-2 font-label-caps text-on-surface-variant">
+<span class="w-2 h-2 rounded-full bg-primary-fixed-dim pulse-cyan"></span>
+                    Status: Stable
+                </span>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="material-symbols-outlined text-on-surface-variant p-2 rounded-lg hover:bg-surface-variant/40 transition-colors cursor-pointer" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant p-2 rounded-lg hover:bg-surface-variant/40 transition-colors cursor-pointer" data-icon="grid_view">grid_view</span>
+<button class="bg-primary-container/10 border border-primary-fixed/30 text-primary-fixed px-4 py-1.5 rounded-lg font-label-caps hover:bg-primary-container/20 transition-all">
+                New Workflow
+            </button>
+<div class="w-10 h-10 rounded-full border border-white/10 overflow-hidden ml-2 cursor-pointer">
+<img class="w-full h-full object-cover" data-alt="A cinematic, high-detail portrait of a professional system administrator in a futuristic, dimly lit control room. The lighting is dominated by glowing cyan server racks and holographic interfaces reflecting off their glasses. The style is sleek, cyber-professional with a focus on technical excellence and focus. Deep obsidian shadows and vibrant light-mode accents create a sharp, high-end tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEkZV3AhT37aoyu4uN6jfdq8f-T3T_ibWzR066eikir04iydu1em7Z0yBAA9VrKFCWYFqPx1xiE3uhl06eAV1tYbBAwpMM2WUNUnfex1kYLCOQfhoyVYJ-ummxBenpc4a2dVfsA0Cl23-mFvAKqSjOWjOeuuKRZ3ME0RVUkEQ5z_3WTY_jklUfmcGMuUTmqd6MW0sr-SZoNkQqjBqvj512xhf2WzsLHqCWICtSNb6bqnJt9xr8xgfKVw"/>
+</div>
+</div>
+</header>
+<!-- Main Content Grid -->
+<main class="pt-[92px] pl-[calc(280px+24px)] pr-3 pb-3 min-h-screen">
+<div class="grid grid-cols-12 grid-rows-6 gap-panel-gap h-[calc(100vh-104px)]">
+<!-- Company Health Radar Chart -->
+<section class="col-span-12 lg:col-span-8 row-span-4 glass-panel rounded-xl p-gutter relative overflow-hidden flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h3 class="font-display-xl text-headline-lg text-on-surface">Company Health</h3>
+<p class="font-body-md text-on-surface-variant">Holistic performance metrics across 6 vectors</p>
+</div>
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-primary-container/10 text-primary-fixed border border-primary-fixed/20 rounded-lg font-label-caps text-[10px]">REAL-TIME</span>
+</div>
+</div>
+<div class="flex-1 flex items-center justify-center relative">
+<!-- Radar Chart SVG -->
+<svg class="w-full max-w-[450px] h-auto drop-shadow-[0_0_20px_rgba(0,218,248,0.15)]" viewbox="0 0 400 400">
+<!-- Rings -->
+<circle class="radar-grid" cx="200" cy="200" fill="none" r="180"></circle>
+<circle class="radar-grid" cx="200" cy="200" fill="none" r="135"></circle>
+<circle class="radar-grid" cx="200" cy="200" fill="none" r="90"></circle>
+<circle class="radar-grid" cx="200" cy="200" fill="none" r="45"></circle>
+<!-- Axis -->
+<line class="radar-grid" x1="200" x2="200" y1="20" y2="380"></line>
+<line class="radar-grid" x1="44" x2="356" y1="110" y2="290"></line>
+<line class="radar-grid" x1="44" x2="356" y1="290" y2="110"></line>
+<!-- Radar Polygon -->
+<polygon class="radar-area" points="200,60 340,150 310,280 200,340 90,280 60,150"></polygon>
+<!-- Vertex Glows -->
+<circle cx="200" cy="60" fill="#00daf8" r="4"></circle>
+<circle cx="340" cy="150" fill="#00daf8" r="4"></circle>
+<circle cx="310" cy="280" fill="#00daf8" r="4"></circle>
+<circle cx="200" cy="340" fill="#00daf8" r="4"></circle>
+<circle cx="90" cy="280" fill="#00daf8" r="4"></circle>
+<circle cx="60" cy="150" fill="#00daf8" r="4"></circle>
+<!-- Labels (Simplified placement) -->
+<text class="font-label-caps fill-primary-fixed text-[12px]" text-anchor="middle" x="200" y="15">UPTIME</text>
+<text class="font-label-caps fill-on-surface-variant text-[10px]" text-anchor="middle" x="375" y="150">SCALING</text>
+<text class="font-label-caps fill-on-surface-variant text-[10px]" text-anchor="middle" x="345" y="310">REVENUE</text>
+<text class="font-label-caps fill-on-surface-variant text-[10px]" text-anchor="middle" x="200" y="395">SECURITY</text>
+<text class="font-label-caps fill-on-surface-variant text-[10px]" text-anchor="middle" x="55" y="310">LATENCY</text>
+<text class="font-label-caps fill-on-surface-variant text-[10px]" text-anchor="middle" x="25" y="150">SUPPORT</text>
+</svg>
+</div>
+<div class="grid grid-cols-3 gap-4 mt-6">
+<div class="p-3 border border-white/5 bg-white/5 rounded-lg">
+<span class="block font-label-caps text-[10px] text-outline">AGGREGATE SCORE</span>
+<span class="font-data-mono text-headline-lg text-primary-fixed">94.2</span>
+</div>
+<div class="p-3 border border-white/5 bg-white/5 rounded-lg">
+<span class="block font-label-caps text-[10px] text-outline">STABILITY</span>
+<span class="font-data-mono text-headline-lg text-primary-fixed">99.9%</span>
+</div>
+<div class="p-3 border border-white/5 bg-white/5 rounded-lg">
+<span class="block font-label-caps text-[10px] text-outline">INCIDENTS</span>
+<span class="font-data-mono text-headline-lg text-error">0</span>
+</div>
+</div>
+</section>
+<!-- Stripe Revenue Card -->
+<section class="col-span-12 lg:col-span-4 row-span-2 glass-panel rounded-xl p-gutter flex flex-col justify-between group overflow-hidden">
+<div class="relative z-10">
+<div class="flex justify-between items-center mb-4">
+<span class="font-label-caps text-on-surface-variant">STRIPE REVENUE</span>
+<span class="material-symbols-outlined text-primary-fixed" data-icon="payments">payments</span>
+</div>
+<div class="mb-4">
+<span class="text-display-xl font-display-xl text-white tracking-tighter">$142,804</span>
+<div class="flex items-center gap-2 mt-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span>
+<span class="font-data-mono text-sm">+12.4% vs last month</span>
+</div>
+</div>
+</div>
+<!-- Mini sparkline effect -->
+<div class="absolute bottom-0 left-0 w-full h-24 opacity-20 pointer-events-none group-hover:opacity-40 transition-opacity">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 400 100">
+<path d="M0 80 Q 50 20 100 70 T 200 40 T 300 60 T 400 20 V 100 H 0 Z" fill="url(#grad1)"></path>
+<defs>
+<lineargradient id="grad1" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#00e0ff;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#00e0ff;stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+</svg>
+</div>
+<div class="flex gap-2 relative z-10">
+<button class="flex-1 font-label-caps text-[10px] py-2 border border-white/10 rounded hover:bg-white/5 transition-colors">EXPORT</button>
+<button class="flex-1 font-label-caps text-[10px] py-2 border border-white/10 rounded hover:bg-white/5 transition-colors">DETAILS</button>
+</div>
+</section>
+<!-- n8n Workflows -->
+<section class="col-span-12 lg:col-span-4 row-span-4 glass-panel rounded-xl p-gutter flex flex-col">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-label-caps text-on-surface">ACTIVE WORKFLOWS</h3>
+<span class="text-[10px] font-data-mono bg-secondary-container/20 text-secondary-fixed px-2 py-0.5 rounded">8 RUNNING</span>
+</div>
+<div class="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
+<!-- Workflow Item -->
+<div class="p-3 border border-white/10 rounded-lg bg-surface-container-low hover:border-primary-fixed/30 transition-colors group">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="hub">hub</span>
+</div>
+<div>
+<h4 class="font-body-md font-semibold text-on-surface">Data Sync Engine</h4>
+<p class="font-data-mono text-[10px] text-outline">ID: WF-9823-A</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary-fixed-dim pulse-cyan"></span>
+</div>
+<div class="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+<div class="bg-primary-fixed h-full w-3/4 shadow-[0_0_8px_#00daf8]"></div>
+</div>
+<div class="mt-2 flex justify-between font-data-mono text-[10px] text-on-surface-variant">
+<span>Processing...</span>
+<span>75%</span>
+</div>
+</div>
+<!-- Workflow Item -->
+<div class="p-3 border border-white/10 rounded-lg bg-surface-container-low hover:border-primary-fixed/30 transition-colors group">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary" data-icon="mail">mail</span>
+</div>
+<div>
+<h4 class="font-body-md font-semibold text-on-surface">Auto Responder</h4>
+<p class="font-data-mono text-[10px] text-outline">ID: WF-0412-C</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary-fixed-dim pulse-cyan"></span>
+</div>
+<div class="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+<div class="bg-primary-fixed h-full w-1/2 shadow-[0_0_8px_#00daf8]"></div>
+</div>
+<div class="mt-2 flex justify-between font-data-mono text-[10px] text-on-surface-variant">
+<span>Idle (Polling)</span>
+<span>50%</span>
+</div>
+</div>
+<!-- Workflow Item -->
+<div class="p-3 border border-white/10 rounded-lg bg-surface-container-low hover:border-primary-fixed/30 transition-colors group">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary" data-icon="cloud_sync">cloud_sync</span>
+</div>
+<div>
+<h4 class="font-body-md font-semibold text-on-surface">Cloud Backup</h4>
+<p class="font-data-mono text-[10px] text-outline">ID: WF-1102-K</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary-fixed-dim pulse-cyan"></span>
+</div>
+<div class="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+<div class="bg-primary-fixed h-full w-9/12 shadow-[0_0_8px_#00daf8]"></div>
+</div>
+<div class="mt-2 flex justify-between font-data-mono text-[10px] text-on-surface-variant">
+<span>Compressing...</span>
+<span>90%</span>
+</div>
+</div>
+</div>
+<button class="mt-4 w-full py-2 font-label-caps text-[10px] text-primary-fixed border border-primary-fixed/20 rounded hover:bg-primary-container/10 transition-all">VIEW ALL AUTOMATIONS</button>
+</section>
+<!-- Bottom Stats / Quick Actions -->
+<section class="col-span-12 lg:col-span-8 row-span-2 grid grid-cols-3 gap-panel-gap">
+<div class="glass-panel rounded-xl p-gutter flex flex-col justify-center relative overflow-hidden">
+<span class="font-label-caps text-[10px] text-outline mb-1">LATENCY</span>
+<div class="flex items-end gap-2">
+<span class="font-display-xl text-headline-lg text-primary-fixed">14</span>
+<span class="font-data-mono text-on-surface-variant pb-1">ms</span>
+</div>
+<div class="mt-4 h-8 flex items-end gap-1">
+<div class="w-1 bg-primary-container/40 h-1/2 rounded-full"></div>
+<div class="w-1 bg-primary-container/60 h-2/3 rounded-full"></div>
+<div class="w-1 bg-primary-container/80 h-3/4 rounded-full"></div>
+<div class="w-1 bg-primary-fixed h-full rounded-full"></div>
+<div class="w-1 bg-primary-container/70 h-2/3 rounded-full"></div>
+<div class="w-1 bg-primary-container/50 h-1/2 rounded-full"></div>
+<div class="w-1 bg-primary-container/90 h-4/5 rounded-full"></div>
+</div>
+</div>
+<div class="glass-panel rounded-xl p-gutter flex flex-col justify-center">
+<span class="font-label-caps text-[10px] text-outline mb-1">ERRORS (24H)</span>
+<div class="flex items-end gap-2">
+<span class="font-display-xl text-headline-lg text-error">0</span>
+<span class="font-data-mono text-on-surface-variant pb-1">critical</span>
+</div>
+<div class="mt-4 flex items-center gap-2">
+<span class="w-2 h-2 rounded-sm bg-primary-fixed-dim"></span>
+<span class="font-label-caps text-[10px] text-on-surface-variant">ALL SYSTEMS NOMINAL</span>
+</div>
+</div>
+<div class="glass-panel rounded-xl p-gutter flex flex-col justify-center group cursor-pointer hover:bg-primary-container/5 transition-colors">
+<span class="font-label-caps text-[10px] text-outline mb-1">CPU LOAD</span>
+<div class="flex items-end gap-2">
+<span class="font-display-xl text-headline-lg text-primary-fixed">42</span>
+<span class="font-data-mono text-on-surface-variant pb-1">%</span>
+</div>
+<div class="mt-4 flex gap-1">
+<div class="flex-1 h-1 bg-primary-fixed rounded-full"></div>
+<div class="flex-1 h-1 bg-primary-fixed rounded-full"></div>
+<div class="flex-1 h-1 bg-primary-fixed/30 rounded-full"></div>
+<div class="flex-1 h-1 bg-primary-fixed/30 rounded-full"></div>
+<div class="flex-1 h-1 bg-primary-fixed/30 rounded-full"></div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Interactive Layer -->
+<div class="fixed bottom-8 right-8 z-50">
+<button class="w-14 h-14 bg-primary-container text-on-primary-fixed rounded-full flex items-center justify-center neon-glow-primary active:scale-90 transition-transform shadow-2xl">
+<span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+</button>
+</div>
+<!-- Atmospheric Overlay (Subtle noise/grain) -->
+<div class="fixed inset-0 pointer-events-none opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')] z-[100]"></div>
+<script>
+        // Micro-interaction for radar rotation
+        document.addEventListener('mousemove', (e) => {
+            const radar = document.querySelector('svg.w-full');
+            if (radar) {
+                const xAxis = (window.innerWidth / 2 - e.pageX) / 50;
+                const yAxis = (window.innerHeight / 2 - e.pageY) / 50;
+                radar.style.transform = `rotateY(${xAxis}deg) rotateX(${yAxis}deg)`;
+            }
+        });
+
+        // Initialize progress bars with slight randomization
+        const progressBars = document.querySelectorAll('.bg-primary-fixed');
+        progressBars.forEach(bar => {
+            const currentWidth = bar.style.width;
+            setInterval(() => {
+                const variation = (Math.random() - 0.5) * 5;
+                const base = parseInt(currentWidth) || 50;
+                bar.style.transition = 'width 1.5s ease-in-out';
+                bar.style.width = Math.min(Math.max(base + variation, 10), 100) + '%';
+            }, 3000);
+        });
+    </script>
+</body></html>

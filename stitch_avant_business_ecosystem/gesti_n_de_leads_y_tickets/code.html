@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Obsidian Flux | Command Terminal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&amp;family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(16, 19, 26, 0.6);
+            backdrop-filter: blur(32px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow-primary {
+            box-shadow: 0 0 15px rgba(0, 218, 248, 0.15);
+        }
+        .neon-glow-primary:hover {
+            box-shadow: 0 0 20px rgba(0, 218, 248, 0.3);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(0, 218, 248, 0.2);
+            border-radius: 2px;
+        }
+        @keyframes pulse-cyan {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+        .status-pulse {
+            animation: pulse-cyan 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#363940",
+                        "tertiary-fixed-dim": "#d1bcff",
+                        "tertiary-container": "#d6c3ff",
+                        "background": "#10131a",
+                        "inverse-surface": "#e1e2eb",
+                        "on-error": "#690005",
+                        "surface-container-low": "#191c22",
+                        "surface-variant": "#32353c",
+                        "tertiary-fixed": "#e9ddff",
+                        "tertiary": "#efe4ff",
+                        "secondary-fixed": "#dde1ff",
+                        "surface": "#10131a",
+                        "on-tertiary-fixed": "#23005b",
+                        "on-primary-fixed": "#001f25",
+                        "secondary-fixed-dim": "#b7c4ff",
+                        "surface-dim": "#10131a",
+                        "primary-container": "#00e0ff",
+                        "primary": "#baf2ff",
+                        "on-secondary-fixed": "#001452",
+                        "on-tertiary-container": "#6900f1",
+                        "on-surface": "#e1e2eb",
+                        "on-secondary": "#002682",
+                        "error-container": "#93000a",
+                        "on-primary": "#00363f",
+                        "on-primary-container": "#005f6d",
+                        "on-primary-fixed-variant": "#004e5a",
+                        "surface-container-highest": "#32353c",
+                        "on-tertiary-fixed-variant": "#5700c9",
+                        "inverse-on-surface": "#2e3037",
+                        "surface-tint": "#00daf8",
+                        "outline": "#859397",
+                        "on-secondary-fixed-variant": "#0038b6",
+                        "surface-container": "#1d2026",
+                        "secondary-container": "#0052fe",
+                        "primary-fixed": "#a5eeff",
+                        "inverse-primary": "#006877",
+                        "on-secondary-container": "#dfe3ff",
+                        "surface-container-high": "#272a31",
+                        "secondary": "#b7c4ff",
+                        "outline-variant": "#3b494c",
+                        "error": "#ffb4ab",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#0b0e14",
+                        "on-tertiary": "#3c0090",
+                        "primary-fixed-dim": "#00daf8",
+                        "on-background": "#e1e2eb",
+                        "on-surface-variant": "#bac9cd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-edge": "40px",
+                        "panel-gap": "12px",
+                        "sidebar-width": "280px",
+                        "gutter": "24px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "display-xl": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display-xl": ["64px", {"lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.6", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                        "data-mono": ["14px", {"lineHeight": "1.5", "letterSpacing": "0em", "fontWeight": "500"}],
+                        "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "1.2", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-hidden h-screen w-screen">
+<!-- Sidebar Navigation -->
+<aside class="fixed h-[calc(100vh-24px)] left-3 top-3 w-sidebar-width rounded-xl bg-surface/60 backdrop-blur-xl border-r border-white/10 shadow-[0_0_15px_rgba(0,218,248,0.1)] flex flex-col gap-panel-gap p-4 z-50">
+<div class="mb-6 px-2">
+<h1 class="font-display-xl text-headline-lg font-bold text-primary-fixed">Obsidian Flux</h1>
+<p class="font-label-caps text-[10px] text-on-surface-variant tracking-widest opacity-60">ADMIN TERMINAL</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-primary-fixed bg-primary-container/20 border-r-2 border-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-body-md">Dashboard</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="dns">dns</span>
+<span class="font-body-md">VPS Nodes</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="font-body-md">Workflows</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
+<span class="font-body-md">Analytics</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+<span class="font-body-md">Security</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-variant/40 hover:text-primary-fixed active:scale-95 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-body-md">Settings</span>
+</a>
+</nav>
+<button class="mt-4 bg-primary-container text-on-primary-container py-3 rounded-lg font-bold flex items-center justify-center gap-2 neon-glow-primary active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[18px]" data-icon="rocket_launch">rocket_launch</span>
+            Deploy Node
+        </button>
+<div class="mt-auto border-t border-white/5 pt-4 space-y-1">
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-primary-fixed transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-body-md">Support</span>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-primary-fixed transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+<span class="font-body-md">Logs</span>
+</a>
+<div class="mt-4 flex items-center gap-3 px-2">
+<img class="w-10 h-10 rounded-full border border-primary-fixed/30 p-0.5" data-alt="A professional close-up headshot of a technical administrator with high-tech glasses, set against a dark, futuristic background with soft blue neon backlighting. The aesthetic is sharp, digital-first, and fits a high-performance cyber-professional design system with cool tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSWNWDd3bwH5Pip2zNJN4xzneE9zo-hqo5KwBFejLfbVUQUGPXPhpIIMHCo-pnytoaUaB7ny9R21nHLcsOqhHfO7qnOTbYARBXgrV02Sx5zWc3FXjly09ccQd-_nB3NoLSmgnG54sPlAWY9Exs6LIVuhI9vn7a9CkcMgACz_cIE9keGtuQtGm9wM21UJ-5zoWN5LXdDtE4waqNhu_CCWaDQqlr53oXONmiOJeCCGPq4byadi1tw6FWog"/>
+<div class="flex-1 overflow-hidden">
+<p class="text-sm font-bold truncate">Admin Avatar</p>
+<p class="text-[10px] text-primary-fixed opacity-70 truncate">SYSTEM_ROOT</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Viewport -->
+<main class="ml-[calc(280px+24px)] mr-3 mt-3 h-[calc(100vh-24px)] flex flex-col gap-panel-gap relative">
+<!-- Top App Bar -->
+<header class="h-16 rounded-xl bg-surface/60 backdrop-blur-xl border-b border-white/10 shadow-sm flex justify-between items-center px-gutter w-full">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-sm bg-primary-fixed-dim status-pulse"></div>
+<span class="font-label-caps text-primary-fixed">FLUX COMMAND</span>
+</div>
+<div class="h-4 w-[1px] bg-white/10"></div>
+<nav class="flex items-center gap-6">
+<a class="font-label-caps text-on-surface-variant hover:text-primary-fixed transition-colors" href="#">CLUSTER-01</a>
+<a class="font-label-caps text-on-surface-variant hover:text-primary-fixed transition-colors" href="#">EU-WEST</a>
+<a class="font-label-caps text-primary-fixed flex items-center gap-2" href="#">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-fixed"></span>
+                        STATUS: STABLE
+                    </a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-[20px]" data-icon="search">search</span>
+<input class="bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2 w-64 text-sm focus:ring-1 focus:ring-primary-fixed/50 transition-all" placeholder="Global search..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-all" data-icon="notifications">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-all" data-icon="grid_view">grid_view</button>
+<button class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-sm hover:shadow-[0_0_10px_rgba(0,218,248,0.4)] transition-all">New Workflow</button>
+</div>
+</header>
+<!-- Dynamic Content Canvas -->
+<div class="flex-1 grid grid-cols-12 gap-panel-gap overflow-hidden pb-3">
+<!-- Leads Management Column -->
+<section class="col-span-7 flex flex-col h-full bg-surface-container-lowest/40 rounded-xl glass-panel overflow-hidden border border-white/5">
+<div class="p-4 flex items-center justify-between border-b border-white/5">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed" data-icon="rocket">rocket</span>
+<h2 class="font-headline-lg text-[20px]">Prioritized Leads</h2>
+<span class="bg-primary-container/10 text-primary-fixed text-[10px] font-bold px-2 py-0.5 rounded border border-primary-fixed/20">24 NEW</span>
+</div>
+<div class="flex gap-2">
+<button class="p-1.5 rounded bg-surface-variant/30 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-[18px]" data-icon="filter_list">filter_list</span>
+</button>
+<button class="p-1.5 rounded bg-surface-variant/30 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-[18px]" data-icon="sort">sort</span>
+</button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-panel-gap custom-scrollbar">
+<!-- AI Scored Lead Card 1 -->
+<div class="group relative bg-surface-container-high rounded-xl p-4 border border-white/5 hover:border-primary-fixed/30 transition-all duration-300">
+<div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary-fixed/20 to-transparent"></div>
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-gradient-to-br from-primary-fixed/20 to-secondary-container/20 flex items-center justify-center border border-white/10">
+<span class="material-symbols-outlined text-primary-fixed" data-icon="corporate_fare">corporate_fare</span>
+</div>
+<div>
+<h3 class="font-bold text-on-surface">NeuralLink Systems</h3>
+<p class="text-[11px] text-on-surface-variant font-label-caps">Enterprise Cloud Tier</p>
+</div>
+</div>
+<div class="text-right">
+<div class="text-[20px] font-display-xl text-primary-fixed">98</div>
+<div class="text-[9px] font-label-caps text-primary-fixed/60">AI CONFIDENCE</div>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant line-clamp-2 mb-4">Inquiry regarding multi-regional cluster deployment with advanced latency optimization. High probability of upsell to Tier 4.</p>
+<div class="flex items-center justify-between pt-3 border-t border-white/5">
+<div class="flex -space-x-2">
+<img class="w-6 h-6 rounded-full border border-background" data-alt="Close up of a stylized digital avatar of a young tech professional with short dark hair and a serious expression, minimalist lighting, blue tones, cyberpunk corporate aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnfapCjiPcnMv-hgJYL6d_GpuLH-XNSbfTXDc894PrTASZ7Vvm_KcILhfihiBSqLdr2hFpxk-06TvLSVnRR-vAQVR26JYCQDXf2RtLBk3VpuVQAPR6jbsGxj9pUpXmDRkC_a7xjpSDNRjiYLc-UFwLsIrMHNBxSsf5_Maag3ngipW-37Suyro4HilsWQgvPsJxwctp7yvO6r9-m_NJxxtEzy36C_GoYR0vuYa8MZASqjW1NvsDEtbgKA"/>
+<img class="w-6 h-6 rounded-full border border-background" data-alt="Stylized digital portrait of a technical sales expert with a professional but edgy aesthetic, featuring clean sharp lines and high contrast lighting in a dark interface style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVRI6qX6lzCtntovzRRP51BdMuT4w-CH3Vlrqem4zN99_hFFWcEQUUPQCvJ9aCH09HxY1fZA_5AMdEE7re1BRekxM7xuIymRkufg4-pGmjHahHANSJ2hi7ZFXgx5pHSk22ude-rhNYiekY9LOESJjHlvOhyLQXHcEkkwoof32lLZSo4eSXdi5Si0vfakMHaVlC4J4JMGN66gpnF7v_FV-6yKOzAZbztFezKZRFPACmvgYlt6g4QE-iwA"/>
+</div>
+<div class="flex gap-2">
+<button class="text-[10px] font-bold px-3 py-1 rounded bg-surface-variant/50 hover:bg-primary-fixed/20 hover:text-primary-fixed transition-all">VIEW DOSSIER</button>
+<button class="text-[10px] font-bold px-3 py-1 rounded bg-primary-container text-on-primary-container neon-glow-primary active:scale-95 transition-all">ENGAGE</button>
+</div>
+</div>
+</div>
+<!-- Lead Card 2 -->
+<div class="group relative bg-surface-container-high rounded-xl p-4 border border-white/5 hover:border-primary-fixed/30 transition-all duration-300">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-gradient-to-br from-secondary-fixed/20 to-tertiary-fixed/20 flex items-center justify-center border border-white/10">
+<span class="material-symbols-outlined text-secondary" data-icon="precision_manufacturing">precision_manufacturing</span>
+</div>
+<div>
+<h3 class="font-bold text-on-surface">Omni-Cybernetics</h3>
+<p class="text-[11px] text-on-surface-variant font-label-caps">Standard Compute</p>
+</div>
+</div>
+<div class="text-right">
+<div class="text-[20px] font-display-xl text-secondary">84</div>
+<div class="text-[9px] font-label-caps text-secondary/60">AI CONFIDENCE</div>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant line-clamp-2 mb-4">Expanding existing infrastructure for new robotic process automation workflows. Requiring dedicated GPU nodes.</p>
+<div class="flex items-center justify-between pt-3 border-t border-white/5">
+<div class="text-[10px] text-on-surface-variant">Last activity: 2h ago</div>
+<div class="flex gap-2">
+<button class="text-[10px] font-bold px-3 py-1 rounded bg-surface-variant/50 hover:bg-secondary/20 hover:text-secondary transition-all">VIEW DOSSIER</button>
+<button class="text-[10px] font-bold px-3 py-1 rounded bg-secondary-container text-on-secondary-container active:scale-95 transition-all">ENGAGE</button>
+</div>
+</div>
+</div>
+<!-- Lead Card 3 -->
+<div class="group relative bg-surface-container-high rounded-xl p-4 border border-white/5 hover:border-primary-fixed/30 transition-all duration-300 opacity-80">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-surface-variant/20 flex items-center justify-center border border-white/10">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="biotech">biotech</span>
+</div>
+<div>
+<h3 class="font-bold text-on-surface">Helix Bio-Tech</h3>
+<p class="text-[11px] text-on-surface-variant font-label-caps">Pilot Program</p>
+</div>
+</div>
+<div class="text-right">
+<div class="text-[20px] font-display-xl text-on-surface-variant">62</div>
+<div class="text-[9px] font-label-caps text-on-surface-variant/60">AI CONFIDENCE</div>
+</div>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-white/5">
+<div class="text-[10px] text-on-surface-variant italic">Waiting for documentation...</div>
+<button class="text-[10px] font-bold px-3 py-1 rounded bg-surface-variant/50 transition-all">VIEW DETAILS</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Tickets Management Column -->
+<section class="col-span-5 flex flex-col h-full bg-surface-container-lowest/40 rounded-xl glass-panel overflow-hidden border border-white/5">
+<div class="p-4 flex items-center justify-between border-b border-white/5">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-error" data-icon="confirmation_number">confirmation_number</span>
+<h2 class="font-headline-lg text-[20px]">Support Queue</h2>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-[11px] font-label-caps text-error">3 CRITICAL</span>
+<div class="h-4 w-[1px] bg-white/10"></div>
+<button class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="more_vert">more_vert</button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+<!-- Ticket Item 1 -->
+<div class="bg-surface-container-low border-l-2 border-error p-3 rounded-r-lg group hover:bg-surface-container transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-label-caps text-error bg-error-container/20 px-2 py-0.5 rounded">CRITICAL</span>
+<span class="text-[10px] text-on-surface-variant">#TK-8842</span>
+</div>
+<h4 class="text-sm font-bold mb-1 truncate">Database latency spike: EU-01-A</h4>
+<p class="text-[11px] text-on-surface-variant line-clamp-1 mb-3">PostgreSQL cluster is reporting 400ms average query response times...</p>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-error animate-ping"></div>
+<span class="text-[10px] text-on-surface-variant">Active for 12m</span>
+</div>
+<div class="flex gap-1">
+<button class="w-7 h-7 flex items-center justify-center rounded bg-surface-variant/40 hover:text-error transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="emergency_home">emergency_home</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded bg-error-container text-white neon-glow-error transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="bolt">bolt</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Ticket Item 2 -->
+<div class="bg-surface-container-low border-l-2 border-primary-fixed p-3 rounded-r-lg group hover:bg-surface-container transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-label-caps text-primary-fixed bg-primary-container/20 px-2 py-0.5 rounded">MEDIUM</span>
+<span class="text-[10px] text-on-surface-variant">#TK-8840</span>
+</div>
+<h4 class="text-sm font-bold mb-1 truncate">Billing disagreement: Nexus Corp</h4>
+<p class="text-[11px] text-on-surface-variant line-clamp-1 mb-3">Client claims overcharge on bandwidth usage for Oct cycle...</p>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-[10px] text-on-surface-variant">Assigned to: Agent_Zero</span>
+</div>
+<button class="w-7 h-7 flex items-center justify-center rounded bg-surface-variant/40 hover:text-primary-fixed transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="chat_bubble">chat_bubble</span>
+</button>
+</div>
+</div>
+<!-- Ticket Item 3 -->
+<div class="bg-surface-container-low border-l-2 border-secondary p-3 rounded-r-lg group hover:bg-surface-container transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-label-caps text-secondary bg-secondary-container/20 px-2 py-0.5 rounded">LOW</span>
+<span class="text-[10px] text-on-surface-variant">#TK-8839</span>
+</div>
+<h4 class="text-sm font-bold mb-1 truncate">SSH Key Deployment failure</h4>
+<p class="text-[11px] text-on-surface-variant line-clamp-1 mb-3">Manual override requested for account user-449...</p>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-[10px] text-on-surface-variant">Resolved 5m ago</span>
+</div>
+<span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Footer Quick Actions -->
+<div class="p-4 bg-surface-container/60 border-t border-white/5 flex gap-2">
+<button class="flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-bold bg-surface-variant/50 rounded hover:bg-surface-variant transition-all">
+<span class="material-symbols-outlined text-[14px]" data-icon="history">history</span>
+                        ARCHIVE
+                    </button>
+<button class="flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-bold bg-primary-container/20 text-primary-fixed border border-primary-fixed/30 rounded hover:bg-primary-container/30 transition-all">
+<span class="material-symbols-outlined text-[14px]" data-icon="assignment_add">assignment_add</span>
+                        CREATE TICKET
+                    </button>
+</div>
+</section>
+</div>
+<!-- Floating Atmosphere (Visual Background Decoration) -->
+<div class="absolute -z-10 bottom-0 right-0 w-[500px] h-[500px] bg-primary-fixed/5 blur-[120px] rounded-full pointer-events-none"></div>
+<div class="absolute -z-10 top-0 left-0 w-[300px] h-[300px] bg-secondary-container/5 blur-[100px] rounded-full pointer-events-none"></div>
+</main>
+<!-- Micro-interaction Script -->
+<script>
+        document.querySelectorAll('.group').forEach(item => {
+            item.addEventListener('mouseenter', () => {
+                // Potential for adding subtle sound effects or data animation triggers
+            });
+        });
+
+        // Mock data visualization pulse or update
+        setInterval(() => {
+            const scores = document.querySelectorAll('.text-[20px].font-display-xl');
+            scores.forEach(score => {
+                if(Math.random() > 0.8) {
+                    score.classList.add('text-primary');
+                    setTimeout(() => score.classList.remove('text-primary'), 500);
+                }
+            });
+        }, 3000);
+    </script>
+</body></html>

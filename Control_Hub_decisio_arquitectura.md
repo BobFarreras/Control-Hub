@@ -18,9 +18,9 @@ El producte ha de poder desplegar-se en qualsevol VPS Linux compatible amb Docke
 
 ## 2. Decisions principals
 
-### ADR-001 - Monolit modular en una VPS
+### ADR-001 - Monolit modular desplegable en contenidors
 
-La primera versio sera un monolit modular TypeScript desplegat amb Docker Compose:
+El producte sera un monolit modular TypeScript desplegat amb Docker Compose:
 
 ```text
 Reverse proxy opcional
@@ -32,7 +32,7 @@ Next.js Web -> Fastify API -> PostgreSQL
           Connectors opcionals
 ```
 
-Es descarten inicialment microserveis i Kubernetes. Una sola VPS implica un punt unic de fallada acceptat durant l'MVP.
+Es descarten inicialment microserveis i Kubernetes. El perfil de desplegament en una sola VPS tindra un punt unic de fallada declarat, backups externs i recuperacio provada. Aquesta simplificacio operativa no redueix la qualitat del software.
 
 ### ADR-002 - Distribucio single-tenant, domini tenant-aware
 
@@ -110,9 +110,9 @@ proxy:       Traefik o alternativa
 
 No s'assumeix un cloud concret. Es podran utilitzar registries OCI, proxies i object storage compatibles de diferents proveidors. Les imatges tindran versions immutables i produccio podra fixar-les per digest.
 
-### ADR-008 - MCP posterior al nucli
+### ADR-008 - MCP planificat sobre el nucli
 
-MCP no bloquejara l'MVP. Primer es construiran API, permisos, auditoria i connectors. Despres s'afegira un servidor MCP sobre els mateixos casos d'us:
+MCP forma part de l'arquitectura objectiu, pero s'implementara quan API, permisos, auditoria i connectors ja ofereixin els casos d'us necessaris. El servidor MCP reutilitzara aquests contractes sense exigir una reescriptura:
 
 - Primera fase: eines de lectura.
 - Fase posterior: escriptura amb scopes, confirmacio i auditoria.
@@ -167,8 +167,8 @@ Abans de comercialitzar: signatura d'imatges, provenance, politica de CVE, canal
 
 Objectius inicials:
 
-- **RPO:** 24 hores; objectiu posterior d'1 hora.
-- **RTO:** 8 hores; objectiu posterior de 2-4 hores.
+- **RPO objectiu:** 1 hora com a maxim.
+- **RTO objectiu:** 4 hores com a maxim.
 - Alta disponibilitat inicial: no.
 
 Els backups inclouran PostgreSQL, fitxers, object storage, configuracio, manifest de versions i metadades necessaries. Seran xifrats, copiats fora de la VPS i verificats. La clau mestra tindra custodia independent.
@@ -185,6 +185,8 @@ Es fara una restauracio mensual en un entorn net. Un snapshot del proveidor no s
 - La infraestructura es consulta mitjancant metriques o un agent restringit, mai amb una consola SSH arbitraria.
 
 ## 8. Roadmap
+
+El detall executable, els entregables i els criteris d'aprovacio de cada fase es defineixen a [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 
 1. Fonaments: monorepo, Docker, CI, autenticacio, tenant, permisos i auditoria.
 2. Nucli: dashboard, leads, clients, contactes i activitat.

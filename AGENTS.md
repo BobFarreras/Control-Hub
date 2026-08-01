@@ -11,11 +11,29 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 
 ## Abans de modificar codi
 
-- Llegir `README.md`, `ARCHITECTURE.md` i els ADR relacionats.
+- Llegir `README.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
+- Seguir `BRANCHING.md` i `CONTRIBUTING.md` per branques, commits i pull requests.
 - Revisar `git status` i no revertir canvis aliens.
 - Localitzar les proves i convencions del modul afectat.
 - Aclarir criteris d'acceptacio quan no es puguin deduir de la documentacio.
 - No afegir dependencies sense justificar manteniment, llicencia i impacte de seguretat.
+
+## Dubtes i decisions
+
+- Si existeix un dubte material que pugui afectar arquitectura, domini, dades, seguretat, permisos, UX, operacio, costos o comportament de producte, l'agent ha de preguntar abans d'implementar.
+- Quan hi hagi diverses alternatives valides, ha de presentar un selector estructurat amb 2 o 3 opcions mutuament excloents, indicar l'opcio recomanada i resumir l'impacte de cadascuna.
+- S'ha d'utilitzar l'eina interactiva de seleccio quan estigui disponible. Si l'entorn no la proporciona, s'ha de formular una pregunta breu i esperar una decisio explicita.
+- No s'ha de preguntar per decisions trivials que ja resolguin aquests documents, un ADR, les convencions del repositori o els criteris d'acceptacio.
+- No s'han d'inventar requisits per evitar una pregunta ni continuar amb una assumpcio d'alt impacte sense deixar-la aprovada.
+- La resposta escollida s'ha de reflectir a l'ADR o especificacio corresponent quan tingui efectes permanents.
+
+## Qualitat de producte
+
+- Control Hub es desenvolupa com a producte professional des del primer increment; no es creen implementacions provisionals destinades a ser reescrites.
+- Les fases ordenen l'entrega, pero no redueixen els requisits de seguretat, tenancy, accessibilitat, internacionalitzacio, proves, observabilitat, migracions o operabilitat.
+- Una funcionalitat parcial pot quedar desactivada amb feature flag, pero el codi integrat ha de complir la Definition of Done.
+- No s'accepten mocks permanents, bypasses, secrets temporals, dades hardcoded ni APIs sense contracte amb la promesa de corregir-los mes endavant.
+- Les decisions han de suportar instal·lacio comercial, actualitzacions i manteniment sense redissenyar el nucli.
 
 ## Arquitectura obligatoria
 
@@ -56,6 +74,9 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 - Evitar duplicacio significativa, abstraccions especulatives i dependencies circulars.
 - APIs publiques versionades i documentades amb OpenAPI.
 - Errors externs no han d'exposar detalls interns.
+- Cap text visible queda hardcoded: afegir sempre claus `ca`, `es` i `en`.
+- Cap component declara colors de producte directament: utilitzar tokens semantics.
+- Tota UI nova funciona en light, dark, teclat i reduced motion.
 
 ## Proves
 

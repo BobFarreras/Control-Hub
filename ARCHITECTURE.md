@@ -42,6 +42,7 @@ packages/
   connectors/
   observability/
   contracts/
+  i18n/
   ui/
 deploy/
   compose.yaml
@@ -133,6 +134,12 @@ Els contenidors son no-root, tenen healthchecks, filesystem read-only quan sigui
 - Metriques RED per serveis i metriques de negoci separades.
 - Traces distribuides quan el volum ho justifiqui.
 - Alertes accionables amb runbook associat.
+
+## Experiencia i localitzacio
+
+El sistema visual es defineix a `DESIGN_SYSTEM.md` i s'implementa a `packages/ui` amb tokens semantics compartits per light i dark. Les aplicacions no declaren colors, tipografies o animacions de producte de manera local.
+
+La internacionalitzacio es defineix a `INTERNATIONALIZATION.md`. `packages/i18n` centralitza routing, missatges tipats i formatters. El domini i l'API emeten codis estables; web, correus i documents els presenten en `ca`, `es` o `en` segons el context.
 
 ## Fiabilitat
 
