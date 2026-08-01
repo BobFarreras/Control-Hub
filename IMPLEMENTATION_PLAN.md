@@ -30,6 +30,8 @@ Els canvis urgents poden entrar fora de fase, pero han de quedar documentats i p
 
 **Objectiu:** eliminar decisions ambigues abans de crear el runtime.
 
+La visio i l'abast aprovats es defineixen a `PRODUCT_REQUIREMENTS.md`. Aquesta fase els converteix en models, ADR i contractes implementables.
+
 ### Implementacio
 
 - Crear `docs/adr`, `docs/specifications`, `docs/runbooks` i `docs/security`.
@@ -45,6 +47,7 @@ Els canvis urgents poden entrar fora de fase, pero han de quedar documentats i p
 ### Entregables
 
 - ADR aprovats.
+- Abast de Release 1.0 descompost en increments i especificacions revisables.
 - Especificacio d'autenticacio i tenant context.
 - Contracte inicial de connectors.
 - Model d'errors i auditoria.
