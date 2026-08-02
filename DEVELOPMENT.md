@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori disposa del nucli executable i de la identitat, tenancy, RBAC, MFA, sessions i auditoria de la Fase 2. Els moduls de negoci comencen a la Fase 3.
+El repositori disposa del nucli executable, la identitat i seguretat de la Fase 2, i el CRM professional complet de la Fase 3: leads, clients, contactes, activitat, tasques, CSV i dashboard comercial.
 
 ## Requisits
 

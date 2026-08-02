@@ -182,7 +182,7 @@ Les barreres de tenant i permisos estan provades abans de crear moduls de negoci
 - Conversio idempotent de lead.
 - Deteccio de duplicats dins del tenant.
 - Importacions parcials no deixen dades incoherents.
-- Permisos de comercial, direccio i viewer.
+- Permisos d'`Owner`, `Administrator` i lectura per `Technical`.
 
 ### Revisio del propietari
 
