@@ -21,6 +21,7 @@ Les versions exactes quedaran fixades a `package.json`, `engines`, `packageManag
 ```powershell
 corepack enable
 pnpm install --frozen-lockfile
+Copy-Item .env.example .env
 pnpm dev:all
 ```
 
@@ -92,7 +93,7 @@ Cap script de test utilitza la base de dades manual del desenvolupador.
 
 ## Configuracio
 
-1. Copiar valors no secrets des de `.env.example` segons el mecanisme documentat.
+1. Crear `.env` a partir de `.env.example` i substituir els secrets locals abans de la primera arrencada.
 2. Generar secrets locals; no reutilitzar staging o produccio.
 3. Validacio estricta en arrencar: una variable absent produeix un error accionable.
 

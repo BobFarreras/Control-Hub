@@ -5,8 +5,9 @@
   "packageManager": "pnpm@10.26.0",
   "engines": { "node": ">=22.16.0" },
   "scripts": {
-    "dev": "turbo dev",
-    "dev:all": "pnpm infra:up && pnpm dev",
+    "dev": "node --env-file=.env node_modules/turbo/bin/turbo dev",
+    "dev:api": "node --env-file=.env scripts/run-local-command.mjs api",
+    "dev:all": "pnpm infra:up && pnpm db:migrate && pnpm dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
@@ -15,11 +16,11 @@
     "test:e2e": "playwright test",
     "test:visual": "playwright test --grep @visual",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "infra:up": "docker compose up -d postgres valkey mailpit",
+    "infra:up": "docker compose up -d --wait postgres valkey mailpit",
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v",
-    "db:migrate": "pnpm --filter @control-hub/database migrate",
-    "bootstrap:owner": "pnpm --filter @control-hub/api exec tsx src/bootstrap.ts"
+    "db:migrate": "node --env-file=.env scripts/run-local-command.mjs migrate",
+    "bootstrap:owner": "node --env-file=.env scripts/run-local-command.mjs bootstrap"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

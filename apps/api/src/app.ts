@@ -16,13 +16,21 @@ import type { RoleCode } from "@control-hub/domain";
 import { leadPriorities, leadStatuses, normalizeComparableName, type LeadPriority, type LeadStatus } from "@control-hub/domain";
 import { CrmError, CrmService, type CrmListQuery, type CreateLeadInput } from "@control-hub/application";
 import { PostgresCrmRepository } from "./crm-repository.js";
+import { acceptInvitation, createInvitation, InvitationError, listInvitations, lookupInvitation, revokeInvitation, type InvitationRole } from "./invitation-repository.js";
+import type { MailSender } from "./email.js";
 
-type BuildAppOptions = { databaseUrl: string; redisUrl: string; appOrigin?: string; auth?: ControlHubAuth; logLevel?: string; version?: string };
+type BuildAppOptions = { databaseUrl: string; redisUrl: string; appOrigin?: string; auth?: ControlHubAuth; invitationAuth?: ControlHubAuth; sendMail?: MailSender; logLevel?: string; version?: string };
 
 function requestHeaders(headers: Record<string, string | string[] | undefined>) {
   const result = new Headers();
   for (const [name, value] of Object.entries(headers)) if (value) result.set(name, Array.isArray(value) ? value.join(",") : value);
   return result;
+}
+
+function invitationMessage(locale: "ca" | "es" | "en", url: string) {
+  if (locale === "es") return { subject: "Control Hub - Invitacion", text: `Has recibido una invitacion a Control Hub. El enlace caduca en 48 horas: ${url}` };
+  if (locale === "en") return { subject: "Control Hub - Invitation", text: `You have been invited to Control Hub. This link expires in 48 hours: ${url}` };
+  return { subject: "Control Hub - Invitacio", text: `Has rebut una invitacio a Control Hub. L'enllac caduca en 48 hores: ${url}` };
 }
 
 export function buildApp(options: BuildAppOptions) {
@@ -49,6 +57,7 @@ export function buildApp(options: BuildAppOptions) {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ApiSecurityError) return reply.code(error.statusCode).send({ code: error.code, requestId: request.id });
     if (error instanceof IdentityInvariantError) return reply.code(error.message === "MEMBERSHIP_NOT_FOUND" ? 404 : 409).send({ code: error.message, requestId: request.id });
+    if (error instanceof InvitationError) return reply.code(error.message === "INVITATION_NOT_FOUND" ? 404 : 409).send({ code: error.message, requestId: request.id });
     if (error instanceof CrmError) {
       const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code.startsWith("DUPLICATE") || error.code === "INVALID_TRANSITION" ? 409 : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -91,6 +100,27 @@ export function buildApp(options: BuildAppOptions) {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "audit:read");
       return { events: await listAuditEvents(database, context) };
+    });
+    app.get("/api/v1/invitations", async (request) => {
+      const context = await resolveTenantContext(auth, database, request); requirePermission(context, "members:manage");
+      return { invitations: await listInvitations(database, context) };
+    });
+    app.post<{ Body: { email: string; role: InvitationRole; locale?: "ca" | "es" | "en" } }>("/api/v1/invitations", { schema: { body: { type: "object", additionalProperties: false, required: ["email", "role"], properties: { email: { type: "string", format: "email", maxLength: 254 }, role: { type: "string", enum: ["administrator", "technical"] }, locale: { type: "string", enum: ["ca", "es", "en"] } } } } }, async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request); requirePermission(context, "members:manage");
+      if (!options.sendMail || !options.appOrigin) throw new InvitationError("INVITATIONS_NOT_CONFIGURED");
+      const invitation = await createInvitation(database, context, { email: request.body.email, role: request.body.role, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) });
+      const locale = request.body.locale ?? "ca";
+      const url = new URL(`/${locale}/accept-invitation`, options.appOrigin); url.searchParams.set("token", invitation.token);
+      try { await options.sendMail({ to: invitation.email, ...invitationMessage(locale, url.toString()) }); }
+      catch (error) { await revokeInvitation(database, context, invitation.id); throw error; }
+      await writeAudit(database, context, request, { action: "membership.invited", targetType: "invitation", targetId: invitation.id, outcome: "success", metadata: { email: invitation.email, role: invitation.role } });
+      return reply.code(201).send({ invitation: { id: invitation.id, email: invitation.email, role: invitation.role, expiresAt: invitation.expiresAt } });
+    });
+    app.delete<{ Params: { invitationId: string } }>("/api/v1/invitations/:invitationId", async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request); requirePermission(context, "members:manage");
+      await revokeInvitation(database, context, request.params.invitationId);
+      await writeAudit(database, context, request, { action: "membership.invitation.revoked", targetType: "invitation", targetId: request.params.invitationId, outcome: "success" });
+      return reply.code(204).send();
     });
 
     const listSchema = { querystring: { type: "object", additionalProperties: false, properties: {
@@ -158,6 +188,19 @@ export function buildApp(options: BuildAppOptions) {
     });
   }
 
+  app.get<{ Querystring: { token: string } }>("/api/v1/public/invitations", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } }, schema: { querystring: { type: "object", additionalProperties: false, required: ["token"], properties: { token: { type: "string", minLength: 32, maxLength: 128 } } } } }, async (request) => ({ invitation: await lookupInvitation(database, request.query.token) }));
+  app.post<{ Body: { token: string; name: string; password: string } }>("/api/v1/public/invitations/accept", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } }, schema: { body: { type: "object", additionalProperties: false, required: ["token", "name", "password"], properties: { token: { type: "string", minLength: 32, maxLength: 128 }, name: { type: "string", minLength: 2, maxLength: 120 }, password: { type: "string", minLength: 12, maxLength: 128 } } } } }, async (request, reply) => {
+    if (!options.invitationAuth) throw new InvitationError("INVITATIONS_NOT_CONFIGURED");
+    const invitation = await lookupInvitation(database, request.body.token);
+    const existing = await database<{ id: string }[]>`select id from "user" where email = ${invitation.email}`;
+    if (existing[0]) throw new InvitationError("INVITATION_ACCOUNT_EXISTS");
+    const registration = await options.invitationAuth.api.signUpEmail({ body: { email: invitation.email, password: request.body.password, name: request.body.name.trim() } });
+    if (!registration.user) throw new InvitationError("INVITATION_REGISTRATION_FAILED");
+    try { await acceptInvitation(database, request.body.token, registration.user.id, invitation.email); }
+    catch (error) { await database`delete from "user" where id = ${registration.user.id}`; throw error; }
+    return reply.code(201).send({ status: "accepted", email: invitation.email });
+  });
+
   app.get<{ Reply: LiveHealth }>("/health/live", { schema: { tags: ["health"] } }, async () => ({ status: "ok", service: "api", version: options.version ?? "0.1.0" }));
   app.get<{ Reply: ReadyHealth }>("/health/ready", { schema: { tags: ["health"] } }, async (_request, reply) => {
     const dependencies: ReadyHealth["dependencies"] = {}; let ready = true;
@@ -166,6 +209,6 @@ export function buildApp(options: BuildAppOptions) {
     catch { dependencies.queue = { status: "down", latencyMs: 0 }; ready = false; }
     if (!ready) reply.code(503); return { status: ready ? "ready" : "not_ready", service: "api", dependencies };
   });
-  app.addHook("onClose", async () => { if (redis.status === "ready") await redis.quit(); else redis.disconnect(); await database.end({ timeout: 5 }); if (options.auth) await options.auth.close(); });
+  app.addHook("onClose", async () => { if (redis.status === "ready") await redis.quit(); else redis.disconnect(); await database.end({ timeout: 5 }); if (options.auth) await options.auth.close(); if (options.invitationAuth) await options.invitationAuth.close(); });
   return app;
 }

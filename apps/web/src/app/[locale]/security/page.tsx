@@ -1,21 +1,83 @@
 "use client";
 
-import { KeyRound, Laptop, LogOut, ShieldCheck } from "lucide-react";
+import { KeyRound, Laptop, LogOut, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { getDictionary, isLocale } from "@control-hub/i18n";
 import { AuthBoundary } from "@/components/auth-boundary";
 import { authClient } from "@/lib/auth-client";
 
 type Session = { id: string; token: string; userAgent?: string | null; ipAddress?: string | null; expiresAt: Date };
+type Invitation = { id: string; email: string; role: "administrator" | "technical"; expiresAt: string };
 
 export default function SecurityPage() {
-  const localeParam = String(useParams().locale); const locale = isLocale(localeParam) ? localeParam : "ca"; const t = getDictionary(locale).security; const router = useRouter();
-  const session = authClient.useSession(); const [sessions, setSessions] = useState<Session[]>([]); const [totpUri, setTotpUri] = useState(""); const [backup, setBackup] = useState<string[]>([]); const [error, setError] = useState("");
-  useEffect(() => { void authClient.listSessions().then((result) => { if (result.data) setSessions(result.data as Session[]); }); }, []);
-  async function enable(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(""); const password = String(new FormData(event.currentTarget).get("password")); const result = await authClient.twoFactor.enable({ password }); if (result.error) return setError(result.error.message ?? "TOTP"); setTotpUri(result.data.totpURI); setBackup(result.data.backupCodes); }
+  const localeParam = String(useParams().locale);
+  const locale = isLocale(localeParam) ? localeParam : "ca";
+  const t = getDictionary(locale);
+  const router = useRouter();
+  const session = authClient.useSession();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [totpUri, setTotpUri] = useState("");
+  const [pendingBackupCodes, setPendingBackupCodes] = useState<string[]>([]);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [invitationError, setInvitationError] = useState("");
+  const [canManageMembers, setCanManageMembers] = useState(false);
+  const mfaEnabled = Boolean(session.data?.user.twoFactorEnabled);
+
+  useEffect(() => {
+    void authClient.listSessions().then((result) => { if (result.data) setSessions(result.data as Session[]); });
+    void fetch("/api/v1/me").then(async (response) => { if (response.ok) { const payload = await response.json() as { context: { permissions: string[]; mfaEnabled: boolean } }; setCanManageMembers(payload.context.permissions.includes("members:manage") && payload.context.mfaEnabled); } });
+    void fetch("/api/v1/invitations").then(async (response) => { if (response.ok) setInvitations((await response.json() as { invitations: Invitation[] }).invitations); });
+  }, []);
+
+  async function enableTotp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(""); setBackupCodes([]);
+    const result = await authClient.twoFactor.enable({ password: String(new FormData(event.currentTarget).get("password")) });
+    if (result.error) return setError(result.error.message ?? "TOTP");
+    setTotpUri(result.data.totpURI); setPendingBackupCodes(result.data.backupCodes);
+  }
+
+  async function verifyTotp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError("");
+    const code = String(new FormData(event.currentTarget).get("code")).replace(/\s/g, "");
+    const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: false });
+    if (result.error) return setError(result.error.message ?? "TOTP");
+    setBackupCodes(pendingBackupCodes); setPendingBackupCodes([]); setTotpUri(""); await session.refetch();
+  }
+
+  async function inviteMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setInvitationError(""); const form = event.currentTarget; const data = new FormData(form);
+    const response = await fetch("/api/v1/invitations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: data.get("email"), role: data.get("role"), locale }) });
+    const payload = await response.json().catch(() => ({})) as { invitation?: Invitation; code?: string };
+    if (!response.ok || !payload.invitation) return setInvitationError(payload.code ?? t.invitations.error);
+    setInvitations((current) => [payload.invitation!, ...current]); form.reset();
+  }
+
+  async function revokeInvitation(id: string) { const response = await fetch(`/api/v1/invitations/${id}`, { method: "DELETE" }); if (response.ok) setInvitations((current) => current.filter((item) => item.id !== id)); }
   async function signOut() { await authClient.signOut(); router.replace(`/${locale}/login`); }
   async function revoke(token: string) { const result = await authClient.revokeSession({ token }); if (!result.error) setSessions((current) => current.filter((item) => item.token !== token)); }
   async function addPasskey() { const result = await authClient.passkey.addPasskey({ name: "Control Hub" }); if (result.error) setError(result.error.message ?? "WebAuthn"); }
-  return <AuthBoundary><main className="security-page"><header className="security-header"><div><span>CONTROL HUB</span><h1>{t.title}</h1><p>{session.data?.user.email}</p></div><button className="secondary-button" onClick={signOut}><LogOut size={17} />{t.signOut}</button></header><section className="security-grid"><article className="security-panel"><ShieldCheck size={24} /><h2>{t.secondFactor}</h2><p>{t.mfaDescription}</p><form className="auth-form compact" onSubmit={enable}><label>{t.currentPassword}<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">{t.enableTotp}</button><button className="secondary-button" type="button" onClick={addPasskey}>{t.addPasskey}</button></form>{error && <p className="form-error">{error}</p>}{totpUri && <div className="secret-output"><strong>TOTP URI</strong><code>{totpUri}</code><strong>{t.backupCodes}</strong><code>{backup.join(" ")}</code></div>}</article><article className="security-panel"><Laptop size={24} /><h2>{t.sessions}</h2><div className="session-list">{sessions.map((item) => <div className="session-row" key={item.id}><KeyRound size={17} /><div><strong>{item.userAgent ?? t.unknownDevice}</strong><small>{item.ipAddress ?? t.unknownIp}</small></div><time>{new Date(item.expiresAt).toLocaleDateString(locale)}</time><button className="icon-button" title={t.revoke} aria-label={t.revoke} onClick={() => revoke(item.token)}><LogOut size={16} /></button></div>)}</div></article></section></main></AuthBoundary>;
+
+  return <AuthBoundary><main className="security-page">
+    <header className="security-header"><div><span>CONTROL HUB</span><h1>{t.security.title}</h1><p>{session.data?.user.email}</p></div><button className="secondary-button" onClick={signOut}><LogOut size={17} />{t.security.signOut}</button></header>
+    <section className="security-grid">
+      <article className="security-panel"><ShieldCheck size={24} /><h2>{t.security.secondFactor}</h2><p>{t.security.mfaDescription}</p>
+        {!mfaEnabled && !totpUri && backupCodes.length === 0 && <form className="auth-form compact" onSubmit={enableTotp}><label>{t.security.currentPassword}<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">{t.security.enableTotp}</button></form>}
+        {mfaEnabled && backupCodes.length === 0 && <p className="security-success">{t.security.totpEnabled}</p>}
+        <button className="secondary-button" type="button" onClick={addPasskey}>{t.security.addPasskey}</button>
+        {totpUri && <div className="totp-enrollment"><div className="qr-surface"><QRCodeSVG value={totpUri} size={192} level="M" /></div><p>{t.security.scanQr}</p><form className="auth-form compact" onSubmit={verifyTotp}><label>{t.security.verificationCode}<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required /></label><button className="primary-button">{t.security.confirmTotp}</button></form></div>}
+        {error && <p className="form-error">{error}</p>}
+        {backupCodes.length > 0 && <div className="secret-output"><strong>{t.security.backupCodes}</strong><p>{t.security.backupWarning}</p><code>{backupCodes.join("\n")}</code></div>}
+      </article>
+      <article className="security-panel"><Laptop size={24} /><h2>{t.security.sessions}</h2><div className="session-list">{sessions.map((item) => <div className="session-row" key={item.id}><KeyRound size={17} /><div><strong>{item.userAgent ?? t.security.unknownDevice}</strong><small>{item.ipAddress ?? t.security.unknownIp}</small></div><time>{new Date(item.expiresAt).toLocaleDateString(locale)}</time><button className="icon-button" title={t.security.revoke} aria-label={t.security.revoke} onClick={() => revoke(item.token)}><LogOut size={16} /></button></div>)}</div></article>
+      {canManageMembers && <article className="security-panel members-panel"><UserPlus size={24} /><h2>{t.invitations.title}</h2><p>{t.invitations.description}</p>
+        <form className="invite-form" onSubmit={inviteMember}><label>{t.auth.email}<input name="email" type="email" required /></label><label>{t.invitations.role}<select name="role" defaultValue="technical"><option value="technical">{t.invitations.technical}</option><option value="administrator">{t.invitations.administrator}</option></select></label><button className="primary-button">{t.invitations.send}</button></form>
+        {invitationError && <p className="form-error">{invitationError}</p>}
+        <div className="invitation-list">{invitations.map((item) => <div className="invitation-row" key={item.id}><div><strong>{item.email}</strong><small>{item.role === "administrator" ? t.invitations.administrator : t.invitations.technical} · {new Date(item.expiresAt).toLocaleString(locale)}</small></div><button className="icon-button" title={t.invitations.revoke} aria-label={t.invitations.revoke} onClick={() => revokeInvitation(item.id)}><Trash2 size={16} /></button></div>)}</div>
+      </article>}
+    </section>
+  </main></AuthBoundary>;
 }

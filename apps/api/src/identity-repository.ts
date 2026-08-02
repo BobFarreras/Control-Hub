@@ -20,6 +20,7 @@ export async function assignMemberRole(database: DatabaseClient, context: Tenant
       from memberships m where m.id = ${membershipId} and m.tenant_id = ${context.tenantId} for update
     `;
     if (!target[0]) throw new IdentityInvariantError("MEMBERSHIP_NOT_FOUND");
+    if ((target[0].is_owner || roleCode === "owner") && !context.roles.includes("owner")) throw new IdentityInvariantError("OWNER_ROLE_REQUIRES_OWNER");
     if (target[0].is_owner && roleCode !== "owner") {
       const owners = await tx<{ count: number }[]>`select count(distinct mr.membership_id)::int as count from membership_roles mr join roles r on r.id = mr.role_id where r.tenant_id = ${context.tenantId} and r.code = 'owner'`;
       if (owners[0]?.count === 1) throw new IdentityInvariantError("LAST_OWNER_REQUIRED");
