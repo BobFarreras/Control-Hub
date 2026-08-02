@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori disposa del nucli executable de la Fase 1. Les aplicacions encara mostren estat fundacional i no inclouen funcionalitat de negoci ni autenticacio, que corresponen a fases posteriors.
+El repositori disposa del nucli executable i de la identitat, tenancy, RBAC, MFA, sessions i auditoria de la Fase 2. Els moduls de negoci comencen a la Fase 3.
 
 ## Requisits
 
@@ -100,7 +100,7 @@ Fitxers locals `.env*` estan ignorats, excepte `.env.example`. Credencials reals
 
 ## Autenticacio local
 
-Better Auth viu a l'API Fastify sota `/api/auth/*`. El bootstrap crea l'Owner mitjancant una ordre explicita i d'un sol us que s'implementara a Fase 2; no hi ha credencials per defecte hardcoded.
+Better Auth viu a l'API Fastify sota `/api/auth/*`. `pnpm bootstrap:owner` crea l'Owner mitjancant una ordre explicita d'un sol us; no hi ha credencials per defecte hardcoded. Despres de verificar el correu a Mailpit, cal activar TOTP a `/{locale}/security` per accedir a operacions privilegiades.
 
 Mailpit captura verificacio de correu i recuperacio. MFA i passkeys es poden provar amb TOTP real i autenticadors virtuals de Playwright/WebAuthn.
 

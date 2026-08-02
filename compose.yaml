@@ -31,7 +31,15 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 4000
       LOG_LEVEL: info
-      DATABASE_URL: postgres://control_hub:local_only@postgres:5432/control_hub
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3000}
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     ports:
       - "127.0.0.1:4000:4000"
@@ -60,7 +68,7 @@ services:
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
-      DATABASE_URL: postgres://control_hub:local_only@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     depends_on:
       migrate:
@@ -81,7 +89,7 @@ services:
       args: { APP: database }
     command: ["pnpm", "--filter", "@control-hub/database", "migrate"]
     environment:
-      DATABASE_URL: postgres://control_hub:local_only@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}@postgres:5432/control_hub
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,14 +104,16 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: control_hub
-      POSTGRES_USER: control_hub
-      POSTGRES_PASSWORD: local_only
+      POSTGRES_USER: control_hub_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U control_hub -d control_hub"]
+      test: ["CMD-SHELL", "pg_isready -U control_hub_admin -d control_hub"]
       interval: 5s
       timeout: 3s
       retries: 10

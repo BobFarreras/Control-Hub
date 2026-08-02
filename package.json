@@ -17,12 +17,23 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "infra:up": "docker compose up -d postgres valkey mailpit",
     "infra:down": "docker compose down",
-    "infra:reset": "docker compose down -v"
+    "infra:reset": "docker compose down -v",
+    "db:migrate": "pnpm --filter @control-hub/database migrate",
+    "bootstrap:owner": "pnpm --filter @control-hub/api exec tsx src/bootstrap.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@playwright/test": "^1.56.0",
     "turbo": "^2.5.0",
     "typescript": "^5.9.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@fastify/static": ">=10.1.1",
+      "drizzle-orm": ">=0.45.2",
+      "esbuild": ">=0.28.1",
+      "postcss": ">=8.5.18",
+      "sharp": ">=0.35.0"
+    }
   }
 }

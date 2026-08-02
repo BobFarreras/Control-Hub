@@ -3,12 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDictionary, isLocale, locales } from "@control-hub/i18n";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { requireSession } from "@/lib/require-session";
 
 export function generateStaticParams() { return locales.map((locale) => ({ locale })); }
 
 export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale: localeParam } = await params;
   if (!isLocale(localeParam)) notFound();
+  await requireSession(localeParam);
   const t = getDictionary(localeParam);
   const nav = [
     [t.navigation.dashboard, LayoutDashboard], [t.navigation.customers, Users], [t.navigation.products, Package],
@@ -23,7 +25,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Command size={22} /></span><span><strong>Control Hub</strong><small>BUSINESS OPERATIONS</small></span></div>
-      <nav aria-label={t.navigation.label}>{nav.map(([label, Icon], index) => <a className={index === 0 ? "nav-item active" : "nav-item"} href="#" key={label}><Icon size={19} /><span>{label}</span></a>)}</nav>
+      <nav aria-label={t.navigation.label}>{nav.map(([label, Icon], index) => <Link className={index === 0 ? "nav-item active" : "nav-item"} href={index === nav.length - 1 ? `/${localeParam}/security` : "#"} key={label}><Icon size={19} /><span>{label}</span></Link>)}</nav>
       <div className="sidebar-footer"><ShieldCheck size={18} /><span>{t.dashboard.ready}</span></div>
     </aside>
     <div className="workspace">
