@@ -14,6 +14,7 @@ describe("system queue", () => {
     const worker = new Worker(queueName, processSystemJob, { connection });
     resources.push(worker, queueEvents, queue);
 
+    await Promise.all([queue.waitUntilReady(), queueEvents.waitUntilReady(), worker.waitUntilReady()]);
     const job = await queue.add("health-probe", {}, { jobId: "phase-1-once", attempts: 1, removeOnComplete: false });
     const result = await job.waitUntilFinished(queueEvents, 10_000);
     const completedJob = await queue.getJob(job.id!);
