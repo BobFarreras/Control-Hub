@@ -25,7 +25,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Command size={22} /></span><span><strong>Control Hub</strong><small>BUSINESS OPERATIONS</small></span></div>
-      <nav aria-label={t.navigation.label}>{nav.map(([label, Icon], index) => <Link className={index === 0 ? "nav-item active" : "nav-item"} href={index === 1 ? `/${localeParam}/crm` : index === nav.length - 1 ? `/${localeParam}/security` : "#"} key={label}><Icon size={19} /><span>{label}</span></Link>)}</nav>
+      <nav aria-label={t.navigation.label}>{nav.map(([label, Icon], index) => <Link className={index === 0 ? "nav-item active" : "nav-item"} href={index === 1 ? `/${localeParam}/crm` : index === 2 || index === 3 ? `/${localeParam}/commerce` : index === nav.length - 1 ? `/${localeParam}/security` : "#"} key={label}><Icon size={19} /><span>{label}</span></Link>)}</nav>
       <div className="sidebar-footer"><ShieldCheck size={18} /><span>{t.dashboard.ready}</span></div>
     </aside>
     <div className="workspace">

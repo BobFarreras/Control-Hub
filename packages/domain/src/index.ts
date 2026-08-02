@@ -58,3 +58,51 @@ export type TenantContext = {
 export function hasPermission(context: TenantContext, permission: Permission): boolean {
   return context.permissions.includes(permission);
 }
+
+export const billingIntervals = ["free", "monthly", "quarterly", "semiannual", "annual"] as const;
+export type BillingInterval = typeof billingIntervals[number];
+export const subscriptionStatuses = ["active", "paused", "canceled"] as const;
+export type SubscriptionStatus = typeof subscriptionStatuses[number];
+
+export type RecurringMoney = { amountMinor: number; costMinor: number; interval: BillingInterval; quantity: number };
+
+function assertSafeMoney(value: number, name: string) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`INVALID_${name.toUpperCase()}`);
+}
+
+export function annualizeMinor(amountMinor: number, interval: BillingInterval, quantity = 1): number {
+  assertSafeMoney(amountMinor, "amount"); assertSafeMoney(quantity, "quantity");
+  const multiplier: Record<BillingInterval, number> = { free: 0, monthly: 12, quarterly: 4, semiannual: 2, annual: 1 };
+  const result = BigInt(amountMinor) * BigInt(quantity) * BigInt(multiplier[interval]);
+  if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("MONEY_OVERFLOW");
+  return Number(result);
+}
+
+export function monthlyFromAnnualMinor(annualMinor: number): number {
+  assertSafeMoney(annualMinor, "annual");
+  return Number((BigInt(annualMinor) + 6n) / 12n);
+}
+
+export function recurringMetrics(input: RecurringMoney) {
+  const arrMinor = annualizeMinor(input.amountMinor, input.interval, input.quantity);
+  const annualCostMinor = annualizeMinor(input.costMinor, input.interval, input.quantity);
+  return { mrrMinor: monthlyFromAnnualMinor(arrMinor), arrMinor, annualCostMinor, annualMarginMinor: arrMinor - annualCostMinor };
+}
+
+export function taxMinor(netMinor: number, taxBasisPoints: number): number {
+  assertSafeMoney(netMinor, "net");
+  if (!Number.isInteger(taxBasisPoints) || taxBasisPoints < 0 || taxBasisPoints > 10000) throw new Error("INVALID_TAX");
+  const numerator = BigInt(netMinor) * BigInt(taxBasisPoints);
+  const result = (numerator + 5000n) / 10000n;
+  if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("MONEY_OVERFLOW");
+  return Number(result);
+}
+
+export function nextRenewalAt(current: Date, interval: BillingInterval): Date | null {
+  if (Number.isNaN(current.getTime())) throw new Error("INVALID_RENEWAL_DATE");
+  const months: Record<BillingInterval, number> = { free: 0, monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
+  if (interval === "free") return null;
+  const result = new Date(current); const day = result.getUTCDate(); result.setUTCDate(1); result.setUTCMonth(result.getUTCMonth() + months[interval]);
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate(); result.setUTCDate(Math.min(day, lastDay));
+  return result;
+}

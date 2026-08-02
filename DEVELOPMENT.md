@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori disposa del nucli executable, la identitat i seguretat de la Fase 2, i el CRM professional complet de la Fase 3: leads, clients, contactes, activitat, tasques, CSV i dashboard comercial.
+El repositori disposa del nucli executable, identitat i seguretat, CRM professional i la Fase 4 de productes, plans, preus, subscripcions, renovacions i metriques recurrents.
 
 ## Requisits
 

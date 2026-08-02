@@ -17,3 +17,9 @@
 - `templates/`: formats obligatoris.
 
 La documentacio canvia en la mateixa PR que el comportament afectat.
+
+## Especificacions implementades
+
+- `specifications/crm.md`: leads, clients i activitat comercial.
+- `specifications/commerce.md`: productes, plans, preus, subscripcions i metriques.
+- `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.

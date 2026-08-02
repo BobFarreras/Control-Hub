@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional amb leads, clients, contactes, activitat, tasques, CSV i dashboard comercial.
+La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda.
 
 Control Hub es construeix des del primer increment com a producte professional instal·lable. El roadmap es incremental, pero no utilitza prototips descartables ni una implementacio reduida que requereixi reconstruir el nucli.
 
@@ -55,8 +55,8 @@ Control Hub queda disponible a `http://localhost:3000`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. Implementar productes, plans i subscripcions.
-2. Afegir suport, tickets i SLA.
+1. Afegir suport, tickets i SLA.
+2. Afegir inventari i salut d'infraestructura.
 3. Afegir connectors sobre contractes estables.
 
 ## Seguretat

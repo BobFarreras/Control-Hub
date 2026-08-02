@@ -1,4 +1,5 @@
 export type { TenantContext } from "@control-hub/domain";
+export * from "./commerce.js";
 import { canTransitionLead, normalizeComparableName, normalizeEmail, normalizePhone, type LeadPriority, type LeadStatus, type TenantContext } from "@control-hub/domain";
 
 export type LeadRecord = { id: string; name: string; companyName: string | null; email: string | null; phone: string | null; source: string; status: LeadStatus; priority: LeadPriority; ownerMembershipId: string | null; convertedCustomerId: string | null; createdAt: Date; updatedAt: Date };
