@@ -10,6 +10,13 @@ La propera entrega planificada es la **Fase 5: suport, tickets i SLA**. Abans de
 codi cal concretar l'especificacio funcional, permisos, estats, prioritats, timers SLA,
 auditoria, notificacions i criteris d'acceptacio seguint el selector de decisions d'`AGENTS.md`.
 
+La **Fase 5B: projectes i temps** ja te especificacio aprovada a
+`docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la
+Fase 5 li deu es que els tickets neixin amb `project_id` nullable.
+
+L'auditoria previa a la Fase 5 i les correccions aplicades estan a
+`docs/phase-5-preflight-audit.md`.
+
 ## Superficie executable
 
 - Web canonica: `http://localhost:3001`.

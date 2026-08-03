@@ -244,6 +244,8 @@ MRR, renovacions i marges es poden justificar a partir de dades auditables.
 - Incidencies vinculades a serveis, clients o tickets.
 - Notificacions i historial.
 - Preparacio de canals entrants sense acoblar-los al domini.
+- `tickets.project_id` nullable des de la primera migracio. La Fase 5B hi penja, i afegir la
+  columna despres obligaria a migrar dades ja escrites.
 
 ### Entregables
 
@@ -268,6 +270,49 @@ MRR, renovacions i marges es poden justificar a partir de dades auditables.
 ### Criteri de sortida
 
 Una incidencia es pot registrar, assignar, resoldre i auditar de principi a fi.
+
+## Fase 5B - Projectes i temps
+
+**Objectiu:** saber quina feina hi ha en curs i quant costa fer-la.
+
+Especificacio aprovada a `docs/specifications/projects-and-time.md`. Va despres dels tickets
+perque les imputacions han de poder penjar tant d'un projecte com d'un ticket; l'unica cosa
+que la Fase 5 li deu es la columna `tickets.project_id`.
+
+Es numera 5B i no 6 per no renumerar les fases posteriors, que ja tenen dependencies
+documentades entre elles.
+
+### Implementacio
+
+- Projectes per client, amb estat, responsable, dates i historial append-only.
+- Imputacio de temps a un projecte o a un ticket, amb marca de facturable.
+- Barem de cost per persona i de venda per client o projecte, versionats per data d'efecte.
+- Rendibilitat per projecte i per client, per moneda.
+- Permisos `projects:read`, `time:log`, `time:manage` i `rates:manage`.
+
+### Entregables
+
+- Safata de projectes i fitxa amb activitat.
+- Formulari d'imputacio rapid.
+- Informe de marge per projecte i per client.
+- Pantalla de barems restringida a `Owner`.
+
+### Proves minimes
+
+- Publicar un barem nou no altera el cost d'una imputacio anterior.
+- Una imputacio sense projecte ni ticket, o amb tots dos, es rebutjada per la base de dades.
+- Un `Technical` rep `403` a cost i a marge.
+- Un tenant no veu projectes, imputacions ni barems d'un altre.
+
+### Revisio del propietari
+
+- Comparar el marge calculat d'un projecte real amb un calcul manual conegut.
+- Validar que la imputacio diaria es prou rapida per fer-se de veritat.
+- Confirmar qui pot veure els costos per hora.
+
+### Criteri de sortida
+
+El marge per client es pot justificar a partir d'hores i barems auditables.
 
 ## Fase 6 - Plataforma de connectors
 

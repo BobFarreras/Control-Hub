@@ -1,6 +1,7 @@
 # Especificacio de projectes i temps
 
-**Estat:** proposta. Pendent d'aprovacio del propietari i d'ubicacio al pla de fases.
+**Estat:** aprovada pel propietari el 2026-08-03. Planificada com a Fase 5B, despres dels
+tickets. El cost per hora es per persona, decisio del propietari.
 
 Aquest document segueix `docs/templates/feature-spec-template.md`. Els imports i el
 tractament monetari reutilitzen les decisions ja aprovades a `commerce.md`; on hi hagi

@@ -23,7 +23,7 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/crm.md`: leads, clients i activitat comercial.
 - `specifications/commerce.md`: productes, plans, preus, subscripcions i metriques.
 - `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i
-  marge. **Proposta**, pendent d'aprovacio i d'ubicacio al pla de fases.
+  marge. Aprovada, planificada com a Fase 5B.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio.
