@@ -1,5 +1,9 @@
 name: CI
 
+# Actions are pinned by commit SHA, not by tag. A tag is mutable: whoever controls the action
+# repository can move v7 to different code, and that code runs with this workflow's token.
+# Dependabot updates the SHAs and records the version in the trailing comment.
+
 on:
   pull_request:
     branches: [main, develop]
@@ -13,6 +17,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "22.16.0"
+
 jobs:
   repository-standards:
     name: Repository standards
@@ -20,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate required documentation
         shell: bash
@@ -96,7 +103,12 @@ jobs:
       MIGRATION_DATABASE_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Create the unprivileged runtime role
         shell: bash
@@ -107,24 +119,85 @@ jobs:
           psql -h 127.0.0.1 -U control_hub_admin -d control_hub -v ON_ERROR_STOP=1 \
             -c "create role control_hub_app login nosuperuser nocreatedb nocreaterole noinherit password 'ci_app_only';"
 
-      - name: Run checks when the workspace exists
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
         shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f package.json ]]; then
-            echo "Application workspace not initialized; documentation checks only."
-            exit 0
-          fi
-          corepack enable
-          pnpm install --frozen-lockfile
-          # Before any suite: several tests under `pnpm test` also need the schema.
-          pnpm --filter @control-hub/database migrate
-          pnpm lint
-          pnpm format:check
-          pnpm typecheck
-          pnpm test
-          pnpm test:integration
-          pnpm build
+        # Before any suite: several tests under `pnpm test` also need the schema.
+        run: pnpm --filter @control-hub/database migrate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Build
+        run: pnpm build
+
+  end-to-end:
+    name: End to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser Playwright drives
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the end to end suite
+        # @visual is excluded on purpose. Its baselines are committed with a -win32 suffix
+        # because they were produced on a developer machine, and a Linux runner renders text
+        # differently, so they would fail on rendering rather than on a real regression.
+        # Bringing them here means generating Linux baselines in a container first.
+        run: pnpm exec playwright test --grep-invert "@visual"
+
+      - name: Keep the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   secret-scan:
     name: Secret scan
@@ -135,10 +208,56 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Scan repository
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  vulnerable-dependencies:
+    name: Vulnerable dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit the dependency tree
+        shell: bash
+        # Gitleaks finds committed secrets; nothing until now looked at known vulnerabilities
+        # in what we install. High and critical fail the build, lower severities are reported.
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm audit --audit-level moderate || true
+          pnpm audit --audit-level high
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        with:
+          category: "/language:javascript-typescript"

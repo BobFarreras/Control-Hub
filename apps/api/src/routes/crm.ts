@@ -276,10 +276,19 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
   app.get("/api/v1/crm/leads/export", async (request, reply) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "leads:read");
-    const page = await crm.listLeads(context, { page: 1, pageSize: 10000, sort: "name_asc" });
+    // Paged through rather than asked for in one 10000-row slice. The old cap silently
+    // produced a short file: an export of a larger book would look complete and simply be
+    // missing customers, which is the worst way for an export to fail.
+    const exportPageSize = 500;
+    const leads = [];
+    for (let page = 1; ; page++) {
+      const result = await crm.listLeads(context, { page, pageSize: exportPageSize, sort: "name_asc" });
+      leads.push(...result.items);
+      if (result.items.length < exportPageSize || leads.length >= result.total) break;
+    }
     const csv = stringifyCsv([
       ["name", "company", "email", "phone", "source", "priority", "status"],
-      ...page.items.map((lead) => [
+      ...leads.map((lead) => [
         lead.name,
         lead.companyName,
         lead.email,

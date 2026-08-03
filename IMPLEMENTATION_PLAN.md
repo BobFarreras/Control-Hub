@@ -122,7 +122,7 @@ Qualsevol desenvolupador pot clonar, configurar i executar el projecte seguint e
 
 - Usuaris, tenants, memberships, rols i permisos.
 - Login, logout, expiracio i revocacio de sessions.
-- MFA per comptes privilegiats.
+- MFA obligatoria per a tots els comptes; tots els rols de Control Hub son de personal intern.
 - Tenant context derivat de la sessio.
 - Middleware d'autenticacio i autoritzacio.
 - RLS i repositoris tenant-scoped.

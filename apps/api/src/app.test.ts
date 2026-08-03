@@ -156,3 +156,65 @@ describe("route registration", () => {
     expect(app.hasRoute({ method: "GET", url: "/api/v1/members" })).toBe(false);
   });
 });
+
+describe("metrics", () => {
+  it("exposes a scrapeable endpoint that is not part of the public API surface", async () => {
+    const app = buildApp(unreachable);
+    apps.push(app);
+    await app.ready();
+
+    // A request first, so there is something to count.
+    await app.inject({ method: "GET", url: "/health/live" });
+    const response = await app.inject({ method: "GET", url: "/metrics" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.body).toContain("http_requests_total");
+    expect(response.body).toContain('route="/health/live"');
+    expect(response.body).toContain("nodejs_eventloop_lag_seconds");
+    // The web tier only forwards /api/* and /health/*; keeping this off /api is what stops
+    // the internet from reaching it.
+    expect(app.hasRoute({ method: "GET", url: "/api/metrics" })).toBe(false);
+  });
+
+  it("labels by route pattern so identifiers cannot multiply the series", async () => {
+    const app = buildApp({ ...unreachable, auth: stubAuth });
+    apps.push(app);
+    await app.ready();
+
+    await app.inject({ method: "GET", url: "/api/v1/crm/customers/11111111-1111-4111-8111-111111111111" });
+    const body = (await app.inject({ method: "GET", url: "/metrics" })).body;
+
+    expect(body).toContain('route="/api/v1/crm/customers/:customerId"');
+    expect(body).not.toContain("11111111-1111-4111-8111-111111111111");
+  });
+});
+
+describe("rate limiting", () => {
+  /**
+   * @fastify/rate-limit attaches to routes through the build-time `onRoute` hook, so a route
+   * declared before the plugin finished loading is governed by nothing. That is what happened
+   * here for the entire life of the project: helmet's request hooks applied regardless of
+   * order, so security headers arrived and the budgets quietly did not.
+   *
+   * Asserting on the advertised budget is what catches it. Counting rejections would need a
+   * reachable store, and `skipOnError` would let the test pass with no limiter at all.
+   */
+  it("governs an ordinary route with the global budget", async () => {
+    const app = buildApp(unreachable);
+    apps.push(app);
+    await app.ready();
+    const response = await app.inject({ method: "GET", url: "/health/live" });
+    expect(Number(response.headers["x-ratelimit-limit"])).toBe(300);
+  });
+
+  it("governs a credential route with the strict budget", async () => {
+    const app = buildApp({ ...unreachable, auth: stubAuth, appOrigin: "http://localhost" });
+    apps.push(app);
+    await app.ready();
+    const credential = await app.inject({ method: "GET", url: "/api/auth/sign-in/email" });
+    const session = await app.inject({ method: "GET", url: "/api/auth/get-session" });
+    expect(Number(credential.headers["x-ratelimit-limit"])).toBe(10);
+    expect(Number(session.headers["x-ratelimit-limit"])).toBe(240);
+  });
+});

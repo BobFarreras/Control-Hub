@@ -8,7 +8,13 @@ import type { RouteContext } from "./context.js";
 
 /** Session, membership and audit endpoints: who the caller is and what they may do. */
 export function registerIdentityRoutes({ app, database, auth }: RouteContext) {
-  app.get("/api/v1/me", async (request) => ({ context: await resolveTenantContext(auth, database, request) }));
+  // Reachable before enrolment: the security screen needs to know who the caller is and
+  // which sessions they hold in order to offer them a second factor at all.
+  const enrolling = { allowWithoutSecondFactor: true } as const;
+
+  app.get("/api/v1/me", async (request) => ({
+    context: await resolveTenantContext(auth, database, request, enrolling)
+  }));
   app.get<{ Params: { tableId: string } }>("/api/v1/table-preferences/:tableId", async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     if (!Object.hasOwn(tableColumns, request.params.tableId))
@@ -64,7 +70,7 @@ export function registerIdentityRoutes({ app, database, auth }: RouteContext) {
     }
   );
   app.get("/api/v1/sessions", async (request) => {
-    await resolveTenantContext(auth, database, request);
+    await resolveTenantContext(auth, database, request, enrolling);
     return { sessions: await auth.api.listSessions({ headers: requestHeaders(request.headers) }) };
   });
   app.get("/api/v1/members", async (request) => {

@@ -13,10 +13,26 @@ export class ApiSecurityError extends Error {
   }
 }
 
+/**
+ * Every account in Control Hub is a staff account, so the second factor is required for all
+ * of them rather than for a privileged subset.
+ *
+ * The check lives here, not in `requirePermission`, because every authenticated route calls
+ * this function while only most of them guard a permission. Enforcing it at the permission
+ * check left a route that resolved a context but guarded nothing with no second-factor gate
+ * at all, and nothing would have reported that.
+ *
+ * `allowWithoutSecondFactor` exists for the handful of routes a user must reach in order to
+ * enrol: refusing those would leave a new member unable to ever set up the factor being
+ * demanded of them. Pass it deliberately, never to make a failing test pass.
+ */
+export type TenantContextOptions = { allowWithoutSecondFactor?: boolean };
+
 export async function resolveTenantContext(
   auth: ControlHubAuth,
   database: DatabaseClient,
-  request: FastifyRequest
+  request: FastifyRequest,
+  options: TenantContextOptions = {}
 ): Promise<TenantContext> {
   const session = await auth.api.getSession({ headers: new Headers(request.headers as HeadersInit) });
   if (!session) throw new ApiSecurityError(401, "AUTHENTICATION_REQUIRED");
@@ -39,7 +55,7 @@ export async function resolveTenantContext(
   if (rows.length === 0) throw new ApiSecurityError(403, "TENANT_ACCESS_DENIED");
   if (new Set(rows.map((row) => row.tenant_id)).size > 1 && !selected)
     throw new ApiSecurityError(403, "TENANT_SELECTION_REQUIRED");
-  return {
+  const context: TenantContext = {
     tenantId: rows[0]!.tenant_id,
     membershipId: rows[0]!.membership_id,
     userId: session.user.id,
@@ -47,10 +63,12 @@ export async function resolveTenantContext(
     permissions: [...new Set(rows.flatMap((row) => (row.permission ? [row.permission] : [])))],
     mfaEnabled: Boolean("twoFactorEnabled" in session.user && session.user.twoFactorEnabled)
   };
+  if (!options.allowWithoutSecondFactor && !context.mfaEnabled) throw new ApiSecurityError(403, "MFA_REQUIRED");
+  return context;
 }
 
 export function requirePermission(context: TenantContext, permission: Permission) {
-  if (!context.mfaEnabled) throw new ApiSecurityError(403, "MFA_REQUIRED");
+  // The second factor is already settled by resolveTenantContext; this only decides authority.
   if (!hasPermission(context, permission)) throw new ApiSecurityError(403, "PERMISSION_DENIED");
 }
 

@@ -18,3 +18,5 @@ const redact: NonNullable<LoggerOptions["redact"]> = {
 export function createLogger(service: string, level = "info") {
   return pino({ name: service, level, redact, base: { service } });
 }
+
+export { createMetrics, type ServiceMetrics } from "./metrics.js";
