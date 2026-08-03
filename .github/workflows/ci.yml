@@ -199,6 +199,41 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  container-image:
+    name: Container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build every service image
+        # Nothing built these before, so two faults shipped unnoticed: the runtime went through
+        # a package manager that tried to fetch itself onto a read-only filesystem, and the
+        # bundled server crashed on boot. `pnpm build` passing says nothing about either.
+        run: docker compose build
+
+      - name: Start the stack and wait for it to be healthy
+        env:
+          POSTGRES_ADMIN_PASSWORD: ci_admin_only
+          POSTGRES_APP_PASSWORD: ci_app_only
+          BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
+        run: docker compose up -d --wait
+
+      - name: Check the running services answer
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:4000/health/ready | tee /dev/stderr | grep -q '"status":"ready"'
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/ca/login | grep -q 200
+
+      - name: Show what failed
+        if: failure()
+        run: docker compose ps -a && docker compose logs --tail 60
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest

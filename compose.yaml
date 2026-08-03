@@ -87,7 +87,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       args: { APP: database }
-    command: ["pnpm", "--filter", "@control-hub/database", "migrate"]
+    command: ["node", "packages/database/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}@postgres:5432/control_hub
     depends_on:

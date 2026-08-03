@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
+import { migrationFingerprint } from "./migration-fingerprint.js";
 
 const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("MIGRATION_DATABASE_URL or DATABASE_URL is required to run migrations");
@@ -23,11 +24,20 @@ try {
   const files = (await readdir(migrationsDirectory)).filter((file) => file.endsWith(".sql")).sort();
   for (const name of files) {
     const migration = await readFile(join(migrationsDirectory, name), "utf8");
-    const checksum = createHash("sha256").update(migration).digest("hex");
+    const checksum = createHash("sha256").update(migrationFingerprint(migration)).digest("hex");
     const [existing] = await sql<{ checksum: string }[]>`select checksum from schema_migrations where name = ${name}`;
     if (existing) {
-      if (existing.checksum !== checksum) throw new Error(`Applied migration changed: ${name}`);
-      continue;
+      if (existing.checksum === checksum) continue;
+      // Rows written before the fingerprint existed were hashed from the raw bytes. If that
+      // older hash still matches, the file is provably unchanged and only the checkout's line
+      // endings differ, so the row is repaired instead of blocking the deployment. A genuine
+      // edit matches neither hash and still stops here.
+      const legacyChecksum = createHash("sha256").update(migration).digest("hex");
+      if (existing.checksum === legacyChecksum) {
+        await sql`update schema_migrations set checksum = ${checksum} where name = ${name}`;
+        continue;
+      }
+      throw new Error(`Applied migration changed: ${name}`);
     }
     await sql.begin(async (transaction) => {
       await transaction.unsafe(migration);
