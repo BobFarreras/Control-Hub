@@ -75,9 +75,37 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: control_hub
+          POSTGRES_USER: control_hub_admin
+          POSTGRES_PASSWORD: ci_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U control_hub_admin -d control_hub"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The integration suites skip themselves when these are absent, so CI would go green
+      # without ever proving tenant isolation. They are required, not optional.
+      TEST_DATABASE_URL: postgres://control_hub_app:ci_app_only@127.0.0.1:5432/control_hub
+      TEST_DATABASE_ADMIN_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Create the unprivileged runtime role
+        shell: bash
+        env:
+          PGPASSWORD: ci_admin_only
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U control_hub_admin -d control_hub -v ON_ERROR_STOP=1 \
+            -c "create role control_hub_app login nosuperuser nocreatedb nocreaterole noinherit password 'ci_app_only';"
 
       - name: Run checks when the workspace exists
         shell: bash
@@ -89,6 +117,8 @@ jobs:
           fi
           corepack enable
           pnpm install --frozen-lockfile
+          # Before any suite: several tests under `pnpm test` also need the schema.
+          pnpm --filter @control-hub/database migrate
           pnpm lint
           pnpm typecheck
           pnpm test

@@ -6,6 +6,8 @@ import type { TenantContext } from "@control-hub/domain";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL; const adminUrl = process.env.TEST_DATABASE_ADMIN_URL;
+// Skipping locally is a convenience; skipping in CI would mean tenant isolation ships unproven.
+if (process.env.CI && !(databaseUrl && adminUrl)) throw new Error("TEST_DATABASE_URL and TEST_DATABASE_ADMIN_URL are required in CI");
 const suite = databaseUrl && adminUrl ? describe : describe.skip;
 
 suite("PostgresCommerceRepository", () => {

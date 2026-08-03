@@ -5,6 +5,10 @@ Data: 2026-08-03. Branca: `audit/session-phase-5-review`. Base: `develop` (`57b4
 Auditoria de bones pràctiques, seguretat i cobertura funcional feta abans d'obrir la Fase 5.
 No s'ha modificat codi: aquest document només registra troballes i propostes.
 
+## Estat de les correccions
+
+Corregides en aquesta branca (bloc A): troballes 1, 2, 3, 4 i 10. La resta segueixen obertes.
+
 ## Estat verificat
 
 Fases 0-4 implementades i coherents amb la documentació. La branca
@@ -112,15 +116,24 @@ existeixen però CI no els executa mai. Les accions tampoc estan fixades per SHA
 
 `apps/api/src/app.ts` són 251 línies però conté ~40 rutes; hi ha línies de més de 800
 caràcters amb esquema, permís, servei, auditoria i resposta encadenats
-(p. ex. `app.ts:139`, `crm/page.tsx:31`). Passa lint perquè no hi ha regla de longitud.
+(p. ex. `app.ts:139`, `crm/page.tsx:31`).
+
+La causa d'arrel és que **no hi ha cap linter al projecte**. No existeix cap fitxer de
+configuració d'ESLint ni cap dependència d'ESLint enlloc; el script `lint` de tots els
+workspaces és literalment `tsc -p tsconfig.json --noEmit`, és a dir un duplicat exacte de
+`typecheck`. Per tant no hi ha regla de longitud, ni d'ordre d'imports, ni la restricció de
+dependències entre mòduls que `docs/specifications/engineering-conventions.md` dona per
+feta ("Imports inversos o entre internals de moduls queden bloquejats per lint"), ni el que
+la Fase 1 declarava com a entregable ("Activar TypeScript estricte, ESLint, format i imports
+controlats"). CI executa `pnpm lint` i passa, però no comprova res que `typecheck` no faci ja.
 
 Això no és estètica: un `requirePermission` que falti enmig d'una línia de 800 caràcters no
 es veu en una revisió, i és precisament el patró que la Fase 5 multiplicarà. És el risc de
 manteniment més gran del projecte i el moment de corregir-lo és **abans** d'afegir el mòdul
 de tickets, no després.
 
-Proposta: `max-len` a ESLint, una regla d'una sentència per línia, i partir `app.ts` en
-routers per domini (`routes/crm.ts`, `routes/commerce.ts`, ...).
+Proposta: instal·lar ESLint de debò (amb `max-len`, ordre d'imports i límits de dependència
+entre paquets) i partir `app.ts` en routers per domini (`routes/crm.ts`, `routes/commerce.ts`, ...).
 
 ### 9. BAIXA — MFA obligatòria a tot arreu, però amb forats
 
@@ -200,6 +213,58 @@ Afegits que aprofiten infraestructura que ja existeix:
 
 El registre de cost per model i tokens de la Fase 8 hauria de cobrir aquests usos interns
 des del principi, no només el consum dels clients.
+
+## Què s'ha canviat al bloc A i què hi queda pendent
+
+### Troballa 1 — rate limit
+
+- `apps/web/src/lib/api.ts` (nou): tots els `fetch` de servidor passen per `apiFetch`, que
+  propaga `x-forwarded-for` i `user-agent` de la petició entrant. Abans cada pàgina construïa
+  la capçalera `cookie` a mà i no reenviava res més; ara hi ha un sol lloc on mirar-ho.
+- L'API deixa de limitar només per adreça: `rateLimitKey` fa servir un hash del token de
+  sessió quan n'hi ha, de manera que cada usuari té el seu pressupost encara que tot el
+  trànsit surti del mateix contenidor. El token mai s'usa en clar com a clau del magatzem.
+- Els camins de credencials (`sign-in`, `sign-up`, `forget-password`, `reset-password`,
+  `two-factor`, `passkey`) es limiten **estrictament per adreça**, ignorant la cookie: si es
+  poguessin limitar per cookie, rotar-ne una de falsa donaria un pressupost nou a cada intent.
+  Es queden a 10/min amb `ban: 20`; la resta de `/api/auth/*`, inclòs `get-session`, puja a 240/min.
+- El `ban: 3` global desapareix i el límit global puja a 300/min. Un ban sobre trànsit de
+  lectura deixa l'usuari fora del producte sencer, que és precisament l'avaria que es volia evitar.
+
+**Risc residual acceptat:** una petició anònima que roti cookies de sessió inventades pot
+obtenir un pressupost nou per cada cookie i superar el límit global de 300/min en rutes que no
+són de credencials. Aquestes rutes responen `401` de seguida, i la protecció volumètrica
+correspon al proxy del davant (Traefik), no a l'aplicació. Tampoc s'ha tocat `trustProxy: true`,
+que segueix confiant en qualsevol `x-forwarded-for`: convé fixar-lo al nombre real de salts
+quan es defineixi el desplegament definitiu.
+
+### Troballa 2 — CI
+
+- El job `application` aixeca `postgres:17-alpine`, crea el rol `control_hub_app` amb els
+  mateixos atributs que a producció i aplica les migracions abans de cap suite.
+- Les quatre suites que depenien de la base de dades ara s'executen: **20 tests, cap saltat**
+  (verificat localment contra PostgreSQL 17 sobre una base exclusiva de test).
+- Perquè això no torni a passar en silenci, els quatre fitxers afectats llancen un error si
+  `CI` està definida i falten `TEST_DATABASE_URL` o `TEST_DATABASE_ADMIN_URL`. En local se
+  segueixen saltant sense fer soroll.
+
+### Troballes 3 i 4 — capçaleres i documentació
+
+- `apps/web/next.config.ts` serveix CSP, `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`,
+  `Permissions-Policy` i, només en producció, `Strict-Transport-Security`.
+- Swagger UI només es registra si `exposeApiDocs` és cert, i `server.ts` només ho activa fora
+  de producció. L'especificació OpenAPI se segueix generant. Cobert per test.
+
+**Pendent:** el `script-src` encara necessita `unsafe-inline` perquè l'App Router injecta
+scripts en línia i aquí ningú genera un nonce per petició. Passar a CSP amb nonce demana un
+`middleware.ts` que segelli cada resposta; és una feina pròpia, no un ajust d'aquesta.
+
+### Troballa 10 — `requireSession`
+
+`redirect()` ja no queda dins del `try`, així que l'excepció `NEXT_REDIRECT` no la captura
+el `catch`. El resultat visible és el mateix; la diferència és que ara deixarà de funcionar
+si algú canvia la destinació, en comptes de fer-ho en silenci.
 
 ## Recomanació d'ordre
 

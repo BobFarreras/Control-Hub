@@ -1,16 +1,15 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Locale } from "@control-hub/i18n";
+import { apiFetch, hasSessionCookie } from "./api";
 
 export async function requireSession(locale: Locale) {
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.getAll().map(({ name, value }) => `${name}=${value}`).join("; ");
-  if (!cookieHeader) redirect(`/${locale}/login`);
+  if (!(await hasSessionCookie())) redirect(`/${locale}/login`);
+  let authenticated = false;
   try {
-    const apiUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:4000";
-    const response = await fetch(`${apiUrl}/api/auth/get-session`, { headers: { cookie: cookieHeader }, cache: "no-store" });
-    if (!response.ok || !(await response.json())) redirect(`/${locale}/login`);
+    const response = await apiFetch("/api/auth/get-session");
+    authenticated = response.ok && Boolean(await response.json());
   } catch {
-    redirect(`/${locale}/login`);
+    authenticated = false;
   }
+  if (!authenticated) redirect(`/${locale}/login`);
 }

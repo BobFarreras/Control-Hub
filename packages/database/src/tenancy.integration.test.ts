@@ -4,6 +4,8 @@ import { createDatabaseClient, withTenant, type DatabaseClient } from "./index.j
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const adminDatabaseUrl = process.env.TEST_DATABASE_ADMIN_URL;
+// Skipping locally is a convenience; skipping in CI would mean tenant isolation ships unproven.
+if (process.env.CI && !(databaseUrl && adminDatabaseUrl)) throw new Error("TEST_DATABASE_URL and TEST_DATABASE_ADMIN_URL are required in CI");
 const suite = databaseUrl && adminDatabaseUrl ? describe : describe.skip;
 
 suite("tenant RLS", () => {

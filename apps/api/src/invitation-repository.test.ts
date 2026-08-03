@@ -14,6 +14,8 @@ describe("invitation tokens", () => {
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const adminDatabaseUrl = process.env.TEST_DATABASE_ADMIN_URL;
+// Skipping locally is a convenience; skipping in CI would mean invitation scoping ships unproven.
+if (process.env.CI && !(databaseUrl && adminDatabaseUrl)) throw new Error("TEST_DATABASE_URL and TEST_DATABASE_ADMIN_URL are required in CI");
 const suite = databaseUrl && adminDatabaseUrl ? describe : describe.skip;
 
 suite("member invitations", () => {
