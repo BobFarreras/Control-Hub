@@ -120,6 +120,7 @@ jobs:
           # Before any suite: several tests under `pnpm test` also need the schema.
           pnpm --filter @control-hub/database migrate
           pnpm lint
+          pnpm format:check
           pnpm typecheck
           pnpm test
           pnpm test:integration

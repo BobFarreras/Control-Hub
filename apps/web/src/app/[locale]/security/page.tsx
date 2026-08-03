@@ -29,55 +29,214 @@ export default function SecurityPage() {
   const mfaEnabled = Boolean(session.data?.user.twoFactorEnabled);
 
   useEffect(() => {
-    void authClient.listSessions().then((result) => { if (result.data) setSessions(result.data as Session[]); });
-    void fetch("/api/v1/me").then(async (response) => { if (response.ok) { const payload = await response.json() as { context: { permissions: string[]; mfaEnabled: boolean } }; setCanManageMembers(payload.context.permissions.includes("members:manage") && payload.context.mfaEnabled); } });
-    void fetch("/api/v1/invitations").then(async (response) => { if (response.ok) setInvitations((await response.json() as { invitations: Invitation[] }).invitations); });
+    void authClient.listSessions().then((result) => {
+      if (result.data) setSessions(result.data as Session[]);
+    });
+    void fetch("/api/v1/me").then(async (response) => {
+      if (response.ok) {
+        const payload = (await response.json()) as { context: { permissions: string[]; mfaEnabled: boolean } };
+        setCanManageMembers(payload.context.permissions.includes("members:manage") && payload.context.mfaEnabled);
+      }
+    });
+    void fetch("/api/v1/invitations").then(async (response) => {
+      if (response.ok) setInvitations(((await response.json()) as { invitations: Invitation[] }).invitations);
+    });
   }, []);
 
   async function enableTotp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setBackupCodes([]);
-    const result = await authClient.twoFactor.enable({ password: String(new FormData(event.currentTarget).get("password")) });
+    event.preventDefault();
+    setError("");
+    setBackupCodes([]);
+    const result = await authClient.twoFactor.enable({
+      password: String(new FormData(event.currentTarget).get("password"))
+    });
     if (result.error) return setError(result.error.message ?? "TOTP");
-    setTotpUri(result.data.totpURI); setPendingBackupCodes(result.data.backupCodes);
+    setTotpUri(result.data.totpURI);
+    setPendingBackupCodes(result.data.backupCodes);
   }
 
   async function verifyTotp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError("");
+    event.preventDefault();
+    setError("");
     const code = String(new FormData(event.currentTarget).get("code")).replace(/\s/g, "");
     const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: false });
     if (result.error) return setError(result.error.message ?? "TOTP");
-    setBackupCodes(pendingBackupCodes); setPendingBackupCodes([]); setTotpUri(""); await session.refetch();
+    setBackupCodes(pendingBackupCodes);
+    setPendingBackupCodes([]);
+    setTotpUri("");
+    await session.refetch();
   }
 
   async function inviteMember(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setInvitationError(""); const form = event.currentTarget; const data = new FormData(form);
-    const response = await fetch("/api/v1/invitations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: data.get("email"), role: data.get("role"), locale }) });
-    const payload = await response.json().catch(() => ({})) as { invitation?: Invitation; code?: string };
+    event.preventDefault();
+    setInvitationError("");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const response = await fetch("/api/v1/invitations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: data.get("email"), role: data.get("role"), locale })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { invitation?: Invitation; code?: string };
     if (!response.ok || !payload.invitation) return setInvitationError(payload.code ?? t.invitations.error);
-    setInvitations((current) => [payload.invitation!, ...current]); form.reset();
+    setInvitations((current) => [payload.invitation!, ...current]);
+    form.reset();
   }
 
-  async function revokeInvitation(id: string) { const response = await fetch(`/api/v1/invitations/${id}`, { method: "DELETE" }); if (response.ok) setInvitations((current) => current.filter((item) => item.id !== id)); }
-  async function signOut() { await authClient.signOut(); router.replace(`/${locale}/login`); }
-  async function revoke(token: string) { const result = await authClient.revokeSession({ token }); if (!result.error) setSessions((current) => current.filter((item) => item.token !== token)); }
-  async function addPasskey() { const result = await authClient.passkey.addPasskey({ name: "Control Hub" }); if (result.error) setError(result.error.message ?? "WebAuthn"); }
+  async function revokeInvitation(id: string) {
+    const response = await fetch(`/api/v1/invitations/${id}`, { method: "DELETE" });
+    if (response.ok) setInvitations((current) => current.filter((item) => item.id !== id));
+  }
+  async function signOut() {
+    await authClient.signOut();
+    router.replace(`/${locale}/login`);
+  }
+  async function revoke(token: string) {
+    const result = await authClient.revokeSession({ token });
+    if (!result.error) setSessions((current) => current.filter((item) => item.token !== token));
+  }
+  async function addPasskey() {
+    const result = await authClient.passkey.addPasskey({ name: "Control Hub" });
+    if (result.error) setError(result.error.message ?? "WebAuthn");
+  }
 
-  return <div className="app-shell"><AppSidebar locale={locale} labels={t.navigation} /><div className="workspace"><PageTopbar eyebrow="CONTROL HUB" title={t.security.title} description={session.data?.user.email} themeLabel={t.header.theme} actions={<button className="secondary-button" onClick={signOut}><LogOut size={17} />{t.security.signOut}</button>} /><main className="security-page">
-    <section className="security-grid">
-      <article className="security-panel"><ShieldCheck size={24} /><h2>{t.security.secondFactor}</h2><p>{t.security.mfaDescription}</p>
-        {!mfaEnabled && !totpUri && backupCodes.length === 0 && <form className="auth-form compact" onSubmit={enableTotp}><label>{t.security.currentPassword}<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">{t.security.enableTotp}</button></form>}
-        {mfaEnabled && backupCodes.length === 0 && <p className="security-success">{t.security.totpEnabled}</p>}
-        <button className="secondary-button" type="button" onClick={addPasskey}>{t.security.addPasskey}</button>
-        {totpUri && <div className="totp-enrollment"><div className="qr-surface"><QRCodeSVG value={totpUri} size={192} level="M" /></div><p>{t.security.scanQr}</p><form className="auth-form compact" onSubmit={verifyTotp}><label>{t.security.verificationCode}<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required /></label><button className="primary-button">{t.security.confirmTotp}</button></form></div>}
-        {error && <p className="form-error">{error}</p>}
-        {backupCodes.length > 0 && <div className="secret-output"><strong>{t.security.backupCodes}</strong><p>{t.security.backupWarning}</p><code>{backupCodes.join("\n")}</code></div>}
-      </article>
-      <article className="security-panel"><Laptop size={24} /><h2>{t.security.sessions}</h2><div className="session-list">{sessions.map((item) => <div className="session-row" key={item.id}><KeyRound size={17} /><div><strong>{item.userAgent ?? t.security.unknownDevice}</strong><small>{item.ipAddress ?? t.security.unknownIp}</small></div><time>{new Date(item.expiresAt).toLocaleDateString(locale)}</time><button className="icon-button" title={t.security.revoke} aria-label={t.security.revoke} onClick={() => revoke(item.token)}><LogOut size={16} /></button></div>)}</div></article>
-      {canManageMembers && <article className="security-panel members-panel"><UserPlus size={24} /><h2>{t.invitations.title}</h2><p>{t.invitations.description}</p>
-        <form className="invite-form" onSubmit={inviteMember}><label>{t.auth.email}<input name="email" type="email" required /></label><label>{t.invitations.role}<select name="role" defaultValue="technical"><option value="technical">{t.invitations.technical}</option><option value="administrator">{t.invitations.administrator}</option></select></label><button className="primary-button">{t.invitations.send}</button></form>
-        {invitationError && <p className="form-error">{invitationError}</p>}
-        <div className="invitation-list">{invitations.map((item) => <div className="invitation-row" key={item.id}><div><strong>{item.email}</strong><small>{item.role === "administrator" ? t.invitations.administrator : t.invitations.technical} · {new Date(item.expiresAt).toLocaleString(locale)}</small></div><button className="icon-button" title={t.invitations.revoke} aria-label={t.invitations.revoke} onClick={() => revokeInvitation(item.id)}><Trash2 size={16} /></button></div>)}</div>
-      </article>}
-    </section>
-  </main></div></div>;
+  return (
+    <div className="app-shell">
+      <AppSidebar locale={locale} labels={t.navigation} />
+      <div className="workspace">
+        <PageTopbar
+          eyebrow="CONTROL HUB"
+          title={t.security.title}
+          description={session.data?.user.email}
+          themeLabel={t.header.theme}
+          actions={
+            <button className="secondary-button" onClick={signOut}>
+              <LogOut size={17} />
+              {t.security.signOut}
+            </button>
+          }
+        />
+        <main className="security-page">
+          <section className="security-grid">
+            <article className="security-panel">
+              <ShieldCheck size={24} />
+              <h2>{t.security.secondFactor}</h2>
+              <p>{t.security.mfaDescription}</p>
+              {!mfaEnabled && !totpUri && backupCodes.length === 0 && (
+                <form className="auth-form compact" onSubmit={enableTotp}>
+                  <label>
+                    {t.security.currentPassword}
+                    <input name="password" type="password" autoComplete="current-password" required />
+                  </label>
+                  <button className="primary-button">{t.security.enableTotp}</button>
+                </form>
+              )}
+              {mfaEnabled && backupCodes.length === 0 && <p className="security-success">{t.security.totpEnabled}</p>}
+              <button className="secondary-button" type="button" onClick={addPasskey}>
+                {t.security.addPasskey}
+              </button>
+              {totpUri && (
+                <div className="totp-enrollment">
+                  <div className="qr-surface">
+                    <QRCodeSVG value={totpUri} size={192} level="M" />
+                  </div>
+                  <p>{t.security.scanQr}</p>
+                  <form className="auth-form compact" onSubmit={verifyTotp}>
+                    <label>
+                      {t.security.verificationCode}
+                      <input
+                        name="code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        minLength={6}
+                        maxLength={6}
+                        required
+                      />
+                    </label>
+                    <button className="primary-button">{t.security.confirmTotp}</button>
+                  </form>
+                </div>
+              )}
+              {error && <p className="form-error">{error}</p>}
+              {backupCodes.length > 0 && (
+                <div className="secret-output">
+                  <strong>{t.security.backupCodes}</strong>
+                  <p>{t.security.backupWarning}</p>
+                  <code>{backupCodes.join("\n")}</code>
+                </div>
+              )}
+            </article>
+            <article className="security-panel">
+              <Laptop size={24} />
+              <h2>{t.security.sessions}</h2>
+              <div className="session-list">
+                {sessions.map((item) => (
+                  <div className="session-row" key={item.id}>
+                    <KeyRound size={17} />
+                    <div>
+                      <strong>{item.userAgent ?? t.security.unknownDevice}</strong>
+                      <small>{item.ipAddress ?? t.security.unknownIp}</small>
+                    </div>
+                    <time>{new Date(item.expiresAt).toLocaleDateString(locale)}</time>
+                    <button
+                      className="icon-button"
+                      title={t.security.revoke}
+                      aria-label={t.security.revoke}
+                      onClick={() => revoke(item.token)}
+                    >
+                      <LogOut size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </article>
+            {canManageMembers && (
+              <article className="security-panel members-panel">
+                <UserPlus size={24} />
+                <h2>{t.invitations.title}</h2>
+                <p>{t.invitations.description}</p>
+                <form className="invite-form" onSubmit={inviteMember}>
+                  <label>
+                    {t.auth.email}
+                    <input name="email" type="email" required />
+                  </label>
+                  <label>
+                    {t.invitations.role}
+                    <select name="role" defaultValue="technical">
+                      <option value="technical">{t.invitations.technical}</option>
+                      <option value="administrator">{t.invitations.administrator}</option>
+                    </select>
+                  </label>
+                  <button className="primary-button">{t.invitations.send}</button>
+                </form>
+                {invitationError && <p className="form-error">{invitationError}</p>}
+                <div className="invitation-list">
+                  {invitations.map((item) => (
+                    <div className="invitation-row" key={item.id}>
+                      <div>
+                        <strong>{item.email}</strong>
+                        <small>
+                          {item.role === "administrator" ? t.invitations.administrator : t.invitations.technical} ·{" "}
+                          {new Date(item.expiresAt).toLocaleString(locale)}
+                        </small>
+                      </div>
+                      <button
+                        className="icon-button"
+                        title={t.invitations.revoke}
+                        aria-label={t.invitations.revoke}
+                        onClick={() => revokeInvitation(item.id)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
+          </section>
+        </main>
+      </div>
+    </div>
+  );
 }

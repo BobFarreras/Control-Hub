@@ -17,7 +17,12 @@ describe("commerce money", () => {
   });
 
   it("calculates quantity, cost and margin from auditable integers", () => {
-    expect(recurringMetrics({ amountMinor: 2500, costMinor: 700, interval: "monthly", quantity: 2 })).toEqual({ mrrMinor: 5000, arrMinor: 60000, annualCostMinor: 16800, annualMarginMinor: 43200 });
+    expect(recurringMetrics({ amountMinor: 2500, costMinor: 700, interval: "monthly", quantity: 2 })).toEqual({
+      mrrMinor: 5000,
+      arrMinor: 60000,
+      annualCostMinor: 16800,
+      annualMarginMinor: 43200
+    });
   });
 
   it("rejects unsafe or negative money", () => {
@@ -26,8 +31,12 @@ describe("commerce money", () => {
   });
 
   it("advances renewals in UTC and clamps month boundaries", () => {
-    expect(nextRenewalAt(new Date("2028-01-31T10:30:00.000Z"), "monthly")?.toISOString()).toBe("2028-02-29T10:30:00.000Z");
-    expect(nextRenewalAt(new Date("2027-08-31T23:00:00.000Z"), "semiannual")?.toISOString()).toBe("2028-02-29T23:00:00.000Z");
+    expect(nextRenewalAt(new Date("2028-01-31T10:30:00.000Z"), "monthly")?.toISOString()).toBe(
+      "2028-02-29T10:30:00.000Z"
+    );
+    expect(nextRenewalAt(new Date("2027-08-31T23:00:00.000Z"), "semiannual")?.toISOString()).toBe(
+      "2028-02-29T23:00:00.000Z"
+    );
     expect(nextRenewalAt(new Date(), "free")).toBeNull();
   });
 });

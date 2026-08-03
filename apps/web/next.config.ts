@@ -43,7 +43,10 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${apiUrl}/api/:path*` }, { source: "/health/:path*", destination: `${apiUrl}/health/:path*` }];
+    return [
+      { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
+      { source: "/health/:path*", destination: `${apiUrl}/health/:path*` }
+    ];
   }
 };
 export default nextConfig;

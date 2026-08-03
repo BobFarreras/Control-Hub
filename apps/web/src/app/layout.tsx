@@ -6,5 +6,11 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = { title: "Control Hub", description: "Business operations control center" };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html suppressHydrationWarning><body><ThemeProvider>{children}</ThemeProvider></body></html>;
+  return (
+    <html suppressHydrationWarning>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
+    </html>
+  );
 }

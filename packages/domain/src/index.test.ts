@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canTransitionLead, hasPermission, normalizeComparableName, normalizeEmail, normalizePhone, rolePermissions, type TenantContext } from "./index.js";
+import {
+  canTransitionLead,
+  hasPermission,
+  normalizeComparableName,
+  normalizeEmail,
+  normalizePhone,
+  rolePermissions,
+  type TenantContext
+} from "./index.js";
 
 describe("CRM domain", () => {
   it("permits direct movement inside the active pipeline but keeps terminal states closed", () => {
@@ -29,10 +37,12 @@ function context(roles: TenantContext["roles"], permissions: TenantContext["perm
 
 describe("RBAC", () => {
   it("grants the owner every declared permission", () => expect(rolePermissions.owner).toHaveLength(20));
-  it("keeps credential rotation away from administrators", () => expect(rolePermissions.administrator).not.toContain("credentials:rotate"));
+  it("keeps credential rotation away from administrators", () =>
+    expect(rolePermissions.administrator).not.toContain("credentials:rotate"));
   it("allows technical infrastructure operation but not tenant management", () => {
     expect(rolePermissions.technical).toContain("infrastructure:operate");
     expect(rolePermissions.technical).not.toContain("tenant:manage");
   });
-  it("denies permissions absent from the resolved membership", () => expect(hasPermission(context(["owner"], []), "tenant:manage")).toBe(false));
+  it("denies permissions absent from the resolved membership", () =>
+    expect(hasPermission(context(["owner"], []), "tenant:manage")).toBe(false));
 });

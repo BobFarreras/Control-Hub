@@ -66,7 +66,9 @@ describe("rate limit keys", () => {
   });
 
   it("never exposes the raw session token as a store key", () => {
-    expect(rateLimitKey(fakeRequest("/api/v1/crm/leads", "better-auth.session_token=secret-token"))).not.toContain("secret-token");
+    expect(rateLimitKey(fakeRequest("/api/v1/crm/leads", "better-auth.session_token=secret-token"))).not.toContain(
+      "secret-token"
+    );
   });
 
   it("keys credential endpoints on the address even when a cookie is present", () => {

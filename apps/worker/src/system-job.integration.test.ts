@@ -22,7 +22,9 @@ describe("system queue", () => {
     expect(result).toHaveProperty("processedAt");
     expect(await completedJob?.getState()).toBe("completed");
     expect(completedJob?.attemptsMade).toBe(1);
-    await expect(queue.add("health-probe", {}, { jobId: "phase-1-once" })).resolves.toMatchObject({ id: "phase-1-once" });
+    await expect(queue.add("health-probe", {}, { jobId: "phase-1-once" })).resolves.toMatchObject({
+      id: "phase-1-once"
+    });
     await expect(queue.getJobCounts("completed")).resolves.toEqual({ completed: 1 });
   });
 });

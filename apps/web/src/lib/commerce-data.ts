@@ -1,6 +1,13 @@
 import { apiFetch } from "./api";
 
-const empty = { catalog: { products: [], versions: [], plans: [], prices: [] }, subscriptions: [], metrics: [], alerts: [], customers: [], loadError: true };
+const empty = {
+  catalog: { products: [], versions: [], plans: [], prices: [] },
+  subscriptions: [],
+  metrics: [],
+  alerts: [],
+  customers: [],
+  loadError: true
+};
 export async function getCommerceData() {
   try {
     const responses = await Promise.all([
@@ -11,7 +18,18 @@ export async function getCommerceData() {
       apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc")
     ]);
     if (responses.some((response) => !response.ok)) return empty;
-    const [catalog, subscriptions, metrics, alerts, customers] = await Promise.all(responses.map((response) => response.json()));
-    return { catalog, subscriptions: subscriptions.subscriptions, metrics: metrics.metrics, alerts: alerts.alerts, customers: customers.items, loadError: false };
-  } catch { return empty; }
+    const [catalog, subscriptions, metrics, alerts, customers] = await Promise.all(
+      responses.map((response) => response.json())
+    );
+    return {
+      catalog,
+      subscriptions: subscriptions.subscriptions,
+      metrics: metrics.metrics,
+      alerts: alerts.alerts,
+      customers: customers.items,
+      loadError: false
+    };
+  } catch {
+    return empty;
+  }
 }

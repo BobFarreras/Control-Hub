@@ -10,7 +10,10 @@ export const apiBaseUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:4000
  */
 export async function apiRequestHeaders(): Promise<Record<string, string>> {
   const [cookieStore, incoming] = await Promise.all([cookies(), headers()]);
-  const cookie = cookieStore.getAll().map(({ name, value }) => `${name}=${value}`).join("; ");
+  const cookie = cookieStore
+    .getAll()
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ");
   const forwardedFor = incoming.get("x-forwarded-for");
   const userAgent = incoming.get("user-agent");
   return {

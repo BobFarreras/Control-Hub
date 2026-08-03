@@ -3,19 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.26.0",
-  "engines": { "node": ">=22.16.0" },
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
     "dev": "node --env-file=.env node_modules/turbo/bin/turbo dev",
     "dev:api": "node --env-file=.env scripts/run-local-command.mjs api",
     "dev:all": "pnpm infra:up && pnpm db:migrate && pnpm dev",
     "build": "turbo build",
-    "lint": "turbo lint",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "test:integration": "turbo test:integration",
     "test:e2e": "playwright test",
     "test:visual": "playwright test --grep @visual",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "infra:up": "docker compose up -d --wait postgres valkey mailpit",
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v",
@@ -24,10 +29,19 @@
     "bootstrap:owner": "node --env-file=.env scripts/run-local-command.mjs bootstrap"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.12",
     "@playwright/test": "^1.56.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
     "turbo": "^2.5.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.65.0"
   },
   "pnpm": {
     "overrides": {
