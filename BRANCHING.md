@@ -1,22 +1,28 @@
 # Control Hub Branching Strategy
 
-Control Hub utilitza un GitFlow lleuger. Les fases i features s'entreguen per pull request; no es treballa directament sobre branques protegides.
+Control Hub utilitza un GitFlow lleuger. Els contribuïdors entreguen fases i features per
+pull request. El propietari del repositori pot fer bypass administratiu per publicar
+canvis validats directament mentre sigui l'unic desenvolupador.
 
 ## Branques permanents
 
 ### `main`
 
 - Representa produccio i la darrera release estable.
-- Nomes rep pull requests des de `release/*` o `hotfix/*`.
+- Rep normalment `release/*` o `hotfix/*`; el propietari pot publicar una actualitzacio
+  validada directament durant l'etapa de desenvolupament individual.
 - Cada merge de release ha de generar un tag semantic `vMAJOR.MINOR.PATCH`.
-- Push directe, force push i eliminacio han d'estar bloquejats.
+- El push directe queda restringit als administradors amb bypass; force push i eliminacio
+  han d'estar bloquejats per a tothom.
 
 ### `develop`
 
 - Integra el treball aprovat per a la proxima release.
-- Rep `feature/*` i `fix/*` mitjancant pull request.
+- Rep `feature/*` i `fix/*` mitjancant pull request quan hi ha contribuïdors. El propietari
+  pot integrar directament despres d'executar les validacions locals obligatories.
 - Ha d'estar sempre desplegable a staging.
-- Push directe, force push i eliminacio han d'estar bloquejats.
+- El push directe queda restringit als administradors amb bypass; force push i eliminacio
+  han d'estar bloquejats per a tothom.
 
 ## Branques temporals
 
@@ -89,22 +95,30 @@ Un hotfix neix de `main`, incrementa PATCH i conte la correccio minima completa.
 - Merge commit per `release/*` i `hotfix/*` per conservar la topologia de release.
 - Cap canvi funcional sense tests proporcionals al risc.
 
+## Flux del propietari
+
+Mentre el repositori tingui un unic desenvolupador, el propietari pot integrar sense PR.
+Abans del push ha d'executar `pnpm check` i les proves E2E o d'integracio afectades. Els
+GitHub Actions continuen executant-se despres del push i qualsevol fallada s'ha de corregir
+immediatament. Aquest bypass no autoritza force push, eliminacio de branques protegides ni
+omissio de la Definition of Done.
+
 ## Proteccions recomanades a GitHub
 
 Per `main`:
 
-- Pull request obligatoria.
+- Pull request obligatoria per a contribuïdors, amb bypass per a administradors.
 - Una aprovacio com a minim.
 - Aprovacio de CODEOWNERS.
 - CI obligatoria.
 - Converses resoltes.
 - Historial lineal, excepte l'estrategia de release aprovada.
 - Bloquejar force push i eliminacio.
-- Aplicar les regles als administradors.
+- Permetre bypass als administradors mentre s'apliqui el flux de propietari.
 
 Per `develop`:
 
-- Pull request obligatoria.
+- Pull request obligatoria per a contribuïdors, amb bypass per a administradors.
 - CI obligatoria.
 - Converses resoltes.
 - Bloquejar force push i eliminacio.
