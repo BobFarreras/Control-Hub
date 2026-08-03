@@ -51,7 +51,8 @@ Amb el motiu, perque no es reobri per descuit:
    mesurar per un termini mentre s'espera resposta d'algu altre; sense aixo, l'indicador
    mesura la lentitud del client i no la nostra.
 3. El rellotge nomes corre dins de l'horari de suport configurat, en la zona horaria del
-   tenant, i salta caps de setmana i festius.
+   tenant, i salta caps de setmana i festius. Configuracio inicial decidida pel propietari:
+   **dilluns a divendres, de 08:00 a 16:00, `Europe/Madrid`**.
 4. Els objectius de SLA son **append-only amb data d'efecte**, com els barems i els preus. Un
    ticket es mesura contra l'objectiu vigent el dia que es va obrir: canviar els objectius
    avui no pot convertir en compliments els incompliments del mes passat.
@@ -124,8 +125,9 @@ podran penjar serveis i execucions d'n8n.
   Append-only, unic per `(priority, effective_from)`.
 - `support_schedule`: `weekday`, `opens_at`, `closes_at`, i zona horaria del tenant.
 - `support_holidays`: `holiday_on` (date), unic per tenant.
-- `incidents`: `title`, `severity`, `status`, `started_at`, `resolved_at`, `customer_id`
-  nullable.
+- `incidents`: `title`, `severity` (`critical`, `high`, `normal`, `low`), `status`,
+  `started_at`, `acknowledged_at`, `acknowledged_by_membership_id`, `resolved_at`,
+  `customer_id` nullable.
 - `incident_tickets`: relacio N a N entre incidencies i tickets.
 
 Restriccions a la base de dades:
@@ -142,6 +144,46 @@ Els objectius es **copien** al ticket en obrir-lo (`first_response_target_minute
 `resolution_target_minutes`) en comptes de referenciar la fila vigent. Es el mateix criteri
 que els preus contractats a `commerce.md`: el compliment d'un ticket antic ha de ser
 justificable sense reconstruir quina configuracio hi havia aquell dia.
+
+## Gravetat d'incidencies i avisos fora d'horari
+
+L'horari de suport es de 08:00 a 16:00 de dilluns a divendres, pero les caigudes no el
+respecten. La resposta **no** es ampliar el SLA dels tickets: un ticket es una peticio d'un
+client i pot esperar a dilluns. El que no pot esperar es una incidencia, i una incidencia no
+te SLA de client, te **gravetat**.
+
+Aquesta separacio es deliberada. Barrejar-les obliga a vendre 24/7 a tothom per cobrir una
+caiguda propia, o a incomplir el SLA cada cap de setmana.
+
+| Gravetat | Que hi entra | Fora d'horari |
+|---|---|---|
+| `critical` | Servei d'un client caigut, perdua de dades, sospita de bretxa | Avisa immediatament |
+| `high` | Workflow d'n8n trencat, backup fallit, certificat que caduca en menys de 72 h | S'acumula; avisa a l'obertura |
+| `normal` | Degradacio sense impacte visible, error recurrent no bloquejant | Seguent dia laborable |
+| `low` | Soroll conegut, manteniment diferible | Nomes a la safata |
+
+La regla que ho governa tot: **si no exigeix una accio dins de l'hora seguent, no desperta
+ningu.** Un sistema d'alertes que avisa de tot acaba silenciat, i llavors no avisa de res.
+
+- Una incidencia `critical` sense confirmar (`acknowledged`) en 15 minuts escala a la segona
+  persona. Cal, doncs, una accio explicita de confirmacio: sense ella, l'escalat no te senyal.
+- La gravetat es pot canviar a ma i el canvi queda auditat. Baixar la gravetat d'una
+  incidencia no ha de poder passar desapercebut.
+- Un client que vulgui cobertura fora d'horari **es un producte**, no una excepcio. Quan
+  n'aparegui un, tornara la decisio d'SLA per client, avui ajornada a consciencia.
+
+### Que hi poden fer els agents
+
+La Fase 5 nomes hi deixa el registre. Les fonts d'alerta son de la Fase 7 i les eines
+d'un agent, del servidor MCP de la Fase 10. La restriccio que s'hereta d'aqui:
+
+- Un agent **diagnostica**: recull logs, correlaciona amb l'ultim desplegament i escriu la
+  seva lectura a la incidencia. Aixo es de baix risc i estalvia la meitat de la feina.
+- Un agent **no actua** sobre produccio per iniciativa propia. A les tres de la matinada no hi
+  ha ningu per adonar-se que ha fet el que no tocava.
+- L'excepcio es una llista tancada, curta i aprovada explicitament d'accions **idempotents**
+  (reiniciar un contenidor en bucle de fallada, reexecutar una execucio d'n8n dissenyada per
+  ser idempotent). Tota accio automatica queda registrada a la incidencia com qualsevol altra.
 
 ## Calcul del SLA
 
@@ -213,7 +255,8 @@ PATCH  /api/v1/incidents/:incidentId/status
 
 - Auditoria: `ticket.created`, `ticket.assigned`, `ticket.status.changed`,
   `ticket.priority.changed`, `ticket.sla.breached`, `sla_target.published`,
-  `support.schedule.updated`, `incident.created`, `incident.status.changed`.
+  `support.schedule.updated`, `incident.created`, `incident.status.changed`,
+  `incident.severity.changed`, `incident.acknowledged`.
 - Metriques: tickets oberts per prioritat, incompliments per setmana, temps mitja de primera
   resposta.
 - Cap cos de missatge als logs ni a les metriques.
@@ -226,6 +269,8 @@ PATCH  /api/v1/incidents/:incidentId/status
   events; rebuig d'un projecte d'un altre client; unicitat d'`external_reference`.
 - **Permisos:** `Technical` pot resoldre pero no configurar SLA ni horari.
 - **Visibilitat:** un comentari intern no surt mai per la superficie de client.
+- **Gravetat:** una incidencia `critical` sense confirmar escala; una `high` fora d'horari no
+  avisa fins a l'obertura seguent.
 
 ## Rollout, feature flag i rollback
 

@@ -14,8 +14,19 @@ La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la
 Fase 5 li deu es que els tickets neixin amb `project_id` nullable.
 
+La **Fase 5C: registre de jornada** te especificacio a `docs/specifications/attendance.md`.
+Pendent de confirmacio de la gestoria abans d'activar-la en produccio.
+
 L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 `docs/phase-5-preflight-audit.md`.
+
+## Decisions de suport vigents
+
+- Horari de suport: dilluns a divendres, 08:00 a 16:00, `Europe/Madrid`.
+- El rellotge del SLA s'atura fora d'horari i mentre s'espera el client.
+- Objectius de SLA per prioritat, iguals per a tots els clients.
+- Les incidencies no tenen SLA de client: tenen gravetat, i nomes `critical` avisa fora
+  d'horari.
 
 ## Superficie executable
 
