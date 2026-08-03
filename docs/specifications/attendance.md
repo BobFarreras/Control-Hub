@@ -8,10 +8,20 @@
 
 ## Problema i usuaris
 
+Moltes jurisdiccions obliguen a registrar la jornada. El modul implementa el **mecanisme**
+(registre inalterable, correccions amb rastre, acces de la persona, exportacio i retencio
+configurable); **quina llei l'obliga i durant quant de temps es conserva es configuracio de la
+instal·lacio**, no una constant del producte. Vegeu l'agnosticisme a `PRODUCT_REQUIREMENTS.md`.
+
+### Cas de la primera instal·lacio: Espanya
+
 L'article 34.9 de l'Estatut dels Treballadors, introduit pel Reial decret llei 8/2019,
 obliga a registrar diariament l'hora d'inici i de fi de la jornada de cada persona
 treballadora. Els registres s'han de conservar **quatre anys** i han d'estar a disposicio de
 la persona, dels seus representants i de la Inspeccio de Treball.
+
+Aixo fixa els valors inicials d'aquesta instal·lacio. Una instal·lacio a un altre pais els
+canviara sense tocar codi: el termini de retencio es un parametre, no un `4` escrit enlloc.
 
 Tres punts que la gestoria ha de confirmar abans d'activar-ho:
 
@@ -66,7 +76,10 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
 6. **Cada persona pot llegir sempre el seu registre.** No es una funcionalitat opcional: no
    poder-hi accedir es, en si mateix, un incompliment.
 7. Llegir el registre d'una altra persona queda auditat.
-8. Els registres no es poden esborrar abans dels quatre anys.
+8. Els registres no es poden esborrar abans del **termini de retencio configurat**. Quatre
+   anys es el valor de la primera instal·lacio, no el valor del producte.
+9. El producte no assumeix cap jornada legal, cap limit d'hores ni cap regim de descansos: son
+   coses que canvien per pais i per conveni. El modul registra i suma; no jutja.
 
 ## Fluxos
 
@@ -133,8 +146,8 @@ Restriccions a la base de dades:
 - `check (occurred_at <= recorded_at)`: no es pot fitxar en el futur.
 - `corrects_event_id` amb clau forana composta amb `tenant_id`, i exigeix `reason`.
 - Index per `(tenant_id, membership_id, occurred_at)` per als informes mensuals.
-- La retencio de quatre anys es documenta a `data-governance.md`; l'esborrat abans d'aquest
-  termini queda bloquejat.
+- El termini de retencio viu a `tenant_settings` i es documenta a `data-governance.md`;
+  l'esborrat abans d'aquest termini queda bloquejat.
 
 ## Calcul
 
@@ -187,8 +200,8 @@ GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
   recull el minim imprescindible, sense ubicacio ni biometria, i l'acces al registre d'altri
   queda auditat.
 - **Conflicte entre supressio i retencio.** Davant d'una peticio d'esborrat, la retencio legal
-  de quatre anys preval durant el periode. Cal que consti a `data-governance.md` per poder
-  respondre-hi amb fonament.
+  configurada preval durant el periode. Cal que consti a `data-governance.md` per poder
+  respondre-hi amb fonament, i el termini ha de ser consultable per qui respon.
 - **Elevacio per rol.** `attendance:manage` dona lectura del registre de tothom; per aixo
   `Technical` no el te tot i tenir permisos operatius amplis.
 

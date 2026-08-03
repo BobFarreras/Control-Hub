@@ -123,6 +123,27 @@ Release 1.0 es una versio comercial completa. Inclou tots els dominis aprovats a
 - Runbooks, SBOM i politica de vulnerabilitats.
 - Light/dark/system i `ca`, `es`, `en`.
 
+### Agnosticisme respecte de qui l'instal·la
+
+Control Hub es un producte que una tercera empresa ha de poder instal·lar i operar, no una eina
+interna. La primera instal·lacio es la de casa, pero **cap regla de negoci d'una empresa
+concreta pot viure al codi**.
+
+Regla practica, aplicable a qualsevol especificacio nova:
+
+- Horaris, festius, objectius de servei, prioritats, categories, monedes, impostos, barems i
+  politiques de retencio son **dades del tenant**, no constants.
+- El que hi ha al codi son els **tipus i els limits**; el que hi ha a la base de dades son els
+  **valors**. Un horari de 08:00 a 16:00 es dada inicial d'una instal·lacio, mai un valor per
+  defecte codificat.
+- Els exemples d'una especificacio (n8n, una VPS concreta, un client concret) son
+  il·lustratius. Si un exemple acaba a l'esquema, es un error de disseny.
+- El que depen de la jurisdiccio (obligacions laborals, fiscals, terminis de conservacio) es
+  configurable i queda documentat com a tal. La instal·lacio de casa n'es un cas, no la norma.
+
+Els textos i les dades de mostra que nomes serveixen a la primera instal·lacio viuen al seed,
+i el seed no forma part del producte.
+
 ### Capacitats planificades dins l'arquitectura 1.x
 
 - MCP de lectura i operacions controlades.

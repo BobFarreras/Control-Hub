@@ -51,8 +51,16 @@ Amb el motiu, perque no es reobri per descuit:
    mesurar per un termini mentre s'espera resposta d'algu altre; sense aixo, l'indicador
    mesura la lentitud del client i no la nostra.
 3. El rellotge nomes corre dins de l'horari de suport configurat, en la zona horaria del
-   tenant, i salta caps de setmana i festius. Configuracio inicial decidida pel propietari:
-   **dilluns a divendres, de 08:00 a 16:00, `Europe/Madrid`**.
+   tenant, i salta caps de setmana i festius.
+
+   **L'horari es dada, no constant.** Cada dia de la setmana pot tenir zero, una o mes
+   finestres, i la zona horaria surt de `tenant_settings`. El codi no pot assumir que hi ha
+   feina de dilluns a divendres, ni que hi ha una sola finestra diaria: qui compri el producte
+   pot fer torns partits o treballar dissabtes. Vegeu l'agnosticisme a
+   `PRODUCT_REQUIREMENTS.md`.
+
+   Valors amb que s'inicialitza **la primera instal·lacio**, via seed i no via codi: dilluns a
+   divendres, de 08:00 a 16:00, `Europe/Madrid`.
 4. Els objectius de SLA son **append-only amb data d'efecte**, com els barems i els preus. Un
    ticket es mesura contra l'objectiu vigent el dia que es va obrir: canviar els objectius
    avui no pot convertir en compliments els incompliments del mes passat.
@@ -123,12 +131,16 @@ podran penjar serveis i execucions d'n8n.
 - `ticket_events`: append-only, historial d'estat, assignacio i prioritat amb actor i motiu.
 - `sla_targets`: `priority`, `first_response_minutes`, `resolution_minutes`, `effective_from`.
   Append-only, unic per `(priority, effective_from)`.
-- `support_schedule`: `weekday`, `opens_at`, `closes_at`, i zona horaria del tenant.
+- `support_schedule`: `weekday`, `opens_at`, `closes_at`. Diverses files per dia permeten
+  torns partits, i cap fila vol dir dia no laborable. La zona horaria surt de
+  `tenant_settings`, no es duplica aqui.
 - `support_holidays`: `holiday_on` (date), unic per tenant.
 - `incidents`: `title`, `severity` (`critical`, `high`, `normal`, `low`), `status`,
   `started_at`, `acknowledged_at`, `acknowledged_by_membership_id`, `resolved_at`,
   `customer_id` nullable.
 - `incident_tickets`: relacio N a N entre incidencies i tickets.
+- `support_notification_policy`: `severity`, `notifies_out_of_hours`,
+  `acknowledge_deadline_minutes`. Es aixo el que fa configurable qui desperta a qui.
 
 Restriccions a la base de dades:
 
@@ -155,18 +167,27 @@ te SLA de client, te **gravetat**.
 Aquesta separacio es deliberada. Barrejar-les obliga a vendre 24/7 a tothom per cobrir una
 caiguda propia, o a incomplir el SLA cada cap de setmana.
 
-| Gravetat | Que hi entra | Fora d'horari |
+Els **nivells** son part del producte; **que hi entra i que avisa** es configuracio del
+tenant. Els exemples de la columna central son de la primera instal·lacio i no han d'arribar
+mai a l'esquema.
+
+| Gravetat | Exemple a la primera instal·lacio | Avis fora d'horari |
 |---|---|---|
-| `critical` | Servei d'un client caigut, perdua de dades, sospita de bretxa | Avisa immediatament |
-| `high` | Workflow d'n8n trencat, backup fallit, certificat que caduca en menys de 72 h | S'acumula; avisa a l'obertura |
+| `critical` | Servei d'un client caigut, perdua de dades, sospita de bretxa | Configurable; per defecte, immediat |
+| `high` | Workflow d'automatitzacio trencat, backup fallit, certificat a menys de 72 h | S'acumula fins a l'obertura |
 | `normal` | Degradacio sense impacte visible, error recurrent no bloquejant | Seguent dia laborable |
 | `low` | Soroll conegut, manteniment diferible | Nomes a la safata |
+
+Quins nivells desperten algu fora d'horari, i el termini de confirmacio, son valors per tenant
+a `support_notification_policy`. Una empresa amb guardia real els voldra diferents dels
+d'una que no en fa.
 
 La regla que ho governa tot: **si no exigeix una accio dins de l'hora seguent, no desperta
 ningu.** Un sistema d'alertes que avisa de tot acaba silenciat, i llavors no avisa de res.
 
-- Una incidencia `critical` sense confirmar (`acknowledged`) en 15 minuts escala a la segona
-  persona. Cal, doncs, una accio explicita de confirmacio: sense ella, l'escalat no te senyal.
+- Una incidencia sense confirmar (`acknowledged`) dins del termini configurat escala a la
+  seguent persona. Cal, doncs, una accio explicita de confirmacio: sense ella, l'escalat no te
+  senyal. El termini inicial de la primera instal·lacio es de 15 minuts per a `critical`.
 - La gravetat es pot canviar a ma i el canvi queda auditat. Baixar la gravetat d'una
   incidencia no ha de poder passar desapercebut.
 - Un client que vulgui cobertura fora d'horari **es un producte**, no una excepcio. Quan
