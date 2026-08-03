@@ -7,7 +7,11 @@ No s'ha modificat codi: aquest document només registra troballes i propostes.
 
 ## Estat de les correccions
 
-Corregides en aquesta branca (bloc A): troballes 1, 2, 3, 4 i 10. La resta segueixen obertes.
+| Bloc | Troballes | Estat |
+| --- | --- | --- |
+| A | 1, 2, 3, 4, 10 | Corregides |
+| B | 8 (linter i densitat) | Corregida |
+| Obertes | 5, 6, 7, 9, 11, 12 | Pendents |
 
 ## Estat verificat
 
@@ -265,6 +269,58 @@ scripts en línia i aquí ningú genera un nonce per petició. Passar a CSP amb 
 `redirect()` ja no queda dins del `try`, així que l'excepció `NEXT_REDIRECT` no la captura
 el `catch`. El resultat visible és el mateix; la diferència és que ara deixarà de funcionar
 si algú canvia la destinació, en comptes de fer-ho en silenci.
+
+## Què s'ha canviat al bloc B
+
+### Eina
+
+- ESLint 9 amb una sola configuració plana a l'arrel, amb regles amb informació de tipus,
+  ordre d'imports i `no-restricted-imports` que codifica les capes
+  `domain -> application -> adapters` que `engineering-conventions.md` descrivia sense que
+  res les fes complir.
+- Prettier és qui mana en el format; `eslint-config-prettier` apaga les regles que hi
+  competirien. És això el que fa impossible tornar a tenir una línia de 800 caràcters.
+- Els scripts `lint` duplicats de cada workspace desapareixen, igual que la tasca `lint` de
+  turbo. `pnpm lint` i `pnpm format` s'executen un sol cop des de l'arrel, i CI hi afegeix
+  `format:check`.
+- Reformatat mecànic de 117 fitxers, incloent-hi els `package.json`, que estaven minificats
+  en una sola línia.
+
+### Defectes que va trobar el linter
+
+Dels 146 problemes que van requerir criteri, aquests eren errors, no estil:
+
+- `sendResetPassword` i `sendVerificationEmail` descartaven la promesa amb `void`: un correu
+  de restabliment que no sortia mai era indistingible d'un que arribava.
+- Els handlers asíncrons anaven directes a `onClick`/`onSubmit`. Una petició fallida es
+  convertia en un rebuig no gestionat: el `catch` que havia de mostrar l'error no s'executava
+  i els indicadors de "carregant" es quedaven encesos. Ara passen per `eventHandler` i
+  `actionHandler`, que lliguen el rebuig a l'estat d'error del component.
+- Dos components client llegien `Date.now()` mentre renderitzaven, de manera que el marcatge
+  del servidor i el primer render del client comparaven contra rellotges diferents. L'instant
+  es captura ara amb les dades.
+- Tres components actualitzaven estat dins d'un efecte per seguir una prop o el muntatge, i
+  cadascun costava un render extra.
+- `FormData.get` retorna `string | File | null`, i `String()` sobre això enviava el text
+  literal `[object File]` a l'API com si fos un valor.
+- **Tot el que retornava l'API entrava al web com a `any`**: un camp reanomenat no produïa
+  cap error, només `undefined` a la pantalla. `lib/api-types.ts` declara ara els contractes i
+  `readJson` és l'únic punt on una càrrega rep un tipus.
+
+Quan una regla s'ha limitat en comptes d'obeir-se, s'ha limitat estretament i amb motiu:
+`console` a les ordres d'operador, `unbound-method` per als espies de vitest.
+
+### Partició d'`app.ts`
+
+De 1271 línies a 164. Els handlers viuen ara a `apps/api/src/routes/`, un mòdul per domini,
+i cap passa de 400 línies. `app.ts` queda com a arrel de composició. També se n'han extret
+les peces compartides: `rate-limit`, `request-headers`, `table-columns`, `invitation-message`
+i `server-instance`, aquest últim perquè el tipus de la instància Fastify es pugui compartir
+sense crear un cicle.
+
+S'hi ha afegit un test que comprova que les 43 rutes segueixen registrades. Un `tsc` no pot
+detectar aquest refactor si surt malament, perquè esborrar una crida a `register...Routes`
+segueix compilant.
 
 ## Recomanació d'ordre
 
