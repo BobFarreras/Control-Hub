@@ -1,0 +1,394 @@
+import { CrmError, type CreateLeadInput, type CrmListQuery } from "@control-hub/application";
+import { parseCsv, stringifyCsv } from "@control-hub/contracts";
+import {
+  leadPriorities,
+  leadStatuses,
+  normalizeComparableName,
+  type LeadPriority,
+  type LeadStatus
+} from "@control-hub/domain";
+import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
+import type { CrmContext } from "./context.js";
+
+/** Leads, customers, contacts, notes, tasks and the CSV import/export pair. */
+export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
+  const listSchema = {
+    querystring: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        search: { type: "string", maxLength: 160 },
+        status: { type: "string", maxLength: 32 },
+        priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+        page: { type: "integer", minimum: 1, default: 1 },
+        pageSize: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+        sort: {
+          type: "string",
+          enum: [
+            "updated_desc",
+            "created_asc",
+            "created_desc",
+            "name_asc",
+            "name_desc",
+            "company_asc",
+            "company_desc",
+            "priority_asc",
+            "priority_desc"
+          ],
+          default: "updated_desc"
+        }
+      }
+    }
+  } as const;
+  type ListQuery = Partial<CrmListQuery>;
+  const normalizeListQuery = (query: ListQuery): CrmListQuery => ({
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 25,
+    sort: query.sort ?? "updated_desc",
+    ...(query.search ? { search: query.search } : {}),
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.priority ? { priority: query.priority } : {})
+  });
+
+  app.get<{ Querystring: ListQuery }>("/api/v1/crm/leads", { schema: listSchema }, async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "leads:read");
+    return crm.listLeads(context, normalizeListQuery(request.query));
+  });
+  app.post<{ Body: CreateLeadInput }>(
+    "/api/v1/crm/leads",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "source", "priority"],
+          properties: {
+            name: { type: "string", minLength: 2, maxLength: 160 },
+            companyName: { type: "string", maxLength: 160 },
+            email: { type: "string", format: "email", maxLength: 254 },
+            phone: { type: "string", maxLength: 40 },
+            source: { type: "string", minLength: 1, maxLength: 80 },
+            priority: { type: "string", enum: leadPriorities },
+            ownerMembershipId: { type: "string", format: "uuid" }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:manage");
+      const lead = await crm.createLead(context, request.body);
+      await writeAudit(database, context, request, {
+        action: "lead.created",
+        targetType: "lead",
+        targetId: lead.id,
+        outcome: "success"
+      });
+      return reply.code(201).send({ lead });
+    }
+  );
+  app.patch<{ Params: { leadId: string }; Body: { status: LeadStatus } }>(
+    "/api/v1/crm/leads/:leadId/status",
+    {
+      schema: {
+        params: { type: "object", required: ["leadId"], properties: { leadId: { type: "string", format: "uuid" } } },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["status"],
+          properties: { status: { type: "string", enum: leadStatuses } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:manage");
+      const lead = await crm.transitionLead(context, request.params.leadId, request.body.status);
+      await writeAudit(database, context, request, {
+        action: "lead.status.changed",
+        targetType: "lead",
+        targetId: lead.id,
+        outcome: "success",
+        metadata: { status: lead.status }
+      });
+      return { lead };
+    }
+  );
+  app.post<{ Params: { leadId: string } }>(
+    "/api/v1/crm/leads/:leadId/convert",
+    {
+      schema: {
+        params: { type: "object", required: ["leadId"], properties: { leadId: { type: "string", format: "uuid" } } }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:manage");
+      const customer = await crm.convertLead(context, request.params.leadId);
+      await writeAudit(database, context, request, {
+        action: "lead.converted",
+        targetType: "customer",
+        targetId: customer.id,
+        outcome: "success",
+        metadata: { leadId: request.params.leadId }
+      });
+      return { customer };
+    }
+  );
+  app.get<{ Querystring: ListQuery }>("/api/v1/crm/customers", { schema: listSchema }, async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "customers:read");
+    return crm.listCustomers(context, normalizeListQuery(request.query));
+  });
+  app.get("/api/v1/crm/summary", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "leads:read");
+    return crm.commercialSummary(context);
+  });
+  app.get<{ Params: { customerId: string } }>(
+    "/api/v1/crm/customers/:customerId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId"],
+          properties: { customerId: { type: "string", format: "uuid" } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:read");
+      return { customer: await crm.getCustomer(context, request.params.customerId) };
+    }
+  );
+  app.post<{
+    Params: { customerId: string };
+    Body: { name: string; role?: string; email?: string; phone?: string; isPrimary?: boolean };
+  }>(
+    "/api/v1/crm/customers/:customerId/contacts",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name"],
+          properties: {
+            name: { type: "string", minLength: 2, maxLength: 160 },
+            role: { type: "string", maxLength: 120 },
+            email: { type: "string", format: "email", maxLength: 254 },
+            phone: { type: "string", maxLength: 40 },
+            isPrimary: { type: "boolean", default: false }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const contact = await crm.addContact(context, request.params.customerId, {
+        ...request.body,
+        isPrimary: request.body.isPrimary ?? false
+      });
+      await writeAudit(database, context, request, {
+        action: "contact.created",
+        targetType: "contact",
+        targetId: contact.id,
+        outcome: "success"
+      });
+      return reply.code(201).send({ contact });
+    }
+  );
+  app.post<{ Params: { customerId: string }; Body: { body: string } }>(
+    "/api/v1/crm/customers/:customerId/notes",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["body"],
+          properties: { body: { type: "string", minLength: 1, maxLength: 10000 } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const note = await crm.addNote(context, request.params.customerId, request.body.body);
+      await writeAudit(database, context, request, {
+        action: "note.created",
+        targetType: "customer",
+        targetId: request.params.customerId,
+        outcome: "success"
+      });
+      return reply.code(201).send({ note });
+    }
+  );
+  app.post<{
+    Params: { customerId: string };
+    Body: { title: string; dueAt?: string; assigneeMembershipId?: string };
+  }>(
+    "/api/v1/crm/customers/:customerId/tasks",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title"],
+          properties: {
+            title: { type: "string", minLength: 1, maxLength: 240 },
+            dueAt: { type: "string", format: "date-time" },
+            assigneeMembershipId: { type: "string", format: "uuid" }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const task = await crm.addTask(context, request.params.customerId, {
+        title: request.body.title,
+        ...(request.body.dueAt ? { dueAt: new Date(request.body.dueAt) } : {}),
+        ...(request.body.assigneeMembershipId ? { assigneeMembershipId: request.body.assigneeMembershipId } : {})
+      });
+      await writeAudit(database, context, request, {
+        action: "task.created",
+        targetType: "task",
+        targetId: task.id,
+        outcome: "success"
+      });
+      return reply.code(201).send({ task });
+    }
+  );
+  app.post<{ Params: { taskId: string } }>("/api/v1/crm/tasks/:taskId/complete", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "customers:manage");
+    const task = await crm.completeTask(context, request.params.taskId);
+    await writeAudit(database, context, request, {
+      action: "task.completed",
+      targetType: "task",
+      targetId: task.id,
+      outcome: "success"
+    });
+    return { task };
+  });
+  app.get("/api/v1/crm/leads/export", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "leads:read");
+    const page = await crm.listLeads(context, { page: 1, pageSize: 10000, sort: "name_asc" });
+    const csv = stringifyCsv([
+      ["name", "company", "email", "phone", "source", "priority", "status"],
+      ...page.items.map((lead) => [
+        lead.name,
+        lead.companyName,
+        lead.email,
+        lead.phone,
+        lead.source,
+        lead.priority,
+        lead.status
+      ])
+    ]);
+    return reply
+      .type("text/csv; charset=utf-8")
+      .header("content-disposition", "attachment; filename=control-hub-leads.csv")
+      .send(csv);
+  });
+  app.post<{ Body: { csv: string; commit?: boolean } }>(
+    "/api/v1/crm/leads/import",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["csv"],
+          properties: {
+            csv: { type: "string", minLength: 1, maxLength: 5_000_000 },
+            commit: { type: "boolean", default: false }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, request.body.commit ? "leads:manage" : "leads:read");
+      let rows: string[][];
+      try {
+        rows = parseCsv(request.body.csv);
+      } catch {
+        throw new CrmError("INVALID_INPUT");
+      }
+      const header = rows.shift()?.map((value) => value.trim().toLowerCase()) ?? [];
+      const required = ["name", "source", "priority"];
+      if (!required.every((column) => header.includes(column))) throw new CrmError("INVALID_INPUT");
+      const index = (column: string) => header.indexOf(column);
+      const results: { row: number; status: "valid" | "warning" | "imported" | "error"; code?: string }[] = [];
+      const fileEmails = new Set<string>();
+      const filePhones = new Set<string>();
+      const fileNames = new Set<string>();
+      for (const [offset, row] of rows.entries()) {
+        const input: CreateLeadInput = {
+          name: row[index("name")] ?? "",
+          source: row[index("source")] ?? "manual",
+          priority: (row[index("priority")] || "normal") as LeadPriority,
+          ...(row[index("company")] ? { companyName: row[index("company")] } : {}),
+          ...(row[index("email")] ? { email: row[index("email")] } : {}),
+          ...(row[index("phone")] ? { phone: row[index("phone")] } : {})
+        };
+        try {
+          if (
+            !leadPriorities.includes(input.priority) ||
+            input.name.trim().length < 2 ||
+            input.source.trim().length === 0
+          )
+            throw new CrmError("INVALID_INPUT");
+          const emailKey = input.email?.trim().toLowerCase();
+          const phoneKey = input.phone?.replace(/\D/g, "");
+          if (emailKey && fileEmails.has(emailKey)) throw new CrmError("DUPLICATE_EMAIL");
+          if (phoneKey && filePhones.has(phoneKey)) throw new CrmError("DUPLICATE_PHONE");
+          if (emailKey && !/^\S+@\S+\.\S+$/.test(emailKey)) throw new CrmError("INVALID_INPUT");
+          const nameKey = normalizeComparableName(input.name);
+          let similarName = fileNames.has(nameKey);
+          if (!request.body.commit) {
+            const duplicate = await crm.listLeads(context, {
+              search: emailKey || phoneKey || input.name,
+              page: 1,
+              pageSize: 10,
+              sort: "updated_desc"
+            });
+            if (duplicate.items.some((lead) => emailKey && lead.email?.trim().toLowerCase() === emailKey))
+              throw new CrmError("DUPLICATE_EMAIL");
+            if (duplicate.items.some((lead) => phoneKey && lead.phone?.replace(/\D/g, "") === phoneKey))
+              throw new CrmError("DUPLICATE_PHONE");
+            similarName ||= duplicate.items.some((lead) => normalizeComparableName(lead.name) === nameKey);
+          } else await crm.createLead(context, input);
+          if (emailKey) fileEmails.add(emailKey);
+          if (phoneKey) filePhones.add(phoneKey);
+          fileNames.add(nameKey);
+          results.push({
+            row: offset + 2,
+            status: request.body.commit ? "imported" : similarName ? "warning" : "valid",
+            ...(similarName && !request.body.commit ? { code: "SIMILAR_NAME" } : {})
+          });
+        } catch (error) {
+          results.push({
+            row: offset + 2,
+            status: "error",
+            code: error instanceof CrmError ? error.code : "INVALID_INPUT"
+          });
+        }
+      }
+      if (request.body.commit)
+        await writeAudit(database, context, request, {
+          action: "lead.imported",
+          targetType: "lead",
+          outcome: "success",
+          metadata: {
+            imported: results.filter((result) => result.status === "imported").length,
+            failed: results.filter((result) => result.status === "error").length
+          }
+        });
+      return { results };
+    }
+  );
+}
