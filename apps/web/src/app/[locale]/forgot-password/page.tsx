@@ -1,25 +1,29 @@
 "use client";
 
+import { getDictionary, isLocale } from "@control-hub/i18n";
 import { useParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
-import { getDictionary, isLocale } from "@control-hub/i18n";
+import { formValue } from "@/lib/form";
+import { eventHandler } from "@/lib/handlers";
 
 export default function ForgotPasswordPage() {
   const param = String(useParams().locale);
   const locale = isLocale(param) ? param : "ca";
   const t = getDictionary(locale).auth;
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const email = String(new FormData(event.currentTarget).get("email"));
+    const email = formValue(new FormData(event.currentTarget), "email");
     await authClient.requestPasswordReset({ email, redirectTo: `/${locale}/reset-password` });
     setSent(true);
   }
   return (
     <main className="simple-auth">
-      <form className="auth-form" onSubmit={submit}>
+      <form className="auth-form" onSubmit={eventHandler(submit, () => setError(t.error))}>
         <h1>{t.resetTitle}</h1>
+        {error && <p className="form-error">{error}</p>}
         {sent ? (
           <p>{t.sent}</p>
         ) : (

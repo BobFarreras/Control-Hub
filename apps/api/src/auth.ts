@@ -1,8 +1,8 @@
 import { passkey } from "@better-auth/passkey";
+import type { ApiEnvironment } from "@control-hub/config";
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
 import { Pool } from "pg";
-import type { ApiEnvironment } from "@control-hub/config";
 import { createMailSender } from "./email.js";
 
 export function createAuth(environment: ApiEnvironment, options: { allowSignUp?: boolean } = {}) {
@@ -29,15 +29,19 @@ export function createAuth(environment: ApiEnvironment, options: { allowSignUp?:
       maxPasswordLength: 128,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: 900,
-      sendResetPassword: async ({ user, url }) =>
-        void sendMail({ to: user.email, subject: "Control Hub - Restablir contrasenya", text: url })
+      // Awaited on purpose: discarding this promise hid delivery failures, so a password reset
+      // that never left the building looked identical to one that arrived.
+      sendResetPassword: async ({ user, url }) => {
+        await sendMail({ to: user.email, subject: "Control Hub - Restablir contrasenya", text: url });
+      }
     },
     emailVerification: {
       sendOnSignIn: true,
       autoSignInAfterVerification: false,
       expiresIn: 3600,
-      sendVerificationEmail: async ({ user, url }) =>
-        void sendMail({ to: user.email, subject: "Control Hub - Verificar correu", text: url })
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendMail({ to: user.email, subject: "Control Hub - Verificar correu", text: url });
+      }
     },
     session: { expiresIn: 60 * 60 * 12, updateAge: 60 * 60, freshAge: 60 * 10, preserveSessionInDatabase: true },
     advanced: { useSecureCookies: environment.NODE_ENV === "production", crossSubDomainCookies: { enabled: false } },

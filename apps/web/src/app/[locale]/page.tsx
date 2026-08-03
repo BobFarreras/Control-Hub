@@ -1,7 +1,7 @@
+import { getDictionary, isLocale, locales } from "@control-hub/i18n";
 import { Activity, Boxes, Building2, Command, ShieldCheck, TicketCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDictionary, isLocale, locales } from "@control-hub/i18n";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
 import { requireSession } from "@/lib/require-session";

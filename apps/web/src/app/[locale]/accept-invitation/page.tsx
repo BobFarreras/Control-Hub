@@ -1,10 +1,11 @@
 "use client";
 
+import { getDictionary, isLocale } from "@control-hub/i18n";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { getDictionary, isLocale } from "@control-hub/i18n";
+import { eventHandler } from "@/lib/handlers";
 
 type Invitation = { tenantName: string; email: string; role: "administrator" | "technical"; expiresAt: string };
 
@@ -14,21 +15,23 @@ export default function AcceptInvitationPage() {
   const t = getDictionary(locale);
   const token = useSearchParams().get("token") ?? "";
   const [invitation, setInvitation] = useState<Invitation | null>(null);
-  const [error, setError] = useState("");
+  const [lookupError, setLookupError] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A missing token is knowable while rendering; only the lookup needs an effect.
+  const error = token ? lookupError : t.invitations.invalid;
   useEffect(() => {
-    if (!token) return setError(t.invitations.invalid);
+    if (!token) return;
     void fetch(`/api/v1/public/invitations?token=${encodeURIComponent(token)}`).then(async (response) => {
       const payload = (await response.json().catch(() => ({}))) as { invitation?: Invitation };
-      if (!response.ok || !payload.invitation) setError(t.invitations.invalid);
+      if (!response.ok || !payload.invitation) setLookupError(t.invitations.invalid);
       else setInvitation(payload.invitation);
     });
   }, [token, t.invitations.invalid]);
   async function accept(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    setError("");
+    setLookupError("");
     const data = new FormData(event.currentTarget);
     const response = await fetch("/api/v1/public/invitations/accept", {
       method: "POST",
@@ -36,7 +39,7 @@ export default function AcceptInvitationPage() {
       body: JSON.stringify({ token, name: data.get("name"), password: data.get("password") })
     });
     setBusy(false);
-    if (!response.ok) return setError(t.invitations.acceptError);
+    if (!response.ok) return setLookupError(t.invitations.acceptError);
     setAccepted(true);
   }
   return (
@@ -60,7 +63,7 @@ export default function AcceptInvitationPage() {
             </Link>
           </div>
         ) : (
-          <form className="auth-form" onSubmit={accept}>
+          <form className="auth-form" onSubmit={eventHandler(accept, () => setLookupError(t.invitations.acceptError))}>
             <ShieldCheck size={30} />
             <h2>{invitation?.email ?? t.invitations.acceptTitle}</h2>
             <label>

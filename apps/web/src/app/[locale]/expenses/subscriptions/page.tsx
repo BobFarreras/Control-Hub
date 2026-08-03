@@ -1,18 +1,25 @@
-import { notFound } from "next/navigation";
 import { getDictionary, getExpenseDictionary, getMetricHelpDictionary, isLocale } from "@control-hub/i18n";
+import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CompanySubscriptionsWorkspace } from "@/components/company-subscriptions-workspace";
 import { PageTopbar } from "@/components/page-topbar";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readJson } from "@/lib/api";
+import type { CompanySubscription, CompanySubscriptionsResponse } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
-async function load() {
+type ExpensesData = { subscriptions: CompanySubscription[]; loadError: boolean; renderedAt: number };
+
+async function load(): Promise<ExpensesData> {
+  // Captured with the data, not while rendering, so the server markup and the first client
+  // render compare renewal dates against the same instant.
+  const renderedAt = Date.now();
   try {
     const response = await apiFetch("/api/v1/company-subscriptions");
-    if (!response.ok) return { subscriptions: [], loadError: true };
-    return { subscriptions: (await response.json()).subscriptions, loadError: false };
+    if (!response.ok) return { subscriptions: [], loadError: true, renderedAt };
+    const payload = await readJson<CompanySubscriptionsResponse>(response);
+    return { subscriptions: payload.subscriptions, loadError: false, renderedAt };
   } catch {
-    return { subscriptions: [], loadError: true };
+    return { subscriptions: [], loadError: true, renderedAt };
   }
 }
 export default async function CompanySubscriptionsPage({ params }: { params: Promise<{ locale: string }> }) {

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { TenantContext } from "@control-hub/domain";
+import { describe, expect, it, vi } from "vitest";
 import {
   CompanySubscriptionError,
   CompanySubscriptionService,
@@ -32,13 +32,10 @@ const valid = {
 describe("CompanySubscriptionService", () => {
   it("normalizes provider and currency before persistence", async () => {
     const create = vi
-      .fn()
-      .mockImplementation(async (_context, input) => ({
-        id: "id",
-        ...input,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }));
+      .fn<CompanySubscriptionRepository["create"]>()
+      .mockImplementation((_context, input) =>
+        Promise.resolve({ id: "id", ...input, createdAt: new Date(), updatedAt: new Date() })
+      );
     const service = new CompanySubscriptionService({ create } as unknown as CompanySubscriptionRepository);
     await service.create(context, { ...valid, provider: " OpenAI " });
     expect(create).toHaveBeenCalledWith(context, expect.objectContaining({ provider: "OpenAI", currency: "EUR" }));

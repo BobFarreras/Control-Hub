@@ -1,6 +1,6 @@
-import { Worker } from "bullmq";
 import { parseWorkerEnvironment } from "@control-hub/config";
 import { createLogger } from "@control-hub/observability";
+import { Worker } from "bullmq";
 import { processSystemJob } from "./system-job.js";
 
 const environment = parseWorkerEnvironment(process.env);

@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
 import { isLocale } from "@control-hub/i18n";
+import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/require-session";
 
 export default async function SecurityLayout({

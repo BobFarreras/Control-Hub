@@ -17,14 +17,9 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import type { TablePreference } from "@/lib/api-types";
 
-export type TablePreference = {
-  tableId: string;
-  columnOrder: string[];
-  hiddenColumns: string[];
-  columnWidths: Record<string, number>;
-  pageSize: 10 | 25 | 50 | 100;
-};
+export type { TablePreference };
 export type SmartColumn<Row> = {
   id: string;
   label: string;

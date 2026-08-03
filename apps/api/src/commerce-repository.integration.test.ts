@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CommerceError, CommerceService } from "@control-hub/application";
+import { type CommerceError, CommerceService } from "@control-hub/application";
 import { createDatabaseClient, withTenant, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext } from "@control-hub/domain";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;

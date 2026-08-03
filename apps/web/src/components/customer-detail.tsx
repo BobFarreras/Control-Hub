@@ -3,6 +3,8 @@
 import { Check, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { textEntries } from "@/lib/form";
+import { actionHandler } from "@/lib/handlers";
 
 type Customer = {
   id: string;
@@ -23,11 +25,13 @@ type Labels = Record<string, string>;
 export function CustomerDetail({ customer, labels, locale }: { customer: Customer; labels: Labels; locale: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  /** Last resort for a handler that rejected outright, so a failure is never silent. */
+  const fail = () => setError("CRM_ERROR");
   const [pending, startTransition] = useTransition();
   const refresh = () => startTransition(() => router.refresh());
   async function submit(path: string, formData: FormData) {
     setError("");
-    const body = Object.fromEntries([...formData.entries()].filter(([, value]) => String(value).trim()));
+    const body: Record<string, string> = Object.fromEntries(textEntries(formData));
     if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt).toISOString();
     const response = await fetch(path, {
       method: "POST",
@@ -114,7 +118,11 @@ export function CustomerDetail({ customer, labels, locale }: { customer: Custome
               {task.completedAt ? (
                 <span className="state state-won">{labels.complete}</span>
               ) : (
-                <button className="icon-button" title={labels.complete} onClick={() => complete(task.id)}>
+                <button
+                  className="icon-button"
+                  title={labels.complete}
+                  onClick={actionHandler(() => complete(task.id), fail)}
+                >
                   <Check size={17} />
                 </button>
               )}

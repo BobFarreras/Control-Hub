@@ -1,26 +1,4 @@
 import { createHash } from "node:crypto";
-import cors from "@fastify/cors";
-import helmet from "@fastify/helmet";
-import rateLimit from "@fastify/rate-limit";
-import swagger from "@fastify/swagger";
-import swaggerUi from "@fastify/swagger-ui";
-import Fastify, { LogController, type FastifyRequest } from "fastify";
-import Redis from "ioredis";
-import { checkDatabase, createDatabaseClient } from "@control-hub/database";
-import { createLogger } from "@control-hub/observability";
-import { parseCsv, stringifyCsv, type LiveHealth, type ReadyHealth } from "@control-hub/contracts";
-import type { ControlHubAuth } from "./auth.js";
-import { ApiSecurityError, requirePermission, resolveTenantContext } from "./security.js";
-import { assignMemberRole, IdentityInvariantError, listAuditEvents, listMembers } from "./identity-repository.js";
-import { writeAudit } from "./security.js";
-import type { RoleCode } from "@control-hub/domain";
-import {
-  leadPriorities,
-  leadStatuses,
-  normalizeComparableName,
-  type LeadPriority,
-  type LeadStatus
-} from "@control-hub/domain";
 import {
   CommerceError,
   CommerceService,
@@ -31,9 +9,30 @@ import {
   type CrmListQuery,
   type CreateLeadInput
 } from "@control-hub/application";
-import { PostgresCrmRepository } from "./crm-repository.js";
+import { parseCsv, stringifyCsv, type LiveHealth, type ReadyHealth } from "@control-hub/contracts";
+import { checkDatabase, createDatabaseClient } from "@control-hub/database";
+import {
+  leadPriorities,
+  leadStatuses,
+  normalizeComparableName,
+  type LeadPriority,
+  type LeadStatus,
+  type RoleCode
+} from "@control-hub/domain";
+import { createLogger } from "@control-hub/observability";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
+import Fastify, { LogController, type FastifyRequest } from "fastify";
+import Redis from "ioredis";
+import type { ControlHubAuth } from "./auth.js";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
 import { PostgresCompanySubscriptionRepository } from "./company-subscription-repository.js";
+import { PostgresCrmRepository } from "./crm-repository.js";
+import type { MailSender } from "./email.js";
+import { assignMemberRole, IdentityInvariantError, listAuditEvents, listMembers } from "./identity-repository.js";
 import {
   acceptInvitation,
   createInvitation,
@@ -43,8 +42,8 @@ import {
   revokeInvitation,
   type InvitationRole
 } from "./invitation-repository.js";
+import { ApiSecurityError, requirePermission, resolveTenantContext, writeAudit } from "./security.js";
 import { getTablePreference, saveTablePreference } from "./table-preference-repository.js";
-import type { MailSender } from "./email.js";
 
 type BuildAppOptions = {
   databaseUrl: string;
@@ -780,16 +779,14 @@ export function buildApp(options: BuildAppOptions) {
           outcome: "success",
           metadata: { email: invitation.email, role: invitation.role }
         });
-        return reply
-          .code(201)
-          .send({
-            invitation: {
-              id: invitation.id,
-              email: invitation.email,
-              role: invitation.role,
-              expiresAt: invitation.expiresAt
-            }
-          });
+        return reply.code(201).send({
+          invitation: {
+            id: invitation.id,
+            email: invitation.email,
+            role: invitation.role,
+            expiresAt: invitation.expiresAt
+          }
+        });
       }
     );
     app.delete<{ Params: { invitationId: string } }>("/api/v1/invitations/:invitationId", async (request, reply) => {
@@ -1237,7 +1234,7 @@ export function buildApp(options: BuildAppOptions) {
     }
   );
 
-  app.get<{ Reply: LiveHealth }>("/health/live", { schema: { tags: ["health"] } }, async () => ({
+  app.get<{ Reply: LiveHealth }>("/health/live", { schema: { tags: ["health"] } }, () => ({
     status: "ok",
     service: "api",
     version: options.version ?? "0.1.0"

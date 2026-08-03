@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyRequest } from "fastify";
-import type { ControlHubAuth } from "./auth.js";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import { hasPermission, type Permission, type RoleCode, type TenantContext } from "@control-hub/domain";
+import type { FastifyRequest } from "fastify";
+import type { ControlHubAuth } from "./auth.js";
 
 export class ApiSecurityError extends Error {
   constructor(

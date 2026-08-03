@@ -1,18 +1,19 @@
+import { getCrmDetailDictionary, getDictionary, isLocale } from "@control-hub/i18n";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCrmDetailDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import { CustomerDetail } from "@/components/customer-detail";
 import { AppSidebar } from "@/components/app-sidebar";
+import { CustomerDetail } from "@/components/customer-detail";
 import { PageTopbar } from "@/components/page-topbar";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readJson } from "@/lib/api";
+import type { CustomerDetail as CustomerDetailData, CustomerDetailResponse } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
-async function loadCustomer(customerId: string) {
+async function loadCustomer(customerId: string): Promise<CustomerDetailData> {
   const response = await apiFetch(`/api/v1/crm/customers/${customerId}`);
   if (response.status === 404) notFound();
   if (!response.ok) throw new Error("CRM_LOAD_ERROR");
-  return (await response.json()).customer;
+  return (await readJson<CustomerDetailResponse>(response)).customer;
 }
 
 export default async function CustomerPage({ params }: { params: Promise<{ locale: string; customerId: string }> }) {

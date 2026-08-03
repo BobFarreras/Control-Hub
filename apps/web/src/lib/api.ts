@@ -32,6 +32,16 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   });
 }
 
+/**
+ * The single place where an API payload is given a type. `Response.json()` hands back `any`,
+ * and letting that spread through the pages is how a renamed field turns into `undefined` on
+ * screen instead of a build failure. The assertion is not validation: it records which contract
+ * in `./api-types` the caller expects, so a change on the API side has one place to be answered.
+ */
+export async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
 export async function hasSessionCookie() {
   const cookieStore = await cookies();
   return cookieStore.getAll().length > 0;

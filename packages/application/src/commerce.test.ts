@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { TenantContext } from "@control-hub/domain";
+import { describe, expect, it, vi } from "vitest";
 import { CommerceService, type CommerceRepository } from "./commerce.js";
 
 const context = {

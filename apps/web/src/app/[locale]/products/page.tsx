@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
 import { getCommerceDictionary, getDictionary, getMetricHelpDictionary, isLocale } from "@control-hub/i18n";
+import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CommerceWorkspace } from "@/components/commerce-workspace";
 import { PageTopbar } from "@/components/page-topbar";

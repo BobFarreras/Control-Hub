@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CrmError } from "@control-hub/application";
+import { type CrmError } from "@control-hub/application";
 import { createDatabaseClient, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext } from "@control-hub/domain";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresCrmRepository } from "./crm-repository.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;

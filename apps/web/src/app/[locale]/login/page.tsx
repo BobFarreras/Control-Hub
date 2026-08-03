@@ -1,10 +1,12 @@
 "use client";
 
+import { getDictionary, isLocale } from "@control-hub/i18n";
 import { Command, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
-import { getDictionary, isLocale } from "@control-hub/i18n";
+import { formValue } from "@/lib/form";
+import { eventHandler } from "@/lib/handlers";
 
 export default function LoginPage() {
   const localeParam = String(useParams().locale);
@@ -20,8 +22,8 @@ export default function LoginPage() {
     setError("");
     const data = new FormData(event.currentTarget);
     const result = await authClient.signIn.email({
-      email: String(data.get("email")),
-      password: String(data.get("password")),
+      email: formValue(data, "email"),
+      password: formValue(data, "password"),
       rememberMe: true
     });
     setBusy(false);
@@ -34,7 +36,7 @@ export default function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const code = String(new FormData(event.currentTarget).get("code"));
+    const code = formValue(new FormData(event.currentTarget), "code");
     const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: false });
     setBusy(false);
     if (result.error) return setError(t.error);
@@ -58,7 +60,10 @@ export default function LoginPage() {
         </div>
       </section>
       <section className="auth-form-panel">
-        <form className="auth-form" onSubmit={step === "credentials" ? submit : verify}>
+        <form
+          className="auth-form"
+          onSubmit={eventHandler(step === "credentials" ? submit : verify, () => setError(t.error))}
+        >
           <KeyRound size={28} />
           <h2>{step === "credentials" ? t.signIn : t.verify}</h2>
           {step === "credentials" ? (

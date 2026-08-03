@@ -3,8 +3,10 @@
 import { AlertTriangle, CalendarClock, ExternalLink, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { MetricHelp } from "@/components/metric-help";
+import { optionalFormValue } from "@/lib/form";
+import { actionHandler, eventHandler } from "@/lib/handlers";
 
 type Subscription = {
   id: string;
@@ -22,23 +24,30 @@ type Subscription = {
 };
 type Labels = Record<string, string>;
 
+/** Module scope: it never changes, so it does not belong in the memo dependencies. */
+const annualMultiplier = { monthly: 12, quarterly: 4, semiannual: 2, annual: 1 } as const;
+
 export function CompanySubscriptionsWorkspace({
   subscriptions,
   labels: t,
   locale,
-  loadError
+  loadError,
+  renderedAt
 }: {
   subscriptions: Subscription[];
   labels: Labels;
   locale: string;
   loadError: boolean;
+  /** Fixed by the server so the markup it sends and the first client render agree. */
+  renderedAt: number;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState(false);
   const [error, setError] = useState("");
+  /** Last resort for a handler that rejected outright, so a failure is never silent. */
+  const fail = () => setError(t.formError ?? "OPERATION_FAILED");
   const money = (minor: number, currency: string) =>
     new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
-  const multiplier = { monthly: 12, quarterly: 4, semiannual: 2, annual: 1 } as const;
   const annual = useMemo(
     () =>
       subscriptions
@@ -46,7 +55,7 @@ export function CompanySubscriptionsWorkspace({
         .reduce<Record<string, number>>(
           (totals, item) => ({
             ...totals,
-            [item.currency]: (totals[item.currency] ?? 0) + item.amountMinor * multiplier[item.interval]
+            [item.currency]: (totals[item.currency] ?? 0) + item.amountMinor * annualMultiplier[item.interval]
           }),
           {}
         ),
@@ -56,7 +65,7 @@ export function CompanySubscriptionsWorkspace({
     (item) =>
       item.status !== "canceled" &&
       item.renewalAt &&
-      new Date(item.renewalAt).getTime() <= Date.now() + item.renewalAlertDays * 86_400_000
+      new Date(item.renewalAt).getTime() <= renderedAt + item.renewalAlertDays * 86_400_000
   );
   async function responseError(response: Response) {
     const payload = (await response.json().catch(() => null)) as { code?: string } | null;
@@ -69,7 +78,7 @@ export function CompanySubscriptionsWorkspace({
     setError("");
     const form = event.currentTarget;
     const data = new FormData(form);
-    const renewal = data.get("renewalAt");
+    const renewal = optionalFormValue(data, "renewalAt");
     const response = await fetch("/api/v1/company-subscriptions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -81,7 +90,7 @@ export function CompanySubscriptionsWorkspace({
         currency: data.get("currency"),
         amountMinor: Math.round(Number(data.get("amount")) * 100),
         interval: data.get("interval"),
-        renewalAt: renewal ? new Date(String(renewal)).toISOString() : undefined,
+        renewalAt: renewal ? new Date(renewal).toISOString() : undefined,
         renewalAlertDays: Number(data.get("alertDays")),
         autoRenew: data.get("autoRenew") === "on",
         websiteUrl: data.get("websiteUrl") || undefined,
@@ -164,7 +173,11 @@ export function CompanySubscriptionsWorkspace({
               <select
                 aria-label={t.status}
                 value={item.status}
-                onChange={(event) => updateStatus(item.id, event.target.value as Subscription["status"])}
+                onChange={actionHandler(
+                  (event: ChangeEvent<HTMLSelectElement>) =>
+                    updateStatus(item.id, event.target.value as Subscription["status"]),
+                  fail
+                )}
               >
                 <option value="active">{t.active}</option>
                 <option value="trial">{t.trial}</option>
@@ -213,7 +226,7 @@ export function CompanySubscriptionsWorkspace({
                 <X size={18} />
               </button>
             </header>
-            <form className="commerce-form" onSubmit={submit}>
+            <form className="commerce-form" onSubmit={eventHandler(submit, fail)}>
               <label>
                 {t.provider}
                 <input name="provider" required maxLength={160} />

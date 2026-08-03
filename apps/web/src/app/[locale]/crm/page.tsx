@@ -1,19 +1,28 @@
-import { notFound } from "next/navigation";
 import { getCrmDetailDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import { CrmWorkspace } from "@/components/crm-workspace";
+import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
+import { CrmWorkspace } from "@/components/crm-workspace";
 import { PageTopbar } from "@/components/page-topbar";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readJson } from "@/lib/api";
+import type { CrmSummary, CustomerRow, LeadRow, Page, TablePreference, TablePreferenceResponse } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
-const emptySummary = { leadsByStatus: {}, activeCustomers: 0, openTasks: 0, overdueTasks: 0 };
-const defaultPreference = (tableId: string) => ({
+const emptySummary: CrmSummary = { leadsByStatus: {}, activeCustomers: 0, openTasks: 0, overdueTasks: 0 };
+const defaultPreference = (tableId: string): TablePreference => ({
   tableId,
   columnOrder: [],
   hiddenColumns: [],
   columnWidths: {},
-  pageSize: 25 as const
+  pageSize: 25
 });
+type CrmData = {
+  leads: Page<LeadRow>;
+  customers: Page<CustomerRow>;
+  leadPreference: TablePreference;
+  customerPreference: TablePreference;
+  summary: CrmSummary;
+  loadError: boolean;
+};
 type CrmSort =
   | "updated_desc"
   | "created_asc"
@@ -35,17 +44,17 @@ type CrmQuery = {
   leadStatus?: string;
   leadPriority?: string;
 };
-async function getCrmData(query: CrmQuery) {
+async function getCrmData(query: CrmQuery): Promise<CrmData> {
   try {
     const [leadPreferenceResponse, customerPreferenceResponse] = await Promise.all([
       apiFetch("/api/v1/table-preferences/crm.leads"),
       apiFetch("/api/v1/table-preferences/crm.customers")
     ]);
     const leadPreference = leadPreferenceResponse.ok
-      ? (await leadPreferenceResponse.json()).preference
+      ? (await readJson<TablePreferenceResponse>(leadPreferenceResponse)).preference
       : defaultPreference("crm.leads");
     const customerPreference = customerPreferenceResponse.ok
-      ? (await customerPreferenceResponse.json()).preference
+      ? (await readJson<TablePreferenceResponse>(customerPreferenceResponse)).preference
       : defaultPreference("crm.customers");
     const leadQuery = new URLSearchParams({
       page: String(query.leadPage),
@@ -78,11 +87,11 @@ async function getCrmData(query: CrmQuery) {
         loadError: true
       };
     return {
-      leads: await leads.json(),
-      customers: await customers.json(),
+      leads: await readJson<Page<LeadRow>>(leads),
+      customers: await readJson<Page<CustomerRow>>(customers),
       leadPreference,
       customerPreference,
-      summary: await summary.json(),
+      summary: await readJson<CrmSummary>(summary),
       loadError: false
     };
   } catch {

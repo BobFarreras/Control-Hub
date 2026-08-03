@@ -16,37 +16,13 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { SmartDataTable, type SmartColumn, type TablePreference } from "@/components/smart-data-table";
 import { InstantSearch } from "@/components/instant-search";
+import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
+import type { CrmSummary, CustomerRow, ImportResult, LeadRow, Page, TablePreference } from "@/lib/api-types";
+import { textEntries } from "@/lib/form";
+import { actionHandler } from "@/lib/handlers";
 
-type Lead = {
-  id: string;
-  name: string;
-  companyName: string | null;
-  email: string | null;
-  phone: string | null;
-  source: string;
-  status: string;
-  priority: string;
-  createdAt: string;
-};
-type Customer = {
-  id: string;
-  displayName: string;
-  billingEmail: string | null;
-  phone: string | null;
-  status: string;
-  createdAt: string;
-};
-type Summary = {
-  leadsByStatus: Record<string, number>;
-  activeCustomers: number;
-  openTasks: number;
-  overdueTasks: number;
-};
-type ImportResult = { row: number; status: string; code?: string };
 type Labels = Record<string, string>;
-type Page<T> = { items: T[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
 const pipeline = [
   ["new", CircleDot],
   ["contacted", PhoneCall],
@@ -67,13 +43,13 @@ export function CrmWorkspace({
   locale,
   loadError
 }: {
-  leads: Page<Lead>;
-  customers: Page<Customer>;
+  leads: Page<LeadRow>;
+  customers: Page<CustomerRow>;
   leadPreference: TablePreference;
   customerPreference: TablePreference;
   leadSort: string;
   customerSort: string;
-  summary: Summary;
+  summary: CrmSummary;
   labels: Labels;
   locale: string;
   loadError: boolean;
@@ -82,6 +58,8 @@ export function CrmWorkspace({
   const [tab, setTab] = useState<"leads" | "customers">("leads");
   const [dialog, setDialog] = useState<"lead" | "import" | null>(null);
   const [error, setError] = useState("");
+  /** Last resort for a handler that rejected outright, so a failure is never silent. */
+  const fail = () => setError("CRM_ERROR");
   const [csv, setCsv] = useState("");
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [pending, startTransition] = useTransition();
@@ -97,7 +75,7 @@ export function CrmWorkspace({
   async function createLead(formData: FormData) {
     try {
       setError("");
-      const body = Object.fromEntries([...formData.entries()].filter(([, value]) => String(value).trim()));
+      const body = Object.fromEntries(textEntries(formData));
       await request("/api/v1/crm/leads", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -141,7 +119,7 @@ export function CrmWorkspace({
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(value));
   const l = (key: string) => labels[key] ?? key;
-  const leadColumns: SmartColumn<Lead>[] = [
+  const leadColumns: SmartColumn<LeadRow>[] = [
     {
       id: "name",
       label: l("name"),
@@ -182,11 +160,13 @@ export function CrmWorkspace({
               title={l(status)}
               aria-label={l(status)}
               aria-pressed={lead.status === status}
-              onClick={() =>
-                status === "won"
-                  ? mutate(`/api/v1/crm/leads/${lead.id}/convert`)
-                  : mutate(`/api/v1/crm/leads/${lead.id}/status`, { status })
-              }
+              onClick={actionHandler(
+                () =>
+                  status === "won"
+                    ? mutate(`/api/v1/crm/leads/${lead.id}/convert`)
+                    : mutate(`/api/v1/crm/leads/${lead.id}/status`, { status }),
+                fail
+              )}
               key={status}
             >
               <Icon size={17} />
@@ -224,7 +204,7 @@ export function CrmWorkspace({
             <button
               title={l("lost")}
               aria-label={l("lost")}
-              onClick={() => mutate(`/api/v1/crm/leads/${lead.id}/status`, { status: "lost" })}
+              onClick={actionHandler(() => mutate(`/api/v1/crm/leads/${lead.id}/status`, { status: "lost" }), fail)}
             >
               <Ban size={16} />
             </button>
@@ -233,7 +213,7 @@ export function CrmWorkspace({
       )
     }
   ];
-  const customerColumns: SmartColumn<Customer>[] = [
+  const customerColumns: SmartColumn<CustomerRow>[] = [
     {
       id: "name",
       label: l("name"),
@@ -436,13 +416,17 @@ export function CrmWorkspace({
               }}
             />
             <div className="import-actions">
-              <button className="secondary-button" disabled={!csv} onClick={() => importCsv(false)}>
+              <button
+                className="secondary-button"
+                disabled={!csv}
+                onClick={actionHandler(() => importCsv(false), fail)}
+              >
                 {labels.preview}
               </button>
               <button
                 className="primary-command"
                 disabled={!csv || importResults.some((result) => result.status === "error")}
-                onClick={() => importCsv(true)}
+                onClick={actionHandler(() => importCsv(true), fail)}
               >
                 {labels.import}
               </button>

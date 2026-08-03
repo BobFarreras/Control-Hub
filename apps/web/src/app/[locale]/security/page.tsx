@@ -1,13 +1,15 @@
 "use client";
 
+import { getDictionary, isLocale } from "@control-hub/i18n";
 import { KeyRound, Laptop, LogOut, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { getDictionary, isLocale } from "@control-hub/i18n";
+import { useEffect, useState, type FormEvent } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
 import { authClient } from "@/lib/auth-client";
+import { formValue } from "@/lib/form";
+import { actionHandler, eventHandler } from "@/lib/handlers";
 
 type Session = { id: string; token: string; userAgent?: string | null; ipAddress?: string | null; expiresAt: Date };
 type Invitation = { id: string; email: string; role: "administrator" | "technical"; expiresAt: string };
@@ -48,7 +50,7 @@ export default function SecurityPage() {
     setError("");
     setBackupCodes([]);
     const result = await authClient.twoFactor.enable({
-      password: String(new FormData(event.currentTarget).get("password"))
+      password: formValue(new FormData(event.currentTarget), "password")
     });
     if (result.error) return setError(result.error.message ?? "TOTP");
     setTotpUri(result.data.totpURI);
@@ -58,7 +60,7 @@ export default function SecurityPage() {
   async function verifyTotp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const code = String(new FormData(event.currentTarget).get("code")).replace(/\s/g, "");
+    const code = formValue(new FormData(event.currentTarget), "code").replace(/\s/g, "");
     const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: false });
     if (result.error) return setError(result.error.message ?? "TOTP");
     setBackupCodes(pendingBackupCodes);
@@ -110,7 +112,7 @@ export default function SecurityPage() {
           description={session.data?.user.email}
           themeLabel={t.header.theme}
           actions={
-            <button className="secondary-button" onClick={signOut}>
+            <button className="secondary-button" onClick={actionHandler(signOut, () => setError("OPERATION_FAILED"))}>
               <LogOut size={17} />
               {t.security.signOut}
             </button>
@@ -123,7 +125,10 @@ export default function SecurityPage() {
               <h2>{t.security.secondFactor}</h2>
               <p>{t.security.mfaDescription}</p>
               {!mfaEnabled && !totpUri && backupCodes.length === 0 && (
-                <form className="auth-form compact" onSubmit={enableTotp}>
+                <form
+                  className="auth-form compact"
+                  onSubmit={eventHandler(enableTotp, () => setError("OPERATION_FAILED"))}
+                >
                   <label>
                     {t.security.currentPassword}
                     <input name="password" type="password" autoComplete="current-password" required />
@@ -132,7 +137,11 @@ export default function SecurityPage() {
                 </form>
               )}
               {mfaEnabled && backupCodes.length === 0 && <p className="security-success">{t.security.totpEnabled}</p>}
-              <button className="secondary-button" type="button" onClick={addPasskey}>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={actionHandler(addPasskey, () => setError("OPERATION_FAILED"))}
+              >
                 {t.security.addPasskey}
               </button>
               {totpUri && (
@@ -141,7 +150,10 @@ export default function SecurityPage() {
                     <QRCodeSVG value={totpUri} size={192} level="M" />
                   </div>
                   <p>{t.security.scanQr}</p>
-                  <form className="auth-form compact" onSubmit={verifyTotp}>
+                  <form
+                    className="auth-form compact"
+                    onSubmit={eventHandler(verifyTotp, () => setError("OPERATION_FAILED"))}
+                  >
                     <label>
                       {t.security.verificationCode}
                       <input
@@ -183,7 +195,10 @@ export default function SecurityPage() {
                       className="icon-button"
                       title={t.security.revoke}
                       aria-label={t.security.revoke}
-                      onClick={() => revoke(item.token)}
+                      onClick={actionHandler(
+                        () => revoke(item.token),
+                        () => setError("OPERATION_FAILED")
+                      )}
                     >
                       <LogOut size={16} />
                     </button>
@@ -196,7 +211,10 @@ export default function SecurityPage() {
                 <UserPlus size={24} />
                 <h2>{t.invitations.title}</h2>
                 <p>{t.invitations.description}</p>
-                <form className="invite-form" onSubmit={inviteMember}>
+                <form
+                  className="invite-form"
+                  onSubmit={eventHandler(inviteMember, () => setInvitationError(t.invitations.error))}
+                >
                   <label>
                     {t.auth.email}
                     <input name="email" type="email" required />
@@ -225,7 +243,10 @@ export default function SecurityPage() {
                         className="icon-button"
                         title={t.invitations.revoke}
                         aria-label={t.invitations.revoke}
-                        onClick={() => revokeInvitation(item.id)}
+                        onClick={actionHandler(
+                          () => revokeInvitation(item.id),
+                          () => setInvitationError(t.invitations.error)
+                        )}
                       >
                         <Trash2 size={16} />
                       </button>

@@ -9,9 +9,16 @@ export function InstantSearch({ placeholder, resetParams = [] }: { placeholder: 
   const searchParams = useSearchParams();
   const currentSearch = searchParams.get("search") ?? "";
   const [value, setValue] = useState(currentSearch);
+  const [syncedSearch, setSyncedSearch] = useState(currentSearch);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => setValue(currentSearch), [currentSearch]);
+  // Adjusting state while rendering is the documented way to follow a changing prop. Doing it
+  // in an effect instead renders the stale value first and then immediately renders again.
+  if (syncedSearch !== currentSearch) {
+    setSyncedSearch(currentSearch);
+    setValue(currentSearch);
+  }
+
   useEffect(() => {
     if (value.trim() === currentSearch) return;
     const timeout = window.setTimeout(() => {

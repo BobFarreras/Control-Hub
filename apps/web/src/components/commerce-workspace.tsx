@@ -16,6 +16,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import { MetricHelp } from "@/components/metric-help";
+import { formValue } from "@/lib/form";
+import { actionHandler, eventHandler } from "@/lib/handlers";
 
 type Product = { id: string; code: string; name: string; status: string };
 type Version = { id: string; productId: string; version: string; status: string };
@@ -68,7 +70,8 @@ export function CommerceWorkspace({
   labels: t,
   locale,
   loadError,
-  view
+  view,
+  renderedAt
 }: {
   catalog: { products: Product[]; versions: Version[]; plans: Plan[]; prices: Price[] };
   subscriptions: Subscription[];
@@ -79,10 +82,15 @@ export function CommerceWorkspace({
   locale: string;
   loadError: boolean;
   view: "catalog" | "subscriptions";
+  /** Fixed by the server so the markup it sends and the first client render agree. Reading the
+   *  clock while rendering makes the two disagree and produces a hydration mismatch. */
+  renderedAt: number;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<"product" | "version" | "plan" | "price" | "subscription" | null>(null);
   const [error, setError] = useState("");
+  /** Last resort for a handler that rejected outright, so a failure is never silent. */
+  const fail = () => setError(t.formError ?? "OPERATION_FAILED");
   const currency = (minor: number, code: string) =>
     new Intl.NumberFormat(locale, { style: "currency", currency: code }).format(minor / 100);
   async function showResponseError(response: Response) {
@@ -92,15 +100,16 @@ export function CommerceWorkspace({
       code === "MFA_REQUIRED" ? (t.mfaRequired ?? t.formError ?? "MFA_REQUIRED") : (t.formError ?? "OPERATION_FAILED")
     );
   }
-  const currentPrices = useMemo(() => {
-    const now = Date.now();
-    return catalog.plans.flatMap((plan) => {
-      const item = catalog.prices.find(
-        (price) => price.planId === plan.id && new Date(price.effectiveFrom).getTime() <= now
-      );
-      return item ? [{ ...item, planName: plan.name }] : [];
-    });
-  }, [catalog]);
+  const currentPrices = useMemo(
+    () =>
+      catalog.plans.flatMap((plan) => {
+        const item = catalog.prices.find(
+          (price) => price.planId === plan.id && new Date(price.effectiveFrom).getTime() <= renderedAt
+        );
+        return item ? [{ ...item, planName: plan.name }] : [];
+      }),
+    [catalog, renderedAt]
+  );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -113,19 +122,19 @@ export function CommerceWorkspace({
       body = { code: data.get("code"), name: data.get("name"), description: data.get("description") || undefined };
     }
     if (dialog === "version") {
-      url = `/api/v1/commerce/products/${data.get("productId")}/versions`;
+      url = `/api/v1/commerce/products/${formValue(data, "productId")}/versions`;
       body = {
         version: data.get("version"),
         status: data.get("status"),
-        releasedAt: data.get("releasedAt") ? new Date(String(data.get("releasedAt"))).toISOString() : undefined
+        releasedAt: data.get("releasedAt") ? new Date(formValue(data, "releasedAt")).toISOString() : undefined
       };
     }
     if (dialog === "plan") {
-      url = `/api/v1/commerce/versions/${data.get("versionId")}/plans`;
+      url = `/api/v1/commerce/versions/${formValue(data, "versionId")}/plans`;
       body = { code: data.get("code"), name: data.get("name"), description: data.get("description") || undefined };
     }
     if (dialog === "price") {
-      url = `/api/v1/commerce/plans/${data.get("planId")}/prices`;
+      url = `/api/v1/commerce/plans/${formValue(data, "planId")}/prices`;
       body = {
         currency: data.get("currency"),
         amountMinor: Math.round(Number(data.get("amount")) * 100),
@@ -143,7 +152,7 @@ export function CommerceWorkspace({
         planId: selected.planId,
         priceId: selected.id,
         quantity: Number(data.get("quantity")),
-        renewalAt: data.get("renewalAt") ? new Date(String(data.get("renewalAt"))).toISOString() : undefined,
+        renewalAt: data.get("renewalAt") ? new Date(formValue(data, "renewalAt")).toISOString() : undefined,
         renewalAlertDays: Number(data.get("alertDays"))
       };
     }
@@ -315,7 +324,12 @@ export function CommerceWorkspace({
                   <time>
                     {subscription.renewalAt ? new Date(subscription.renewalAt).toLocaleDateString(locale) : "--"}
                   </time>
-                  <form onSubmit={(event) => changePlan(event, subscription)}>
+                  <form
+                    onSubmit={eventHandler(
+                      (event: FormEvent<HTMLFormElement>) => changePlan(event, subscription),
+                      fail
+                    )}
+                  >
                     <select name="priceId" defaultValue={subscription.priceId}>
                       {currentPrices.map((price) => (
                         <option key={price.id} value={price.id}>
@@ -329,17 +343,29 @@ export function CommerceWorkspace({
                   </form>
                   <div className="row-actions">
                     {subscription.status === "active" && (
-                      <button title={t.pause} aria-label={t.pause} onClick={() => status(subscription, "paused")}>
+                      <button
+                        title={t.pause}
+                        aria-label={t.pause}
+                        onClick={actionHandler(() => status(subscription, "paused"), fail)}
+                      >
                         <Pause size={15} />
                       </button>
                     )}
                     {subscription.status === "paused" && (
-                      <button title={t.resume} aria-label={t.resume} onClick={() => status(subscription, "active")}>
+                      <button
+                        title={t.resume}
+                        aria-label={t.resume}
+                        onClick={actionHandler(() => status(subscription, "active"), fail)}
+                      >
                         <Play size={15} />
                       </button>
                     )}
                     {subscription.status !== "canceled" && (
-                      <button title={t.cancel} aria-label={t.cancel} onClick={() => status(subscription, "canceled")}>
+                      <button
+                        title={t.cancel}
+                        aria-label={t.cancel}
+                        onClick={actionHandler(() => status(subscription, "canceled"), fail)}
+                      >
                         <Archive size={15} />
                       </button>
                     )}
@@ -398,7 +424,7 @@ export function CommerceWorkspace({
                 <X size={18} />
               </button>
             </header>
-            <form className="commerce-form" onSubmit={submit}>
+            <form className="commerce-form" onSubmit={eventHandler(submit, fail)}>
               {dialog === "product" && (
                 <>
                   <label>

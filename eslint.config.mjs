@@ -139,8 +139,16 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-call": "off",
-      "@typescript-eslint/no-non-null-assertion": "off"
+      "@typescript-eslint/no-non-null-assertion": "off",
+      // Vitest spies are passed around as bare references on purpose.
+      "@typescript-eslint/unbound-method": "off"
     }
+  },
+
+  {
+    // Operator commands: their whole job is to print progress to whoever ran them.
+    files: ["apps/api/src/bootstrap.ts", "apps/api/src/seed-dev.ts", "scripts/**"],
+    rules: { "no-console": "off" }
   },
 
   {

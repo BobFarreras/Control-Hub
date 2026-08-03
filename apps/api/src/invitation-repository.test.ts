@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabaseClient, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext } from "@control-hub/domain";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   acceptInvitation,
   createInvitation,

@@ -1,33 +1,65 @@
-import { apiFetch } from "./api";
+import { apiFetch, readJson } from "./api";
+import type {
+  Catalog,
+  CustomerOption,
+  CustomerSubscription,
+  CustomerSubscriptionsResponse,
+  FinancialMetric,
+  FinancialSummaryResponse,
+  Page,
+  RenewalAlert,
+  RenewalAlertsResponse
+} from "./api-types";
 
-const empty = {
+export type CommerceData = {
+  catalog: Catalog;
+  subscriptions: CustomerSubscription[];
+  metrics: FinancialMetric[];
+  alerts: RenewalAlert[];
+  customers: CustomerOption[];
+  loadError: boolean;
+  /** Captured with the data rather than while rendering, so the server markup and the first
+   *  client render compare against the same instant instead of two different clocks. */
+  renderedAt: number;
+};
+
+const emptyData = {
   catalog: { products: [], versions: [], plans: [], prices: [] },
   subscriptions: [],
   metrics: [],
   alerts: [],
   customers: [],
   loadError: true
-};
-export async function getCommerceData() {
+} satisfies Omit<CommerceData, "renderedAt">;
+
+export async function getCommerceData(): Promise<CommerceData> {
+  const empty: CommerceData = { ...emptyData, renderedAt: Date.now() };
   try {
-    const responses = await Promise.all([
-      apiFetch("/api/v1/commerce/catalog"),
-      apiFetch("/api/v1/commerce/subscriptions"),
-      apiFetch("/api/v1/commerce/financial-summary"),
-      apiFetch("/api/v1/commerce/renewal-alerts"),
-      apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc")
-    ]);
+    const [catalogResponse, subscriptionsResponse, metricsResponse, alertsResponse, customersResponse] =
+      await Promise.all([
+        apiFetch("/api/v1/commerce/catalog"),
+        apiFetch("/api/v1/commerce/subscriptions"),
+        apiFetch("/api/v1/commerce/financial-summary"),
+        apiFetch("/api/v1/commerce/renewal-alerts"),
+        apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc")
+      ]);
+    const responses = [catalogResponse, subscriptionsResponse, metricsResponse, alertsResponse, customersResponse];
     if (responses.some((response) => !response.ok)) return empty;
-    const [catalog, subscriptions, metrics, alerts, customers] = await Promise.all(
-      responses.map((response) => response.json())
-    );
+    const [catalog, subscriptions, metrics, alerts, customers] = await Promise.all([
+      readJson<Catalog>(catalogResponse),
+      readJson<CustomerSubscriptionsResponse>(subscriptionsResponse),
+      readJson<FinancialSummaryResponse>(metricsResponse),
+      readJson<RenewalAlertsResponse>(alertsResponse),
+      readJson<Page<CustomerOption>>(customersResponse)
+    ]);
     return {
       catalog,
       subscriptions: subscriptions.subscriptions,
       metrics: metrics.metrics,
       alerts: alerts.alerts,
       customers: customers.items,
-      loadError: false
+      loadError: false,
+      renderedAt: empty.renderedAt
     };
   } catch {
     return empty;

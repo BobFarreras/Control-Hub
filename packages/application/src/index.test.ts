@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
 import type { TenantContext } from "@control-hub/domain";
-import { CrmError, CrmService, type CrmRepository, type LeadRecord } from "./index.js";
+import { describe, expect, it, vi } from "vitest";
+import { type CrmError, CrmService, type CrmRepository, type LeadRecord } from "./index.js";
 
 const context: TenantContext = {
   tenantId: "tenant-a",
@@ -78,7 +78,7 @@ describe("CrmService", () => {
     await service.transitionLead(context, lead.id, "contacted");
     expect(adapter.transitionLead).toHaveBeenCalledWith(context, lead.id, "contacted");
   });
-  it("rejects empty notes and tasks", async () => {
+  it("rejects empty notes and tasks", () => {
     const service = new CrmService(repository());
     expect(() => service.addNote(context, "customer-a", "   ")).toThrow("INVALID_INPUT");
     expect(() => service.addTask(context, "customer-a", { title: " " })).toThrow("INVALID_INPUT");
