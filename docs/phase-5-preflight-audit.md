@@ -11,7 +11,27 @@ No s'ha modificat codi: aquest document només registra troballes i propostes.
 | --- | --- | --- |
 | A | 1, 2, 3, 4, 10 | Corregides |
 | B | 8 (linter i densitat) | Corregida |
-| Obertes | 5, 6, 7, 9, 11, 12 | Pendents |
+| C | 5, 6, 7, 9, 11, 12 | Corregides |
+
+Totes les troballes d'aquesta auditoria estan tancades. El que queda obert son els
+tres punts anotats mes avall com a "pendent": CSP amb nonce, `trustProxy` fixat al nombre
+real de salts, i les baselines visuals per a Linux.
+
+### Troballa 13 (nova) — el rate limit no s'havia aplicat mai
+
+Trobada mentre es corregia la 5. `@fastify/rate-limit` s'enganxa a les rutes a traves del
+hook `onRoute`, que es de temps de construccio. `buildApp` declarava totes les rutes abans
+que el plugin acabes de carregar-se, aixi que el hook no en veia cap: **el limitador no
+governava res des del primer dia**. Els hooks de peticio de `helmet` no depenen d'aquest
+ordre, i per aixo la mancanca era invisible — les capceleres de seguretat arribaven i els
+pressupostos no.
+
+Aixo vol dir que la troballa 1 era, de fet, mes greu del que deia: no hi havia cap limit
+efectiu sobre `/api/auth/*`, ni per adreca ni per sessio.
+
+Correccio: les rutes es declaren dins d'`app.after()`, i dos tests comproven el pressupost
+anunciat (`x-ratelimit-limit`) en una ruta ordinaria i en una de credencials. Comptar rebutjos
+no serveix com a prova: amb `skipOnError` el test passaria igualment sense cap limitador.
 
 ## Estat verificat
 
@@ -321,6 +341,27 @@ sense crear un cicle.
 S'hi ha afegit un test que comprova que les 43 rutes segueixen registrades. Un `tsc` no pot
 detectar aquest refactor si surt malament, perquè esborrar una crida a `register...Routes`
 segueix compilant.
+
+## Què s'ha canviat al bloc C
+
+- **5.** Els comptadors viuen a Valkey amb el prefix `control-hub:rate-limit:`. El client del
+  limitador es connecta de manera immediata i conserva la cua offline: amb `lazyConnect` i
+  `enableOfflineQueue: false` totes les escriptures es rebutjaven abans d'existir la connexio
+  i `skipOnError` se les empassava, que es un limitador que no fa res. Verificat en calent.
+- **6.** Dependabot cobreix `npm` (arrel del workspace, que es on viu el lockfile) i `docker`
+  (`/deploy`), amb minor i patch agrupats en una sola PR.
+- **7.** CodeQL amb `security-extended`, auditoria de dependencies que falla amb severitat
+  alta, i la suite E2E funcional a CI. Totes les accions fixades per SHA de commit amb la
+  versio anotada al costat. Node fixat i store de pnpm cachejat.
+- **9.** El segon factor s'exigeix a `resolveTenantContext`. Vegeu la seccio corresponent a
+  `SECURITY_ARCHITECTURE.md`.
+- **11.** `GET /metrics` en format Prometheus, fora de la superficie que el web reenvia.
+  Inclou metriques per defecte de Node i histograma de durada per patro de ruta.
+- **12.** L'exportacio CSV pagina fins al final en comptes de tallar a 10000 files.
+
+**Pendent:** les baselines visuals de Playwright estan generades a Windows (`-win32`), de
+manera que la suite `@visual` no s'executa a CI. Perque hi corri cal generar-ne de Linux dins
+d'un contenidor.
 
 ## Recomanació d'ordre
 
