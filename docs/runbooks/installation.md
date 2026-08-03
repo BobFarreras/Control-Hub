@@ -76,7 +76,7 @@ release instal·lable a tercers.
 3. Executar `pnpm dev:all`.
 4. Executar `pnpm bootstrap:owner` nomes si la base no conte cap tenant.
 5. Consultar el missatge de verificacio a Mailpit: `http://localhost:8025`.
-6. Entrar a `http://localhost:3000`, verificar el compte i activar MFA.
+6. Entrar a `http://localhost:3001`, verificar el compte i activar MFA.
 
 `pnpm dev` nomes inicia processos. `pnpm dev:all` prepara infraestructura, aplica
 migracions i inicia l'aplicacio.

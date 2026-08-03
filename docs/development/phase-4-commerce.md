@@ -9,6 +9,10 @@
 - MRR, ARR, cost anual i marge anual agrupats per moneda.
 - UI operativa responsive en `ca`, `es` i `en`, compatible amb light i dark.
 - Permisos backend `products:manage`, `subscriptions:manage` i `financials:read` amb MFA.
+- Subscripcions contractades per l'empresa separades de les subscripcions venudes a clients.
+- Navegacio de Productes i Despeses amb submenus i rutes independents.
+- Franges compactes de KPI i accions, amb ajuda contextual per MRR, ARR i marge.
+- Preferencies de llistat persistides i dades representatives opcionals per desenvolupament.
 
 ## Regles operatives
 
@@ -22,9 +26,9 @@ MRR s'arrodoneix una vegada despres d'agregar l'ARR de cada moneda.
 
 ## Desenvolupament local
 
-1. Executar `pnpm db:migrate` per aplicar `0010_commerce.sql` i `0011_subscription_renewals.sql`.
+1. Executar `pnpm db:migrate` per aplicar `0010_commerce.sql`, `0011_subscription_renewals.sql`, `0012_company_subscriptions.sql` i `0013_user_table_preferences.sql`.
 2. Iniciar el projecte amb `pnpm dev`.
-3. Obrir `http://localhost:3000/ca/commerce` amb un Owner o Administrator amb MFA.
+3. Obrir `http://localhost:3001/ca/products` amb un Owner o Administrator amb MFA. Les subscripcions venudes son a `/ca/products/customer-subscriptions` i les contractades per l'empresa a `/ca/expenses/subscriptions`.
 4. Crear producte, versio, pla i preu, en aquest ordre.
 5. Crear una subscripcio per a un client existent i validar metriques i alertes.
 

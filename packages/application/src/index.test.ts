@@ -21,7 +21,7 @@ describe("CrmService", () => {
   });
   it("rejects invalid transitions before writing", async () => {
     const adapter = repository(); const service = new CrmService(adapter);
-    await expect(service.transitionLead(context, lead.id, "proposal")).rejects.toEqual(expect.objectContaining({ code: "INVALID_TRANSITION" } satisfies Partial<CrmError>));
+    await expect(service.transitionLead(context, lead.id, "won")).rejects.toEqual(expect.objectContaining({ code: "INVALID_TRANSITION" } satisfies Partial<CrmError>));
     expect(adapter.transitionLead).not.toHaveBeenCalled();
   });
   it("permits the approved next transition", async () => {

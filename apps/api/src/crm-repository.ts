@@ -21,6 +21,7 @@ export class PostgresCrmRepository implements CrmRepository {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const search = query.search?.trim() || null;
       const status = query.status || null;
+      const priority = query.priority || null;
       const offset = (query.page - 1) * query.pageSize;
       const rows = await tx<LeadRecord[]>`
         select id, name, company_name as "companyName", email, phone, source, status, priority,
@@ -28,13 +29,19 @@ export class PostgresCrmRepository implements CrmRepository {
           created_at as "createdAt", updated_at as "updatedAt"
         from leads where tenant_id = ${context.tenantId}
           and (${status}::text is null or status = ${status})
+          and (${priority}::text is null or priority = ${priority})
           and (${search}::text is null or id::text = ${search} or normalized_name like '%' || lower(${search}) || '%'
             or normalized_email like '%' || lower(${search}) || '%' or normalized_phone like '%' || ${search} || '%')
-        order by case when ${query.sort} = 'name_asc' then normalized_name end asc,
+        order by case when ${query.sort} = 'name_asc' then normalized_name end asc, case when ${query.sort} = 'name_desc' then normalized_name end desc,
+          case when ${query.sort} = 'company_asc' then lower(company_name) end asc nulls last, case when ${query.sort} = 'company_desc' then lower(company_name) end desc nulls last,
+          case when ${query.sort} = 'priority_asc' then array_position(array['low','normal','high','urgent']::text[], priority) end asc,
+          case when ${query.sort} = 'priority_desc' then array_position(array['low','normal','high','urgent']::text[], priority) end desc,
+          case when ${query.sort} = 'created_asc' then created_at end asc, case when ${query.sort} = 'created_desc' then created_at end desc,
           case when ${query.sort} = 'updated_desc' then updated_at end desc, id
         limit ${query.pageSize} offset ${offset}`;
       const count = await tx<{ total: number }[]>`select count(*)::int as total from leads where tenant_id = ${context.tenantId}
         and (${status}::text is null or status = ${status})
+        and (${priority}::text is null or priority = ${priority})
         and (${search}::text is null or id::text = ${search} or normalized_name like '%' || lower(${search}) || '%'
           or normalized_email like '%' || lower(${search}) || '%' or normalized_phone like '%' || ${search} || '%')`;
       return { items: rows, total: count[0]?.total ?? 0, page: query.page, pageSize: query.pageSize };
@@ -48,7 +55,9 @@ export class PostgresCrmRepository implements CrmRepository {
         owner_membership_id as "ownerMembershipId", created_from_lead_id as "createdFromLeadId", created_at as "createdAt", updated_at as "updatedAt"
         from customers where tenant_id = ${context.tenantId} and (${status}::text is null or status = ${status})
         and (${search}::text is null or normalized_name like '%' || lower(${search}) || '%' or normalized_billing_email like '%' || lower(${search}) || '%' or normalized_phone like '%' || ${search} || '%')
-        order by case when ${query.sort} = 'name_asc' then normalized_name end asc, case when ${query.sort} = 'updated_desc' then updated_at end desc, id
+        order by case when ${query.sort} = 'name_asc' then normalized_name end asc, case when ${query.sort} = 'name_desc' then normalized_name end desc,
+          case when ${query.sort} = 'created_asc' then created_at end asc, case when ${query.sort} = 'created_desc' then created_at end desc,
+          case when ${query.sort} = 'updated_desc' then updated_at end desc, id
         limit ${query.pageSize} offset ${offset}`;
       const count = await tx<{ total: number }[]>`select count(*)::int as total from customers where tenant_id = ${context.tenantId} and (${status}::text is null or status = ${status})
         and (${search}::text is null or normalized_name like '%' || lower(${search}) || '%' or normalized_billing_email like '%' || lower(${search}) || '%' or normalized_phone like '%' || ${search} || '%')`;

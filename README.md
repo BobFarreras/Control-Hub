@@ -51,13 +51,16 @@ pnpm bootstrap:owner
 pnpm dev
 ```
 
-Control Hub queda disponible a `http://localhost:3000`. Per executar tot el core en contenidors: `docker compose up --build`.
+Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core en contenidors: `docker compose up --build`.
 
 ## Roadmap immediat
 
-1. Afegir suport, tickets i SLA.
-2. Afegir inventari i salut d'infraestructura.
-3. Afegir connectors sobre contractes estables.
+1. **Fase 5:** suport, tickets i SLA.
+2. **Fase 6:** inventari i salut d'infraestructura.
+3. **Fase 7:** connectors sobre contractes estables.
+
+L'estat tecnic i el punt de continuacio per a desenvolupadors i agents es documenten a
+[`docs/development/current-state.md`](docs/development/current-state.md).
 
 ## Seguretat
 

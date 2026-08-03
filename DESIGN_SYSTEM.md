@@ -97,6 +97,13 @@ La shell compartida conte:
 
 Desktop utilitza sidebar i topbar. Mobile utilitza topbar compacta i navegacio inferior o drawer; mai replica una sidebar desktop comprimida.
 
+### Densitat operativa
+
+- El context de pagina (`eyebrow`, titol i descripcio) viu sempre a la topbar compartida; no es repeteix com una capcalera dins del contingut.
+- KPI, resums i accions principals comparteixen una franja compacta sempre que siguin comparables i hi hagi espai.
+- Les sigles i metriques no evidents inclouen ajuda contextual accessible per hover i focus, traduida a `ca`, `es` i `en`.
+- Les pantalles noves reutilitzen `PageTopbar`, `MetricHelp` i les franges de resum existents abans de crear variants locals.
+
 ## Components obligatoris
 
 - Button: icon, primary, secondary, ghost i destructive.

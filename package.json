@@ -20,6 +20,7 @@
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v",
     "db:migrate": "node --env-file=.env scripts/run-local-command.mjs migrate",
+    "db:seed:dev": "node --env-file=.env scripts/run-local-command.mjs seed",
     "bootstrap:owner": "node --env-file=.env scripts/run-local-command.mjs bootstrap"
   },
   "devDependencies": {

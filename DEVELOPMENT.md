@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori disposa del nucli executable, identitat i seguretat, CRM professional i la Fase 4 de productes, plans, preus, subscripcions, renovacions i metriques recurrents.
+El repositori disposa del nucli executable, identitat i seguretat, CRM professional i la Fase 4 de productes, plans, preus, subscripcions, renovacions i metriques recurrents. El punt de continuacio es la Fase 5 de suport, tickets i SLA; veure `docs/development/current-state.md`.
 
 ## Requisits
 
@@ -44,9 +44,9 @@ pnpm dev
 
 | Servei | URL | Notes |
 |---|---|---|
-| Control Hub | `http://localhost:3000` | Unica entrada del navegador |
-| API via web | `http://localhost:3000/api/v1` | Ruta preferida des del frontend |
-| OpenAPI UI | `http://localhost:3000/api/docs` | Documentacio interactiva en desenvolupament |
+| Control Hub | `http://localhost:3001` | Unica entrada del navegador |
+| API via web | `http://localhost:3001/api/v1` | Ruta preferida des del frontend |
+| OpenAPI UI | `http://localhost:3001/api/docs` | Documentacio interactiva en desenvolupament |
 | API directa | `http://localhost:4000` | Diagnosi local, no utilitzada pel browser |
 | API liveness | `http://localhost:4000/health/live` | Proces actiu |
 | API readiness | `http://localhost:4000/health/ready` | Dependencies obligatories preparades |
@@ -60,7 +60,7 @@ PostgreSQL `5432`, cua Redis-compatible `6379` i SMTP Mailpit `1025` nomes s'exp
 ## Topologia
 
 ```text
-Browser -> localhost:3000 (Next.js)
+Browser -> localhost:3001 (Next.js)
                     |
                     +-> /api/* -> localhost:4000 (Fastify)
                                       |
@@ -80,6 +80,8 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 | `pnpm infra:up` | PostgreSQL, cua i Mailpit |
 | `pnpm infra:down` | Atura infraestructura sense eliminar dades |
 | `pnpm infra:reset` | Reinicia dades locals amb confirmacio explicita |
+| `pnpm db:migrate` | Aplica migracions pendents de forma idempotent |
+| `pnpm db:seed:dev` | Afegeix exemples idempotents nomes a PostgreSQL local |
 | `pnpm lint` | Lint de tot el workspace |
 | `pnpm typecheck` | TypeScript estricte |
 | `pnpm test` | Tests unitaris |
@@ -90,6 +92,16 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 | `pnpm check` | Lint + typecheck + tests + build |
 
 Cap script de test utilitza la base de dades manual del desenvolupador.
+
+## Dades d'exemple
+
+Despres de crear l'Owner i aplicar migracions, es pot preparar una vista representativa del producte:
+
+```powershell
+pnpm db:seed:dev
+```
+
+El seed crea leads en diferents estats, clients, productes amb versions, plans i preus, subscripcions de clients i despeses contractades. Es idempotent, no elimina dades existents i rebutja produccio, bases no locals o noms de base diferents de `control_hub`.
 
 ## Configuracio
 
@@ -102,6 +114,8 @@ Fitxers locals `.env*` estan ignorats, excepte `.env.example`. Credencials reals
 ## Autenticacio local
 
 Better Auth viu a l'API Fastify sota `/api/auth/*`. `pnpm bootstrap:owner` crea l'Owner mitjancant una ordre explicita d'un sol us; no hi ha credencials per defecte hardcoded. Despres de verificar el correu a Mailpit, cal activar TOTP a `/{locale}/security` per accedir a operacions privilegiades.
+
+La sessio es persistent durant la seva vigencia i es conserva a PostgreSQL encara que es reiniciin el web o l'API. Cal entrar sempre per `http://localhost:3001`: alternar entre `localhost` i `127.0.0.1` crea contextos de cookie diferents. L'autoritzacio de les rutes protegides es valida al servidor; una recompilacio temporal del client no provoca un logout.
 
 Mailpit captura verificacio de correu i recuperacio. MFA i passkeys es poden provar amb TOTP real i autenticadors virtuals de Playwright/WebAuthn.
 
@@ -139,5 +153,5 @@ Afegir validacions de seguretat, migracions, integracio o E2E segons el risc. In
 - Port ocupat: aturar el proces conflictiu o definir `POSTGRES_PORT`, `REDIS_PORT`, `MAILPIT_SMTP_PORT` o `MAILPIT_UI_PORT`; els valors canonics no canvien silenciosament.
 - Readiness falla: revisar PostgreSQL, cua i migracions.
 - Correu no arriba: revisar Mailpit abans del proveidor SMTP.
-- Cookies no persisteixen: comprovar que el browser entra per `localhost:3000`.
+- Cookies no persisteixen: comprovar que el browser entra per `localhost:3001`.
 - Reset de dades: utilitzar nomes `pnpm infra:reset`, mai eliminar volums manualment sense revisar el target.

@@ -14,13 +14,21 @@ import { assignMemberRole, IdentityInvariantError, listAuditEvents, listMembers 
 import { writeAudit } from "./security.js";
 import type { RoleCode } from "@control-hub/domain";
 import { leadPriorities, leadStatuses, normalizeComparableName, type LeadPriority, type LeadStatus } from "@control-hub/domain";
-import { CommerceError, CommerceService, CrmError, CrmService, type CrmListQuery, type CreateLeadInput } from "@control-hub/application";
+import { CommerceError, CommerceService, CompanySubscriptionError, CompanySubscriptionService, CrmError, CrmService, type CrmListQuery, type CreateLeadInput } from "@control-hub/application";
 import { PostgresCrmRepository } from "./crm-repository.js";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
+import { PostgresCompanySubscriptionRepository } from "./company-subscription-repository.js";
 import { acceptInvitation, createInvitation, InvitationError, listInvitations, lookupInvitation, revokeInvitation, type InvitationRole } from "./invitation-repository.js";
+import { getTablePreference, saveTablePreference } from "./table-preference-repository.js";
 import type { MailSender } from "./email.js";
 
 type BuildAppOptions = { databaseUrl: string; redisUrl: string; appOrigin?: string; auth?: ControlHubAuth; invitationAuth?: ControlHubAuth; sendMail?: MailSender; logLevel?: string; version?: string };
+
+const tableColumns = {
+  "crm.leads": ["name", "company", "status", "priority", "created", "actions"],
+  "crm.customers": ["name", "email", "phone", "status", "created"]
+} as const;
+type TableId = keyof typeof tableColumns;
 
 function requestHeaders(headers: Record<string, string | string[] | undefined>) {
   const result = new Headers();
@@ -40,6 +48,7 @@ export function buildApp(options: BuildAppOptions) {
   const database = createDatabaseClient(options.databaseUrl);
   const crm = new CrmService(new PostgresCrmRepository(database));
   const commerce = new CommerceService(new PostgresCommerceRepository(database));
+  const companySubscriptions = new CompanySubscriptionService(new PostgresCompanySubscriptionRepository(database));
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => logger.warn({ err: error }, "queue connection unavailable"));
 
@@ -68,6 +77,10 @@ export function buildApp(options: BuildAppOptions) {
       const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_CODE" || error.code === "INVALID_SUBSCRIPTION_TRANSITION" ? 409 : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof CompanySubscriptionError) {
+      const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     request.log.error({ err: error }, "request failed");
     return reply.code(500).send({ code: "INTERNAL_ERROR", requestId: request.id });
   });
@@ -75,7 +88,7 @@ export function buildApp(options: BuildAppOptions) {
   if (options.auth) {
     const auth = options.auth;
     app.route({ method: ["GET", "POST"], url: "/api/auth/*", config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, handler: async (request, reply) => {
-      const url = new URL(request.url, options.appOrigin ?? "http://localhost:3000");
+      const url = new URL(request.url, options.appOrigin ?? "http://localhost:3001");
       const init: RequestInit = { method: request.method, headers: requestHeaders(request.headers) };
       if (request.method !== "GET" && request.body !== undefined) init.body = JSON.stringify(request.body);
       const response = await auth.handler(new Request(url, init));
@@ -87,6 +100,8 @@ export function buildApp(options: BuildAppOptions) {
     }});
 
     app.get("/api/v1/me", async (request) => ({ context: await resolveTenantContext(auth, database, request) }));
+    app.get<{ Params: { tableId: string } }>("/api/v1/table-preferences/:tableId", async (request) => { const context = await resolveTenantContext(auth, database, request); if (!Object.hasOwn(tableColumns, request.params.tableId)) throw new ApiSecurityError(403, "TABLE_PREFERENCE_DENIED"); return { preference: await getTablePreference(database, context, request.params.tableId) }; });
+    app.put<{ Params: { tableId: string }; Body: { columnOrder: string[]; hiddenColumns: string[]; columnWidths: Record<string, number>; pageSize: 10 | 25 | 50 | 100 } }>("/api/v1/table-preferences/:tableId", { schema: { body: { type: "object", additionalProperties: false, required: ["columnOrder", "hiddenColumns", "columnWidths", "pageSize"], properties: { columnOrder: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string", maxLength: 80 } }, hiddenColumns: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string", maxLength: 80 } }, columnWidths: { type: "object", maxProperties: 20, additionalProperties: { type: "integer", minimum: 80, maximum: 600 } }, pageSize: { type: "integer", enum: [10, 25, 50, 100] } } } } }, async (request) => { const context = await resolveTenantContext(auth, database, request); const tableId = request.params.tableId as TableId; if (!Object.hasOwn(tableColumns, tableId)) throw new ApiSecurityError(403, "TABLE_PREFERENCE_DENIED"); const allowed = new Set<string>(tableColumns[tableId]); if ([...request.body.columnOrder, ...request.body.hiddenColumns, ...Object.keys(request.body.columnWidths)].some((column) => !allowed.has(column))) throw new ApiSecurityError(403, "TABLE_PREFERENCE_DENIED"); return { preference: await saveTablePreference(database, context, { tableId, ...request.body }) }; });
     app.get("/api/v1/sessions", async (request) => {
       await resolveTenantContext(auth, database, request);
       return { sessions: await auth.api.listSessions({ headers: requestHeaders(request.headers) }) };
@@ -120,6 +135,9 @@ export function buildApp(options: BuildAppOptions) {
     app.post<{ Params: { subscriptionId: string } }>("/api/v1/commerce/subscriptions/:subscriptionId/renew", async (request) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "subscriptions:manage"); const subscription = await commerce.renewSubscription(context, request.params.subscriptionId); await writeAudit(database, context, request, { action: "subscription.renewed", targetType: "subscription", targetId: subscription.id, outcome: "success", metadata: { renewalAt: subscription.renewalAt?.toISOString() ?? null } }); return { subscription }; });
     app.get("/api/v1/commerce/financial-summary", async (request) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "financials:read"); return { metrics: await commerce.financialSummary(context) }; });
     app.get("/api/v1/commerce/renewal-alerts", async (request) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "subscriptions:manage"); return { alerts: await commerce.renewalAlerts(context) }; });
+    app.get("/api/v1/company-subscriptions", async (request) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "financials:read"); return { subscriptions: await companySubscriptions.list(context) }; });
+    app.post<{ Body: { provider: string; serviceName: string; category: "saas" | "api" | "infrastructure" | "domain" | "license" | "other"; status: "active" | "trial" | "canceled"; currency: string; amountMinor: number; interval: "monthly" | "quarterly" | "semiannual" | "annual"; renewalAt?: string; renewalAlertDays: number; autoRenew: boolean; websiteUrl?: string; notes?: string } }>("/api/v1/company-subscriptions", { schema: { body: { type: "object", additionalProperties: false, required: ["provider", "serviceName", "category", "status", "currency", "amountMinor", "interval", "renewalAlertDays", "autoRenew"], properties: { provider: { type: "string", minLength: 1, maxLength: 160 }, serviceName: { type: "string", minLength: 1, maxLength: 160 }, category: { type: "string", enum: ["saas", "api", "infrastructure", "domain", "license", "other"] }, status: { type: "string", enum: ["active", "trial", "canceled"] }, currency: { type: "string", pattern: "^[A-Za-z]{3}$" }, amountMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 }, interval: { type: "string", enum: ["monthly", "quarterly", "semiannual", "annual"] }, renewalAt: { type: "string", format: "date-time" }, renewalAlertDays: { type: "integer", minimum: 0, maximum: 365 }, autoRenew: { type: "boolean" }, websiteUrl: { type: "string", format: "uri", maxLength: 2048 }, notes: { type: "string", maxLength: 4000 } } } } }, async (request, reply) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "subscriptions:manage"); const subscription = await companySubscriptions.create(context, { ...request.body, currency: request.body.currency.toUpperCase(), renewalAt: request.body.renewalAt ? new Date(request.body.renewalAt) : null, websiteUrl: request.body.websiteUrl ?? null, notes: request.body.notes ?? null }); await writeAudit(database, context, request, { action: "company_subscription.created", targetType: "company_subscription", targetId: subscription.id, outcome: "success" }); return reply.code(201).send({ subscription }); });
+    app.patch<{ Params: { subscriptionId: string }; Body: { status: "active" | "trial" | "canceled" } }>("/api/v1/company-subscriptions/:subscriptionId/status", { schema: { body: { type: "object", additionalProperties: false, required: ["status"], properties: { status: { type: "string", enum: ["active", "trial", "canceled"] } } } } }, async (request) => { const context = await resolveTenantContext(auth, database, request); requirePermission(context, "subscriptions:manage"); const subscription = await companySubscriptions.updateStatus(context, request.params.subscriptionId, request.body.status); await writeAudit(database, context, request, { action: "company_subscription.status_changed", targetType: "company_subscription", targetId: subscription.id, outcome: "success", metadata: { status: subscription.status } }); return { subscription }; });
     app.get("/api/v1/invitations", async (request) => {
       const context = await resolveTenantContext(auth, database, request); requirePermission(context, "members:manage");
       return { invitations: await listInvitations(database, context) };
@@ -143,11 +161,11 @@ export function buildApp(options: BuildAppOptions) {
     });
 
     const listSchema = { querystring: { type: "object", additionalProperties: false, properties: {
-      search: { type: "string", maxLength: 160 }, status: { type: "string", maxLength: 32 }, page: { type: "integer", minimum: 1, default: 1 },
-      pageSize: { type: "integer", minimum: 1, maximum: 100, default: 25 }, sort: { type: "string", enum: ["updated_desc", "name_asc"], default: "updated_desc" }
+      search: { type: "string", maxLength: 160 }, status: { type: "string", maxLength: 32 }, priority: { type: "string", enum: ["low", "normal", "high", "urgent"] }, page: { type: "integer", minimum: 1, default: 1 },
+      pageSize: { type: "integer", minimum: 1, maximum: 100, default: 25 }, sort: { type: "string", enum: ["updated_desc", "created_asc", "created_desc", "name_asc", "name_desc", "company_asc", "company_desc", "priority_asc", "priority_desc"], default: "updated_desc" }
     } } } as const;
     type ListQuery = Partial<CrmListQuery>;
-    const normalizeListQuery = (query: ListQuery): CrmListQuery => ({ page: query.page ?? 1, pageSize: query.pageSize ?? 25, sort: query.sort ?? "updated_desc", ...(query.search ? { search: query.search } : {}), ...(query.status ? { status: query.status } : {}) });
+    const normalizeListQuery = (query: ListQuery): CrmListQuery => ({ page: query.page ?? 1, pageSize: query.pageSize ?? 25, sort: query.sort ?? "updated_desc", ...(query.search ? { search: query.search } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}) });
 
     app.get<{ Querystring: ListQuery }>("/api/v1/crm/leads", { schema: listSchema }, async (request) => {
       const context = await resolveTenantContext(auth, database, request); requirePermission(context, "leads:read");

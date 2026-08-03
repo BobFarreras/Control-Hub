@@ -1,0 +1,50 @@
+# Estat actual i continuacio
+
+## Punt de projecte
+
+Les fases 0 a 4 estan implementades. El producte executa web, API i worker en monorepo,
+amb PostgreSQL, Valkey, Better Auth, tenancy, RBAC, MFA, CRM, cataleg comercial,
+subscripcions de clients i subscripcions contractades per l'empresa.
+
+La propera entrega planificada es la **Fase 5: suport, tickets i SLA**. Abans de picar
+codi cal concretar l'especificacio funcional, permisos, estats, prioritats, timers SLA,
+auditoria, notificacions i criteris d'acceptacio seguint el selector de decisions d'`AGENTS.md`.
+
+## Superficie executable
+
+- Web canonica: `http://localhost:3001`.
+- API interna: `http://127.0.0.1:4000`; el navegador usa exclusivament `/api/*` via Next.js.
+- Rutes operatives: dashboard, CRM, detall de client, productes, subscripcions de clients,
+  subscripcions d'empresa i seguretat.
+- `/{locale}/commerce` es una redireccio de compatibilitat cap a `/{locale}/products`.
+- Locales obligatoris: `ca`, `es` i `en`; temes obligatoris: light i dark.
+
+## Decisions UI vigents
+
+- `PageTopbar` es la capcalera canonica: eyebrow, titol i descripcio aprofiten la topbar.
+- KPI i accions principals comparteixen franges compactes.
+- `MetricHelp` explica sigles i metriques per hover i focus amb text traduit.
+- `SmartDataTable` proporciona paginacio server-side, cerca instantania, ordenacio,
+  filtres i preferencies de columnes persistides per tenant i usuari.
+- CRM permet canviar visualment les etapes actives del lead; Guanyat converteix el lead
+  en client i Perdut es una accio terminal separada.
+- Tota UI nova ha de seguir `DESIGN_SYSTEM.md` i reutilitzar aquestes primitives.
+
+## Dades i migracions recents
+
+- `0012_company_subscriptions.sql`: despeses recurrents de l'empresa amb RLS.
+- `0013_user_table_preferences.sql`: preferencies de taula per tenant i usuari amb RLS.
+- `pnpm db:seed:dev`: dades representatives locals, idempotents i sense esborrar dades.
+
+## Validacio abans de continuar
+
+```powershell
+pnpm infra:up
+pnpm db:migrate
+pnpm dev
+pnpm check
+pnpm test:e2e
+```
+
+Les proves d'integracio PostgreSQL requereixen `TEST_DATABASE_URL` i
+`TEST_DATABASE_ADMIN_URL` sobre una base exclusiva de test.

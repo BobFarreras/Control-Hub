@@ -20,10 +20,10 @@ export const leadPriorities = ["low", "normal", "high", "urgent"] as const;
 export type LeadPriority = typeof leadPriorities[number];
 
 const leadTransitions: Record<LeadStatus, readonly LeadStatus[]> = {
-  new: ["contacted", "qualified", "lost"],
-  contacted: ["qualified", "lost"],
-  qualified: ["proposal", "lost"],
-  proposal: ["lost"],
+  new: ["contacted", "qualified", "proposal", "lost"],
+  contacted: ["new", "qualified", "proposal", "lost"],
+  qualified: ["new", "contacted", "proposal", "lost"],
+  proposal: ["new", "contacted", "qualified", "lost"],
   won: [],
   lost: []
 };

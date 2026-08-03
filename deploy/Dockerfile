@@ -22,4 +22,4 @@ COPY --from=builder --chown=node:node /app /app
 USER node
 ARG APP
 ENV CONTROL_HUB_APP=$APP
-CMD ["sh", "-c", "if [ \"$CONTROL_HUB_APP\" = web ]; then HOSTNAME=0.0.0.0 PORT=3000 node apps/web/.next/standalone/apps/web/server.js; else pnpm --filter @control-hub/$CONTROL_HUB_APP start; fi"]
+CMD ["sh", "-c", "if [ \"$CONTROL_HUB_APP\" = web ]; then HOSTNAME=0.0.0.0 PORT=3001 node apps/web/.next/standalone/apps/web/server.js; else pnpm --filter @control-hub/$CONTROL_HUB_APP start; fi"]

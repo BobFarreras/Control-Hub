@@ -1,11 +1,13 @@
 export type { TenantContext } from "@control-hub/domain";
 export * from "./commerce.js";
+export * from "./company-subscriptions.js";
 import { canTransitionLead, normalizeComparableName, normalizeEmail, normalizePhone, type LeadPriority, type LeadStatus, type TenantContext } from "@control-hub/domain";
 
 export type LeadRecord = { id: string; name: string; companyName: string | null; email: string | null; phone: string | null; source: string; status: LeadStatus; priority: LeadPriority; ownerMembershipId: string | null; convertedCustomerId: string | null; createdAt: Date; updatedAt: Date };
 export type CustomerRecord = { id: string; displayName: string; legalName: string | null; billingEmail: string | null; phone: string | null; website: string | null; status: "active" | "inactive"; ownerMembershipId: string | null; createdFromLeadId: string | null; createdAt: Date; updatedAt: Date };
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
-export type CrmListQuery = { search?: string; status?: string; page: number; pageSize: number; sort: "updated_desc" | "name_asc" };
+export type CrmListSort = "updated_desc" | "created_asc" | "created_desc" | "name_asc" | "name_desc" | "company_asc" | "company_desc" | "priority_asc" | "priority_desc";
+export type CrmListQuery = { search?: string; status?: string; priority?: LeadPriority; page: number; pageSize: number; sort: CrmListSort };
 export type CreateLeadInput = { name: string; companyName?: string; email?: string; phone?: string; source: string; priority: LeadPriority; ownerMembershipId?: string };
 export type ContactRecord = { id: string; customerId: string; name: string; role: string | null; email: string | null; phone: string | null; isPrimary: boolean; createdAt: Date };
 export type NoteRecord = { id: string; body: string; authorUserId: string | null; createdAt: Date };

@@ -6,8 +6,8 @@
 2. Copy `.env.example` to `.env` and replace every secret or bootstrap value.
 3. Apply immutable migrations with `pnpm db:migrate`.
 4. Run `pnpm bootstrap:owner` once. It refuses to run after a tenant exists.
-5. Open Mailpit at `http://localhost:8025`, verify the Owner email, then sign in at `http://localhost:3000/ca/login`.
-6. Enable TOTP at `http://localhost:3000/ca/security`. Business endpoints reject privileged access until MFA is enabled.
+5. Open Mailpit at `http://localhost:8025`, verify the Owner email, then sign in at `http://localhost:3001/ca/login`.
+6. Enable TOTP at `http://localhost:3001/ca/security`. Business endpoints reject privileged access until MFA is enabled.
 7. Owners and administrators invite members from the same security page. In development, open the invitation in Mailpit; it expires after 48 hours and can only be used once.
 
 TOTP enrollment renders the `otpauth://` secret as a QR locally in the browser. Control Hub does not send that secret to an external QR service. MFA is only considered enrolled after the user enters a valid first code; recovery codes are then shown once for offline storage.

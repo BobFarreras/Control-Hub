@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { getDictionary, isLocale } from "@control-hub/i18n";
-import { AuthBoundary } from "@/components/auth-boundary";
+import { AppSidebar } from "@/components/app-sidebar";
+import { PageTopbar } from "@/components/page-topbar";
 import { authClient } from "@/lib/auth-client";
 
 type Session = { id: string; token: string; userAgent?: string | null; ipAddress?: string | null; expiresAt: Date };
@@ -61,8 +62,7 @@ export default function SecurityPage() {
   async function revoke(token: string) { const result = await authClient.revokeSession({ token }); if (!result.error) setSessions((current) => current.filter((item) => item.token !== token)); }
   async function addPasskey() { const result = await authClient.passkey.addPasskey({ name: "Control Hub" }); if (result.error) setError(result.error.message ?? "WebAuthn"); }
 
-  return <AuthBoundary><main className="security-page">
-    <header className="security-header"><div><span>CONTROL HUB</span><h1>{t.security.title}</h1><p>{session.data?.user.email}</p></div><button className="secondary-button" onClick={signOut}><LogOut size={17} />{t.security.signOut}</button></header>
+  return <div className="app-shell"><AppSidebar locale={locale} labels={t.navigation} /><div className="workspace"><PageTopbar eyebrow="CONTROL HUB" title={t.security.title} description={session.data?.user.email} themeLabel={t.header.theme} actions={<button className="secondary-button" onClick={signOut}><LogOut size={17} />{t.security.signOut}</button>} /><main className="security-page">
     <section className="security-grid">
       <article className="security-panel"><ShieldCheck size={24} /><h2>{t.security.secondFactor}</h2><p>{t.security.mfaDescription}</p>
         {!mfaEnabled && !totpUri && backupCodes.length === 0 && <form className="auth-form compact" onSubmit={enableTotp}><label>{t.security.currentPassword}<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">{t.security.enableTotp}</button></form>}
@@ -79,5 +79,5 @@ export default function SecurityPage() {
         <div className="invitation-list">{invitations.map((item) => <div className="invitation-row" key={item.id}><div><strong>{item.email}</strong><small>{item.role === "administrator" ? t.invitations.administrator : t.invitations.technical} · {new Date(item.expiresAt).toLocaleString(locale)}</small></div><button className="icon-button" title={t.invitations.revoke} aria-label={t.invitations.revoke} onClick={() => revokeInvitation(item.id)}><Trash2 size={16} /></button></div>)}</div>
       </article>}
     </section>
-  </main></AuthBoundary>;
+  </main></div></div>;
 }

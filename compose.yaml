@@ -10,7 +10,7 @@ services:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${WEB_PORT:-3001}:3001"
     depends_on:
       api:
         condition: service_healthy
@@ -31,14 +31,14 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 4000
       LOG_LEVEL: info
-      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3001}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
-      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3000}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
       DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     ports:

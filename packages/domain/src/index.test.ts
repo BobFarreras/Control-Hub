@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { canTransitionLead, hasPermission, normalizeComparableName, normalizeEmail, normalizePhone, rolePermissions, type TenantContext } from "./index.js";
 
 describe("CRM domain", () => {
-  it("only permits forward lead transitions", () => {
+  it("permits direct movement inside the active pipeline but keeps terminal states closed", () => {
     expect(canTransitionLead("new", "contacted")).toBe(true);
-    expect(canTransitionLead("contacted", "new")).toBe(false);
+    expect(canTransitionLead("contacted", "new")).toBe(true);
     expect(canTransitionLead("won", "lost")).toBe(false);
     expect(canTransitionLead("proposal", "won")).toBe(false);
   });

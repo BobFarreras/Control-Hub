@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<"credentials" | "otp">("credentials"); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); const data = new FormData(event.currentTarget);
-    const result = await authClient.signIn.email({ email: String(data.get("email")), password: String(data.get("password")), rememberMe: false });
+    const result = await authClient.signIn.email({ email: String(data.get("email")), password: String(data.get("password")), rememberMe: true });
     setBusy(false); if (result.error) return setError(t.error);
     if (result.data && "twoFactorRedirect" in result.data && result.data.twoFactorRedirect) return setStep("otp");
     router.replace(`/${locale}`); router.refresh();
