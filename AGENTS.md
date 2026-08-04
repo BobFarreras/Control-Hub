@@ -80,6 +80,35 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 - Cap component declara colors de producte directament: utilitzar tokens semantics.
 - Tota UI nova funciona en light, dark, teclat i reduced motion.
 
+## Empaquetat i desplegament
+
+Aquestes regles venen de faltes reals que van viure mesos al repositori sense que cap
+validacio les detectes. `pnpm build` en verd no diu res sobre l'artefacte que s'entrega.
+
+- **Els serveis arrenquen amb `node`, mai amb un gestor de paquets.** Passar per pnpm fa que
+  corepack intenti descarregar-se un gestor en arrencar, cosa que necessita xarxa i un HOME
+  escrivible; els contenidors son `read_only` i la imatge no arrencava.
+- **Una etapa de runtime per servei.** Una sola imatge compartida feia que l'API i el worker
+  portessin Next.js i els seus binaris de plataforma, 417 MB que no importen mai.
+- **Nomes s'empaqueten els paquets del workspace** (`noExternal`), perque els seus `exports`
+  apunten a TypeScript. La resta queda externa: empaquetar dependencies de tercers no aporta
+  res i trenca les que fan `require` en execucio, com `pino`.
+- **Les dependencies transitives que una app carrega es declaren a la seva `package.json`.**
+  La disposicio aillada de pnpm no les resol des d'un paquet germa.
+- **Els checksums de migracio es calculen sobre contingut normalitzat.** Amb els bytes crus,
+  un checkout Windows i un Linux discrepen sobre un fitxer identic i el desplegament s'atura
+  amb "Applied migration changed" sense que res hagi canviat.
+- **CI construeix les imatges i aixeca l'stack.** Cap altra validacio cobreix aquest cami.
+
+### Metode
+
+Verifica l'artefacte compilat **a la maquina** abans de reconstruir una imatge: `node
+apps/api/dist/server.js` triga dos segons i una reconstruccio uns vuit minuts. Diagnosticar a
+base de reconstruir va costar hores en una sessio, i cada error en tapava el seguent.
+
+Per mesurar que ocupa una imatge, `docker run --rm --entrypoint sh <imatge> -c "du -sh ..."`
+respon en segons i evita optimitzar a cegues.
+
 ## Proves
 
 - Afegir o actualitzar proves per cada canvi de comportament.

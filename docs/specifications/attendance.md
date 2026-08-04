@@ -1,6 +1,7 @@
 # Especificacio de registre de jornada
 
-**Estat:** proposta. Fase 5C, despres de projectes i temps.
+**Estat:** aprovada pel propietari el 2026-08-04. Fase 5C, despres de projectes i temps.
+No s'activa en produccio sense confirmacio de la gestoria.
 
 > **Aixo no es assessorament juridic.** El contingut legal d'aquesta seccio s'ha de confirmar
 > amb la gestoria abans d'activar el modul en produccio, i molt especialment si esta en

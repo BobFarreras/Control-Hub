@@ -1,6 +1,7 @@
 # Especificacio de suport, tickets i SLA
 
-**Estat:** proposta. Pendent d'aprovacio del propietari.
+**Estat:** aprovada pel propietari el 2026-08-04. Rellotge d'horari laboral, objectius per
+prioritat iguals per a tots els clients, i cap canal sortint en aquesta fase.
 
 Correspon a la Fase 5 del pla. Segueix `docs/templates/feature-spec-template.md` i reutilitza
 les decisions ja aprovades a `commerce.md` (diners i historial immutable) i a
