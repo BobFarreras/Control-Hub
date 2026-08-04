@@ -17,7 +17,15 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
 - `packages/database/src/support.integration.test.ts`: aillament entre tenants, rebuig de
   client d'un altre tenant, idempotencia per referencia externa i append-only.
 
-Pendent de la fase: casos d'us, rutes, UI i el proces d'escalat al worker.
+- `packages/domain/src/support.ts`: estats i transicions del ticket, i el calcul de SLA amb
+  pauses. El rellotge s'atura a `waiting_customer` i `waiting_third_party`, i les pauses es
+  resten en minuts laborables, no de rellotge de paret.
+- `packages/application/src/support.ts`: `SupportService` i el port `SupportRepository`.
+  Copia els objectius vigents en obrir el ticket, marca la primera resposta un sol cop, i
+  retorna el missatge ja desat quan es repeteix una referencia externa.
+
+Pendent de la fase: adaptador de persistencia, rutes, UI de la safata i el proces d'escalat
+al worker.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

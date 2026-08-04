@@ -1,6 +1,7 @@
 export type { TenantContext } from "@control-hub/domain";
 export * from "./commerce.js";
 export * from "./company-subscriptions.js";
+export * from "./support.js";
 import {
   canTransitionLead,
   normalizeComparableName,
