@@ -6,9 +6,18 @@ Les fases 0 a 4 estan implementades. El producte executa web, API i worker en mo
 amb PostgreSQL, Valkey, Better Auth, tenancy, RBAC, MFA, CRM, cataleg comercial,
 subscripcions de clients i subscripcions contractades per l'empresa.
 
-La propera entrega planificada es la **Fase 5: suport, tickets i SLA**. Abans de picar
-codi cal concretar l'especificacio funcional, permisos, estats, prioritats, timers SLA,
-auditoria, notificacions i criteris d'acceptacio seguint el selector de decisions d'`AGENTS.md`.
+La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
+`docs/specifications/support.md`. Fet fins ara:
+
+- `packages/domain/src/support-calendar.ts`: minuts laborables amb finestres per dia, festius,
+  torns partits i canvis d'hora. Pur, 9 tests, sense base de dades.
+- `0014_support.sql`: horari, festius, objectius de SLA append-only, politica de notificacio,
+  tickets amb `project_id` nullable, missatges i events append-only, incidencies i el seu
+  vincle amb tickets. RLS i `force row level security` a totes.
+- `packages/database/src/support.integration.test.ts`: aillament entre tenants, rebuig de
+  client d'un altre tenant, idempotencia per referencia externa i append-only.
+
+Pendent de la fase: casos d'us, rutes, UI i el proces d'escalat al worker.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

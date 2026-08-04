@@ -100,9 +100,9 @@ export function businessMinutesBetween(calendar: SupportCalendar, from: Date, to
  */
 function instantAtLocal(date: string, minutesIntoDay: number, timeZone: string): number {
   const [year, month, day] = date.split("-").map(Number);
-  const guess = Date.UTC(year!, month! - 1, day!, 0, minutesIntoDay);
+  const guess = Date.UTC(year!, month! - 1, day, 0, minutesIntoDay);
   const seen = localParts(new Date(guess), timeZone);
   const [seenYear, seenMonth, seenDay] = seen.date.split("-").map(Number);
-  const seenAsUtc = Date.UTC(seenYear!, seenMonth! - 1, seenDay!, 0, seen.minutesIntoDay);
+  const seenAsUtc = Date.UTC(seenYear!, seenMonth! - 1, seenDay, 0, seen.minutesIntoDay);
   return guess + (guess - seenAsUtc);
 }
