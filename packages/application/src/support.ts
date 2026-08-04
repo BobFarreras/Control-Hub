@@ -42,6 +42,8 @@ export type TicketMessageRecord = {
   id: string;
   ticketId: string;
   authorMembershipId: string | null;
+  /** Null when the message did not come from a member, which a future inbound channel will do. */
+  authorName?: string | null;
   body: string;
   visibility: "internal" | "customer";
   createdAt: Date;
@@ -64,6 +66,22 @@ export type AddMessageInput = {
 };
 
 export type SlaTargets = { firstResponseMinutes: number; resolutionMinutes: number };
+
+/** A member a ticket can be put on, with the name a person recognises. */
+export type AssignableMember = { membershipId: string; name: string };
+
+/**
+ * Everything the ticket page renders, resolved in one call.
+ *
+ * The page would otherwise make four round trips to draw one screen, and each would resolve
+ * the session again.
+ */
+export type TicketDetail = {
+  ticket: TicketRecord & { customerName: string; assigneeName: string | null };
+  messages: TicketMessageRecord[];
+  sla: SlaState;
+  assignableMembers: AssignableMember[];
+};
 
 /** Which of a ticket's two targets is being spoken about. */
 export type SlaTargetKind = "first_response" | "resolution";
@@ -108,6 +126,9 @@ export type SupportRepository = {
   assign(context: TenantContext, ticketId: string, membershipId: string | null, at: Date): Promise<TicketRecord>;
   addMessage(context: TenantContext, ticketId: string, input: AddMessageInput): Promise<TicketMessageRecord>;
   findMessageByExternalReference(context: TenantContext, reference: string): Promise<TicketMessageRecord | null>;
+  listMessages(context: TenantContext, ticketId: string): Promise<TicketMessageRecord[]>;
+  getTicketWithNames(context: TenantContext, ticketId: string): Promise<TicketDetail["ticket"] | null>;
+  listAssignableMembers(context: TenantContext): Promise<AssignableMember[]>;
   markFirstResponse(context: TenantContext, ticketId: string, at: Date): Promise<void>;
   listPauses(context: TenantContext, ticketId: string): Promise<SlaPause[]>;
   listPausesForTickets(context: TenantContext, ticketIds: readonly string[]): Promise<Record<string, SlaPause[]>>;
@@ -307,6 +328,34 @@ export class SupportService {
     if (input.resolutionMinutes < input.firstResponseMinutes) throw new SupportError("INVALID_INPUT");
     if (input.firstResponseMinutes < 1) throw new SupportError("INVALID_INPUT");
     return this.repository.publishSlaTarget(context, input);
+  }
+
+  async ticketDetail(context: TenantContext, ticketId: string, now = new Date()): Promise<TicketDetail> {
+    const ticket = await this.repository.getTicketWithNames(context, ticketId);
+    if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
+
+    const [messages, calendar, pauses, assignableMembers] = await Promise.all([
+      this.repository.listMessages(context, ticketId),
+      this.repository.loadCalendar(context),
+      this.repository.listPauses(context, ticketId),
+      this.repository.listAssignableMembers(context)
+    ]);
+
+    return {
+      ticket,
+      messages,
+      assignableMembers,
+      sla: slaState({
+        calendar,
+        openedAt: ticket.openedAt,
+        now,
+        pauses,
+        firstResponseTargetMinutes: ticket.firstResponseTargetMinutes,
+        resolutionTargetMinutes: ticket.resolutionTargetMinutes,
+        ...(ticket.firstResponseAt ? { firstResponseAt: ticket.firstResponseAt } : {}),
+        ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
+      })
+    };
   }
 
   async slaFor(context: TenantContext, ticketId: string, now = new Date()): Promise<SlaState> {

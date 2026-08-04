@@ -911,7 +911,16 @@ const supportDictionaries = {
     all: "Tots",
     previous: "Anterior",
     next: "Seguent",
-    of: "de"
+    of: "de",
+    ticketDescription: "Descripcio del ticket",
+    reply: "Resposta",
+    send: "Enviar",
+    replyVisibility: "Qui ho pot veure",
+    internalNote: "Nota interna",
+    customerReply: "Visible per al client",
+    fromCustomer: "Del client",
+    backToInbox: "Tornar a la safata",
+    formError: "No s'ha pogut desar el canvi."
   },
   es: {
     eyebrow: "SOPORTE",
@@ -962,7 +971,16 @@ const supportDictionaries = {
     all: "Todos",
     previous: "Anterior",
     next: "Siguiente",
-    of: "de"
+    of: "de",
+    ticketDescription: "Descripcion del ticket",
+    reply: "Respuesta",
+    send: "Enviar",
+    replyVisibility: "Quien puede verlo",
+    internalNote: "Nota interna",
+    customerReply: "Visible para el cliente",
+    fromCustomer: "Del cliente",
+    backToInbox: "Volver a la bandeja",
+    formError: "No se ha podido guardar el cambio."
   },
   en: {
     eyebrow: "SUPPORT",
@@ -1013,7 +1031,16 @@ const supportDictionaries = {
     all: "All",
     previous: "Previous",
     next: "Next",
-    of: "of"
+    of: "of",
+    ticketDescription: "Ticket description",
+    reply: "Reply",
+    send: "Send",
+    replyVisibility: "Who can see it",
+    internalNote: "Internal note",
+    customerReply: "Visible to customer",
+    fromCustomer: "From customer",
+    backToInbox: "Back to inbox",
+    formError: "The change could not be saved."
   }
 } as const;
 

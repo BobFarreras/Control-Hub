@@ -2212,3 +2212,76 @@ main {
 .priority-high {
   font-weight: 600;
 }
+
+/* Ticket detail
+   The internal marker is never colour alone: the padlock, the wording and the aria-label all
+   say the same thing, so a note the customer must not see cannot be mistaken for one they can. */
+.ticket-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.ticket-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+.ticket-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+.ticket-message {
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+}
+.ticket-message.internal {
+  border-left-width: 4px;
+  border-left-color: var(--warning-strong, #b54708);
+  background: var(--surface-muted, rgba(128, 128, 128, 0.06));
+}
+.ticket-message header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+}
+.ticket-message header time {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+.visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.visibility.internal {
+  color: var(--warning-strong, #b54708);
+  font-weight: 600;
+}
+.visibility.customer {
+  color: var(--text-muted);
+}
+.ticket-reply {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.ticket-reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  justify-content: space-between;
+}

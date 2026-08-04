@@ -48,7 +48,13 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
 - El llistat retorna l'estat de SLA per fila calculat al servidor: una carrega del calendari i
   una consulta de pauses per pagina, independentment de quantes files mostri.
 
-Pendent de la fase: fitxa del ticket amb la conversa, i alta de tickets des de la UI.
+- `apps/web/src/app/[locale]/support/[ticketId]/page.tsx` i `components/ticket-detail.tsx`:
+  fitxa amb conversa, canvi d'estat, assignacio i resposta. Els comentaris interns es marquen
+  al DOM (`aria-label` i text), no nomes visualment.
+- `GET /api/v1/support/tickets/:ticketId` retorna ticket, conversa, estat de SLA i membres
+  assignables en una sola crida.
+
+Pendent de la fase: alta de tickets des de la UI, i l'E2E autenticat.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

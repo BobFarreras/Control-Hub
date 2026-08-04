@@ -5,6 +5,7 @@ import {
   type AddMessageInput,
   type CreateTicketInput,
   type SlaTargets,
+  type AssignableMember,
   type EscalationCandidate,
   type HolidayRecord,
   type PublishSlaTargetInput,
@@ -12,6 +13,7 @@ import {
   type SlaTargetRecord,
   type SupportRepository,
   type TicketListQuery,
+  type TicketDetail,
   type TicketListRow,
   type TicketPage,
   type TicketMessageRecord,
@@ -170,6 +172,42 @@ export class PostgresSupportRepository implements SupportRepository {
           body, visibility, created_at as "createdAt"`;
       return message!;
     }).catch(mapConstraint);
+  }
+
+  async getTicketWithNames(context: TenantContext, ticketId: string): Promise<TicketDetail["ticket"] | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [ticket] = await tx<TicketDetail["ticket"][]>`
+        select ${tx.unsafe(listColumns)} ${tx.unsafe(listFrom)}
+        where t.tenant_id = ${context.tenantId} and t.id = ${ticketId}`;
+      return ticket ?? null;
+    });
+  }
+
+  async listMessages(context: TenantContext, ticketId: string) {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<TicketMessageRecord[]>`
+        select m.id, m.ticket_id as "ticketId", m.author_membership_id as "authorMembershipId",
+          m.body, m.visibility, m.created_at as "createdAt", u.name as "authorName"
+        from ticket_messages m
+        left join memberships ms on ms.tenant_id = m.tenant_id and ms.id = m.author_membership_id
+        left join "user" u on u.id = ms.user_id
+        where m.tenant_id = ${context.tenantId} and m.ticket_id = ${ticketId}
+        order by m.created_at asc`
+    );
+  }
+
+  async listAssignableMembers(context: TenantContext): Promise<AssignableMember[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AssignableMember[]>`
+        select m.id as "membershipId", u.name
+        from memberships m join "user" u on u.id = m.user_id
+        where m.tenant_id = ${context.tenantId} and m.status = 'active'
+        order by u.name`
+    );
   }
 
   async findMessageByExternalReference(context: TenantContext, reference: string) {

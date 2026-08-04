@@ -98,7 +98,7 @@ export function registerSupportRoutes({ app, database, auth, support }: SupportC
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "tickets:read");
-      return { ticket: await support.getTicket(context, request.params.ticketId) };
+      return support.ticketDetail(context, request.params.ticketId);
     }
   );
 

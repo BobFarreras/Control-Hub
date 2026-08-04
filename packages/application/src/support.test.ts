@@ -78,6 +78,13 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
     createdAt: new Date("2026-08-04T07:30:00Z")
   }),
   findMessageByExternalReference: vi.fn<SupportRepository["findMessageByExternalReference"]>().mockResolvedValue(null),
+  listMessages: vi.fn<SupportRepository["listMessages"]>().mockResolvedValue([]),
+  getTicketWithNames: vi
+    .fn<SupportRepository["getTicketWithNames"]>()
+    .mockResolvedValue({ ...ticket(), customerName: "Client A", assigneeName: null }),
+  listAssignableMembers: vi
+    .fn<SupportRepository["listAssignableMembers"]>()
+    .mockResolvedValue([{ membershipId: "member", name: "Boby" }]),
   markFirstResponse: vi.fn<SupportRepository["markFirstResponse"]>().mockResolvedValue(undefined),
   listPauses: vi.fn<SupportRepository["listPauses"]>().mockResolvedValue([]),
   listPausesForTickets: vi.fn<SupportRepository["listPausesForTickets"]>().mockResolvedValue({}),
@@ -414,5 +421,25 @@ describe("inbox listing", () => {
 
     expect(page.items).toEqual([]);
     expect(loadCalendar).not.toHaveBeenCalled();
+  });
+});
+
+describe("ticket detail", () => {
+  it("resolves the ticket, its conversation and the people it can go to in one call", async () => {
+    const detail = await new SupportService(repository()).ticketDetail(
+      context,
+      "ticket-1",
+      new Date("2026-08-04T09:00:00Z")
+    );
+    expect(detail.ticket.customerName).toBe("Client A");
+    expect(detail.assignableMembers).toHaveLength(1);
+    expect(detail.sla.firstResponse.breached).toBe(true);
+  });
+
+  it("reports a ticket that is not there rather than an empty page", async () => {
+    const getTicketWithNames = vi.fn<SupportRepository["getTicketWithNames"]>().mockResolvedValue(null);
+    await expect(
+      new SupportService(repository({ getTicketWithNames })).ticketDetail(context, "missing")
+    ).rejects.toMatchObject({ code: "TICKET_NOT_FOUND" });
   });
 });

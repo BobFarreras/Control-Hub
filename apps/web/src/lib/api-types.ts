@@ -90,6 +90,25 @@ export type InboxTicket = {
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
 };
 
+export type TicketMessage = {
+  id: string;
+  ticketId: string;
+  authorMembershipId: string | null;
+  authorName: string | null;
+  body: string;
+  visibility: "internal" | "customer";
+  createdAt: string;
+};
+
+export type AssignableMember = { membershipId: string; name: string };
+
+export type TicketDetail = {
+  ticket: InboxTicket & { description: string };
+  messages: TicketMessage[];
+  sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+  assignableMembers: AssignableMember[];
+};
+
 export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
 
 export type Product = { id: string; code: string; name: string; status: string };
