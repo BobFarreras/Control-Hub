@@ -28,7 +28,13 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
   d'un comptador propi, pauses derivades del log d'events, i primera resposta escrita amb
   `where first_response_at is null`.
 
-Pendent de la fase: rutes, UI de la safata i el proces d'escalat al worker.
+- `apps/api/src/routes/support.ts`: llistat, alta, fitxa, canvi d'estat, missatges i estat de
+  SLA, amb `tickets:read` i `tickets:manage` a cada ruta i auditoria a les mutacions.
+- `0015_support_permissions.sql`: `tickets:read` i `support:configure` a la taula de permisos,
+  amb backfill per als tenants que ja existeixen.
+
+Pendent de la fase: configuracio de suport per API (horari, festius, objectius), UI de la
+safata i el proces d'escalat al worker.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

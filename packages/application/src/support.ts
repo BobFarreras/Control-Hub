@@ -63,7 +63,20 @@ export type AddMessageInput = {
 
 export type SlaTargets = { firstResponseMinutes: number; resolutionMinutes: number };
 
+export type TicketListQuery = {
+  page: number;
+  pageSize: number;
+  sort: "opened_desc" | "opened_asc" | "priority_desc" | "updated_desc";
+  search?: string | undefined;
+  status?: TicketStatus | undefined;
+  priority?: TicketPriority | undefined;
+  customerId?: string | undefined;
+};
+
+export type TicketPage = { items: TicketRecord[]; total: number; page: number; pageSize: number };
+
 export type SupportRepository = {
+  listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage>;
   createTicket(context: TenantContext, input: CreateTicketInput & { targets: SlaTargets }): Promise<TicketRecord>;
   getTicket(context: TenantContext, ticketId: string): Promise<TicketRecord | null>;
   updateStatus(context: TenantContext, ticketId: string, status: TicketStatus, at: Date): Promise<TicketRecord>;
@@ -91,6 +104,16 @@ export class SupportService {
     if (!targets) throw new SupportError("SLA_TARGETS_NOT_CONFIGURED");
 
     return this.repository.createTicket(context, { ...input, targets });
+  }
+
+  listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage> {
+    return this.repository.listTickets(context, query);
+  }
+
+  async getTicket(context: TenantContext, ticketId: string): Promise<TicketRecord> {
+    const ticket = await this.repository.getTicket(context, ticketId);
+    if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
+    return ticket;
   }
 
   async transition(

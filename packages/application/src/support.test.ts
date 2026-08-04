@@ -38,6 +38,9 @@ const ticket = (overrides: Partial<TicketRecord> = {}): TicketRecord => ({
 });
 
 const repository = (overrides: Partial<SupportRepository> = {}): SupportRepository => ({
+  listTickets: vi
+    .fn<SupportRepository["listTickets"]>()
+    .mockResolvedValue({ items: [ticket()], total: 1, page: 1, pageSize: 25 }),
   createTicket: vi.fn<SupportRepository["createTicket"]>().mockImplementation((_context, input) =>
     Promise.resolve(
       ticket({

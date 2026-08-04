@@ -24,7 +24,9 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 | `products:manage` | X | X |  |
 | `subscriptions:manage` | X | X |  |
 | `financials:read` | X | X |  |
+| `tickets:read` | X | X | X |
 | `tickets:manage` | X | X | X |
+| `support:configure` | X | X |  |
 | `infrastructure:read` | X | X | X |
 | `infrastructure:operate` | X |  | X |
 | `integrations:read` | X | X | X |

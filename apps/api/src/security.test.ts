@@ -1,4 +1,4 @@
-import type { TenantContext } from "@control-hub/domain";
+import { rolePermissions, type Permission, type RoleCode, type TenantContext } from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import type { ControlHubAuth } from "./auth.js";
@@ -92,5 +92,25 @@ describe("requirePermission", () => {
       expect(error).toBeInstanceOf(ApiSecurityError);
       expect((error as ApiSecurityError).code).toBe("PERMISSION_DENIED");
     }
+  });
+});
+
+describe("support permissions", () => {
+  // The matrix in docs/specifications/permissions.md is the contract; this is what holds the
+  // code to it. support:configure changes what counts as a breach, so it does not belong to
+  // whoever merely resolves tickets.
+  const held = (role: RoleCode, permission: Permission) => rolePermissions[role].includes(permission);
+
+  it("lets every role read and work tickets", () => {
+    for (const role of ["owner", "administrator", "technical"] as RoleCode[]) {
+      expect(held(role, "tickets:read"), `${role} tickets:read`).toBe(true);
+      expect(held(role, "tickets:manage"), `${role} tickets:manage`).toBe(true);
+    }
+  });
+
+  it("keeps the support configuration away from the technical role", () => {
+    expect(held("owner", "support:configure")).toBe(true);
+    expect(held("administrator", "support:configure")).toBe(true);
+    expect(held("technical", "support:configure")).toBe(false);
   });
 });

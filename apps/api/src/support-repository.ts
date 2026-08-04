@@ -6,6 +6,8 @@ import {
   type CreateTicketInput,
   type SlaTargets,
   type SupportRepository,
+  type TicketListQuery,
+  type TicketPage,
   type TicketMessageRecord,
   type TicketRecord
 } from "@control-hub/application";
@@ -50,6 +52,37 @@ export class PostgresSupportRepository implements SupportRepository {
       await this.writeEvent(tx, context, id, "created", null, "new");
       return ticket!;
     }).catch(mapConstraint);
+  }
+
+  async listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const search = query.search?.trim() || null;
+      const offset = (query.page - 1) * query.pageSize;
+      const items = await tx<TicketRecord[]>`
+        select ${tx.unsafe(ticketColumns)} from tickets
+        where tenant_id = ${context.tenantId}
+          and (${query.status ?? null}::text is null or status = ${query.status ?? null})
+          and (${query.priority ?? null}::text is null or priority = ${query.priority ?? null})
+          and (${query.customerId ?? null}::uuid is null or customer_id = ${query.customerId ?? null}::uuid)
+          and (${search}::text is null or subject ilike '%' || ${search} || '%'
+            or ticket_number::text = ${search})
+        order by
+          case when ${query.sort} = 'opened_asc' then opened_at end asc,
+          case when ${query.sort} = 'priority_desc'
+            then array_position(array['low','normal','high','urgent']::text[], priority) end desc,
+          case when ${query.sort} = 'updated_desc' then updated_at end desc,
+          opened_at desc, id
+        limit ${query.pageSize} offset ${offset}`;
+      const [count] = await tx<{ total: string }[]>`
+        select count(*)::text as total from tickets
+        where tenant_id = ${context.tenantId}
+          and (${query.status ?? null}::text is null or status = ${query.status ?? null})
+          and (${query.priority ?? null}::text is null or priority = ${query.priority ?? null})
+          and (${query.customerId ?? null}::uuid is null or customer_id = ${query.customerId ?? null}::uuid)
+          and (${search}::text is null or subject ilike '%' || ${search} || '%'
+            or ticket_number::text = ${search})`;
+      return { items, total: Number(count!.total), page: query.page, pageSize: query.pageSize };
+    });
   }
 
   async getTicket(context: TenantContext, ticketId: string) {

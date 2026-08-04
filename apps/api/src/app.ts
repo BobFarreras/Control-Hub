@@ -4,7 +4,9 @@ import {
   CompanySubscriptionError,
   CompanySubscriptionService,
   CrmError,
-  CrmService
+  CrmService,
+  SupportError,
+  SupportService
 } from "@control-hub/application";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
@@ -30,8 +32,10 @@ import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerPublicRoutes } from "./routes/public.js";
+import { registerSupportRoutes } from "./routes/support.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
+import { PostgresSupportRepository } from "./support-repository.js";
 
 type BuildAppOptions = {
   databaseUrl: string;
@@ -58,6 +62,7 @@ export function buildApp(options: BuildAppOptions) {
   const crm = new CrmService(new PostgresCrmRepository(database));
   const commerce = new CommerceService(new PostgresCommerceRepository(database));
   const companySubscriptions = new CompanySubscriptionService(new PostgresCompanySubscriptionRepository(database));
+  const support = new SupportService(new PostgresSupportRepository(database));
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => app.log.warn({ err: error }, "queue connection unavailable"));
   // A connection of its own: sharing the health-check client would let a slow limiter command
@@ -129,6 +134,14 @@ export function buildApp(options: BuildAppOptions) {
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof SupportError) {
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code === "INVALID_TRANSITION" || error.code.startsWith("DUPLICATE") || error.code === "TICKET_CLOSED"
+          ? 409
+          : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     if (error instanceof CompanySubscriptionError) {
       const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -155,6 +168,7 @@ export function buildApp(options: BuildAppOptions) {
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });
+      registerSupportRoutes({ ...context, support });
     }
 
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });

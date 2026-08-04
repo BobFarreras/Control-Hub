@@ -36,7 +36,7 @@ function context(roles: TenantContext["roles"], permissions: TenantContext["perm
 }
 
 describe("RBAC", () => {
-  it("grants the owner every declared permission", () => expect(rolePermissions.owner).toHaveLength(20));
+  it("grants the owner every declared permission", () => expect(rolePermissions.owner).toHaveLength(22));
   it("keeps credential rotation away from administrators", () =>
     expect(rolePermissions.administrator).not.toContain("credentials:rotate"));
   it("allows technical infrastructure operation but not tenant management", () => {
