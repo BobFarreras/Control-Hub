@@ -23,6 +23,10 @@ function formatRemaining(minutes: number): string {
 /**
  * The target a row should be judged by: until somebody answers, that is the first response;
  * afterwards it is the resolution. Showing both would double every row for no gain.
+ *
+ * Nothing here expires. What runs down is the commitment published for that priority, which is
+ * why the column is not called a due date: a ticket stays open and workable past it, it is the
+ * promise that has been missed.
  */
 function activeTarget(ticket: InboxTicket) {
   return ticket.firstResponseAt ? ticket.sla.resolution : ticket.sla.firstResponse;
@@ -56,14 +60,14 @@ export function SupportInbox({
       return (
         // Not colour alone: the icon and the word carry the same meaning for anyone who
         // cannot separate red from green.
-        <span className="sla-breached" title={`${stage} · ${t.dueTitle}`}>
+        <span className="sla-breached" title={stage}>
           <AlertTriangle size={15} aria-hidden="true" />
           {t.breached}
         </span>
       );
     }
     return (
-      <span className="sla-remaining" title={`${stage} · ${t.dueTitle}`}>
+      <span className="sla-remaining" title={stage}>
         <Clock size={15} aria-hidden="true" />
         {t.remaining} {formatRemaining(remaining)}
       </span>
@@ -101,7 +105,7 @@ export function SupportInbox({
       label: t.assignee!,
       render: (ticket) => ticket.assigneeName ?? <span className="muted">{t.unassigned}</span>
     },
-    { id: "due", label: t.due!, render: due }
+    { id: "due", label: t.due!, help: t.dueHelp!, render: due }
   ];
 
   return (

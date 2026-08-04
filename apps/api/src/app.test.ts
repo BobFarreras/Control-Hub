@@ -136,6 +136,7 @@ describe("route registration", () => {
     ["POST", "/api/v1/support/tickets"],
     ["GET", "/api/v1/support/tickets/:ticketId"],
     ["PATCH", "/api/v1/support/tickets/:ticketId/status"],
+    ["PATCH", "/api/v1/support/tickets/:ticketId/assignment"],
     ["POST", "/api/v1/support/tickets/:ticketId/messages"],
     ["GET", "/api/v1/support/tickets/:ticketId/sla"],
     ["GET", "/api/v1/support/schedule"],

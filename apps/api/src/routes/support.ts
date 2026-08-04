@@ -134,6 +134,39 @@ export function registerSupportRoutes({ app, database, auth, support }: SupportC
     }
   );
 
+  app.patch<{ Params: { ticketId: string }; Body: { assigneeMembershipId: string | null } }>(
+    "/api/v1/support/tickets/:ticketId/assignment",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["ticketId"],
+          properties: { ticketId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["assigneeMembershipId"],
+          // Null unassigns: a ticket parked on somebody who left is worse than one on nobody.
+          properties: { assigneeMembershipId: { type: ["string", "null"], format: "uuid" } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "tickets:manage");
+      const ticket = await support.assign(context, request.params.ticketId, request.body.assigneeMembershipId);
+      await writeAudit(database, context, request, {
+        action: "ticket.assigned",
+        targetType: "ticket",
+        targetId: ticket.id,
+        outcome: "success",
+        metadata: { assigneeMembershipId: ticket.assigneeMembershipId }
+      });
+      return { ticket };
+    }
+  );
+
   app.post<{
     Params: { ticketId: string };
     Body: { body: string; visibility: "internal" | "customer"; externalReference?: string };

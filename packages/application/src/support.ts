@@ -105,6 +105,7 @@ export type SupportRepository = {
   createTicket(context: TenantContext, input: CreateTicketInput & { targets: SlaTargets }): Promise<TicketRecord>;
   getTicket(context: TenantContext, ticketId: string): Promise<TicketRecord | null>;
   updateStatus(context: TenantContext, ticketId: string, status: TicketStatus, at: Date): Promise<TicketRecord>;
+  assign(context: TenantContext, ticketId: string, membershipId: string | null, at: Date): Promise<TicketRecord>;
   addMessage(context: TenantContext, ticketId: string, input: AddMessageInput): Promise<TicketMessageRecord>;
   findMessageByExternalReference(context: TenantContext, reference: string): Promise<TicketMessageRecord | null>;
   markFirstResponse(context: TenantContext, ticketId: string, at: Date): Promise<void>;
@@ -214,6 +215,22 @@ export class SupportService {
     if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
     if (!canTransitionTicket(ticket.status, status)) throw new SupportError("INVALID_TRANSITION");
     return this.repository.updateStatus(context, ticketId, status, now);
+  }
+
+  /**
+   * Assigns or unassigns a ticket. Unassigning is allowed on purpose: leaving a ticket on
+   * somebody who has left is worse than leaving it visibly on nobody.
+   */
+  async assign(
+    context: TenantContext,
+    ticketId: string,
+    membershipId: string | null,
+    now = new Date()
+  ): Promise<TicketRecord> {
+    const ticket = await this.repository.getTicket(context, ticketId);
+    if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
+    if (ticket.status === "closed") throw new SupportError("TICKET_CLOSED");
+    return this.repository.assign(context, ticketId, membershipId, now);
   }
 
   /**

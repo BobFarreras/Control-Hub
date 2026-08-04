@@ -17,12 +17,15 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { MetricHelp } from "@/components/metric-help";
 import type { TablePreference } from "@/lib/api-types";
 
 export type { TablePreference };
 export type SmartColumn<Row> = {
   id: string;
   label: string;
+  /** Explains a column whose heading alone is ambiguous, on hover and on focus. */
+  help?: string;
   render: (row: Row) => ReactNode;
   width?: number;
   locked?: boolean;
@@ -204,7 +207,11 @@ export function SmartDataTable<Row extends { id: string }>({
                 return (
                   <th style={{ width: preference.columnWidths[column.id] ?? column.width }} key={column.id}>
                     <div className="column-heading">
-                      <span>{column.label}</span>
+                      {column.help ? (
+                        <MetricHelp label={column.label} description={column.help} />
+                      ) : (
+                        <span>{column.label}</span>
+                      )}
                       {column.sort && (
                         <div className="column-sort">
                           <button

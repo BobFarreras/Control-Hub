@@ -143,6 +143,23 @@ export class PostgresSupportRepository implements SupportRepository {
     });
   }
 
+  async assign(context: TenantContext, ticketId: string, membershipId: string | null, at: Date) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [current] = await tx<{ assignee_membership_id: string | null }[]>`
+        select assignee_membership_id from tickets
+        where tenant_id = ${context.tenantId} and id = ${ticketId} for update`;
+      if (!current) throw new SupportError("TICKET_NOT_FOUND");
+
+      const [ticket] = await tx<TicketRecord[]>`
+        update tickets set assignee_membership_id = ${membershipId}, updated_at = ${at}
+        where tenant_id = ${context.tenantId} and id = ${ticketId}
+        returning ${tx.unsafe(ticketColumns)}`;
+
+      await this.writeEvent(tx, context, ticketId, "assigned", current.assignee_membership_id, membershipId);
+      return ticket!;
+    }).catch(mapConstraint);
+  }
+
   async addMessage(context: TenantContext, ticketId: string, input: AddMessageInput) {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const [message] = await tx<TicketMessageRecord[]>`

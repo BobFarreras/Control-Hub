@@ -68,6 +68,7 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
   ),
   getTicket: vi.fn<SupportRepository["getTicket"]>().mockResolvedValue(ticket()),
   updateStatus: vi.fn<SupportRepository["updateStatus"]>().mockResolvedValue(ticket({ status: "resolved" })),
+  assign: vi.fn<SupportRepository["assign"]>().mockResolvedValue(ticket({ assigneeMembershipId: "member" })),
   addMessage: vi.fn<SupportRepository["addMessage"]>().mockResolvedValue({
     id: "message-1",
     ticketId: "ticket-1",
