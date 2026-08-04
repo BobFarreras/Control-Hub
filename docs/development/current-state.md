@@ -24,8 +24,11 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
   Copia els objectius vigents en obrir el ticket, marca la primera resposta un sol cop, i
   retorna el missatge ja desat quan es repeteix una referencia externa.
 
-Pendent de la fase: adaptador de persistencia, rutes, UI de la safata i el proces d'escalat
-al worker.
+- `apps/api/src/support-repository.ts`: adaptador contra PostgreSQL. Numero de ticket des
+  d'un comptador propi, pauses derivades del log d'events, i primera resposta escrita amb
+  `where first_response_at is null`.
+
+Pendent de la fase: rutes, UI de la safata i el proces d'escalat al worker.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la
