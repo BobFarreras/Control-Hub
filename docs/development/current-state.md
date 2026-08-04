@@ -54,7 +54,17 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
 - `GET /api/v1/support/tickets/:ticketId` retorna ticket, conversa, estat de SLA i membres
   assignables en una sola crida.
 
-Pendent de la fase: alta de tickets des de la UI, i l'E2E autenticat.
+- Alta de tickets des de la safata, amb seleccio de client, prioritat i categoria.
+
+**La Fase 5 esta implementada.** Falta la revisio del propietari que demana el pla:
+demostracio d'un cicle complet de ticket, validacio de prioritats, SLA i escalats, i aprovacio
+de les plantilles de notificacio.
+
+### Pendents coneguts, no bloquejants
+
+- E2E autenticat: cap prova cobreix encara una pantalla amb sessio iniciada.
+- Alta d'incidencies i el seu vincle amb tickets: l'esquema hi es, la UI no.
+- Pantalla de configuracio de suport (horari, festius, objectius): l'API hi es, la UI no.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

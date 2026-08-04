@@ -5,7 +5,7 @@ import { InstantSearch } from "@/components/instant-search";
 import { PageTopbar } from "@/components/page-topbar";
 import { SupportInbox } from "@/components/support-inbox";
 import { apiFetch, readJson } from "@/lib/api";
-import type { InboxPage, TablePreference, TablePreferenceResponse } from "@/lib/api-types";
+import type { CustomerOption, InboxPage, Page, TablePreference, TablePreferenceResponse } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
 const sorts = ["opened_desc", "opened_asc", "priority_desc", "updated_desc"] as const;
@@ -29,11 +29,15 @@ async function load(search: URLSearchParams) {
       : defaultPreference;
 
     if (!search.has("pageSize")) search.set("pageSize", String(preference.pageSize));
-    const response = await apiFetch(`/api/v1/support/tickets?${search}`);
-    if (!response.ok) return { tickets: emptyPage, preference, loadError: true };
-    return { tickets: await readJson<InboxPage>(response), preference, loadError: false };
+    const [response, customersResponse] = await Promise.all([
+      apiFetch(`/api/v1/support/tickets?${search}`),
+      apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc")
+    ]);
+    const customers = customersResponse.ok ? (await readJson<Page<CustomerOption>>(customersResponse)).items : [];
+    if (!response.ok) return { tickets: emptyPage, preference, customers, loadError: true };
+    return { tickets: await readJson<InboxPage>(response), preference, customers, loadError: false };
   } catch {
-    return { tickets: emptyPage, preference: defaultPreference, loadError: true };
+    return { tickets: emptyPage, preference: defaultPreference, customers: [], loadError: true };
   }
 }
 
@@ -77,6 +81,7 @@ export default async function SupportPage({
           <SupportInbox
             tickets={data.tickets}
             preference={data.preference}
+            customers={data.customers}
             loadError={data.loadError}
             labels={labels}
             locale={locale}

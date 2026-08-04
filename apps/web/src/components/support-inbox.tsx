@@ -1,8 +1,12 @@
 "use client";
 
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock, Plus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
-import type { InboxTicket, TablePreference } from "@/lib/api-types";
+import type { CustomerOption, InboxTicket, TablePreference } from "@/lib/api-types";
+import { formValue, optionalFormValue } from "@/lib/form";
+import { eventHandler } from "@/lib/handlers";
 
 type Labels = Record<string, string>;
 
@@ -35,6 +39,7 @@ function activeTarget(ticket: InboxTicket) {
 export function SupportInbox({
   tickets,
   preference,
+  customers,
   labels: t,
   locale,
   loadError,
@@ -42,11 +47,44 @@ export function SupportInbox({
 }: {
   tickets: { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
   preference: TablePreference;
+  customers: CustomerOption[];
   labels: Labels;
   locale: string;
   loadError: boolean;
   sort: string;
 }) {
+  const router = useRouter();
+  const [dialog, setDialog] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fail = () => setError(t.formError ?? "OPERATION_FAILED");
+
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const data = new FormData(event.currentTarget);
+    const response = await fetch("/api/v1/support/tickets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        customerId: formValue(data, "customerId"),
+        subject: formValue(data, "subject"),
+        description: formValue(data, "description"),
+        priority: formValue(data, "priority"),
+        ...(optionalFormValue(data, "category") ? { category: optionalFormValue(data, "category") } : {})
+      })
+    });
+    setBusy(false);
+    if (!response.ok) {
+      // A tenant with no targets published cannot open a ticket at all, and the generic
+      // failure would send somebody hunting through the form for a field that is fine.
+      const payload = (await response.json().catch(() => null)) as { code?: string } | null;
+      return setError(payload?.code === "SLA_TARGETS_NOT_CONFIGURED" ? (t.noTargets ?? "") : (t.formError ?? ""));
+    }
+    setDialog(false);
+    router.refresh();
+  }
   const due = (ticket: InboxTicket) => {
     const target = activeTarget(ticket);
     const stage = ticket.firstResponseAt ? t.resolutionPending : t.firstResponsePending;
@@ -116,6 +154,12 @@ export function SupportInbox({
           {t.loadError}
         </p>
       )}
+      {error && !dialog && (
+        <p className="crm-error">
+          <AlertTriangle size={17} />
+          {error}
+        </p>
+      )}
       <SmartDataTable
         tableId="support.tickets"
         rows={tickets.items}
@@ -136,7 +180,75 @@ export function SupportInbox({
         ]}
         empty={t.empty!}
         labels={t}
+        primaryControls={
+          <button
+            className="primary-command"
+            onClick={() => {
+              setError("");
+              setDialog(true);
+            }}
+          >
+            <Plus size={17} />
+            {t.newTicket}
+          </button>
+        }
       />
+      {dialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDialog(false);
+          }}
+        >
+          <section className="crm-dialog" role="dialog" aria-modal="true">
+            <header>
+              <h2>{t.newTicket}</h2>
+              <button className="icon-button" onClick={() => setDialog(false)} aria-label={t.cancel}>
+                <X size={18} />
+              </button>
+            </header>
+            <form className="commerce-form" onSubmit={eventHandler(create, fail)}>
+              <label>
+                {t.customer}
+                <select name="customerId" required disabled={busy}>
+                  {customers.map((customer) => (
+                    <option value={customer.id} key={customer.id}>
+                      {customer.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t.subject}
+                <input name="subject" required minLength={3} maxLength={200} disabled={busy} />
+              </label>
+              <label>
+                {t.priority}
+                {/* Normal by default: a form that opens on Urgent teaches people to ignore it. */}
+                <select name="priority" defaultValue="normal" disabled={busy}>
+                  <option value="low">{t.low}</option>
+                  <option value="normal">{t.normal}</option>
+                  <option value="high">{t.high}</option>
+                  <option value="urgent">{t.urgent}</option>
+                </select>
+              </label>
+              <label>
+                {t.category}
+                <input name="category" maxLength={60} disabled={busy} />
+              </label>
+              <label className="full-width">
+                {t.ticketDescription}
+                <textarea name="description" required rows={4} maxLength={20000} disabled={busy} />
+              </label>
+              {error && <p className="form-error">{error}</p>}
+              <button className="primary-button" disabled={busy || customers.length === 0}>
+                {t.create}
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
     </>
   );
 }

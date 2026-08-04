@@ -920,7 +920,12 @@ const supportDictionaries = {
     customerReply: "Visible per al client",
     fromCustomer: "Del client",
     backToInbox: "Tornar a la safata",
-    formError: "No s'ha pogut desar el canvi."
+    formError: "No s'ha pogut desar el canvi.",
+    newTicket: "Nou ticket",
+    create: "Crear",
+    cancel: "Cancel·lar",
+    category: "Categoria",
+    noTargets: "Publiqueu objectius de SLA abans d'obrir tickets."
   },
   es: {
     eyebrow: "SOPORTE",
@@ -980,7 +985,12 @@ const supportDictionaries = {
     customerReply: "Visible para el cliente",
     fromCustomer: "Del cliente",
     backToInbox: "Volver a la bandeja",
-    formError: "No se ha podido guardar el cambio."
+    formError: "No se ha podido guardar el cambio.",
+    newTicket: "Nuevo ticket",
+    create: "Crear",
+    cancel: "Cancelar",
+    category: "Categoria",
+    noTargets: "Publicad objetivos de SLA antes de abrir tickets."
   },
   en: {
     eyebrow: "SUPPORT",
@@ -1040,7 +1050,12 @@ const supportDictionaries = {
     customerReply: "Visible to customer",
     fromCustomer: "From customer",
     backToInbox: "Back to inbox",
-    formError: "The change could not be saved."
+    formError: "The change could not be saved.",
+    newTicket: "New ticket",
+    create: "Create",
+    cancel: "Cancel",
+    category: "Category",
+    noTargets: "Publish service level targets before opening tickets."
   }
 } as const;
 
