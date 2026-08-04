@@ -2174,3 +2174,41 @@ main {
     width: min(390px, 55vw);
   }
 }
+
+/* Support inbox
+   The due column never relies on colour alone: an icon and a word carry the same meaning, so
+   the state is readable without separating red from green. */
+.ticket-reference {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.ticket-subject {
+  color: var(--text-strong);
+  font-weight: 500;
+  text-decoration: none;
+}
+.ticket-subject:hover,
+.ticket-subject:focus-visible {
+  text-decoration: underline;
+}
+.sla-remaining,
+.sla-breached,
+.sla-unknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sla-breached {
+  color: var(--danger-strong, #b42318);
+  font-weight: 600;
+}
+.sla-unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.priority-urgent,
+.priority-high {
+  font-weight: 600;
+}

@@ -42,7 +42,13 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
 - `apps/worker/src/support-escalation.ts`: escombrada periodica que recorre els tenants i
   registra els objectius de SLA incomplerts. Job repetible de BullMQ cada 5 minuts.
 
-Pendent de la fase: UI de la safata.
+- `apps/web/src/app/[locale]/support/page.tsx` i `components/support-inbox.tsx`: safata amb
+  `SmartDataTable`, filtres, cerca i temps laborable restant per fila. Entrada "Suport" del
+  menu ja cablejada.
+- El llistat retorna l'estat de SLA per fila calculat al servidor: una carrega del calendari i
+  una consulta de pauses per pagina, independentment de quantes files mostri.
+
+Pendent de la fase: fitxa del ticket amb la conversa, i alta de tickets des de la UI.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

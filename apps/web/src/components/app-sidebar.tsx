@@ -78,7 +78,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           </summary>
           <div>{item(`/${locale}/expenses/subscriptions`, labels.companySubscriptions)}</div>
         </details>
-        {item("#", labels.support, Headphones)}
+        {item(`/${locale}/support`, labels.support, Headphones)}
         {item("#", labels.infrastructure, CloudCog)}
         {item("#", labels.integrations, Boxes)}
         {item(`/${locale}/security`, labels.settings, Settings)}

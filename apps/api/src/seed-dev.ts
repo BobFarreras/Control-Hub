@@ -75,8 +75,40 @@ try {
   ] as const;
   for (const [provider, service, category, amount, interval, website] of expenses)
     await database`insert into company_subscriptions (id, tenant_id, provider, service_name, category, currency, amount_minor, billing_interval, renewal_at, auto_renew, website_url) values (${id(`${tenantId}:expense:${provider}:${service}`)}, ${tenantId}, ${provider}, ${service}, ${category}, 'EUR', ${amount}, ${interval}, now() + interval '21 days', true, ${website}) on conflict do nothing`;
+  // Support: the schedule and targets first, because a ticket copies the targets when it opens
+  // and cannot be created without them.
+  for (const weekday of [1, 2, 3, 4, 5])
+    await database`insert into support_schedule (id, tenant_id, weekday, opens_at, closes_at) values (${id(`${tenantId}:schedule:${weekday}`)}, ${tenantId}, ${weekday}, '08:00', '16:00') on conflict do nothing`;
+  const slaTargets = [
+    ["low", 480, 4800],
+    ["normal", 240, 2400],
+    ["high", 60, 480],
+    ["urgent", 15, 240]
+  ] as const;
+  for (const [priority, firstResponse, resolution] of slaTargets)
+    await database`insert into sla_targets (id, tenant_id, priority, first_response_minutes, resolution_minutes, effective_from) values (${id(`${tenantId}:sla:${priority}`)}, ${tenantId}, ${priority}, ${firstResponse}, ${resolution}, '2020-01-01T00:00:00Z') on conflict do nothing`;
+
+  const seededCustomers = await database<
+    { id: string }[]
+  >`select id from customers where tenant_id = ${tenantId} order by created_at limit 4`;
+  const tickets = [
+    ["El formulari de contacte no envia correus", "urgent", "open", 30],
+    ["Actualitzar els textos de la pagina de preus", "low", "new", 6],
+    ["L'automatitzacio de factures ha fallat dues vegades", "high", "waiting_customer", 20],
+    ["Afegir un idioma nou a la web", "normal", "open", 3]
+  ] as const;
+  let ticketNumber = 0;
+  for (const [subject, priority, status, hoursAgo] of tickets) {
+    const customer = seededCustomers[ticketNumber % Math.max(1, seededCustomers.length)];
+    if (!customer) break;
+    ticketNumber += 1;
+    const targets = slaTargets.find(([code]) => code === priority)!;
+    await database`insert into tickets (id, tenant_id, ticket_number, customer_id, subject, description, status, priority, opened_at, first_response_target_minutes, resolution_target_minutes) values (${id(`${tenantId}:ticket:${subject}`)}, ${tenantId}, ${ticketNumber}, ${customer.id}, ${subject}, 'Exemple de desenvolupament.', ${status}, ${priority}, now() - ${`${hoursAgo} hours`}::interval, ${targets[1]}, ${targets[2]}) on conflict do nothing`;
+  }
+  await database`insert into ticket_counters (tenant_id, next_number) values (${tenantId}, ${tickets.length + 1}) on conflict (tenant_id) do update set next_number = greatest(ticket_counters.next_number, ${tickets.length + 1})`;
+
   console.log(
-    `Development examples ready for tenant ${tenantId}: ${leads.length} leads, ${customers.length} customers, ${products.length} products, 3 customer subscriptions, ${expenses.length} expenses.`
+    `Development examples ready for tenant ${tenantId}: ${leads.length} leads, ${customers.length} customers, ${products.length} products, 3 customer subscriptions, ${expenses.length} expenses, ${tickets.length} tickets.`
   );
 } finally {
   await database.end({ timeout: 5 });

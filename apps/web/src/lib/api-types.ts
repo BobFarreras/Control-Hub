@@ -64,6 +64,34 @@ export type CrmSummary = {
 
 export type ImportResult = { row: number; status: string; code?: string };
 
+export type SlaTargetState = {
+  consumedMinutes: number;
+  targetMinutes: number;
+  breached: boolean;
+  measurable: boolean;
+};
+
+export type InboxTicket = {
+  id: string;
+  ticketNumber: number;
+  customerId: string;
+  customerName: string;
+  projectId: string | null;
+  subject: string;
+  status: string;
+  priority: string;
+  category: string;
+  assigneeMembershipId: string | null;
+  assigneeName: string | null;
+  openedAt: string;
+  firstResponseAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+};
+
+export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
+
 export type Product = { id: string; code: string; name: string; status: string };
 export type Version = { id: string; productId: string; version: string; status: string };
 export type Plan = { id: string; productVersionId: string; code: string; name: string; status: string };

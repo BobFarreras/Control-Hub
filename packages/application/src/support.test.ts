@@ -7,6 +7,7 @@ import {
   stopsTheClock,
   type EscalationCandidate,
   type SupportRepository,
+  type TicketListRow,
   type TicketRecord
 } from "./support.js";
 
@@ -45,10 +46,18 @@ const ticket = (overrides: Partial<TicketRecord> = {}): TicketRecord => ({
   ...overrides
 });
 
+/** A listing row carries the names the inbox renders, which the base record does not. */
+const listRow = (overrides: Partial<TicketListRow> = {}): TicketListRow => ({
+  ...ticket(),
+  customerName: "Client A",
+  assigneeName: null,
+  ...overrides
+});
+
 const repository = (overrides: Partial<SupportRepository> = {}): SupportRepository => ({
   listTickets: vi
     .fn<SupportRepository["listTickets"]>()
-    .mockResolvedValue({ items: [ticket()], total: 1, page: 1, pageSize: 25 }),
+    .mockResolvedValue({ items: [listRow()], total: 1, page: 1, pageSize: 25 }),
   createTicket: vi.fn<SupportRepository["createTicket"]>().mockImplementation((_context, input) =>
     Promise.resolve(
       ticket({
@@ -70,6 +79,7 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
   findMessageByExternalReference: vi.fn<SupportRepository["findMessageByExternalReference"]>().mockResolvedValue(null),
   markFirstResponse: vi.fn<SupportRepository["markFirstResponse"]>().mockResolvedValue(undefined),
   listPauses: vi.fn<SupportRepository["listPauses"]>().mockResolvedValue([]),
+  listPausesForTickets: vi.fn<SupportRepository["listPausesForTickets"]>().mockResolvedValue({}),
   currentTargets: vi
     .fn<SupportRepository["currentTargets"]>()
     .mockResolvedValue({ firstResponseMinutes: 60, resolutionMinutes: 480 }),
@@ -371,5 +381,37 @@ describe("escalation", () => {
     );
 
     expect(result.recorded.map((entry) => entry.target)).toEqual(["first_response", "resolution"]);
+  });
+});
+
+describe("inbox listing", () => {
+  it("resolves each row's target state without asking per row", async () => {
+    const loadCalendar = vi.fn<SupportRepository["loadCalendar"]>().mockResolvedValue(calendar);
+    const listPausesForTickets = vi.fn<SupportRepository["listPausesForTickets"]>().mockResolvedValue({});
+    const page = await new SupportService(repository({ loadCalendar, listPausesForTickets })).listInbox(
+      context,
+      { page: 1, pageSize: 25, sort: "opened_desc" },
+      new Date("2026-08-04T09:00:00Z")
+    );
+
+    expect(page.items[0]!.sla.firstResponse.breached).toBe(true);
+    // One calendar and one pause query for the whole page, however many rows it holds.
+    expect(loadCalendar).toHaveBeenCalledOnce();
+    expect(listPausesForTickets).toHaveBeenCalledOnce();
+  });
+
+  it("does not query anything else when the page is empty", async () => {
+    const loadCalendar = vi.fn<SupportRepository["loadCalendar"]>();
+    const listTickets = vi
+      .fn<SupportRepository["listTickets"]>()
+      .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 25 });
+    const page = await new SupportService(repository({ listTickets, loadCalendar })).listInbox(context, {
+      page: 1,
+      pageSize: 25,
+      sort: "opened_desc"
+    });
+
+    expect(page.items).toEqual([]);
+    expect(loadCalendar).not.toHaveBeenCalled();
   });
 });

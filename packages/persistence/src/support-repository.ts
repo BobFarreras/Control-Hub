@@ -12,6 +12,7 @@ import {
   type SlaTargetRecord,
   type SupportRepository,
   type TicketListQuery,
+  type TicketListRow,
   type TicketPage,
   type TicketMessageRecord,
   type TicketRecord
@@ -34,6 +35,20 @@ const ticketColumns = `id, ticket_number::int as "ticketNumber", customer_id as 
   opened_at as "openedAt", first_response_at as "firstResponseAt", resolved_at as "resolvedAt",
   closed_at as "closedAt", first_response_target_minutes as "firstResponseTargetMinutes",
   resolution_target_minutes as "resolutionTargetMinutes"`;
+
+// The listing shows people, not identifiers, so it joins the names the inbox renders.
+const listColumns = `t.id, t.ticket_number::int as "ticketNumber", t.customer_id as "customerId",
+  t.project_id as "projectId", t.subject, t.description, t.status, t.priority, t.category,
+  t.assignee_membership_id as "assigneeMembershipId", t.opened_at as "openedAt",
+  t.first_response_at as "firstResponseAt", t.resolved_at as "resolvedAt", t.closed_at as "closedAt",
+  t.first_response_target_minutes as "firstResponseTargetMinutes",
+  t.resolution_target_minutes as "resolutionTargetMinutes",
+  c.display_name as "customerName", u.name as "assigneeName"`;
+
+const listFrom = `from tickets t
+  join customers c on c.tenant_id = t.tenant_id and c.id = t.customer_id
+  left join memberships m on m.tenant_id = t.tenant_id and m.id = t.assignee_membership_id
+  left join "user" u on u.id = m.user_id`;
 
 export class PostgresSupportRepository implements SupportRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -70,20 +85,20 @@ export class PostgresSupportRepository implements SupportRepository {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const search = query.search?.trim() || null;
       const offset = (query.page - 1) * query.pageSize;
-      const items = await tx<TicketRecord[]>`
-        select ${tx.unsafe(ticketColumns)} from tickets
-        where tenant_id = ${context.tenantId}
-          and (${query.status ?? null}::text is null or status = ${query.status ?? null})
-          and (${query.priority ?? null}::text is null or priority = ${query.priority ?? null})
-          and (${query.customerId ?? null}::uuid is null or customer_id = ${query.customerId ?? null}::uuid)
-          and (${search}::text is null or subject ilike '%' || ${search} || '%'
-            or ticket_number::text = ${search})
+      const items = await tx<TicketListRow[]>`
+        select ${tx.unsafe(listColumns)} ${tx.unsafe(listFrom)}
+        where t.tenant_id = ${context.tenantId}
+          and (${query.status ?? null}::text is null or t.status = ${query.status ?? null})
+          and (${query.priority ?? null}::text is null or t.priority = ${query.priority ?? null})
+          and (${query.customerId ?? null}::uuid is null or t.customer_id = ${query.customerId ?? null}::uuid)
+          and (${query.search?.trim() || null}::text is null or t.subject ilike '%' || ${query.search?.trim() || null} || '%'
+            or t.ticket_number::text = ${query.search?.trim() || null})
         order by
-          case when ${query.sort} = 'opened_asc' then opened_at end asc,
+          case when ${query.sort} = 'opened_asc' then t.opened_at end asc,
           case when ${query.sort} = 'priority_desc'
-            then array_position(array['low','normal','high','urgent']::text[], priority) end desc,
-          case when ${query.sort} = 'updated_desc' then updated_at end desc,
-          opened_at desc, id
+            then array_position(array['low','normal','high','urgent']::text[], t.priority) end desc,
+          case when ${query.sort} = 'updated_desc' then t.updated_at end desc,
+          t.opened_at desc, t.id
         limit ${query.pageSize} offset ${offset}`;
       const [count] = await tx<{ total: string }[]>`
         select count(*)::text as total from tickets
@@ -173,6 +188,21 @@ export class PostgresSupportRepository implements SupportRepository {
         order by created_at asc`;
 
       return pausesFromEvents(events);
+    });
+  }
+
+  async listPausesForTickets(context: TenantContext, ticketIds: readonly string[]) {
+    if (ticketIds.length === 0) return {};
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const events = await tx<{ ticket_id: string; to_value: TicketStatus; created_at: Date }[]>`
+        select ticket_id, to_value, created_at from ticket_events
+        where tenant_id = ${context.tenantId} and ticket_id in ${tx(ticketIds as string[])}
+          and type = 'status_changed' order by ticket_id, created_at asc`;
+      const byTicket: Record<string, SlaPause[]> = {};
+      for (const ticketId of ticketIds) {
+        byTicket[ticketId] = pausesFromEvents(events.filter((event) => event.ticket_id === ticketId));
+      }
+      return byTicket;
     });
   }
 

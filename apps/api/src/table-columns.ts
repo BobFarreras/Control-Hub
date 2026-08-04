@@ -2,6 +2,7 @@
  *  this list is rejected rather than stored, so a preference cannot name an unknown column. */
 export const tableColumns = {
   "crm.leads": ["name", "company", "status", "priority", "created", "actions"],
-  "crm.customers": ["name", "email", "phone", "status", "created"]
+  "crm.customers": ["name", "email", "phone", "status", "created"],
+  "support.tickets": ["reference", "subject", "customer", "status", "priority", "assignee", "due"]
 } as const;
 export type TableId = keyof typeof tableColumns;

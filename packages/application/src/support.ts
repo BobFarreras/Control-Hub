@@ -92,7 +92,13 @@ export type TicketListQuery = {
   customerId?: string | undefined;
 };
 
-export type TicketPage = { items: TicketRecord[]; total: number; page: number; pageSize: number };
+/** A row of the listing: the record plus the names a person needs instead of identifiers. */
+export type TicketListRow = TicketRecord & { customerName: string; assigneeName: string | null };
+export type TicketPage = { items: TicketListRow[]; total: number; page: number; pageSize: number };
+
+/** A ticket with the state of its targets, which is what an inbox row has to show. */
+export type InboxTicket = TicketListRow & { sla: SlaState };
+export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: number };
 
 export type SupportRepository = {
   listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage>;
@@ -103,6 +109,7 @@ export type SupportRepository = {
   findMessageByExternalReference(context: TenantContext, reference: string): Promise<TicketMessageRecord | null>;
   markFirstResponse(context: TenantContext, ticketId: string, at: Date): Promise<void>;
   listPauses(context: TenantContext, ticketId: string): Promise<SlaPause[]>;
+  listPausesForTickets(context: TenantContext, ticketIds: readonly string[]): Promise<Record<string, SlaPause[]>>;
   currentTargets(context: TenantContext, priority: TicketPriority, at: Date): Promise<SlaTargets | null>;
   loadCalendar(context: TenantContext): Promise<SupportCalendar>;
   replaceSchedule(context: TenantContext, windows: readonly SupportWindow[]): Promise<void>;
@@ -152,6 +159,43 @@ export class SupportService {
 
   listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage> {
     return this.repository.listTickets(context, query);
+  }
+
+  /**
+   * The inbox listing, with each row's target state resolved.
+   *
+   * Computed here rather than by the page asking per row: the calendar is loaded once and the
+   * pauses for the whole page in one query, so opening the inbox costs three queries whether
+   * it shows five tickets or a hundred.
+   */
+  async listInbox(context: TenantContext, query: TicketListQuery, now = new Date()): Promise<InboxPage> {
+    const page = await this.repository.listTickets(context, query);
+    if (page.items.length === 0) return { ...page, items: [] };
+
+    const [calendar, pausesByTicket] = await Promise.all([
+      this.repository.loadCalendar(context),
+      this.repository.listPausesForTickets(
+        context,
+        page.items.map((ticket) => ticket.id)
+      )
+    ]);
+
+    return {
+      ...page,
+      items: page.items.map((ticket) => ({
+        ...ticket,
+        sla: slaState({
+          calendar,
+          openedAt: ticket.openedAt,
+          now,
+          pauses: pausesByTicket[ticket.id] ?? [],
+          firstResponseTargetMinutes: ticket.firstResponseTargetMinutes,
+          resolutionTargetMinutes: ticket.resolutionTargetMinutes,
+          ...(ticket.firstResponseAt ? { firstResponseAt: ticket.firstResponseAt } : {}),
+          ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
+        })
+      }))
+    };
   }
 
   async getTicket(context: TenantContext, ticketId: string): Promise<TicketRecord> {

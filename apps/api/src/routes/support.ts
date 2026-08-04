@@ -40,7 +40,7 @@ export function registerSupportRoutes({ app, database, auth, support }: SupportC
   app.get<{ Querystring: ListQuery }>("/api/v1/support/tickets", { schema: listSchema }, async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "tickets:read");
-    return support.listTickets(context, normalizeListQuery(request.query));
+    return support.listInbox(context, normalizeListQuery(request.query));
   });
 
   app.post<{
