@@ -363,6 +363,36 @@ segueix compilant.
 manera que la suite `@visual` no s'executa a CI. Perque hi corri cal generar-ne de Linux dins
 d'un contenidor.
 
+## Mida de les imatges de contenidor
+
+Cada servei te ara la seva propia etapa de runtime. Abans n'hi havia una de sola i les quatre
+imatges eren identiques, de manera que l'API i el worker portaven Next.js i els seus binaris de
+plataforma: 417 MB per a serveis que no l'importen mai.
+
+| Imatge | Abans | Ara |
+| --- | --- | --- |
+| api | 2,96 GB | 1,17 GB |
+| worker | 2,96 GB | 258 MB |
+| web | 2,96 GB | 255 MB |
+| migrate | 2,96 GB | 227 MB |
+
+Total desplegat: de 11,8 GB a 1,9 GB.
+
+**Pendent: l'API encara es molt mes gran que la seva propia clausura de dependencies.** El codi
+que executa son 324 kB i el seu `node_modules` en fa 700, dels quals 417 son Next.js. La causa
+es que `pnpm deploy` copia mes magatzem virtual del que el filtre indica.
+
+Intent descartat, documentat perque no es repeteixi: `turbo prune` per servei mes
+`pnpm install --prod` des del lockfile podat. La poda dels importers es correcta, pero el
+lockfile resultant segueix arrossegant els mateixos paquets, i sobretot **el resultat no
+arrenca**: pnpm posa les dependencies de cada projecte dins del seu directori i les enllaça a
+un magatzem compartit, i aquests enllaços no sobreviuen a ser copiats a una altra ruta. Per
+aixo el runtime necessita l'arbre aplanat que produeix `pnpm deploy`.
+
+La via que queda per provar es `inject-workspace-packages`, que fa funcionar el `pnpm deploy`
+modern, a canvi que els paquets del workspace es copiin en comptes d'enllaçar-se. Aixo
+degradaria el bucle de desenvolupament, i per aixo no s'ha fet sense decidir-ho abans.
+
 ## Recomanació d'ordre
 
 Abans d'obrir la Fase 5:
