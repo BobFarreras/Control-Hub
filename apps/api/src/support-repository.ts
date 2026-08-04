@@ -5,8 +5,10 @@ import {
   type AddMessageInput,
   type CreateTicketInput,
   type SlaTargets,
+  type EscalationCandidate,
   type HolidayRecord,
   type PublishSlaTargetInput,
+  type SlaTargetKind,
   type SlaTargetRecord,
   type SupportRepository,
   type TicketListQuery,
@@ -170,19 +172,7 @@ export class PostgresSupportRepository implements SupportRepository {
         where tenant_id = ${context.tenantId} and ticket_id = ${ticketId} and type = 'status_changed'
         order by created_at asc`;
 
-      const pauses: SlaPause[] = [];
-      let openedPauseAt: Date | null = null;
-      for (const event of events) {
-        if (stopsTheClock(event.to_value)) {
-          openedPauseAt ??= event.created_at;
-        } else if (openedPauseAt) {
-          pauses.push({ from: openedPauseAt, to: event.created_at });
-          openedPauseAt = null;
-        }
-      }
-      // Still waiting: the pause has no end yet, and the domain reads that as "until now".
-      if (openedPauseAt) pauses.push({ from: openedPauseAt, to: null });
-      return pauses;
+      return pausesFromEvents(events);
     });
   }
 
@@ -283,6 +273,42 @@ export class PostgresSupportRepository implements SupportRepository {
     }).catch(mapConstraint);
   }
 
+  /**
+   * Everything the escalation pass needs, in three queries rather than three per ticket.
+   * Resolved and closed tickets are excluded: their clocks have already stopped.
+   */
+  async listEscalationCandidates(context: TenantContext): Promise<EscalationCandidate[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const tickets = await tx<TicketRecord[]>`
+        select ${tx.unsafe(ticketColumns)} from tickets
+        where tenant_id = ${context.tenantId} and status not in ('resolved', 'closed')`;
+      if (tickets.length === 0) return [];
+      const ids = tickets.map((ticket) => ticket.id);
+
+      const events = await tx<{ ticket_id: string; to_value: TicketStatus; created_at: Date }[]>`
+        select ticket_id, to_value, created_at from ticket_events
+        where tenant_id = ${context.tenantId} and ticket_id in ${tx(ids)}
+          and type = 'status_changed' order by ticket_id, created_at asc`;
+      const breaches = await tx<{ ticket_id: string; to_value: SlaTargetKind }[]>`
+        select ticket_id, to_value from ticket_events
+        where tenant_id = ${context.tenantId} and ticket_id in ${tx(ids)} and type = 'sla_breached'`;
+
+      return tickets.map((ticket) => ({
+        ticket,
+        pauses: pausesFromEvents(events.filter((event) => event.ticket_id === ticket.id)),
+        recordedBreaches: breaches.filter((row) => row.ticket_id === ticket.id).map((row) => row.to_value)
+      }));
+    });
+  }
+
+  async recordBreach(context: TenantContext, ticketId: string, target: SlaTargetKind, at: Date) {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into ticket_events (id, tenant_id, ticket_id, actor_membership_id, type, to_value, created_at)
+        values (${randomUUID()}, ${context.tenantId}, ${ticketId}, null, 'sla_breached', ${target}, ${at})`;
+    });
+  }
+
   private async writeEvent(
     tx: postgres.TransactionSql,
     context: TenantContext,
@@ -308,4 +334,25 @@ function mapConstraint(error: unknown): never {
   if (databaseError.code === "23503") throw new SupportError("CUSTOMER_NOT_FOUND");
   if (databaseError.code === "23514") throw new SupportError("INVALID_INPUT");
   throw error;
+}
+
+/**
+ * Turns a ticket's status history into the stretches its clock was stopped.
+ *
+ * A pause with no end means the ticket is still waiting, which the domain reads as "until
+ * now" rather than as a pause of zero length.
+ */
+function pausesFromEvents(events: readonly { to_value: TicketStatus; created_at: Date }[]): SlaPause[] {
+  const pauses: SlaPause[] = [];
+  let openedPauseAt: Date | null = null;
+  for (const event of events) {
+    if (stopsTheClock(event.to_value)) {
+      openedPauseAt ??= event.created_at;
+    } else if (openedPauseAt) {
+      pauses.push({ from: openedPauseAt, to: event.created_at });
+      openedPauseAt = null;
+    }
+  }
+  if (openedPauseAt) pauses.push({ from: openedPauseAt, to: null });
+  return pauses;
 }

@@ -1,6 +1,14 @@
 import type { SupportCalendar, TenantContext, TicketStatus } from "@control-hub/domain";
 import { describe, expect, it, vi } from "vitest";
-import { SupportError, SupportService, stopsTheClock, type SupportRepository, type TicketRecord } from "./support.js";
+import {
+  escalateBreachedTargets,
+  SupportError,
+  SupportService,
+  stopsTheClock,
+  type EscalationCandidate,
+  type SupportRepository,
+  type TicketRecord
+} from "./support.js";
 
 const context: TenantContext = {
   tenantId: "tenant",
@@ -72,6 +80,8 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
     .fn<SupportRepository["addHoliday"]>()
     .mockResolvedValue({ id: "holiday-1", holidayOn: "2026-08-05", label: null }),
   removeHoliday: vi.fn<SupportRepository["removeHoliday"]>().mockResolvedValue(undefined),
+  listEscalationCandidates: vi.fn<SupportRepository["listEscalationCandidates"]>().mockResolvedValue([]),
+  recordBreach: vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined),
   listSlaTargets: vi.fn<SupportRepository["listSlaTargets"]>().mockResolvedValue([]),
   publishSlaTarget: vi.fn<SupportRepository["publishSlaTarget"]>().mockResolvedValue({
     id: "target-1",
@@ -270,5 +280,96 @@ describe("support configuration", () => {
     await expect(new SupportService(repository()).addHoliday(context, "5 d'agost", null)).rejects.toMatchObject({
       code: "INVALID_INPUT"
     });
+  });
+});
+
+describe("escalation", () => {
+  const openedAt = new Date("2026-08-04T07:00:00Z");
+  const candidate = (overrides: Partial<EscalationCandidate> = {}): EscalationCandidate => ({
+    ticket: ticket({ openedAt }),
+    pauses: [],
+    recordedBreaches: [],
+    ...overrides
+  });
+
+  it("records a missed first response once", async () => {
+    const recordBreach = vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined);
+    const listEscalationCandidates = vi
+      .fn<SupportRepository["listEscalationCandidates"]>()
+      .mockResolvedValue([candidate()]);
+
+    // Opened 09:00 Madrid with a sixty minute target, measured at 11:00.
+    const result = await escalateBreachedTargets(
+      repository({ recordBreach, listEscalationCandidates }),
+      context,
+      new Date("2026-08-04T09:00:00Z")
+    );
+
+    expect(result.recorded).toEqual([{ ticketId: "ticket-1", target: "first_response" }]);
+    expect(recordBreach).toHaveBeenCalledOnce();
+  });
+
+  it("does not record the same breach on a later pass", async () => {
+    // The pass runs on a schedule. Without this the log fills with one breach per minute.
+    const recordBreach = vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined);
+    const listEscalationCandidates = vi
+      .fn<SupportRepository["listEscalationCandidates"]>()
+      .mockResolvedValue([candidate({ recordedBreaches: ["first_response"] })]);
+
+    const result = await escalateBreachedTargets(
+      repository({ recordBreach, listEscalationCandidates }),
+      context,
+      new Date("2026-08-04T09:00:00Z")
+    );
+
+    expect(result.recorded).toEqual([]);
+    expect(recordBreach).not.toHaveBeenCalled();
+  });
+
+  it("leaves a ticket inside its target alone", async () => {
+    const recordBreach = vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined);
+    const listEscalationCandidates = vi
+      .fn<SupportRepository["listEscalationCandidates"]>()
+      .mockResolvedValue([candidate()]);
+
+    const result = await escalateBreachedTargets(
+      repository({ recordBreach, listEscalationCandidates }),
+      context,
+      new Date("2026-08-04T07:30:00Z")
+    );
+
+    expect(result).toEqual({ checked: 1, recorded: [] });
+  });
+
+  it("does not count time the ticket spent waiting on somebody else", async () => {
+    const recordBreach = vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined);
+    const listEscalationCandidates = vi
+      .fn<SupportRepository["listEscalationCandidates"]>()
+      .mockResolvedValue([
+        candidate({ pauses: [{ from: new Date("2026-08-04T07:30:00Z"), to: new Date("2026-08-04T09:30:00Z") }] })
+      ]);
+
+    const result = await escalateBreachedTargets(
+      repository({ recordBreach, listEscalationCandidates }),
+      context,
+      new Date("2026-08-04T09:30:00Z")
+    );
+
+    expect(result.recorded).toEqual([]);
+  });
+
+  it("records both targets when both have been missed", async () => {
+    const recordBreach = vi.fn<SupportRepository["recordBreach"]>().mockResolvedValue(undefined);
+    const listEscalationCandidates = vi
+      .fn<SupportRepository["listEscalationCandidates"]>()
+      .mockResolvedValue([candidate({ ticket: ticket({ openedAt, resolutionTargetMinutes: 60 }) })]);
+
+    const result = await escalateBreachedTargets(
+      repository({ recordBreach, listEscalationCandidates }),
+      context,
+      new Date("2026-08-04T09:00:00Z")
+    );
+
+    expect(result.recorded.map((entry) => entry.target)).toEqual(["first_response", "resolution"]);
   });
 });

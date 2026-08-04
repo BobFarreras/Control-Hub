@@ -65,6 +65,23 @@ export type AddMessageInput = {
 
 export type SlaTargets = { firstResponseMinutes: number; resolutionMinutes: number };
 
+/** Which of a ticket's two targets is being spoken about. */
+export type SlaTargetKind = "first_response" | "resolution";
+
+/**
+ * Everything the escalation pass needs about one ticket, fetched together.
+ *
+ * The pass runs over every open ticket, so asking the database per ticket for its pauses and
+ * its already-recorded breaches would turn one sweep into three queries per ticket.
+ */
+export type EscalationCandidate = {
+  ticket: TicketRecord;
+  pauses: SlaPause[];
+  recordedBreaches: SlaTargetKind[];
+};
+
+export type EscalationResult = { checked: number; recorded: { ticketId: string; target: SlaTargetKind }[] };
+
 export type TicketListQuery = {
   page: number;
   pageSize: number;
@@ -94,6 +111,8 @@ export type SupportRepository = {
   removeHoliday(context: TenantContext, holidayId: string): Promise<void>;
   listSlaTargets(context: TenantContext): Promise<SlaTargetRecord[]>;
   publishSlaTarget(context: TenantContext, input: PublishSlaTargetInput): Promise<SlaTargetRecord>;
+  listEscalationCandidates(context: TenantContext): Promise<EscalationCandidate[]>;
+  recordBreach(context: TenantContext, ticketId: string, target: SlaTargetKind, at: Date): Promise<void>;
 };
 
 export type HolidayRecord = { id: string; holidayOn: string; label: string | null };
@@ -247,6 +266,52 @@ export class SupportService {
       ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
     });
   }
+}
+
+/**
+ * Records the targets that have been missed since the last pass.
+ *
+ * Runs on a schedule, so it has to be safe to run again a minute later: a breach already
+ * recorded is skipped rather than written a second time. Without that the event log fills with
+ * the same breach every minute and the history stops being readable.
+ *
+ * It records; it does not decide what to do about it. Reassignment with a team of two is
+ * noise, and who gets woken is a per-tenant policy rather than something the domain rules on.
+ */
+export async function escalateBreachedTargets(
+  repository: SupportRepository,
+  context: TenantContext,
+  now = new Date()
+): Promise<EscalationResult> {
+  const [calendar, candidates] = await Promise.all([
+    repository.loadCalendar(context),
+    repository.listEscalationCandidates(context)
+  ]);
+
+  const recorded: EscalationResult["recorded"] = [];
+  for (const candidate of candidates) {
+    const state = slaState({
+      calendar,
+      openedAt: candidate.ticket.openedAt,
+      now,
+      pauses: candidate.pauses,
+      firstResponseTargetMinutes: candidate.ticket.firstResponseTargetMinutes,
+      resolutionTargetMinutes: candidate.ticket.resolutionTargetMinutes,
+      ...(candidate.ticket.firstResponseAt ? { firstResponseAt: candidate.ticket.firstResponseAt } : {}),
+      ...(candidate.ticket.resolvedAt ? { resolvedAt: candidate.ticket.resolvedAt } : {})
+    });
+
+    const breached: SlaTargetKind[] = [
+      ...(state.firstResponse.breached ? (["first_response"] as const) : []),
+      ...(state.resolution.breached ? (["resolution"] as const) : [])
+    ];
+    for (const target of breached) {
+      if (candidate.recordedBreaches.includes(target)) continue;
+      await repository.recordBreach(context, candidate.ticket.id, target, now);
+      recorded.push({ ticketId: candidate.ticket.id, target });
+    }
+  }
+  return { checked: candidates.length, recorded };
 }
 
 /** Whether a status stops the clock, for the adapter that records pause intervals. */
