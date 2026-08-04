@@ -188,4 +188,155 @@ export function registerSupportRoutes({ app, database, auth, support }: SupportC
       return { sla: await support.slaFor(context, request.params.ticketId) };
     }
   );
+
+  // Reading the configuration needs only tickets:read, because the inbox has to render the
+  // schedule to explain a due date. Changing it needs support:configure, which decides what
+  // counts as a breach and so does not belong to whoever merely resolves tickets.
+  app.get("/api/v1/support/schedule", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "tickets:read");
+    const [calendar, holidays] = await Promise.all([support.loadCalendar(context), support.listHolidays(context)]);
+    return { schedule: calendar.windows, timeZone: calendar.timeZone, holidays };
+  });
+
+  app.put<{ Body: { windows: { weekday: number; opensAt: string; closesAt: string }[] } }>(
+    "/api/v1/support/schedule",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["windows"],
+          properties: {
+            windows: {
+              type: "array",
+              maxItems: 42,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["weekday", "opensAt", "closesAt"],
+                properties: {
+                  weekday: { type: "integer", minimum: 0, maximum: 6 },
+                  opensAt: { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+                  closesAt: { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "support:configure");
+      await support.replaceSchedule(context, request.body.windows);
+      await writeAudit(database, context, request, {
+        action: "support.schedule.updated",
+        targetType: "support_schedule",
+        outcome: "success",
+        metadata: { windows: request.body.windows.length }
+      });
+      return { status: "updated" };
+    }
+  );
+
+  app.post<{ Body: { holidayOn: string; label?: string } }>(
+    "/api/v1/support/holidays",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["holidayOn"],
+          properties: {
+            holidayOn: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            label: { type: "string", minLength: 1, maxLength: 120 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "support:configure");
+      const holiday = await support.addHoliday(context, request.body.holidayOn, request.body.label ?? null);
+      await writeAudit(database, context, request, {
+        action: "support.holiday.added",
+        targetType: "support_holiday",
+        targetId: holiday.id,
+        outcome: "success",
+        metadata: { holidayOn: holiday.holidayOn }
+      });
+      return reply.code(201).send({ holiday });
+    }
+  );
+
+  app.delete<{ Params: { holidayId: string } }>(
+    "/api/v1/support/holidays/:holidayId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["holidayId"],
+          properties: { holidayId: { type: "string", format: "uuid" } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "support:configure");
+      await support.removeHoliday(context, request.params.holidayId);
+      await writeAudit(database, context, request, {
+        action: "support.holiday.removed",
+        targetType: "support_holiday",
+        targetId: request.params.holidayId,
+        outcome: "success"
+      });
+      return reply.code(204).send();
+    }
+  );
+
+  app.get("/api/v1/support/sla-targets", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "tickets:read");
+    return { targets: await support.listSlaTargets(context) };
+  });
+
+  app.post<{
+    Body: { priority: TicketPriority; firstResponseMinutes: number; resolutionMinutes: number; effectiveFrom?: string };
+  }>(
+    "/api/v1/support/sla-targets",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["priority", "firstResponseMinutes", "resolutionMinutes"],
+          properties: {
+            priority: { type: "string", enum: ticketPriorities },
+            firstResponseMinutes: { type: "integer", minimum: 1, maximum: 525600 },
+            resolutionMinutes: { type: "integer", minimum: 1, maximum: 525600 },
+            effectiveFrom: { type: "string", format: "date-time" }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "support:configure");
+      const target = await support.publishSlaTarget(context, {
+        priority: request.body.priority,
+        firstResponseMinutes: request.body.firstResponseMinutes,
+        resolutionMinutes: request.body.resolutionMinutes,
+        ...(request.body.effectiveFrom ? { effectiveFrom: new Date(request.body.effectiveFrom) } : {})
+      });
+      await writeAudit(database, context, request, {
+        action: "support.sla_target.published",
+        targetType: "sla_target",
+        targetId: target.id,
+        outcome: "success",
+        metadata: { priority: target.priority }
+      });
+      return reply.code(201).send({ target });
+    }
+  );
 }

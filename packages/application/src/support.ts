@@ -1,11 +1,13 @@
 import {
   canTransitionTicket,
+  overlappingWindows,
   pausedTicketStatuses,
   slaState,
   ticketPriorities,
   type SlaPause,
   type SlaState,
   type SupportCalendar,
+  type SupportWindow,
   type TenantContext,
   type TicketPriority,
   type TicketStatus
@@ -86,6 +88,29 @@ export type SupportRepository = {
   listPauses(context: TenantContext, ticketId: string): Promise<SlaPause[]>;
   currentTargets(context: TenantContext, priority: TicketPriority, at: Date): Promise<SlaTargets | null>;
   loadCalendar(context: TenantContext): Promise<SupportCalendar>;
+  replaceSchedule(context: TenantContext, windows: readonly SupportWindow[]): Promise<void>;
+  listHolidays(context: TenantContext): Promise<HolidayRecord[]>;
+  addHoliday(context: TenantContext, holidayOn: string, label: string | null): Promise<HolidayRecord>;
+  removeHoliday(context: TenantContext, holidayId: string): Promise<void>;
+  listSlaTargets(context: TenantContext): Promise<SlaTargetRecord[]>;
+  publishSlaTarget(context: TenantContext, input: PublishSlaTargetInput): Promise<SlaTargetRecord>;
+};
+
+export type HolidayRecord = { id: string; holidayOn: string; label: string | null };
+
+export type SlaTargetRecord = {
+  id: string;
+  priority: TicketPriority;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  effectiveFrom: Date;
+};
+
+export type PublishSlaTargetInput = {
+  priority: TicketPriority;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  effectiveFrom?: Date | undefined;
 };
 
 export class SupportService {
@@ -158,6 +183,50 @@ export class SupportService {
       await this.repository.markFirstResponse(context, ticketId, now);
     }
     return message;
+  }
+
+  loadCalendar(context: TenantContext): Promise<SupportCalendar> {
+    return this.repository.loadCalendar(context);
+  }
+
+  /**
+   * The whole week is replaced at once. Editing windows one at a time leaves the schedule
+   * briefly in a state nobody chose, and the SLA clock would read it mid-edit.
+   */
+  async replaceSchedule(context: TenantContext, windows: readonly SupportWindow[]): Promise<void> {
+    const offending = overlappingWindows(windows);
+    if (offending.length > 0) throw new SupportError("INVALID_SCHEDULE");
+    if (windows.some((window) => window.weekday < 0 || window.weekday > 6)) {
+      throw new SupportError("INVALID_SCHEDULE");
+    }
+    await this.repository.replaceSchedule(context, windows);
+  }
+
+  listHolidays(context: TenantContext): Promise<HolidayRecord[]> {
+    return this.repository.listHolidays(context);
+  }
+
+  async addHoliday(context: TenantContext, holidayOn: string, label: string | null): Promise<HolidayRecord> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(holidayOn)) throw new SupportError("INVALID_INPUT");
+    return this.repository.addHoliday(context, holidayOn, label);
+  }
+
+  removeHoliday(context: TenantContext, holidayId: string): Promise<void> {
+    return this.repository.removeHoliday(context, holidayId);
+  }
+
+  listSlaTargets(context: TenantContext): Promise<SlaTargetRecord[]> {
+    return this.repository.listSlaTargets(context);
+  }
+
+  /**
+   * Publishing appends; it never edits. A ticket already open keeps the targets it copied, so
+   * changing them today cannot turn last month's breaches into compliance.
+   */
+  async publishSlaTarget(context: TenantContext, input: PublishSlaTargetInput): Promise<SlaTargetRecord> {
+    if (input.resolutionMinutes < input.firstResponseMinutes) throw new SupportError("INVALID_INPUT");
+    if (input.firstResponseMinutes < 1) throw new SupportError("INVALID_INPUT");
+    return this.repository.publishSlaTarget(context, input);
   }
 
   async slaFor(context: TenantContext, ticketId: string, now = new Date()): Promise<SlaState> {

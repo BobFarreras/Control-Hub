@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessMinutesBetween, type SupportCalendar } from "./support-calendar.js";
+import { businessMinutesBetween, overlappingWindows, type SupportCalendar } from "./support-calendar.js";
 
 /** The first installation's hours: Monday to Friday, 08:00 to 16:00, Madrid. */
 const officeHours: SupportCalendar = {
@@ -64,5 +64,32 @@ describe("business minutes", () => {
   it("counts a long stretch as whole working days rather than elapsed time", () => {
     // Monday 08:00 to Friday 16:00 local: five days of eight hours.
     expect(businessMinutesBetween(officeHours, at("2026-08-03T06:00:00Z"), at("2026-08-07T14:00:00Z"))).toBe(2400);
+  });
+});
+
+describe("schedule validation", () => {
+  const window = (weekday: number, opensAt: string, closesAt: string) => ({ weekday, opensAt, closesAt });
+
+  it("accepts a split shift with a gap between the windows", () => {
+    expect(overlappingWindows([window(2, "09:00", "13:00"), window(2, "15:00", "18:00")])).toEqual([]);
+  });
+
+  it("accepts windows that merely touch", () => {
+    expect(overlappingWindows([window(2, "09:00", "13:00"), window(2, "13:00", "18:00")])).toEqual([]);
+  });
+
+  it("reports two windows that overlap on the same day", () => {
+    // Left unchecked the SLA clock counts the overlap twice, so a ticket appears to consume
+    // more of its target than the day actually held.
+    const overlapping = overlappingWindows([window(2, "09:00", "14:00"), window(2, "13:00", "18:00")]);
+    expect(overlapping).toHaveLength(2);
+  });
+
+  it("does not confuse the same hours on different days", () => {
+    expect(overlappingWindows([window(1, "09:00", "17:00"), window(2, "09:00", "17:00")])).toEqual([]);
+  });
+
+  it("reports a window that closes before it opens", () => {
+    expect(overlappingWindows([window(3, "16:00", "08:00")])).toHaveLength(1);
   });
 });

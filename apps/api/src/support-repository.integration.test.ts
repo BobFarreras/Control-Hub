@@ -191,4 +191,44 @@ suite("PostgresSupportRepository", () => {
       })
     ).rejects.toMatchObject({ code: "CUSTOMER_NOT_FOUND" });
   });
+
+  it("replaces the whole weekly schedule at once", async () => {
+    const ctx = context(tenantA, membershipA);
+    await repository.replaceSchedule(ctx, [
+      { weekday: 6, opensAt: "10:00", closesAt: "14:00" },
+      { weekday: 6, opensAt: "16:00", closesAt: "19:00" }
+    ]);
+    const calendar = await repository.loadCalendar(ctx);
+    expect(calendar.windows).toHaveLength(2);
+    expect(calendar.windows.every((window) => window.weekday === 6)).toBe(true);
+  });
+
+  it("publishes a target without touching the one before it", async () => {
+    const ctx = context(tenantA, membershipA);
+    const before = await repository.listSlaTargets(ctx);
+    await repository.publishSlaTarget(ctx, {
+      priority: "normal",
+      firstResponseMinutes: 30,
+      resolutionMinutes: 240,
+      effectiveFrom: new Date("2026-09-01T00:00:00Z")
+    });
+    const after = await repository.listSlaTargets(ctx);
+    expect(after).toHaveLength(before.length + 1);
+    // The earlier row is still there: a ticket opened under it stays explicable.
+    expect(after.filter((target) => target.priority === "normal").length).toBeGreaterThan(1);
+  });
+
+  it("adds and removes a holiday", async () => {
+    const ctx = context(tenantA, membershipA);
+    const holiday = await repository.addHoliday(ctx, "2026-12-25", "Nadal");
+    expect((await repository.listHolidays(ctx)).some((item) => item.id === holiday.id)).toBe(true);
+    await repository.removeHoliday(ctx, holiday.id);
+    expect((await repository.listHolidays(ctx)).some((item) => item.id === holiday.id)).toBe(false);
+  });
+
+  it("refuses a second holiday on the same date", async () => {
+    const ctx = context(tenantA, membershipA);
+    await repository.addHoliday(ctx, "2026-11-01", null);
+    await expect(repository.addHoliday(ctx, "2026-11-01", null)).rejects.toMatchObject({ code: "DUPLICATE_ENTRY" });
+  });
 });

@@ -66,6 +66,20 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
     .fn<SupportRepository["currentTargets"]>()
     .mockResolvedValue({ firstResponseMinutes: 60, resolutionMinutes: 480 }),
   loadCalendar: vi.fn<SupportRepository["loadCalendar"]>().mockResolvedValue(calendar),
+  replaceSchedule: vi.fn<SupportRepository["replaceSchedule"]>().mockResolvedValue(undefined),
+  listHolidays: vi.fn<SupportRepository["listHolidays"]>().mockResolvedValue([]),
+  addHoliday: vi
+    .fn<SupportRepository["addHoliday"]>()
+    .mockResolvedValue({ id: "holiday-1", holidayOn: "2026-08-05", label: null }),
+  removeHoliday: vi.fn<SupportRepository["removeHoliday"]>().mockResolvedValue(undefined),
+  listSlaTargets: vi.fn<SupportRepository["listSlaTargets"]>().mockResolvedValue([]),
+  publishSlaTarget: vi.fn<SupportRepository["publishSlaTarget"]>().mockResolvedValue({
+    id: "target-1",
+    priority: "normal",
+    firstResponseMinutes: 60,
+    resolutionMinutes: 480,
+    effectiveFrom: new Date("2026-08-04T00:00:00Z")
+  }),
   ...overrides
 });
 
@@ -218,5 +232,43 @@ describe("sla for a ticket", () => {
     const state = await new SupportService(repository({ loadCalendar })).slaFor(context, "ticket-1");
     expect(state.firstResponse.measurable).toBe(false);
     expect(state.firstResponse.breached).toBe(false);
+  });
+});
+
+describe("support configuration", () => {
+  it("refuses a schedule whose windows overlap", async () => {
+    const replaceSchedule = vi.fn<SupportRepository["replaceSchedule"]>();
+    await expect(
+      new SupportService(repository({ replaceSchedule })).replaceSchedule(context, [
+        { weekday: 2, opensAt: "09:00", closesAt: "14:00" },
+        { weekday: 2, opensAt: "13:00", closesAt: "18:00" }
+      ])
+    ).rejects.toMatchObject({ code: "INVALID_SCHEDULE" });
+    expect(replaceSchedule).not.toHaveBeenCalled();
+  });
+
+  it("accepts a split shift", async () => {
+    const replaceSchedule = vi.fn<SupportRepository["replaceSchedule"]>().mockResolvedValue(undefined);
+    await new SupportService(repository({ replaceSchedule })).replaceSchedule(context, [
+      { weekday: 2, opensAt: "09:00", closesAt: "13:00" },
+      { weekday: 2, opensAt: "15:00", closesAt: "18:00" }
+    ]);
+    expect(replaceSchedule).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a resolution target shorter than the first response", async () => {
+    await expect(
+      new SupportService(repository()).publishSlaTarget(context, {
+        priority: "high",
+        firstResponseMinutes: 240,
+        resolutionMinutes: 60
+      })
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("refuses a holiday that is not a date", async () => {
+    await expect(new SupportService(repository()).addHoliday(context, "5 d'agost", null)).rejects.toMatchObject({
+      code: "INVALID_INPUT"
+    });
   });
 });

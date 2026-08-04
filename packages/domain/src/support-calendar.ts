@@ -106,3 +106,30 @@ function instantAtLocal(date: string, minutesIntoDay: number, timeZone: string):
   const seenAsUtc = Date.UTC(seenYear!, seenMonth! - 1, seenDay, 0, seen.minutesIntoDay);
   return guess + (guess - seenAsUtc);
 }
+
+/**
+ * The windows that make a schedule unusable: any that close before they open, and any pair on
+ * the same weekday that overlap.
+ *
+ * An overlap is not a harmless duplicate. The clock adds up each window's intersection with
+ * the interval, so overlapping hours are counted twice and a ticket appears to have consumed
+ * more of its target than the day actually contained.
+ */
+export function overlappingWindows(windows: readonly SupportWindow[]): SupportWindow[] {
+  const offending = new Set<SupportWindow>();
+  for (const window of windows) {
+    if (toMinutes(window.closesAt) <= toMinutes(window.opensAt)) offending.add(window);
+  }
+  for (const [index, window] of windows.entries()) {
+    for (const other of windows.slice(index + 1)) {
+      if (window.weekday !== other.weekday) continue;
+      const startsBeforeOtherEnds = toMinutes(window.opensAt) < toMinutes(other.closesAt);
+      const endsAfterOtherStarts = toMinutes(window.closesAt) > toMinutes(other.opensAt);
+      if (startsBeforeOtherEnds && endsAfterOtherStarts) {
+        offending.add(window);
+        offending.add(other);
+      }
+    }
+  }
+  return [...offending];
+}

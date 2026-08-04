@@ -5,6 +5,9 @@ import {
   type AddMessageInput,
   type CreateTicketInput,
   type SlaTargets,
+  type HolidayRecord,
+  type PublishSlaTargetInput,
+  type SlaTargetRecord,
   type SupportRepository,
   type TicketListQuery,
   type TicketPage,
@@ -12,7 +15,14 @@ import {
   type TicketRecord
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import type { SlaPause, SupportCalendar, TenantContext, TicketPriority, TicketStatus } from "@control-hub/domain";
+import type {
+  SlaPause,
+  SupportCalendar,
+  SupportWindow,
+  TenantContext,
+  TicketPriority,
+  TicketStatus
+} from "@control-hub/domain";
 import type postgres from "postgres";
 
 // `ticket_number` is a bigint, which the driver hands back as a string. Casting here keeps the
@@ -206,6 +216,73 @@ export class PostgresSupportRepository implements SupportRepository {
     });
   }
 
+  /**
+   * Deleted and reinserted in one transaction. Replacing window by window would leave the
+   * schedule briefly in a shape nobody chose, and the SLA clock reads it on every request.
+   */
+  async replaceSchedule(context: TenantContext, windows: readonly SupportWindow[]) {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from support_schedule where tenant_id = ${context.tenantId}`;
+      for (const window of windows) {
+        await tx`insert into support_schedule (id, tenant_id, weekday, opens_at, closes_at)
+          values (${randomUUID()}, ${context.tenantId}, ${window.weekday}, ${window.opensAt}, ${window.closesAt})`;
+      }
+    });
+  }
+
+  async listHolidays(context: TenantContext): Promise<HolidayRecord[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<HolidayRecord[]>`
+        select id, to_char(holiday_on, 'YYYY-MM-DD') as "holidayOn", label
+        from support_holidays where tenant_id = ${context.tenantId} order by holiday_on`
+    );
+  }
+
+  async addHoliday(context: TenantContext, holidayOn: string, label: string | null) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [holiday] = await tx<HolidayRecord[]>`
+        insert into support_holidays (id, tenant_id, holiday_on, label)
+        values (${randomUUID()}, ${context.tenantId}, ${holidayOn}::date, ${label})
+        returning id, to_char(holiday_on, 'YYYY-MM-DD') as "holidayOn", label`;
+      return holiday!;
+    }).catch(mapConstraint);
+  }
+
+  async removeHoliday(context: TenantContext, holidayId: string) {
+    await withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx`delete from support_holidays where tenant_id = ${context.tenantId} and id = ${holidayId}`
+    );
+  }
+
+  async listSlaTargets(context: TenantContext): Promise<SlaTargetRecord[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<SlaTargetRecord[]>`
+        select id, priority, first_response_minutes as "firstResponseMinutes",
+          resolution_minutes as "resolutionMinutes", effective_from as "effectiveFrom"
+        from sla_targets where tenant_id = ${context.tenantId}
+        order by priority, effective_from desc`
+    );
+  }
+
+  /** Appends a row; the append-only trigger is what stops anyone editing an earlier one. */
+  async publishSlaTarget(context: TenantContext, input: PublishSlaTargetInput) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [target] = await tx<SlaTargetRecord[]>`
+        insert into sla_targets (id, tenant_id, priority, first_response_minutes, resolution_minutes, effective_from)
+        values (${randomUUID()}, ${context.tenantId}, ${input.priority}, ${input.firstResponseMinutes},
+          ${input.resolutionMinutes}, ${input.effectiveFrom ?? new Date()})
+        returning id, priority, first_response_minutes as "firstResponseMinutes",
+          resolution_minutes as "resolutionMinutes", effective_from as "effectiveFrom"`;
+      return target!;
+    }).catch(mapConstraint);
+  }
+
   private async writeEvent(
     tx: postgres.TransactionSql,
     context: TenantContext,
@@ -227,6 +304,8 @@ function mapConstraint(error: unknown): never {
   if (databaseError.code === "23505" && databaseError.constraint_name?.includes("external_reference")) {
     throw new SupportError("DUPLICATE_EXTERNAL_REFERENCE");
   }
+  if (databaseError.code === "23505") throw new SupportError("DUPLICATE_ENTRY");
   if (databaseError.code === "23503") throw new SupportError("CUSTOMER_NOT_FOUND");
+  if (databaseError.code === "23514") throw new SupportError("INVALID_INPUT");
   throw error;
 }

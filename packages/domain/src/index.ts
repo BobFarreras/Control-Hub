@@ -172,5 +172,10 @@ export function nextRenewalAt(current: Date, interval: BillingInterval): Date | 
   return result;
 }
 
-export { businessMinutesBetween, type SupportCalendar, type SupportWindow } from "./support-calendar.js";
+export {
+  businessMinutesBetween,
+  overlappingWindows,
+  type SupportCalendar,
+  type SupportWindow
+} from "./support-calendar.js";
 export * from "./support.js";
