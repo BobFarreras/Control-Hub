@@ -1,4 +1,4 @@
-import { acceptInvitation, InvitationError, lookupInvitation } from "../invitation-repository.js";
+import { acceptInvitation, InvitationError, lookupInvitation } from "@control-hub/persistence";
 import type { PublicContext } from "./context.js";
 
 /** Reachable without a session: invitation lookup and acceptance. Everything here is rate

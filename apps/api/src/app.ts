@@ -11,6 +11,14 @@ import {
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
+import {
+  PostgresCommerceRepository,
+  PostgresCompanySubscriptionRepository,
+  PostgresCrmRepository,
+  IdentityInvariantError,
+  InvitationError,
+  PostgresSupportRepository
+} from "@control-hub/persistence";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -18,12 +26,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Redis from "ioredis";
 import type { ControlHubAuth } from "./auth.js";
-import { PostgresCommerceRepository } from "./commerce-repository.js";
-import { PostgresCompanySubscriptionRepository } from "./company-subscription-repository.js";
-import { PostgresCrmRepository } from "./crm-repository.js";
 import type { MailSender } from "./email.js";
-import { IdentityInvariantError } from "./identity-repository.js";
-import { InvitationError } from "./invitation-repository.js";
 import { rateLimitKey } from "./rate-limit.js";
 import { registerAuthProxyRoutes } from "./routes/auth-proxy.js";
 import { registerCommerceRoutes } from "./routes/commerce.js";
@@ -35,7 +38,6 @@ import { registerPublicRoutes } from "./routes/public.js";
 import { registerSupportRoutes } from "./routes/support.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
-import { PostgresSupportRepository } from "./support-repository.js";
 
 type BuildAppOptions = {
   databaseUrl: string;

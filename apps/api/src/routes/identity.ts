@@ -1,9 +1,14 @@
 import type { RoleCode } from "@control-hub/domain";
-import { assignMemberRole, listAuditEvents, listMembers } from "../identity-repository.js";
+import {
+  assignMemberRole,
+  listAuditEvents,
+  listMembers,
+  getTablePreference,
+  saveTablePreference
+} from "@control-hub/persistence";
 import { requestHeaders } from "../request-headers.js";
 import { ApiSecurityError, requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import { tableColumns, type TableId } from "../table-columns.js";
-import { getTablePreference, saveTablePreference } from "../table-preference-repository.js";
 import type { RouteContext } from "./context.js";
 
 /** Session, membership and audit endpoints: who the caller is and what they may do. */

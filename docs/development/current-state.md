@@ -37,7 +37,12 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
   `support:configure`; llegir, nomes `tickets:read`, perque la safata ha de poder explicar un
   venciment.
 
-Pendent de la fase: UI de la safata i el proces d'escalat al worker.
+- `packages/persistence`: els set adaptadors de PostgreSQL, moguts fora d'`apps/api` perque el
+  worker tambe els necessita i una app no pot importar d'una altra.
+- `apps/worker/src/support-escalation.ts`: escombrada periodica que recorre els tenants i
+  registra els objectius de SLA incomplerts. Job repetible de BullMQ cada 5 minuts.
+
+Pendent de la fase: UI de la safata.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la

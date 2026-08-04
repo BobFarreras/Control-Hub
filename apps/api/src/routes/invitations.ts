@@ -1,11 +1,11 @@
-import { invitationMessage } from "../invitation-message.js";
 import {
   createInvitation,
   InvitationError,
   listInvitations,
   revokeInvitation,
   type InvitationRole
-} from "../invitation-repository.js";
+} from "@control-hub/persistence";
+import { invitationMessage } from "../invitation-message.js";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { InvitationContext } from "./context.js";
 
