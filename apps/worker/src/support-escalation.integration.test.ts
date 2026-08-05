@@ -92,14 +92,20 @@ suite("support escalation sweep", () => {
     await admin`update tickets set opened_at = '2026-08-04T07:00:00Z' where id = ${ticket.id}`;
     const measuredAt = new Date("2026-08-04T09:00:00Z");
 
+    /**
+     * Read through this tenant's own events rather than the sweep's counters. The pass walks
+     * every tenant, so `recorded` also counts whatever the other support suites left in the
+     * shared test database, and asserting on it made the result depend on which suite happened
+     * to run first. This is the same thing the two tests below already do.
+     */
     const first = await sweepSupportEscalations(database, measuredAt);
-    const second = await sweepSupportEscalations(database, measuredAt);
+    expect(first.failed.map((entry) => entry.tenantId)).not.toContain(tenantId);
+    expect(await breachEvents(ticket.id)).toEqual([{ to_value: "first_response" }]);
 
-    expect(first.recorded).toBe(1);
-    expect(first.failed).toEqual([]);
+    const second = await sweepSupportEscalations(database, measuredAt);
+    expect(second.failed.map((entry) => entry.tenantId)).not.toContain(tenantId);
     // The pass runs every few minutes; recording again would fill the history with one breach
     // per run and make it unreadable.
-    expect(second.recorded).toBe(0);
     expect(await breachEvents(ticket.id)).toEqual([{ to_value: "first_response" }]);
   });
 
