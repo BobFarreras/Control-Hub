@@ -14,7 +14,8 @@
 - `specifications/`: contractes implementables.
 - `security/`: amenaces i controls.
 - `runbooks/`: operacio i resposta.
-- `templates/`: formats obligatoris.
+- `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
+  (`templates/session-prompt-template.md`).
 
 La documentacio canvia en la mateixa PR que el comportament afectat.
 
