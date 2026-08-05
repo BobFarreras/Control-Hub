@@ -7,9 +7,12 @@ import { decodeBase32, generateTotp, millisecondsLeftInPeriod, secretFromTotpUri
  * implements: if an upgrade ever moved off it, this fails with a clear cause instead of
  * surfacing as a login that mysteriously stopped working.
  *
- * The shared secret of the RFC is the ASCII string "12345678901234567890".
+ * The shared secret of the RFC is the ASCII string "12345678901234567890", and this is its
+ * base32 form, which is what an enrolment URI carries. It is a constant published in a public
+ * standard, not a credential, but its shape is that of a high entropy key and the secret
+ * scanner's generic rule cannot tell the difference. The allowance is narrowed to this line.
  */
-const rfcSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+const rfcSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"; // gitleaks:allow
 
 test("@totp decodes base32 back to the bytes the standard keys the HMAC with", () => {
   expect(decodeBase32(rfcSecret).toString()).toBe("12345678901234567890");
