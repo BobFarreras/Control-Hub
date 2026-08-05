@@ -30,4 +30,7 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   marge. Aprovada, planificada com a Fase 5B.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
-- `development/current-state.md`: handoff, estat implementat i punt de continuacio.
+- `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El
+  primer document a llegir en obrir una sessio.**
+- `development/troubleshooting.md`: fallades reals ja diagnosticades, amb simptoma, causa i
+  solucio. Consulta-l'ho abans de dedicar temps a un simptoma estrany.

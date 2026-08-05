@@ -37,6 +37,7 @@ jobs:
             AGENTS.md
             ARCHITECTURE.md
             BRANCHING.md
+            CLAUDE.md
             DESIGN_SYSTEM.md
             DEVELOPMENT.md
             IMPLEMENTATION_PLAN.md
@@ -46,6 +47,8 @@ jobs:
             SECURITY.md
             SECURITY_ARCHITECTURE.md
             docs/README.md
+            docs/development/current-state.md
+            docs/development/troubleshooting.md
             docs/security/container-checklist.md
             docs/security/threat-model.md
             docs/specifications/connector-security.md

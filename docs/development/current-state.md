@@ -2,12 +2,17 @@
 
 ## Punt de projecte
 
-Les fases 0 a 4 estan implementades. El producte executa web, API i worker en monorepo,
+Les fases 0 a 5 estan implementades. El producte executa web, API i worker en monorepo,
 amb PostgreSQL, Valkey, Better Auth, tenancy, RBAC, MFA, CRM, cataleg comercial,
-subscripcions de clients i subscripcions contractades per l'empresa.
+subscripcions de clients, subscripcions contractades per l'empresa i suport amb tickets i SLA.
 
-La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
-`docs/specifications/support.md`. Fet fins ara:
+**El seguent pas es la Fase 5B: projectes i temps**, amb especificacio aprovada a
+`docs/specifications/projects-and-time.md`. L'unica cosa que la Fase 5 li devia, la columna
+`tickets.project_id` nullable, ja hi es.
+
+La **Fase 5: suport, tickets i SLA** esta tancada: implementada, revisada pel propietari i
+fusionada a `develop` amb CI en verd. Especificacio a `docs/specifications/support.md`. Que
+inclou:
 
 - `packages/domain/src/support-calendar.ts`: minuts laborables amb finestres per dia, festius,
   torns partits i canvis d'hora. Pur, 9 tests, sense base de dades.
@@ -67,9 +72,13 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
   `aria-label` i per text, i el canvi d'estat i l'assignacio des de la fitxa. El job
   `authenticated-end-to-end` de `.github/workflows/ci.yml` ho executa a cada push.
 
-**La Fase 5 esta implementada.** Falta la revisio del propietari que demana el pla:
-demostracio d'un cicle complet de ticket, validacio de prioritats, SLA i escalats, i aprovacio
-de les plantilles de notificacio.
+**La Fase 5 esta tancada.** El propietari l'ha revisada i aprovada, i la porta que demanava el
+pla queda passada.
+
+El primer pas de la Fase 5 per CI va destapar dos defectes que portaven dies al repositori i
+que cap validacio local veia: la imatge de contenidors no es podia ni construir, i el test de
+l'escombrada d'escalats assertia sobre estat compartit entre suites que corren en paral·lel.
+Tots dos corregits; la causa i la solucio son a `troubleshooting.md`.
 
 ### Pendents coneguts, no bloquejants
 
@@ -78,9 +87,16 @@ de les plantilles de notificacio.
 - L'E2E autenticat cobreix suport. Cap altre modul (CRM, productes, subscripcions) te encara
   proves amb sessio iniciada, tot i que la infraestructura ja hi es.
 
-La **Fase 5B: projectes i temps** ja te especificacio aprovada a
-`docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la
-Fase 5 li deu es que els tickets neixin amb `project_id` nullable.
+## El seguent increment: Fase 5B
+
+Especificacio aprovada a `docs/specifications/projects-and-time.md`. Abast: projectes per
+client amb historial append-only, imputacio de temps contra un projecte o un ticket, barems de
+cost i de venda versionats per data d'efecte, i rendibilitat per projecte i per client, per
+moneda.
+
+Es numera 5B i no 6 per no renumerar les fases posteriors, que ja tenen dependencies
+documentades entre elles. Reutilitza `SmartDataTable` (`docs/development/smart-data-table.md`)
+per als llistats, i els codis d'error de `docs/specifications/errors-and-api.md`.
 
 La **Fase 5C: registre de jornada** te especificacio a `docs/specifications/attendance.md`.
 Pendent de confirmacio de la gestoria abans d'activar-la en produccio.

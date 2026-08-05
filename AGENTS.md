@@ -11,9 +11,22 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 
 ## Abans de modificar codi
 
+Primer, situar-se. Aquests dos responen "on som" i "que ja ens ha mossegat", i estalvien mes
+temps que cap altre:
+
+1. `docs/development/current-state.md`: que hi ha implementat, decisions vigents i el punt de
+   continuacio. **Es el primer que s'ha de llegir en obrir una sessio.**
+2. `docs/development/troubleshooting.md`: fallades reals ja diagnosticades, amb la causa i la
+   solucio. Abans de dedicar mitja hora a un simptoma estrany, mira si ja hi es.
+
+Despres, el marc:
+
 - Llegir `README.md`, `DEVELOPMENT.md`, `SECURITY_ARCHITECTURE.md`, `PRODUCT_REQUIREMENTS.md`, `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, `INTERNATIONALIZATION.md` i els ADR relacionats.
+- `docs/README.md` es l'index d'ADR, especificacions, seguretat, runbooks i plantilles.
+- Llegir l'especificacio del modul que es toca abans d'escriure'n una linia. Si no n'hi ha cap
+  aprovada, no s'implementa: primer l'especificacio.
 - Seguir `BRANCHING.md` i `CONTRIBUTING.md` per branques, commits i pull requests.
-- Revisar `git status` i no revertir canvis aliens.
+- Revisar `git status`, confirmar que la branca surt d'on toca i no revertir canvis aliens.
 - Localitzar les proves i convencions del modul afectat.
 - Aclarir criteris d'acceptacio quan no es puguin deduir de la documentacio.
 - No afegir dependencies sense justificar manteniment, llicencia i impacte de seguretat.
@@ -109,6 +122,30 @@ base de reconstruir va costar hores en una sessio, i cada error en tapava el seg
 Per mesurar que ocupa una imatge, `docker run --rm --entrypoint sh <imatge> -c "du -sh ..."`
 respon en segons i evita optimitzar a cegues.
 
+## Documentacio viva
+
+La documentacio d'aquest repositori no es un resum del codi: es el context que fa que la
+persona o l'agent seguent no hagi de redescobrir el que ja sabiem. Una documentacio
+desactualitzada es pitjor que no tenir-ne, perque s'hi confia.
+
+- **La documentacio canvia en el mateix commit que el comportament que descriu.** No en un
+  commit posterior, i no "quan acabem la fase".
+- **En obrir sessio, verificar `docs/development/current-state.md` contra la realitat** abans
+  de fer-lo servir: branca, ultims commits i estat de CI. Si no quadra, corregir-lo primer.
+- **En tancar un increment, actualitzar-lo sempre.** Que s'ha implementat, que queda pendent i
+  quin es el punt de continuacio. Cap frase pot quedar dient que falta una cosa que ja s'ha
+  fet.
+- **Cada fallada que hagi costat mes de mitja hora de diagnosi va a
+  `docs/development/troubleshooting.md`**, amb simptoma, causa i solucio. Es el retorn mes alt
+  per linia escrita de tot el repositori.
+- Les lliçons viuen al costat de la norma que justifiquen, no en un calaix comu: les
+  d'empaquetat en aquest fitxer, les d'entorn local a `DEVELOPMENT.md`, les de contracte a
+  l'especificacio del modul.
+- Si un document i el codi es contradiuen, no s'apedaça el document sense entendre quin dels
+  dos te rao. Un `README.md` que promet una fase diferent de la del pla es un defecte, no una
+  imprecisio.
+- Els documents de producte, en catala; el codi i els comentaris, en angles.
+
 ## Proves
 
 - Afegir o actualitzar proves per cada canvi de comportament.
@@ -122,9 +159,22 @@ respon en segons i evita optimitzar a cegues.
 
 - Executar format, lint, typecheck, tests i build afectats.
 - Revisar el diff complet i confirmar que no hi ha secrets ni fitxers generats accidentals.
-- Actualitzar documentacio, OpenAPI, migracions i `.env.example` quan correspongui.
-- Informar de comprovacions no executades i riscos residuals.
+- Actualitzar documentacio, OpenAPI, migracions i `.env.example` quan correspongui, i deixar
+  `docs/development/current-state.md` dient la veritat sobre el punt on queda el projecte.
+- Informar de comprovacions no executades i riscos residuals. **Una comprovacio que no s'ha
+  pogut executar es diu, no s'omet:** dir que una cosa passa sense haver-ho vist es la manera
+  mes rapida de perdre la confianca de qui revisa.
 - No fer commit, push, deploy o canvis destructius tret que l'usuari ho demani.
+
+### Llista de tancament
+
+Abans de donar una feina per acabada, respon aquestes cinc amb un si:
+
+1. Els criteris d'acceptacio de l'especificacio estan coberts per proves que he vist passar.
+2. He executat lint, format, typecheck, tests i build, i he reportat el que no he pogut provar.
+3. El diff no porta secrets, fitxers generats ni refactors aliens a la feina.
+4. `current-state.md` descriu el projecte tal com queda, i cap frase seva ha quedat obsoleta.
+5. El que m'ha costat diagnosticar ha quedat escrit a `troubleshooting.md`.
 
 ## Git
 
@@ -135,4 +185,4 @@ respon en segons i evita optimitzar a cegues.
 
 ## Definition of Done
 
-El canvi compleix els criteris d'acceptacio, respecta l'arquitectura, ailla tenants, aplica permisos, te proves proporcionals, passa les validacions, inclou observabilitat i documentacio necessaries, i es pot desplegar sense exposar dades ni secrets.
+El canvi compleix els criteris d'acceptacio, respecta l'arquitectura, ailla tenants, aplica permisos, te proves proporcionals, passa les validacions, inclou observabilitat i documentacio necessaries, deixa `docs/development/current-state.md` sincronitzat amb el que hi ha de debo, i es pot desplegar sense exposar dades ni secrets.
