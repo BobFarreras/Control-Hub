@@ -337,6 +337,14 @@ jobs:
     name: Container image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Job wide, not on the step that starts the stack. `compose.yaml` declares these with the
+    # `:?` form, so Compose refuses to interpolate the file at all without them, and that
+    # happens on every command that reads it: `build`, `logs` and `down` too. Scoping them to
+    # one step left the other three failing on a missing value instead of on anything real.
+    env:
+      POSTGRES_ADMIN_PASSWORD: ci_admin_only
+      POSTGRES_APP_PASSWORD: ci_app_only
+      BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -348,10 +356,6 @@ jobs:
         run: docker compose build
 
       - name: Start the stack and wait for it to be healthy
-        env:
-          POSTGRES_ADMIN_PASSWORD: ci_admin_only
-          POSTGRES_APP_PASSWORD: ci_app_only
-          BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
         run: docker compose up -d --wait
 
       - name: Check the running services answer
