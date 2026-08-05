@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { parseApiEnvironment } from "@control-hub/config";
 import { createDatabaseClient, withTenant } from "@control-hub/database";
-import { rolePermissions, type RoleCode } from "@control-hub/domain";
 import { createAuth } from "./auth.js";
+import { provisionTenantWithOwner } from "./provisioning.js";
 
 const environment = parseApiEnvironment({
   ...process.env,
@@ -37,20 +37,11 @@ try {
     : await auth.api.signUpEmail({ body: { email, password, name } });
   if (!result.user) throw new Error("Owner account creation failed");
   const tenantId = randomUUID();
-  await database.begin(async (transaction) => {
-    await transaction`insert into tenants (id, slug, name) values (${tenantId}, ${tenantSlug}, ${tenantName})`;
-    await transaction`select set_config('app.tenant_id', ${tenantId}, true)`;
-    await transaction`insert into tenant_settings (tenant_id, brand_name) values (${tenantId}, ${tenantName})`;
-    const membershipId = randomUUID();
-    await transaction`insert into memberships (id, tenant_id, user_id) values (${membershipId}, ${tenantId}, ${result.user.id})`;
-    for (const roleCode of Object.keys(rolePermissions) as RoleCode[]) {
-      const roleId = randomUUID();
-      await transaction`insert into roles (id, tenant_id, code, name) values (${roleId}, ${tenantId}, ${roleCode}, ${roleCode})`;
-      for (const permission of rolePermissions[roleCode])
-        await transaction`insert into role_permissions (role_id, permission_code) values (${roleId}, ${permission})`;
-      if (roleCode === "owner")
-        await transaction`insert into membership_roles (membership_id, role_id) values (${membershipId}, ${roleId})`;
-    }
+  await provisionTenantWithOwner(database, {
+    tenantId,
+    slug: tenantSlug,
+    name: tenantName,
+    ownerUserId: result.user.id
   });
   await withTenant(
     database,
