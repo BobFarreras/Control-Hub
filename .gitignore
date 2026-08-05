@@ -13,6 +13,8 @@ test-results/
 .env
 .env.*
 !.env.example
+# The end to end fixture writes the throwaway account's TOTP secret here.
+.e2e/
 *.pem
 *.key
 *.p12

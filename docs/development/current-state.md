@@ -56,15 +56,27 @@ La **Fase 5: suport, tickets i SLA** ha comencat. Especificacio aprovada a
 
 - Alta de tickets des de la safata, amb seleccio de client, prioritat i categoria.
 
+- **Proves end-to-end autenticades.** Per primera vegada hi ha verificacio automatica de
+  pantalles amb sessio iniciada. `apps/api/src/seed-e2e.ts` prepara un compte d'usar i llencar
+  en una base exclusiva de test i li **enrola** el segon factor per la via normal de Better
+  Auth; l'MFA no es toca, i el seed es nega a escriure credencials si el compte no acaba amb
+  MFA activada. `tests/e2e/support/totp.ts` genera els codis amb `node:crypto`, fixat als
+  vectors publicats de la RFC 6238 a `tests/e2e/totp.spec.ts`. Cobreixen: entrada completa amb
+  correu, contrasenya i segon factor (i el rebuig d'un codi incorrecte), la safata amb la
+  columna de compromis, la conversa d'un ticket amb la nota interna marcada al DOM per
+  `aria-label` i per text, i el canvi d'estat i l'assignacio des de la fitxa. El job
+  `authenticated-end-to-end` de `.github/workflows/ci.yml` ho executa a cada push.
+
 **La Fase 5 esta implementada.** Falta la revisio del propietari que demana el pla:
 demostracio d'un cicle complet de ticket, validacio de prioritats, SLA i escalats, i aprovacio
 de les plantilles de notificacio.
 
 ### Pendents coneguts, no bloquejants
 
-- E2E autenticat: cap prova cobreix encara una pantalla amb sessio iniciada.
 - Alta d'incidencies i el seu vincle amb tickets: l'esquema hi es, la UI no.
 - Pantalla de configuracio de suport (horari, festius, objectius): l'API hi es, la UI no.
+- L'E2E autenticat cobreix suport. Cap altre modul (CRM, productes, subscripcions) te encara
+  proves amb sessio iniciada, tot i que la infraestructura ja hi es.
 
 La **Fase 5B: projectes i temps** ja te especificacio aprovada a
 `docs/specifications/projects-and-time.md` i va immediatament despres. L'unica cosa que la
@@ -122,3 +134,9 @@ pnpm test:e2e
 
 Les proves d'integracio PostgreSQL requereixen `TEST_DATABASE_URL` i
 `TEST_DATABASE_ADMIN_URL` sobre una base exclusiva de test.
+
+Les proves end-to-end autenticades necessiten la seva propia base, acabada en `_e2e`, i
+`pnpm db:seed:e2e` abans de cada tanda. El procediment complet es a `DEVELOPMENT.md`. Dos
+detalls que fan perdre temps si no es saben: `APP_ORIGIN` i `PLAYWRIGHT_BASE_URL` han de ser
+la mateixa cadena, i les proves esperen que React hidrati abans de tocar res, perque un clic
+anterior a la hidratacio es perd i sembla que el producte no respongui.

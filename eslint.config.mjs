@@ -61,7 +61,9 @@ export default tseslint.config(
       parserOptions: {
         // `allowDefaultProject` covers the few files that sit outside a package tsconfig,
         // such as the Playwright specs, so they are still linted rather than silently skipped.
-        projectService: { allowDefaultProject: ["*.mjs", "*.config.ts", "tests/e2e/*.ts", "scripts/*.mjs"] },
+        projectService: {
+          allowDefaultProject: ["*.mjs", "*.config.ts", "tests/e2e/*.ts", "tests/e2e/support/*.ts", "scripts/*.mjs"]
+        },
         tsconfigRootDir: import.meta.dirname
       }
     },
@@ -147,7 +149,7 @@ export default tseslint.config(
 
   {
     // Operator commands: their whole job is to print progress to whoever ran them.
-    files: ["apps/api/src/bootstrap.ts", "apps/api/src/seed-dev.ts", "scripts/**"],
+    files: ["apps/api/src/bootstrap.ts", "apps/api/src/seed-dev.ts", "apps/api/src/seed-e2e.ts", "scripts/**"],
     rules: { "no-console": "off" }
   },
 

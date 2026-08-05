@@ -82,11 +82,13 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 | `pnpm infra:reset` | Reinicia dades locals amb confirmacio explicita |
 | `pnpm db:migrate` | Aplica migracions pendents de forma idempotent |
 | `pnpm db:seed:dev` | Afegeix exemples idempotents nomes a PostgreSQL local |
+| `pnpm db:seed:e2e` | Prepara el compte i les dades de les proves autenticades |
 | `pnpm lint` | Lint de tot el workspace |
 | `pnpm typecheck` | TypeScript estricte |
 | `pnpm test` | Tests unitaris |
 | `pnpm test:integration` | Tests amb containers aillats |
 | `pnpm test:e2e` | Playwright |
+| `pnpm test:e2e:authenticated` | Playwright amb sessio iniciada (vegeu mes avall) |
 | `pnpm test:visual` | Captures light/dark i locales |
 | `pnpm build` | Build reproduible de totes les apps |
 | `pnpm check` | Lint + typecheck + tests + build |
@@ -102,6 +104,44 @@ pnpm db:seed:dev
 ```
 
 El seed crea leads en diferents estats, clients, productes amb versions, plans i preus, subscripcions de clients i despeses contractades. Es idempotent, no elimina dades existents i rebutja produccio, bases no locals o noms de base diferents de `control_hub`.
+
+## Proves end-to-end autenticades
+
+Les proves de `tests/e2e/*.authenticated.spec.ts` entren al producte de veritat: correu,
+contrasenya i segon factor. **L'MFA no es desactiva.** El que fa la sessio automatitzable es
+que el secret TOTP d'un compte d'usar i llencar es conegut nomes en aquell entorn.
+
+Necessiten una base de dades **exclusiva de proves**, amb el nom acabat en `_e2e`; el seed
+s'hi nega en qualsevol altra, perque reescriu el compte que hi troba.
+
+```powershell
+docker exec -e PGPASSWORD=$env:POSTGRES_ADMIN_PASSWORD control-hub-postgres-1 `
+  psql -U control_hub_admin -d postgres -c "create database control_hub_e2e;"
+$env:MIGRATION_DATABASE_URL = "postgres://control_hub_admin:...@127.0.0.1:5432/control_hub_e2e"
+$env:DATABASE_URL = "postgres://control_hub_app:...@127.0.0.1:5432/control_hub_e2e"
+$env:E2E_OWNER_EMAIL = "e2e-owner@controlhub.test"
+$env:E2E_OWNER_PASSWORD = "<genera'n una, 12+ caracters>"
+$env:E2E_CREDENTIALS_FILE = "$PWD\.e2e\credentials.json"
+$env:APP_ORIGIN = "http://127.0.0.1:3001"
+pnpm db:migrate
+pnpm db:seed:e2e
+pnpm test:e2e:authenticated
+```
+
+- `APP_ORIGIN` i `PLAYWRIGHT_BASE_URL` han de ser **la mateixa cadena**. L'API compara l'origen
+  a cada peticio que escriu, i `127.0.0.1` contra `localhost` fa fallar totes les mutacions
+  amb `ORIGIN_DENIED`.
+- El seed enrola el segon factor per la via normal de Better Auth (`enable` i despres `verify`)
+  i es nega a escriure credencials si el compte no acaba amb MFA activada.
+- Escriu el secret a `E2E_CREDENTIALS_FILE`. `.e2e/` esta ignorat per git: no el comparteixis
+  ni l'adjuntis a cap issue.
+- Torna a executar `pnpm db:seed:e2e` abans de cada tanda. Les proves canvien estat i
+  assignacio, i el seed les retorna al punt de partida.
+- Sense el fitxer de credencials, els projectes autenticats simplement no existeixen i
+  `pnpm test:e2e` executa la suite anonima de sempre.
+
+Les rutes de credencials estan limitades a deu peticions per minut i per adreca. Una tanda
+completa en gasta cinc; si hi afegiu mes entrades, compteu-les.
 
 ## Configuracio
 

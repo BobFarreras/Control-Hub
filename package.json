@@ -19,6 +19,7 @@
     "test": "turbo test",
     "test:integration": "turbo test:integration",
     "test:e2e": "playwright test",
+    "test:e2e:authenticated": "playwright test --project setup --project authenticated",
     "test:visual": "playwright test --grep @visual",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "infra:up": "docker compose up -d --wait postgres valkey mailpit",
@@ -26,6 +27,7 @@
     "infra:reset": "docker compose down -v",
     "db:migrate": "node --env-file=.env scripts/run-local-command.mjs migrate",
     "db:seed:dev": "node --env-file=.env scripts/run-local-command.mjs seed",
+    "db:seed:e2e": "node scripts/run-local-command.mjs seed:e2e",
     "bootstrap:owner": "node --env-file=.env scripts/run-local-command.mjs bootstrap"
   },
   "devDependencies": {
