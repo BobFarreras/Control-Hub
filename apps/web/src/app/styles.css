@@ -2286,6 +2286,43 @@ main {
   justify-content: space-between;
 }
 
+/* A row that leads somewhere.
+   The pointer and the hover say so, but the row is never the only way in: the anchor in the cell
+   remains the real link, so keyboard and screen reader users reach the page through it. */
+.smart-table-row.navigable {
+  cursor: pointer;
+}
+.smart-table-row.navigable:hover {
+  background: var(--surface-subtle);
+}
+
+/* Error boundary
+   Centred and quiet on purpose: it appears when the service did not answer, and the session is
+   intact, so it has to read as "try again in a moment" and not as a failure the user caused. */
+.boundary-page {
+  display: grid;
+  place-items: center;
+  min-height: 70vh;
+  padding: 2rem;
+}
+.boundary-page section {
+  display: flex;
+  max-width: 32rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+.boundary-page h1 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 1.25rem;
+}
+.boundary-page p {
+  margin: 0;
+}
+
 /* Projects and time
    The status chip reuses the shared .state pill. Delivered and closed read as finished rather
    than as good or bad, and a negative margin is marked with weight as well as colour so that it

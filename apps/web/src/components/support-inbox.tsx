@@ -180,6 +180,7 @@ export function SupportInbox({
         ]}
         empty={t.empty!}
         labels={t}
+        rowHref={(ticket) => `/${locale}/support/${ticket.id}`}
         primaryControls={
           <button
             className="primary-command"

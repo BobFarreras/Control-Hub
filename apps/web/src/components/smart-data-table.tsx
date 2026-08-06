@@ -33,6 +33,16 @@ export type SmartColumn<Row> = {
   filter?: { parameter: string; options: { value: string; label: string }[] };
 };
 
+/**
+ * Makes the whole row lead somewhere, given the destination of a row.
+ *
+ * The cell that carries the link stays a real anchor, so middle-click, right-click and keyboard
+ * navigation keep working and the row itself is only a convenience. Without this the clickable
+ * area was whatever the name happened to measure: a project called "Marge" gave five letters to
+ * aim at, and clicking anywhere else in the row did nothing at all.
+ */
+export type RowHref<Row> = (row: Row) => string;
+
 export function SmartDataTable<Row extends { id: string }>({
   tableId,
   rows,
@@ -48,7 +58,8 @@ export function SmartDataTable<Row extends { id: string }>({
   sortOptions,
   empty,
   labels,
-  primaryControls
+  primaryControls,
+  rowHref
 }: {
   tableId: string;
   rows: Row[];
@@ -65,6 +76,8 @@ export function SmartDataTable<Row extends { id: string }>({
   empty: string;
   labels: Record<string, string>;
   primaryControls?: ReactNode;
+  /** When given, the whole row leads there. The anchor inside the row stays the real link. */
+  rowHref?: RowHref<Row>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -269,13 +282,29 @@ export function SmartDataTable<Row extends { id: string }>({
             </tr>
           </thead>
           <tbody key={`${sort}:${rows.map((row) => row.id).join(":")}`}>
-            {rows.map((row, index) => (
-              <tr className="smart-table-row" style={{ "--row-index": index } as CSSProperties} key={row.id}>
-                {ordered.map((column) => (
-                  <td key={column.id}>{column.render(row)}</td>
-                ))}
-              </tr>
-            ))}
+            {rows.map((row, index) => {
+              const href = rowHref?.(row);
+              return (
+                <tr
+                  className={href ? "smart-table-row navigable" : "smart-table-row"}
+                  style={{ "--row-index": index } as CSSProperties}
+                  key={row.id}
+                  // A click that landed on a link, a button or a text selection is left alone:
+                  // otherwise selecting a cell to copy it would navigate away instead.
+                  onClick={(event) => {
+                    if (!href) return;
+                    const target = event.target as HTMLElement;
+                    if (target.closest("a, button, input, select, textarea, summary, label")) return;
+                    if (window.getSelection()?.toString()) return;
+                    router.push(href);
+                  }}
+                >
+                  {ordered.map((column) => (
+                    <td key={column.id}>{column.render(row)}</td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {rows.length === 0 && <p className="crm-empty">{empty}</p>}
