@@ -262,6 +262,23 @@ GET    /api/v1/rates
 - `tickets.project_id` es nullable des del primer dia, aixi que la Fase 5 pot sortir abans que
   aquesta feature sense deute de migracio.
 
+## Pendent decidit a la revisio
+
+**Barem de venda per tipus de servei.** El propietari vol fixar el preu de venda per hora per tipus
+de feina (agent d'IA, pagina web, software a mida) i no nomes per client o per projecte, perque
+avui obliga a repetir el mateix preu a cada client nou.
+
+Aixo canvia la resolucio del barem, que passaria a tenir tres nivells: projecte, despres client,
+despres tipus de servei. Dues maneres de modelar-ho, i **la decisio es del propietari** perque
+afecta la migracio i el domini:
+
+1. Un abast nou a `billing_rates` amb un cataleg propi de tipus de servei.
+2. Reutilitzar productes de la Fase 4, que ja existeixen i ja porten aquests noms, vinculant el
+   projecte a un producte.
+
+La segona no inventa un cataleg paral·lel, pero acobla els projectes al cataleg comercial. No
+s'implementa cap de les dues fins que la decisio estigui presa i escrita aqui.
+
 ## Ordre respecte de la Fase 5
 
 Aquesta feature no bloqueja els tickets. La dependencia real es al reves: si els tickets

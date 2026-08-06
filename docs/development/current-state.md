@@ -7,8 +7,9 @@ amb PostgreSQL, Valkey, Better Auth, tenancy, RBAC, MFA, CRM, cataleg comercial,
 subscripcions de clients, subscripcions contractades per l'empresa, suport amb tickets i SLA, i
 projectes amb imputacio de temps, barems versionats i rendibilitat.
 
-**La Fase 5B esta implementada a `feature/phase-5b-projects-and-time` i pendent de revisio del
-propietari.** No esta fusionada a `develop` ni desplegada. Especificacio a
+**La Fase 5B esta tancada: fusionada a `develop` i amb la seva porta de revisio passada.** El
+marge d'un projecte real s'ha comparat amb un calcul manual i quadra, i esta escrit com a prova a
+`tests/e2e/rates.authenticated.spec.ts` perque continui quadrant. Especificacio a
 `docs/specifications/projects-and-time.md`. Que inclou:
 
 - `packages/config/src/flags.ts`: el registre de feature flags del repositori, el primer que hi
@@ -37,17 +38,32 @@ propietari.** No esta fusionada a `develop` ni desplegada. Especificacio a
   d'imputacio i bloc de rendibilitat. El bloc financer no arriba al navegador de qui no te
   `financials:read`: el servidor no el demana, no s'amaga amb CSS.
 
-- `tests/e2e/projects.authenticated.spec.ts`: dues proves amb sessio iniciada que creen un
-  projecte pel dialeg real, hi imputen `1h 30m`, comproven que la fitxa i la capcalera diuen les
-  mateixes hores, que l'informe avisa del barem absent en comptes d'ensenyar marge, i que un
-  projecte tancat deixa el formulari d'hores inhabilitat amb el motiu escrit. El job
+- `apps/web/src/app/[locale]/projects/rates/page.tsx`: la pantalla de barems. Cost per hora per
+  persona i preu de venda per client o projecte, cadascun amb el seu formulari i el seu historial
+  publicat, amb la fila vigent marcada. Els imports es converteixen a unitats menors a
+  `apps/web/src/lib/money.ts`, **mai per coma flotant**, i es refusa un tercer decimal en comptes
+  d'arrodonir-lo. 17 tests.
+- Primitives compartides a `apps/web/src/components/`: `form-field.tsx` (Field, SelectField,
+  TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg), `status-pill.tsx` i
+  `metric-tile.tsx`. El desplegable es un `<select>` natiu estilitzat i no un popover propi, a
+  proposit: el comportament es de la plataforma i la icona es nostra.
+- **Proves E2E autenticades: 11.** Les de projectes creen un projecte pel dialeg real i hi imputen
+  hores; les de barems publiquen un cost i un preu i comproven el marge contra l'aritmetica escrita
+  a l'assercio, i que **un barem publicat avui no canvia el valor d'una hora de fa un mes**. El job
   `authenticated-end-to-end` porta `CONTROL_HUB_FLAGS=projects_and_time`; sense la variable
-  aquestes proves anirien contra un 404.
+  anirien contra un 404.
 
-### El que encara no s'ha fet
+### El que queda obert de la Fase 5B
 
-No hi ha **pantalla de gestio de barems**: l'API els publica i els llegeix, pero avui es
-configuren per API. `IMPLEMENTATION_PLAN.md` la llista com a entregable de la Fase 5B.
+**El preu de venda nomes es pot fixar per client o per projecte, i el propietari vol poder-lo fixar
+per tipus de servei** (agent d'IA, pagina web, software a mida). Avui vol dir repetir el mateix preu
+a cada client nou. No esta decidit com es modela: podria ser un abast nou a `billing_rates`, o
+reutilitzar el cataleg de productes de la Fase 4, que ja existeix i ja te aquests noms. **Es una
+decisio de model de dades pendent del propietari**, i canvia la migracio, el domini i la resolucio
+del barem, aixi que no s'ha comencat.
+
+La resta de la fase esta completa, inclosa la pantalla de barems que `IMPLEMENTATION_PLAN.md`
+demanava.
 
 La **Fase 5: suport, tickets i SLA** esta tancada: implementada, revisada pel propietari i
 fusionada a `develop` amb CI en verd. Especificacio a `docs/specifications/support.md`. Que
@@ -131,14 +147,19 @@ Tots dos corregits; la causa i la solucio son a `troubleshooting.md`.
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
   en un entorn local acabat de sembrar.
 
-## El seguent increment
+## El seguent increment: Fase 5C
 
-Un cop el propietari revisi i fusioni la Fase 5B, la **Fase 5C: registre de jornada** te
-especificacio a `docs/specifications/attendance.md`. Pendent de confirmacio de la gestoria
-abans d'activar-la en produccio.
+**El seguent pas es la Fase 5C: registre de jornada**, amb especificacio aprovada a
+`docs/specifications/attendance.md`. Pendent de confirmacio de la gestoria abans d'activar-la en
+produccio, i per aixo estrenara la feature flag amb `attendance`: el codi pot estar desplegat i
+apagat mentre s'espera la confirmacio, que es exactament per aixo que existeix el registre de
+flags.
 
-Abans, val la pena tancar els dos buits que la Fase 5B deixa oberts a proposit: la pantalla de
-barems i les proves E2E autenticades del modul.
+La 5C concilia hores registrades contra hores imputades a projectes i tickets, aixi que depen de la
+5B, que ja esta tancada i amb el marge verificat.
+
+Abans o despres de la 5C, segons decideixi el propietari: **el barem de venda per tipus de
+servei**, descrit a "El que queda obert de la Fase 5B".
 
 L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 `docs/phase-5-preflight-audit.md`.
