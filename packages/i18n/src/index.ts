@@ -1198,7 +1198,12 @@ const projectDictionaries = {
     revenueHelp: "Hores facturables valorades amb el preu de venda vigent el dia que es van treballar.",
     costHelp: "Totes les hores, facturables o no, valorades amb el cost per hora de cada persona.",
     perCurrency: "Detall per moneda",
-    statusOf: "Estat del projecte"
+    statusOf: "Estat del projecte",
+    ratesNeeded: "Cal publicar un barem",
+    daysLeft: "dies per entregar",
+    daysOverdue: "dies de retard",
+    dueToday: "Venc avui",
+    entriesUnpriced: "imputacions sense valorar"
   },
   es: {
     eyebrow: "ENTREGAS",
@@ -1305,7 +1310,12 @@ const projectDictionaries = {
     revenueHelp: "Horas facturables valoradas con el precio de venta vigente el dia en que se trabajaron.",
     costHelp: "Todas las horas, facturables o no, valoradas con el coste por hora de cada persona.",
     perCurrency: "Detalle por moneda",
-    statusOf: "Estado del proyecto"
+    statusOf: "Estado del proyecto",
+    ratesNeeded: "Hay que publicar una tarifa",
+    daysLeft: "dias para entregar",
+    daysOverdue: "dias de retraso",
+    dueToday: "Vence hoy",
+    entriesUnpriced: "imputaciones sin valorar"
   },
   en: {
     eyebrow: "DELIVERY",
@@ -1412,7 +1422,12 @@ const projectDictionaries = {
     revenueHelp: "Billable hours valued with the billing rate in force on the day they were worked.",
     costHelp: "Every hour, billable or not, valued with each person's hourly cost.",
     perCurrency: "By currency",
-    statusOf: "Project status"
+    statusOf: "Project status",
+    ratesNeeded: "A rate has to be published",
+    daysLeft: "days left",
+    daysOverdue: "days overdue",
+    dueToday: "Due today",
+    entriesUnpriced: "entries not priced"
   }
 } as const;
 

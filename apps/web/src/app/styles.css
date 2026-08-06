@@ -2320,10 +2320,12 @@ main {
   font-size: 13px;
   font-weight: 650;
 }
+/* 13px, not 12: a hint at 12px is text nobody reads, which defeats the point of writing it.
+   `DESIGN_SYSTEM.md` puts the smallest legible size at 13px and this is the floor of the screen. */
 .field-hint,
 .field-error {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 18px;
 }
 .field-hint {
   color: var(--muted);
@@ -2402,10 +2404,15 @@ main {
 .toggle-field .field-hint {
   grid-column: 2;
 }
-/* A switch built on a checkbox: the control keeps its own semantics and keyboard behaviour. */
+/* A switch built on a checkbox: the control keeps its own semantics and keyboard behaviour.
+   The knob is positioned against the track rather than pushed with a margin and a translate. The
+   margin version depended on the border box arithmetic working out and the knob ended up hanging
+   over the right edge; `left`/`right` inside a relative track cannot leave it. */
 .toggle-field input[type="checkbox"] {
+  position: relative;
   appearance: none;
-  width: 40px;
+  flex: none;
+  width: 42px;
   height: 24px;
   margin: 0;
   border: 1px solid var(--border);
@@ -2418,20 +2425,22 @@ main {
 }
 .toggle-field input[type="checkbox"]::after {
   content: "";
-  display: block;
-  width: 18px;
-  height: 18px;
-  margin: 2px;
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  translate: 0 -50%;
   border-radius: 999px;
   background: var(--muted);
-  transition: translate 140ms ease-out;
+  transition: left 140ms ease-out;
 }
 .toggle-field input[type="checkbox"]:checked {
   border-color: var(--brand);
   background: var(--brand);
 }
 .toggle-field input[type="checkbox"]:checked::after {
-  translate: 16px 0;
+  left: 21px;
   background: var(--brand-contrast);
 }
 .toggle-field input[type="checkbox"]:focus-visible {
@@ -2451,7 +2460,7 @@ main {
   border-radius: 999px;
   background: var(--surface-subtle);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   white-space: nowrap;
 }
@@ -2493,7 +2502,7 @@ main {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   text-transform: uppercase;
 }
@@ -2511,7 +2520,7 @@ main {
 }
 .metric-tile small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* A row that leads somewhere.
@@ -2560,11 +2569,6 @@ main {
   gap: 14px;
 }
 .project-identity {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: flex-start;
-  justify-content: space-between;
   padding: 18px 20px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2575,7 +2579,7 @@ main {
 }
 .project-code {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
@@ -2598,14 +2602,53 @@ main {
   font-size: 14px;
   line-height: 20px;
 }
+.project-identity {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) auto auto;
+  gap: 24px;
+  align-items: start;
+}
+.project-identity-name {
+  min-width: 0;
+}
+/* The facts somebody asks for after the name. A definition list because that is what it is: four
+   terms and their values, which a screen reader then announces as pairs. */
+.project-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, auto));
+  gap: 12px 28px;
+  margin: 0;
+}
+.project-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.project-facts dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+}
+.project-facts dd time {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+}
 .project-identity-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: end;
+  justify-content: end;
 }
 .project-identity-controls .field {
   min-width: 190px;
+}
+/* A setup step still missing, said on the figure it is holding up rather than as a page banner. */
+.metric-todo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warning);
+  font-weight: 650;
 }
 .metric-row {
   display: grid;
@@ -2644,19 +2687,42 @@ main {
 }
 .project-panel-heading p {
   margin: 0;
+  max-width: 46ch;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
 }
-/* One row, so logging time is a sentence and not a form to fill in. */
+/* One row, so logging time is a sentence and not a form to fill in.
+   Three shared rows — labels, controls, hints — and every field spans all three with `subgrid`.
+   Aligning on the end of each field instead let the hint under one control push that control up
+   out of line with its neighbours, which is the visual noise that made the row look careless. */
 .quick-log {
   display: grid;
-  grid-template-columns: 160px 170px minmax(200px, 1fr) auto auto;
-  gap: 12px;
-  align-items: end;
+  grid-template-columns: 168px 172px minmax(200px, 1fr) auto auto;
+  grid-template-rows: auto 44px auto;
+  gap: 6px 14px;
+  align-items: start;
+}
+.quick-log > * {
+  grid-row: 1 / span 3;
+  display: grid;
+  grid-template-rows: subgrid;
+}
+/* The toggle and the button have no label or hint of their own, so they sit on the control row. */
+.quick-log .toggle-field,
+.quick-log .primary-button {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+}
+.quick-log .toggle-field {
+  gap: 10px;
+  white-space: nowrap;
 }
 .quick-log .primary-button {
+  justify-content: center;
   height: 44px;
-  padding: 0 20px;
+  padding: 0 22px;
 }
 .entry-list {
   list-style: none;
@@ -2665,12 +2731,12 @@ main {
 }
 .entry-list li {
   display: grid;
-  grid-template-columns: 108px 92px 1fr 2fr auto auto;
-  gap: 12px;
+  grid-template-columns: 116px 100px 1fr 2fr auto auto;
+  gap: 14px;
   align-items: center;
-  padding: 10px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--border);
-  font-size: 14px;
+  font-size: 15px;
 }
 .entry-list li:first-child {
   border-top: 0;
@@ -2678,7 +2744,7 @@ main {
 .entry-list time,
 .entry-duration {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 13px;
+  font-size: 14px;
 }
 .entry-duration {
   font-weight: 600;
@@ -2694,7 +2760,7 @@ main {
 }
 .entry-billable {
   color: var(--success);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 .entry-billable.muted {
@@ -2765,7 +2831,7 @@ main {
   gap: 10px;
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .timeline-meta time {
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -2782,8 +2848,8 @@ main {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 13px;
-  line-height: 19px;
+  font-size: 14px;
+  line-height: 20px;
 }
 .notice-warning {
   border-color: var(--warning);
@@ -2818,9 +2884,38 @@ main {
   padding: 0 20px;
 }
 
+/* The three columns hold down to a 13-inch laptop. Dropping the controls to their own row any
+   earlier left them stranded mid-page with the right half empty, which is worse than tight. */
+@media (max-width: 1180px) {
+  .project-identity {
+    grid-template-columns: minmax(240px, 1fr) auto;
+  }
+  .project-identity-controls {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+}
 @media (max-width: 1100px) {
+  .project-identity {
+    grid-template-columns: 1fr;
+  }
+  .project-facts {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+  /* Back to two rows, and the fields keep their own labels and hints. */
   .quick-log {
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: none;
+    align-items: end;
+  }
+  .quick-log > * {
+    grid-row: auto;
+    display: grid;
+    grid-template-rows: none;
+  }
+  .quick-log .toggle-field,
+  .quick-log .primary-button {
+    grid-row: auto;
   }
   .quick-log .primary-button {
     grid-column: 1 / -1;

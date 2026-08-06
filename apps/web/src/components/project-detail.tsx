@@ -13,7 +13,7 @@ import {
   Wallet
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
 import { MetricTile } from "@/components/metric-tile";
 import { projectStatusTone, StatusPill } from "@/components/status-pill";
@@ -33,6 +33,21 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /** The currency line to lead with. One is the normal case; more than one is a report, not a tile. */
 const leadLine = (report: Profitability) => report.lines[0];
+
+/**
+ * How long is left on the due date, which is what somebody reads a due date for.
+ *
+ * Counted in whole days from midnight so that "tomorrow" does not become "in 0 days" late in the
+ * afternoon, and an overdue project says so in words rather than as a negative number.
+ */
+function dueFootnote(dueAt: string | null, t: Labels): ReactNode {
+  if (!dueAt) return undefined;
+  const midnight = (value: Date) => Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+  const days = Math.round((midnight(new Date(dueAt)) - midnight(new Date())) / 86_400_000);
+  if (days < 0) return <span className="metric-todo">{`${Math.abs(days)} ${t.daysOverdue}`}</span>;
+  if (days === 0) return t.dueToday;
+  return `${days} ${t.daysLeft}`;
+}
 
 export function ProjectDetail({
   detail,
@@ -113,14 +128,45 @@ export function ProjectDetail({
         </p>
       )}
 
-      {/* One identity strip: what this is, what state it is in, and the control to change it. */}
+      {/*
+        The identity strip: what this is, the facts somebody asks for next, and the control that
+        changes its state. The facts column exists because the strip was two thirds empty space,
+        and an operational screen that leaves a third of its widest row blank is wasting the most
+        valuable part of the page.
+      */}
       <section className="project-identity" aria-label={t.overview}>
-        <div>
+        <div className="project-identity-name">
           <span className="project-code">{project.code}</span>
           <h2>{project.name}</h2>
           <p className="project-customer">{project.customerName}</p>
           {project.description && <p className="project-description">{project.description}</p>}
         </div>
+        <dl className="project-facts">
+          <div>
+            <dt>{t.owner}</dt>
+            <dd>{project.ownerName ?? <span className="muted">{t.unassigned}</span>}</dd>
+          </div>
+          <div>
+            <dt>{t.started}</dt>
+            <dd>
+              {project.startedAt ? (
+                <time dateTime={project.startedAt}>{new Date(project.startedAt).toLocaleDateString(locale)}</time>
+              ) : (
+                <span className="muted">{t.notStarted}</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>{t.entries}</dt>
+            <dd>{entries.length}</dd>
+          </div>
+          <div>
+            <dt>{t.created}</dt>
+            <dd>
+              <time dateTime={project.createdAt}>{new Date(project.createdAt).toLocaleDateString(locale)}</time>
+            </dd>
+          </div>
+        </dl>
         <div className="project-identity-controls">
           <StatusPill tone={projectStatusTone[project.status] ?? "neutral"} label={t[project.status] ?? project.status} />
           <SelectField
@@ -157,11 +203,9 @@ export function ProjectDetail({
               <span className="metric-absent">{t.noDueDate}</span>
             )
           }
-          footnote={
-            project.startedAt
-              ? `${t.started}: ${new Date(project.startedAt).toLocaleDateString(locale)}`
-              : t.notStarted
-          }
+          // Days remaining, not the start date: the start is already a fact in the strip above,
+          // and what somebody reads a due date for is how long is left.
+          footnote={dueFootnote(project.dueAt, t)}
         />
         {/*
           Absent, not hidden: without `financials:read` these figures never left the server.
@@ -189,31 +233,46 @@ export function ProjectDetail({
               icon={TrendingUp}
               value={formatMoney(lead.marginMinor, lead.currency, locale)}
               tone={lead.marginMinor < 0 ? "negative" : "positive"}
-              {...(profitability.lines.length > 1 ? { footnote: t.perCurrency } : {})}
+              footnote={
+                // A partially priced margin has to say so on the number itself. Read without this
+                // it looks complete, and it is the one figure somebody will quote to a customer.
+                missingRates > 0 ? (
+                  <span className="metric-todo">
+                    <AlertTriangle size={13} aria-hidden="true" />
+                    {missingRates} {t.entriesUnpriced}
+                  </span>
+                ) : profitability.lines.length > 1 ? (
+                  t.perCurrency
+                ) : undefined
+              }
             />
           </>
         )}
+        {/*
+          No rate published, so the tile says what is missing instead of a figure, and says it
+          where the figure would have been. It used to be a page-wide banner wedged between two
+          sections, which read as a failure and belonged to nothing: this is a setup step, and it
+          belongs next to the number it is holding up.
+        */}
         {profitability && !lead && (
           <MetricTile
             label={t.margin!}
-            help={t.marginHelp}
+            // The full explanation lives in the help bubble, reachable by hover and by focus: why
+            // there is no figure, and why an absent rate is not priced as zero.
+            help={`${t.marginHelp} ${t.missingRateHelp}`}
             icon={TrendingUp}
             value={<span className="metric-absent">{t.noRatesYet}</span>}
+            footnote={
+              missingRates > 0 ? (
+                <span className="metric-todo">
+                  <AlertTriangle size={13} aria-hidden="true" />
+                  {t.ratesNeeded}
+                </span>
+              ) : undefined
+            }
           />
         )}
       </section>
-
-      {profitability && missingRates > 0 && (
-        <p className="notice notice-warning" role="status">
-          <AlertTriangle size={17} aria-hidden="true" />
-          <span>
-            {profitability.entriesWithoutCostRate > 0 && `${profitability.entriesWithoutCostRate} ${t.missingCostRate}. `}
-            {profitability.entriesWithoutBillingRate > 0 &&
-              `${profitability.entriesWithoutBillingRate} ${t.missingBillingRate}. `}
-            {t.missingRateHelp} {t.ratesHint}
-          </span>
-        </p>
-      )}
 
       {profitability && profitability.lines.length > 1 && (
         <section className="project-panel" aria-label={t.perCurrency}>
