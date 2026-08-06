@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, Coins, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SelectField, TextField } from "@/components/form-field";
@@ -150,16 +150,24 @@ export function ProjectsWorkspace({
         labels={t}
         rowHref={(project) => `/${locale}/projects/${project.id}`}
         primaryControls={
-          <button
-            className="primary-command"
-            onClick={() => {
-              setError("");
-              setDialog(true);
-            }}
-          >
-            <Plus size={17} />
-            {t.newProject}
-          </button>
+          <>
+            <button
+              className="primary-command"
+              onClick={() => {
+                setError("");
+                setDialog(true);
+              }}
+            >
+              <Plus size={17} />
+              {t.newProject}
+            </button>
+            {/* The margin on a project page is blank until a rate exists, so the way to fix that
+                is reachable from the listing rather than only from a URL somebody has to know. */}
+            <a className="secondary-button" href={`/${locale}/projects/rates`}>
+              <Coins size={17} aria-hidden="true" />
+              {t.rates}
+            </a>
+          </>
         }
       />
       {dialog && (

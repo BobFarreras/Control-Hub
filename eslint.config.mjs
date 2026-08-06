@@ -62,10 +62,12 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        // `allowDefaultProject` covers the few files that sit outside a package tsconfig,
-        // such as the Playwright specs, so they are still linted rather than silently skipped.
+        // `allowDefaultProject` covers the few files that sit outside a package tsconfig, so they
+        // are still linted rather than silently skipped. It accepts at most eight of them: the
+        // Playwright suite outgrew that and now has its own tsconfig, which the project service
+        // finds on its own. Keep this list short for the same reason.
         projectService: {
-          allowDefaultProject: ["*.mjs", "*.config.ts", "tests/e2e/*.ts", "tests/e2e/support/*.ts", "scripts/*.mjs"]
+          allowDefaultProject: ["*.mjs", "*.config.ts", "scripts/*.mjs"]
         },
         tsconfigRootDir: import.meta.dirname
       }

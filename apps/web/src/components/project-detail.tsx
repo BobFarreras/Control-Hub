@@ -280,7 +280,7 @@ export function ProjectDetail({
       {profitability && profitability.lines.length > 1 && (
         <section className="project-panel" aria-label={t.perCurrency}>
           <h3>{t.perCurrency}</h3>
-          <div className="crm-table-wrap">
+          <div className="crm-table-wrap inside-panel">
             <table className="crm-table project-money">
               <thead>
                 <tr>
