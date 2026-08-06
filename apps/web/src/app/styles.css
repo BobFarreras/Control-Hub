@@ -2285,3 +2285,50 @@ main {
   align-items: flex-end;
   justify-content: space-between;
 }
+
+/* Projects and time
+   The status chip reuses the shared .state pill. Delivered and closed read as finished rather
+   than as good or bad, and a negative margin is marked with weight as well as colour so that it
+   does not depend on telling red from green. */
+.state-delivered {
+  color: var(--accent);
+}
+.state-closed,
+.state-canceled {
+  color: var(--text-muted);
+}
+.state-on_hold {
+  color: var(--warning-strong, #b54708);
+}
+.project-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 1.75rem;
+}
+.project-sections h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+.project-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: baseline;
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.project-money td,
+.project-money th[scope="row"] {
+  font-variant-numeric: tabular-nums;
+}
+.project-money .negative {
+  color: var(--danger-strong, #b42318);
+  font-weight: 600;
+}
+.project-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

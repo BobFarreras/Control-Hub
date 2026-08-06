@@ -111,6 +111,76 @@ export type TicketDetail = {
 
 export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
 
+export type ProjectRow = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
+  ownerMembershipId: string | null;
+  ownerName: string | null;
+  startedAt: string | null;
+  dueAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  loggedMinutes: number;
+};
+
+export type ProjectEvent = {
+  id: string;
+  type: "created" | "status_changed";
+  fromValue: string | null;
+  toValue: string | null;
+  reason: string | null;
+  actorName: string | null;
+  createdAt: string;
+};
+
+export type ProjectDetail = {
+  project: ProjectRow;
+  events: ProjectEvent[];
+  assignableMembers: AssignableMember[];
+};
+
+/** `spentOn` is a day (`YYYY-MM-DD`), not an instant: it is the day somebody worked. */
+export type TimeEntry = {
+  id: string;
+  membershipId: string;
+  memberName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  ticketId: string | null;
+  ticketNumber: number | null;
+  customerName: string;
+  spentOn: string;
+  minutes: number;
+  billable: boolean;
+  note: string | null;
+  createdAt: string;
+};
+
+export type ProfitabilityLine = { currency: string; revenueMinor: number; costMinor: number; marginMinor: number };
+
+export type Profitability = {
+  scope: "project" | "customer";
+  scopeId: string;
+  minutes: number;
+  billableMinutes: number;
+  lines: ProfitabilityLine[];
+  entriesWithoutCostRate: number;
+  entriesWithoutBillingRate: number;
+};
+
+export type ProjectsPage = { items: ProjectRow[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
+export type TimeEntriesPage = {
+  items: TimeEntry[];
+  total: number;
+  page: number;
+  pageSize: TablePreference["pageSize"];
+};
+
 export type Product = { id: string; code: string; name: string; status: string };
 export type Version = { id: string; productId: string; version: string; status: string };
 export type Plan = { id: string; productVersionId: string; code: string; name: string; status: string };
@@ -183,4 +253,5 @@ export type CustomerSubscriptionsResponse = { subscriptions: CustomerSubscriptio
 export type FinancialSummaryResponse = { metrics: FinancialMetric[] };
 export type RenewalAlertsResponse = { alerts: RenewalAlert[] };
 export type ImportResultsResponse = { results: ImportResult[] };
+export type ProfitabilityResponse = { profitability: Profitability };
 export type ErrorResponse = { code?: string; error?: { code?: string } };
