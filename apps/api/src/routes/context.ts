@@ -1,4 +1,10 @@
-import type { CommerceService, CompanySubscriptionService, CrmService, SupportService } from "@control-hub/application";
+import type {
+  CommerceService,
+  CompanySubscriptionService,
+  CrmService,
+  ProjectsService,
+  SupportService
+} from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
 import type { ControlHubAuth } from "../auth.js";
 import type { MailSender } from "../email.js";
@@ -21,6 +27,7 @@ export type CrmContext = RouteContext & { crm: CrmService };
 export type CommerceContext = RouteContext & { commerce: CommerceService };
 export type CompanySubscriptionContext = RouteContext & { companySubscriptions: CompanySubscriptionService };
 export type SupportContext = RouteContext & { support: SupportService };
+export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };
 
 /** The public routes run before any session exists, so they take no auth instance. */

@@ -119,8 +119,15 @@ Taules noves, totes amb `tenant_id` i RLS:
 - `project_events`: append-only, historial d'estat amb actor i motiu.
 - `member_cost_rates`: `membership_id`, `currency`, `cost_minor_per_hour`, `effective_from`.
   Append-only. Unic per `(membership_id, currency, effective_from)`.
-- `billing_rates`: `scope` (`customer` o `project`), `scope_id`, `currency`,
-  `amount_minor_per_hour`, `effective_from`. Append-only, mateixa regla d'unicitat.
+- `billing_rates`: abast (client o projecte), `currency`, `amount_minor_per_hour`,
+  `effective_from`. Append-only, mateixa regla d'unicitat.
+
+  **Implementat amb dues columnes i no amb `scope` mes `scope_id`.** Un identificador polimorfic
+  no es pot protegir amb cap clau forana, i era precisament la referencia creuada entre tenants
+  el que el threat model demanava impedir a la base de dades. La taula porta `customer_id` i
+  `project_id`, cadascuna amb clau forana composta amb `tenant_id`, i un
+  `check (num_nonnulls(customer_id, project_id) = 1)`. `scope` es deriva de quina de les dues
+  porta valor, aixi que el contracte de l'API es exactament el que descriu aquest document.
 - `time_entries`: `membership_id`, `project_id` nullable, `ticket_id` nullable, `spent_on`
   (date), `minutes`, `billable`, `note`.
 
@@ -157,6 +164,19 @@ Resolucio del barem per a una imputacio del dia `D`:
 
 Una imputacio sense cost resoluble es un error de configuracio visible, no un cost de zero.
 
+**Que compta com a hores d'un projecte.** Les imputades directament al projecte, mes les
+imputades a un ticket que porta aquest projecte. La feina de suport d'un projecte es feina del
+projecte, i deixar-la fora donaria un marge que ignora hores que algu ha treballat de debo. Per
+al barem de venda, aquestes hores es valoren amb el del projecte, no amb el del client.
+
+Les hores d'un client son les dels seus projectes mes les dels seus tickets. El client
+d'una imputacio surt sempre del projecte o del ticket, mai d'una columna propia.
+
+**Diverses monedes per a una mateixa persona.** Si algu te barems publicats en mes d'una moneda,
+val el publicat mes recentment que ja fos vigent el dia treballat, sigui quina sigui la seva
+moneda. Es el que significa "el barem vigent" quan algu ha substituit deliberadament una moneda
+per una altra.
+
 ## API, events i idempotencia
 
 ```text
@@ -165,6 +185,7 @@ POST   /api/v1/projects
 GET    /api/v1/projects/:projectId
 PATCH  /api/v1/projects/:projectId/status
 GET    /api/v1/projects/:projectId/profitability
+GET    /api/v1/crm/customers/:customerId/profitability
 GET    /api/v1/time-entries
 POST   /api/v1/time-entries
 PATCH  /api/v1/time-entries/:timeEntryId
@@ -174,10 +195,15 @@ POST   /api/v1/rates/billing
 GET    /api/v1/rates
 ```
 
+- La rendibilitat per client viu sota el prefix del CRM perque es on viu el client. L'informe es
+  el mateix i el permis tambe.
 - Els llistats segueixen el contracte de `smart-data-table.md`: paginacio server-side, cerca,
   ordenacio i filtres.
 - `POST /api/v1/time-entries` no es idempotent per naturalesa. Accepta un `clientReference`
   opcional, unic per membership, perque un reintent de xarxa no dupliqui hores.
+- La durada s'envia com a text (`duration`), no com a minuts. `90` i `1h 30m` arriben tal com
+  s'han escrit i un unic parser del domini decideix que volen dir, de manera que el formulari i
+  l'API no poden interpretar-ho diferent.
 - `profitability` mai barreja monedes: retorna una entrada per moneda, com les metriques
   financeres de la Fase 4.
 - Els codis d'error segueixen `errors-and-api.md`.
@@ -226,6 +252,12 @@ GET    /api/v1/rates
 - Migracions additives: cap columna existent canvia de significat.
 - Feature flag tipada `projects_and_time`, amb propietari i data de retirada, segons
   `engineering-conventions.md`. Permet desplegar l'esquema abans d'obrir la UI.
+
+  Es la primera flag del repositori i estrena el registre de `packages/config/src/flags.ts`:
+  declarada amb propietari i data de retirada, i activada amb `CONTROL_HUB_FLAGS`, una llista
+  separada per comes. Apagada, l'API no declara les rutes (responen 404) i la web no mostra
+  l'entrada del menu ni serveix les pantalles. Un nom no declarat s'ignora i s'avisa a l'arrencada.
+  La flag decideix que hi ha desplegat, mai qui hi pot accedir: aixo continua sent dels permisos.
 - Rollback: desactivar la flag deixa les taules al seu lloc sense afectar CRM ni commerce.
 - `tickets.project_id` es nullable des del primer dia, aixi que la Fase 5 pot sortir abans que
   aquesta feature sense deute de migracio.

@@ -28,7 +28,7 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/attendance.md`: registre de jornada, correccions i conciliacio contra hores
   imputades. Aprovada, Fase 5C. Requereix confirmacio de la gestoria.
 - `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i
-  marge. Aprovada, planificada com a Fase 5B.
+  marge. Aprovada, implementada com a Fase 5B darrere la flag `projects_and_time`.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

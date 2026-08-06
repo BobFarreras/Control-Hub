@@ -5,6 +5,7 @@ import {
   ChevronDown,
   CloudCog,
   Command,
+  FolderKanban,
   Headphones,
   LayoutDashboard,
   Package,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useFeature } from "@/components/feature-provider";
 
 type Labels = {
   label: string;
@@ -24,6 +26,7 @@ type Labels = {
   catalog: string;
   customerSubscriptions: string;
   companySubscriptions: string;
+  projects: string;
   support: string;
   infrastructure: string;
   integrations: string;
@@ -32,6 +35,9 @@ type Labels = {
 
 export function AppSidebar({ locale, labels, ready }: { locale: string; labels: Labels; ready?: string }) {
   const pathname = usePathname();
+  // Resolved on the server by the root layout: a menu entry leading to a route the API does not
+  // serve is worse than no entry at all, and the sidebar cannot read the environment itself.
+  const projectsEnabled = useFeature("projects_and_time");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false) => (
     <Link
       className={
@@ -78,6 +84,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           </summary>
           <div>{item(`/${locale}/expenses/subscriptions`, labels.companySubscriptions)}</div>
         </details>
+        {projectsEnabled && item(`/${locale}/projects`, labels.projects, FolderKanban)}
         {item(`/${locale}/support`, labels.support, Headphones)}
         {item("#", labels.infrastructure, CloudCog)}
         {item("#", labels.integrations, Boxes)}

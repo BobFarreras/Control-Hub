@@ -83,6 +83,22 @@ Es la defensa contra forca bruta i no es toca.
 tres a `sign-in.authenticated.spec.ts`. Si n'afegeixes, reutilitza l'estat de sessio en comptes
 d'entrar de nou.
 
+**El seed tambe compta.** `pnpm db:seed:e2e` entra, activa el segon factor i el verifica, o
+sigui que gasta unes quantes peticions de la mateixa quota i des de la mateixa adreca.
+Encadenar el seed i la tanda deixa `sign-in.authenticated.spec.ts` sense pressupost: es queda a
+`/ca/login` amb el codi correcte i sembla que l'MFA s'hagi trencat. Deixa passar un minut entre
+el seed i `pnpm test:e2e:authenticated`. Per descartar-ho, executa nomes aquell test
+(`--grep "second factor"`): si passa sol, era la quota.
+
+### El seed end-to-end falla amb `Invalid email or password`
+
+**Causa.** El compte ja existeix a la base `_e2e` d'una tanda anterior, i el seed hi entra amb
+la contrasenya que li dones ara. La d'abans nomes vivia a `E2E_CREDENTIALS_FILE`, i si aquell
+fitxer ja no hi es no la recuperara ningu.
+
+**Solucio.** Dona-li un `E2E_OWNER_EMAIL` i un `E2E_TENANT_SLUG` nous i el seed crea el compte
+des de zero. No cal esborrar res: la base `_e2e` admet mes d'un compte de prova.
+
 ### Les captures visuals fallen a CI pero passen localment
 
 **Causa.** Les baselines estan compromeses amb sufix `-win32`, generades en una maquina de
@@ -122,6 +138,65 @@ les accions que el declaren deixen de funcionar.
 
 **Solucio.** Dependabot obre la PR d'actualitzacio. Fusiona-la. Comprova a la PR que el job
 afectat passa abans, que es gratis: el CI de la PR ja corre sobre el codi real.
+
+## Web i build
+
+### `next build` falla amb `Module not found: Can't resolve './flags.js'`
+
+**Causa.** Els paquets del workspace exporten TypeScript cru (`"exports": "./src/index.ts"`) i
+els seus imports relatius porten l'extensio `.js` de l'ESM de TypeScript. Els consumidors que
+passen per tsup ho resolen; Turbopack, no. Mentre el paquet va ser un sol fitxer ningu ho va
+notar: el primer que en va tenir dos (`@control-hub/config`, amb `flags.ts`) va trencar el
+build del web, i no el de l'API.
+
+**Solucio.** Dona-li un subcami propi al fitxer, i que el web l'importi directament:
+
+```json
+"exports": { ".": "./src/index.ts", "./flags": "./src/flags.ts" }
+```
+
+De passada estalvia arrossegar zod cap al web, que no el necessita per llegir una flag.
+
+### La pantalla de projectes respon 404 i el menu no la mostra
+
+**Causa.** `projects_and_time` esta apagada. Amb la flag avall l'API no declara ni tan sols les
+rutes, aixi que no es un 403: no hi ha res alla.
+
+**Solucio.** Per ordre, perque son tres causes diferents amb el mateix simptoma:
+
+1. `CONTROL_HUB_FLAGS=projects_and_time` a `.env`.
+2. **La variable ha d'estar declarada a `globalEnv` de `turbo.json`.** Turbo 2 corre en mode
+   `envMode: strict` i **nomes passa a les tasques les variables declarades**: una variable que
+   hi ha al `.env` i no a `turbo.json` no arriba mai al proces, i `pnpm dev` arrenca l'API i el
+   web amb la flag apagada sense dir res. Es la causa mes cara de trobar, perque tot sembla ben
+   configurat. Per comprovar-ho sense arrencar res:
+
+   ```bash
+   pnpm exec turbo run build --filter=@control-hub/api --dry=json
+   ```
+
+   La variable ha de sortir a `globalCacheInputs.environmentVariables.specified.env` i, si esta
+   posada a l'entorn, tambe a `configured`.
+3. **Reinicia els serveis.** Un `pnpm dev` que ja corria quan es va afegir la variable no la te,
+   i no la recollira sol.
+
+Si el nom hi es i tot i aixi no funciona, mira el log d'arrencada de l'API: avisa dels noms que
+no estan declarats a `packages/config/src/flags.ts`.
+
+**Per que no ho van veure les proves.** Els E2E arrenquen els serveis amb
+`pnpm --filter @control-hub/api dev` des de `playwright.config.ts`, saltant-se Turbo, i per tant
+hereten l'entorn del shell sencer. Una variable que falti a `turbo.json` passa desapercebuda a
+tota la suite i nomes es nota amb `pnpm dev`. Quan afegeixis una variable d'entorn, comprova-la
+amb `pnpm dev`, no nomes amb les proves.
+
+### Una entrada de menu apareix a unes pantalles i a d'altres no
+
+**Causa.** Algu ha resolt la flag dins d'un component de client. `process.env` no hi es al
+navegador, i la resposta es "apagada" en comptes d'un error. Va passar amb
+`/{locale}/security`, que es l'unica pantalla que es un component de client sencer.
+
+**Solucio.** Les flags es resolen **una vegada al layout arrel**, que es servidor, i baixen per
+context (`components/feature-provider.tsx`). Cap component de client les llegeix de l'entorn.
 
 ## Entorn de desenvolupament a Windows
 

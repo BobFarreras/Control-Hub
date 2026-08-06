@@ -5,6 +5,7 @@ import {
   normalizeComparableName,
   normalizeEmail,
   normalizePhone,
+  permissionCodes,
   rolePermissions,
   type TenantContext
 } from "./index.js";
@@ -36,7 +37,9 @@ function context(roles: TenantContext["roles"], permissions: TenantContext["perm
 }
 
 describe("RBAC", () => {
-  it("grants the owner every declared permission", () => expect(rolePermissions.owner).toHaveLength(22));
+  // Compared against the list itself rather than a count: a hardcoded number only says that
+  // somebody added a permission, not whether the owner actually got it.
+  it("grants the owner every declared permission", () => expect(rolePermissions.owner).toEqual(permissionCodes));
   it("keeps credential rotation away from administrators", () =>
     expect(rolePermissions.administrator).not.toContain("credentials:rotate"));
   it("allows technical infrastructure operation but not tenant management", () => {

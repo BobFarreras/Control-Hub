@@ -170,6 +170,47 @@ describe("route registration", () => {
   });
 });
 
+describe("feature flags", () => {
+  const authenticated = { ...unreachable, auth: stubAuth, invitationAuth: stubAuth, appOrigin: "http://localhost" };
+  const projectRoutes = [
+    ["GET", "/api/v1/projects"],
+    ["POST", "/api/v1/projects"],
+    ["GET", "/api/v1/time-entries"],
+    ["POST", "/api/v1/time-entries"],
+    ["GET", "/api/v1/rates"],
+    ["POST", "/api/v1/rates/cost"],
+    ["POST", "/api/v1/rates/billing"]
+  ] as const;
+
+  it("does not declare the projects surface while the flag is off", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set() });
+    apps.push(app);
+    await app.ready();
+
+    const declared = projectRoutes.filter(([method, url]) => app.hasRoute({ method, url }));
+    expect(declared).toEqual([]);
+    // Not declared means 404, which is the truth: there is nothing there to be forbidden from.
+    expect((await app.inject({ method: "GET", url: "/api/v1/projects" })).statusCode).toBe(404);
+  });
+
+  it("declares it once the flag is on", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["projects_and_time"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    const missing = projectRoutes.filter(([method, url]) => !app.hasRoute({ method, url }));
+    expect(missing).toEqual([]);
+  });
+
+  it("leaves the rest of the product alone either way", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set() });
+    apps.push(app);
+    await app.ready();
+    expect(app.hasRoute({ method: "GET", url: "/api/v1/support/tickets" })).toBe(true);
+    expect(app.hasRoute({ method: "GET", url: "/api/v1/crm/leads" })).toBe(true);
+  });
+});
+
 describe("metrics", () => {
   it("exposes a scrapeable endpoint that is not part of the public API surface", async () => {
     const app = buildApp(unreachable);

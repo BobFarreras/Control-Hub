@@ -4,7 +4,7 @@ Aquest document es el contracte operatiu per a desenvolupadors i agents. La Fase
 
 ## Estat actual
 
-El repositori disposa del nucli executable, identitat i seguretat, CRM professional i la Fase 4 de productes, plans, preus, subscripcions, renovacions i metriques recurrents. El punt de continuacio es la Fase 5 de suport, tickets i SLA; veure `docs/development/current-state.md`.
+El repositori disposa del nucli executable, identitat i seguretat, CRM professional, la Fase 4 de productes, plans, preus, subscripcions, renovacions i metriques recurrents, la Fase 5 de suport, tickets i SLA, i la Fase 5B de projectes i temps. El punt de continuacio es a `docs/development/current-state.md`.
 
 ## Requisits
 
@@ -150,6 +150,26 @@ completa en gasta cinc; si hi afegiu mes entrades, compteu-les.
 3. Validacio estricta en arrencar: una variable absent produeix un error accionable.
 
 Fitxers locals `.env*` estan ignorats, excepte `.env.example`. Credencials reals no entren al repositori, captures ni issues.
+
+### Feature flags
+
+`CONTROL_HUB_FLAGS` es una llista separada per comes amb els noms declarats a
+`packages/config/src/flags.ts`. Buida vol dir que totes estan apagades. Un nom que no hi sigui
+declarat s'ignora i l'API l'avisa a l'arrencada, de manera que una errada d'escriptura no es
+confon amb una capacitat simplement desactivada.
+
+**Tota variable d'entorn nova s'ha de declarar tambe a `globalEnv` de `turbo.json`.** Turbo corre
+en mode `strict` i nomes passa a les tasques les variables declarades: si nomes es al `.env`,
+`pnpm dev` arrenca els serveis sense ella i no ho diu. Les proves E2E no ho detecten, perque
+arrenquen els serveis sense passar per Turbo.
+
+Amb `projects_and_time` apagada, l'API no declara les rutes de projectes (responen 404) i la web
+no mostra ni l'entrada del menu ni les pantalles. **Si esteu treballant en projectes i temps i
+la pantalla no hi es, es el primer que cal mirar.** Una flag decideix que hi ha desplegat, mai
+qui hi pot accedir: aixo continua sent dels permisos.
+
+El web resol les flags al layout arrel i les passa a l'arbre. Un component de client no pot
+llegir l'entorn, i preguntar-li respondria "apagada" en comptes de fallar.
 
 ## Autenticacio local
 

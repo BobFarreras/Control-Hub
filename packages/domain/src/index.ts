@@ -7,7 +7,11 @@ export const permissionCodes = [
   "customers:manage",
   "leads:read",
   "leads:manage",
+  "projects:read",
   "projects:manage",
+  "time:log",
+  "time:manage",
+  "rates:manage",
   "products:manage",
   "subscriptions:manage",
   "financials:read",
@@ -36,7 +40,10 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "customers:manage",
     "leads:read",
     "leads:manage",
+    "projects:read",
     "projects:manage",
+    "time:log",
+    "time:manage",
     "products:manage",
     "subscriptions:manage",
     "financials:read",
@@ -51,7 +58,11 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "audit:read",
     "customers:read",
     "leads:read",
+    "projects:read",
     "projects:manage",
+    // Technical logs its own hours and never sees a rate: `time:manage`, `rates:manage` and
+    // `financials:read` are all absent, and cost is what those three protect.
+    "time:log",
     "tickets:read",
     "tickets:manage",
     "infrastructure:read",
@@ -179,3 +190,4 @@ export {
   type SupportWindow
 } from "./support-calendar.js";
 export * from "./support.js";
+export * from "./projects.js";

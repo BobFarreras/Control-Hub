@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada.
+La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`.
 
 L'estat detallat i el punt de continuacio son a [`docs/development/current-state.md`](docs/development/current-state.md), que es el primer document a llegir en obrir una sessio.
 
@@ -59,7 +59,7 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Fase 5B:** projectes i temps. Especificacio aprovada, es el seguent increment.
+1. **Fase 5B:** projectes i temps. Implementada, pendent de revisio del propietari.
 2. **Fase 5C:** registre de jornada. Especificacio aprovada; no s'activa en produccio sense confirmacio de la gestoria.
 3. **Fase 6:** plataforma de connectors, amb contracte, vault de credencials i webhooks signats.
 4. **Fase 7:** infraestructura i connector n8n.
