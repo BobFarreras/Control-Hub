@@ -198,6 +198,32 @@ navegador, i la resposta es "apagada" en comptes d'un error. Va passar amb
 **Solucio.** Les flags es resolen **una vegada al layout arrel**, que es servidor, i baixen per
 context (`components/feature-provider.tsx`). Cap component de client les llegeix de l'entorn.
 
+### Un canvi a un paquet del workspace no es veu al navegador fins que recarregues
+
+**Simptoma.** Edites un text a `packages/i18n` o un component a `packages/ui` i `localhost:3001`
+no canvia. Un canvi dins d'`apps/web`, en canvi, apareix a l'instant. Sembla que l'HMR estigui
+trencat, i no ho esta: la consola diu `[HMR] connected`.
+
+**Prova per confirmar-ho** (dos canvis identics en llocs diferents):
+
+1. Canvia un text de `packages/i18n/src/index.ts` → el navegador no es mou.
+2. Canvia un literal de qualsevol fitxer d'`apps/web` → apareix a l'instant, i **de retruc**
+   apareix tambe el canvi de l'i18n, perque la recompilacio l'ha arrossegat.
+
+**Causa.** Turbopack infereix la seva arrel a `apps/web` i no vigila res per damunt.
+
+**El que NO funciona.** Posar `turbopack: { root: <arrel del monorepo> }` a `next.config.ts`.
+Sembla la solucio evident i **trenca l'aplicacio**: canviar l'arrel canvia la resolucio de
+moduls, i amb la disposicio aillada de pnpm els paquets que viuen a `apps/web/node_modules`
+deixen de trobar-se. El simptoma es `Cannot find module '@fontsource-variable/hanken-grotesk'`,
+respostes 500 i peticions de quatre minuts. Si algu ho prova, cal revertir-ho **i esborrar
+`apps/web/.next/dev`**, perque la cache que ha escrit la configuracio trencada sobreviu al
+canvi i el servidor continua fallant amb la config ja arreglada.
+
+**Estat.** Sense solucio aplicada. La convivencia actual es recarregar el navegador quan es toca
+un paquet del workspace. Val la pena tornar-hi despres d'actualitzar a Next 16.3, que reescriu
+el watcher i la cache de disc de Turbopack.
+
 ## Entorn de desenvolupament a Windows
 
 ### `pnpm format:check` falla en fitxers que no has tocat

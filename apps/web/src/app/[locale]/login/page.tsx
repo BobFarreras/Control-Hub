@@ -37,7 +37,16 @@ export default function LoginPage() {
     setBusy(true);
     setError("");
     const code = formValue(new FormData(event.currentTarget), "code");
-    const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: false });
+    /**
+     * The device is remembered for thirty days, the same window as the session.
+     *
+     * With `trustDevice: false` the code was demanded on every single sign-in, which taught the
+     * only two people who use the panel to treat the second factor as a toll rather than as a
+     * control. It is not weakened: enrolment stays mandatory, a device that has not been
+     * trusted is still challenged, and the trust lives in a signed cookie that revoking the
+     * session or resetting the password invalidates.
+     */
+    const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: true });
     setBusy(false);
     if (result.error) return setError(t.error);
     router.replace(`/${locale}`);
