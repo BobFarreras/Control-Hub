@@ -43,7 +43,24 @@ export function createAuth(environment: ApiEnvironment, options: { allowSignUp?:
         await sendMail({ to: user.email, subject: "Control Hub - Verificar correu", text: url });
       }
     },
-    session: { expiresIn: 60 * 60 * 12, updateAge: 60 * 60, freshAge: 60 * 10, preserveSessionInDatabase: true },
+    /**
+     * Thirty days, extended once a day while the panel is in use.
+     *
+     * It used to be twelve hours, and the eleven session rows in the development database all
+     * had `updatedAt` equal to `createdAt`: not one was ever extended, so the panel logged its
+     * only two users out twice a day at a fixed hour regardless of what they were doing.
+     *
+     * This is session lifetime, not factor policy. The second factor stays mandatory for every
+     * account and is still demanded on a device that has not been trusted. `freshAge` is what
+     * guards the sensitive operations, and it stays at ten minutes: changing a password or
+     * touching the second factor asks again however old the session is.
+     */
+    session: {
+      expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24,
+      freshAge: 60 * 10,
+      preserveSessionInDatabase: true
+    },
     advanced: { useSecureCookies: environment.NODE_ENV === "production", crossSubDomainCookies: { enabled: false } },
     plugins: [
       twoFactor({

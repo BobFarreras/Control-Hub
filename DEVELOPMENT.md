@@ -157,6 +157,21 @@ Better Auth viu a l'API Fastify sota `/api/auth/*`. `pnpm bootstrap:owner` crea 
 
 La sessio es persistent durant la seva vigencia i es conserva a PostgreSQL encara que es reiniciin el web o l'API. Cal entrar sempre per `http://localhost:3001`: alternar entre `localhost` i `127.0.0.1` crea contextos de cookie diferents. L'autoritzacio de les rutes protegides es valida al servidor; una recompilacio temporal del client no provoca un logout.
 
+### Durada de la sessio i dispositiu de confianca
+
+- **Sessio de 30 dies, renovada un cop al dia mentre s'utilitza** el panell.
+- **El dispositiu es recorda 30 dies** (`trustDevice`), aixi que el segon factor no es demana a
+  cada entrada al mateix navegador.
+- **`freshAge` es de 10 minuts i no s'ha tocat.** Les operacions sensibles (canviar contrasenya,
+  tocar el segon factor) tornen a demanar credencials per antiga que sigui la sessio.
+
+Aixo es durada de sessio, no politica de factor: l'MFA continua obligatoria per a tots els comptes
+i un dispositiu que no s'ha marcat com de confianca rep el repte igualment. Abans eren 12 hores
+sense renovacio, i les onze files de `session` de la base de dades de desenvolupament tenien
+totes `updatedAt` igual a `createdAt`: cap s'havia allargat mai, de manera que el panell tancava
+la sessio dues vegades al dia a hora fixa. Si algun dia el panell s'ha d'obrir des d'un portatil
+que viatja, aquests dos numeros son els que s'han de revisar.
+
 Mailpit captura verificacio de correu i recuperacio. MFA i passkeys es poden provar amb TOTP real i autenticadors virtuals de Playwright/WebAuthn.
 
 ## Perfils Docker opcionals
