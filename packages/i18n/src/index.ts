@@ -1467,7 +1467,8 @@ const rateDictionaries = {
       "Els barems no es modifiquen ni s'esborren: se'n publica un de nou amb una data de vigencia. Cada hora es valora amb el que era vigent el dia que es va treballar, aixi que publicar-ne un avui no canvia cap marge anterior.",
     amountHint: "Per hora, en la moneda triada. Exemple: 45,50",
     noMembers: "Cal tenir membres per publicar un cost per hora.",
-    perHour: "/h"
+    perHour: "/h",
+    whyLog: "Per que aixo es un historial"
   },
   es: {
     eyebrow: "MARGENES",
@@ -1500,7 +1501,8 @@ const rateDictionaries = {
       "Las tarifas no se modifican ni se borran: se publica una nueva con una fecha de vigencia. Cada hora se valora con la que estaba vigente el dia en que se trabajo, asi que publicar una hoy no cambia ningun margen anterior.",
     amountHint: "Por hora, en la moneda elegida. Ejemplo: 45,50",
     noMembers: "Hacen falta miembros para publicar un coste por hora.",
-    perHour: "/h"
+    perHour: "/h",
+    whyLog: "Por que esto es un historial"
   },
   en: {
     eyebrow: "MARGINS",
@@ -1533,7 +1535,8 @@ const rateDictionaries = {
       "Rates are never edited or deleted: a new one is published with the day it takes effect. Every hour is valued with the rate in force on the day it was worked, so publishing one today changes no earlier margin.",
     amountHint: "Per hour, in the chosen currency. For example 45.50",
     noMembers: "There have to be members before an hourly cost can be published.",
-    perHour: "/h"
+    perHour: "/h",
+    whyLog: "Why this is a log"
   }
 } as const;
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertTriangle, Info, Receipt, Wallet } from "lucide-react";
+import { AlertTriangle, Receipt, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SelectField, TextField } from "@/components/form-field";
+import { HelpTip } from "@/components/help";
 import type { BillingRate, CostRate, CustomerOption, Member, ProjectRow } from "@/lib/api-types";
 import { formValue } from "@/lib/form";
 import { formatMoney } from "@/lib/format";
@@ -131,35 +132,26 @@ export function RatesWorkspace({
   return (
     <div className="project-detail">
       {loadError && (
-        <p className="crm-error" role="alert">
+        <p className="notice notice-danger" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />
           {t.loadError}
         </p>
       )}
       {error && (
-        <p className="crm-error" role="alert">
+        <p className="notice notice-danger" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />
           {error}
         </p>
       )}
 
-      {/* Said once, at the top: it explains both tables and it is the whole reason they look like
-          a log rather than a settings screen. */}
-      <p className="notice notice-info">
-        <Info size={17} aria-hidden="true" />
-        <span>{t.appendOnlyNote}</span>
-      </p>
-
       <section className="project-panel" aria-label={t.costTitle}>
-        <header className="project-panel-heading">
+        <div className="panel-row">
           <h3>
             <Wallet size={17} aria-hidden="true" />
             {t.costTitle}
+            <HelpTip label={t.costTitle!} description={t.costDescription!} />
           </h3>
-          <p>{t.costDescription}</p>
-        </header>
-
-        <form className="rate-form" onSubmit={eventHandler(publishCost, fail)}>
+          <form className="rate-form" onSubmit={eventHandler(publishCost, fail)}>
           <SelectField
             label={t.member!}
             name="membershipId"
@@ -195,10 +187,11 @@ export function RatesWorkspace({
             data-mono="true"
             disabled={busy || members.length === 0}
           />
-          <button className="primary-button" disabled={busy || members.length === 0}>
-            {t.publish}
-          </button>
-        </form>
+            <button className="primary-button" disabled={busy || members.length === 0}>
+              {t.publish}
+            </button>
+          </form>
+        </div>
         {members.length === 0 && <p className="crm-empty">{t.noMembers}</p>}
 
         <RateTable
@@ -216,15 +209,13 @@ export function RatesWorkspace({
       </section>
 
       <section className="project-panel" aria-label={t.billingTitle}>
-        <header className="project-panel-heading">
+        <div className="panel-row">
           <h3>
             <Receipt size={17} aria-hidden="true" />
             {t.billingTitle}
+            <HelpTip label={t.billingTitle!} description={t.billingDescription!} />
           </h3>
-          <p>{t.billingDescription}</p>
-        </header>
-
-        <form className="rate-form" onSubmit={eventHandler(publishBilling, fail)}>
+          <form className="rate-form with-scope" onSubmit={eventHandler(publishBilling, fail)}>
           <SelectField
             label={t.scope!}
             name="scope"
@@ -278,10 +269,11 @@ export function RatesWorkspace({
             data-mono="true"
             disabled={busy}
           />
-          <button className="primary-button" disabled={busy}>
-            {t.publish}
-          </button>
-        </form>
+            <button className="primary-button" disabled={busy}>
+              {t.publish}
+            </button>
+          </form>
+        </div>
 
         <RateTable
           rows={billing.map((rate) => ({
