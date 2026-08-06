@@ -12,17 +12,19 @@ const t = {
   projectCode: "Codi del projecte",
   projectName: "Nom del projecte",
   create: "Crear",
-  changeStatus: "Canviar estat",
+  statusOf: "Estat del projecte",
   logTime: "Imputar hores",
   duration: "Durada",
   spentOn: "Dia treballat",
   save: "Desar",
   entries: "Imputacions",
-  profitability: "Rendibilitat",
-  missingBillingRate: "imputacions sense preu de venda",
+  overview: "Resum",
+  noRatesYet: "Cap barem publicat",
+  ratesNeeded: "Cal publicar un barem",
   projectClosed: "El projecte esta tancat i no accepta hores noves.",
   closed: "Tancat",
-  logged: "Hores imputades"
+  totalHours: "Hores totals",
+  quickLog: "Registre rapid"
 } as const;
 
 const row = (page: Page, name: string) => page.getByRole("row").filter({ hasText: name });
@@ -97,24 +99,26 @@ test.describe("projects", () => {
     const entries = page.getByRole("region", { name: t.entries });
     await expect(entries).toContainText("1 h 30 min");
     // And the header agrees with the table: the same hours, counted once.
-    await expect(page.getByText(new RegExp(`${t.logged}: 1 h 30 min`))).toBeVisible();
+    await expect(page.getByRole("region", { name: t.overview })).toContainText("1 h 30 min");
 
     // ---------------------------------------------------------------- what it is worth
     /**
-     * The account is an Owner, so it has `financials:read` and the block is rendered. No rate
-     * has been published for this project, and the report has to say so rather than report a
-     * margin of a hundred per cent, which is the most flattering possible way to be wrong.
+     * The account is an Owner, so it has `financials:read` and the figures are rendered. No rate
+     * has been published for this project, so the margin tile says what is missing where the
+     * number would be, rather than reporting a margin of a hundred per cent: the most flattering
+     * possible way to be wrong. The words are asserted, not the absence of a figure, because an
+     * empty tile would also satisfy "no margin shown".
      */
-    const profitability = page.getByRole("region", { name: t.profitability });
-    await expect(profitability).toBeVisible();
-    await expect(profitability).toContainText(t.missingBillingRate);
+    const overview = page.getByRole("region", { name: t.overview });
+    await expect(overview).toContainText(t.noRatesYet);
+    await expect(overview).toContainText(t.ratesNeeded);
   });
 
   test("refuses new hours once the project is closed", async ({ page }) => {
     const { name } = await createProject(page);
     await row(page, name).getByRole("link").click();
 
-    const status = page.getByLabel(t.changeStatus);
+    const status = page.getByLabel(t.statusOf);
     await waitForHydration(status);
 
     // draft does not close directly; it goes through active, which is the path the domain allows.
@@ -127,7 +131,7 @@ test.describe("projects", () => {
       await page.reload({ waitUntil: "domcontentloaded" });
     }
 
-    await expect(page.getByLabel(t.changeStatus)).toHaveValue("closed");
+    await expect(page.getByLabel(t.statusOf)).toHaveValue("closed");
     // The form is closed too, and says why rather than failing on submit.
     await expect(page.getByLabel(t.duration)).toBeDisabled();
     await expect(page.getByText(t.projectClosed)).toBeVisible();

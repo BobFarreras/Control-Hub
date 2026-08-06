@@ -134,10 +134,13 @@ export function ProjectDetail({
         and an operational screen that leaves a third of its widest row blank is wasting the most
         valuable part of the page.
       */}
-      <section className="project-identity" aria-label={t.overview}>
+      {/* Named by its own heading rather than by a label of its own: two regions called the same
+          thing are as confusing to a screen reader as they were to the test that picked the wrong
+          one. The figures below keep the name "Resum"; this one is the project itself. */}
+      <section className="project-identity" aria-labelledby="project-identity-heading">
         <div className="project-identity-name">
           <span className="project-code">{project.code}</span>
-          <h2>{project.name}</h2>
+          <h2 id="project-identity-heading">{project.name}</h2>
           <p className="project-customer">{project.customerName}</p>
           {project.description && <p className="project-description">{project.description}</p>}
         </div>

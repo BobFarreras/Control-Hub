@@ -175,6 +175,22 @@ completa en gasta cinc; si hi afegiu mes entrades, compteu-les.
 
 Fitxers locals `.env*` estan ignorats, excepte `.env.example`. Credencials reals no entren al repositori, captures ni issues.
 
+### Documentacio de Next per als agents
+
+Des de Next 16.3, `next dev` escriu i mante un bloc dins de **`apps/web/AGENTS.md`** i un
+`apps/web/CLAUDE.md` d'una linia, delimitats amb `BEGIN/END:nextjs-agent-rules`. Aixo **no toca els
+fitxers de l'arrel**: el directori del projecte Next es `apps/web`, i l'`AGENTS.md` de l'arrel amb
+les normes vinculants queda intacte.
+
+El bloc diu als agents que llegeixin `node_modules/next/dist/docs/`, que porta la documentacio de
+**la versio instal·lada**, en comptes de fiar-se del que portin memoritzat. Els dos fitxers estan
+committejats amb el bloc a dins, aixi que `next dev` no genera cap canvi pendent a l'arbre.
+
+La deteccio va per variables d'entorn (`CLAUDECODE` i companyia), i Turbo corre en mode `strict`:
+`CLAUDECODE` esta declarada a `globalEnv` de `turbo.json` **precisament per aixo**. Si es treu
+d'alla, els fitxers deixen de mantenir-se i ningu se n'assabenta. Per apagar-ho de forma explicita,
+`agentRules: false` al `next.config.ts`.
+
 ### Feature flags
 
 `CONTROL_HUB_FLAGS` es una llista separada per comes amb els noms declarats a
