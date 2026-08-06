@@ -39,6 +39,16 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  /**
+   * `.next` unless told otherwise, so a second dev server can run beside the first.
+   *
+   * Next refuses a second `next dev` for the same project: it writes its PID to
+   * `<distDir>/dev/lock` and stops, whatever port it was given. That is a good default, and it
+   * also blocks the one case where two servers are wanted — verifying a change against a
+   * throwaway database while somebody keeps working with their session open. A separate output
+   * directory gives the second server its own lock. See `pnpm dev:verify`.
+   */
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

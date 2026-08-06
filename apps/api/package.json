@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:verify": "tsx watch src/server.ts",
     "build": "tsup",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

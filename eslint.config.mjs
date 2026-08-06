@@ -43,6 +43,9 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/.next/**",
+      // The output of `pnpm dev:verify`, which builds into its own directory so a second dev
+      // server can run beside the first. Generated code, same as `.next`.
+      "**/.next-verify/**",
       "**/.turbo/**",
       "**/coverage/**",
       "test-results/**",

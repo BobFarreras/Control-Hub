@@ -77,6 +77,7 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 |---|---|
 | `pnpm dev` | Web, API i worker en watch mode |
 | `pnpm dev:all` | Infraestructura local + `pnpm dev` |
+| `pnpm dev:verify` | Segona pila aillada a 3002/4002 per verificar sense tocar la sessio de ningu |
 | `pnpm infra:up` | PostgreSQL, cua i Mailpit |
 | `pnpm infra:down` | Atura infraestructura sense eliminar dades |
 | `pnpm infra:reset` | Reinicia dades locals amb confirmacio explicita |
@@ -104,6 +105,29 @@ pnpm db:seed:dev
 ```
 
 El seed crea leads en diferents estats, clients, productes amb versions, plans i preus, subscripcions de clients i despeses contractades. Es idempotent, no elimina dades existents i rebutja produccio, bases no locals o noms de base diferents de `control_hub`.
+
+## Verificar sense tancar la sessio de ningu
+
+Qui estigui treballant al producte te la seva sessio oberta a `http://localhost:3001`. Verificar un
+canvi entrant amb un compte de proves **no es pot fer al mateix port**, i el port tot sol no
+n'hi ha prou:
+
+- La cookie de sessio la signa `BETTER_AUTH_SECRET`.
+- La sessio viu a la taula `session` d'**una base de dades concreta**.
+
+Servir una base o un secret diferents al port que el navegador ja te obert fa que l'API respongui,
+amb tota la rao, que aquella sessio no val, i qui hi estava treballant acaba al formulari
+d'entrada. Va passar exactament aixi. Les tres coses van separades:
+
+```powershell
+Copy-Item .env.verify.example .env.verify   # editar-hi la base, els ports i el secret
+pnpm dev:verify
+```
+
+Aixeca web a `3002` i API a `4002` contra la base acabada en `_e2e`, i pot conviure amb un
+`pnpm dev` a `3001`. Per entrar-hi, `pnpm db:seed:e2e` amb aquell mateix fitxer d'entorn.
+
+**No apuntis mai el port 3001 a una altra base de dades ni amb un altre secret.**
 
 ## Proves end-to-end autenticades
 

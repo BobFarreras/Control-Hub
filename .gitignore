@@ -13,6 +13,7 @@ test-results/
 .env
 .env.*
 !.env.example
+!.env.verify.example
 # The end to end fixture writes the throwaway account's TOTP secret here.
 .e2e/
 *.pem
@@ -36,3 +37,5 @@ Thumbs.db
 
 # Local tooling state
 .codex/
+
+.next-verify/
