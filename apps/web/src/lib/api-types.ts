@@ -173,6 +173,30 @@ export type Profitability = {
   entriesWithoutBillingRate: number;
 };
 
+/** `effectiveFrom` is a day (`YYYY-MM-DD`): a rate applies to the work of that whole day. */
+export type CostRate = {
+  id: string;
+  membershipId: string;
+  memberName: string | null;
+  currency: string;
+  costMinorPerHour: number;
+  effectiveFrom: string;
+};
+
+export type BillingRate = {
+  id: string;
+  scope: "customer" | "project";
+  scopeId: string;
+  scopeName: string | null;
+  currency: string;
+  amountMinorPerHour: number;
+  effectiveFrom: string;
+};
+
+export type RatesResponse = { cost: CostRate[]; billing: BillingRate[] };
+export type Member = { id: string; name: string; email: string; status: string; roles: string[] };
+export type MembersResponse = { members: Member[] };
+
 export type ProjectsPage = { items: ProjectRow[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
 export type TimeEntriesPage = {
   items: TimeEntry[];

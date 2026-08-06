@@ -1199,6 +1199,7 @@ const projectDictionaries = {
     costHelp: "Totes les hores, facturables o no, valorades amb el cost per hora de cada persona.",
     perCurrency: "Detall per moneda",
     statusOf: "Estat del projecte",
+    rates: "Barems",
     ratesNeeded: "Cal publicar un barem",
     daysLeft: "dies per entregar",
     daysOverdue: "dies de retard",
@@ -1311,6 +1312,7 @@ const projectDictionaries = {
     costHelp: "Todas las horas, facturables o no, valoradas con el coste por hora de cada persona.",
     perCurrency: "Detalle por moneda",
     statusOf: "Estado del proyecto",
+    rates: "Tarifas",
     ratesNeeded: "Hay que publicar una tarifa",
     daysLeft: "dias para entregar",
     daysOverdue: "dias de retraso",
@@ -1423,6 +1425,7 @@ const projectDictionaries = {
     costHelp: "Every hour, billable or not, valued with each person's hourly cost.",
     perCurrency: "By currency",
     statusOf: "Project status",
+    rates: "Rates",
     ratesNeeded: "A rate has to be published",
     daysLeft: "days left",
     daysOverdue: "days overdue",
@@ -1430,6 +1433,113 @@ const projectDictionaries = {
     entriesUnpriced: "entries not priced"
   }
 } as const;
+
+
+const rateDictionaries = {
+  ca: {
+    eyebrow: "MARGES",
+    title: "Barems",
+    description: "Cost per hora de cada persona i preu de venda per client o projecte.",
+    costTitle: "Cost per hora",
+    costDescription: "Quant costa una hora de cada persona. Es informacio adjacent al sou: nomes la publica el propietari.",
+    billingTitle: "Preu de venda per hora",
+    billingDescription: "Quant es cobra una hora. Si un projecte te preu propi, mana sobre el del client.",
+    member: "Persona",
+    scope: "Aplica a",
+    scopeCustomer: "Client",
+    scopeProject: "Projecte",
+    amount: "Import per hora",
+    currency: "Moneda",
+    effectiveFrom: "Vigent des de",
+    publish: "Publicar",
+    history: "Historial",
+    current: "Vigent",
+    superseded: "Substituit",
+    emptyCost: "Cap cost per hora publicat.",
+    emptyBilling: "Cap preu de venda publicat.",
+    loadError: "No s'han pogut carregar els barems.",
+    formError: "No s'ha pogut publicar el barem.",
+    duplicate: "Ja hi ha un barem per a aquesta combinacio i aquest dia.",
+    invalidAmount: "Escriu un import amb dos decimals com a maxim.",
+    negativeAmount: "L'import no pot ser negatiu.",
+    emptyAmount: "Escriu un import.",
+    appendOnlyNote:
+      "Els barems no es modifiquen ni s'esborren: se'n publica un de nou amb una data de vigencia. Cada hora es valora amb el que era vigent el dia que es va treballar, aixi que publicar-ne un avui no canvia cap marge anterior.",
+    amountHint: "Per hora, en la moneda triada. Exemple: 45,50",
+    noMembers: "Cal tenir membres per publicar un cost per hora.",
+    perHour: "/h"
+  },
+  es: {
+    eyebrow: "MARGENES",
+    title: "Tarifas",
+    description: "Coste por hora de cada persona y precio de venta por cliente o proyecto.",
+    costTitle: "Coste por hora",
+    costDescription: "Cuanto cuesta una hora de cada persona. Es informacion adyacente al sueldo: solo la publica el propietario.",
+    billingTitle: "Precio de venta por hora",
+    billingDescription: "Cuanto se cobra una hora. Si un proyecto tiene precio propio, manda sobre el del cliente.",
+    member: "Persona",
+    scope: "Aplica a",
+    scopeCustomer: "Cliente",
+    scopeProject: "Proyecto",
+    amount: "Importe por hora",
+    currency: "Moneda",
+    effectiveFrom: "Vigente desde",
+    publish: "Publicar",
+    history: "Historial",
+    current: "Vigente",
+    superseded: "Sustituida",
+    emptyCost: "Ningun coste por hora publicado.",
+    emptyBilling: "Ningun precio de venta publicado.",
+    loadError: "No se han podido cargar las tarifas.",
+    formError: "No se ha podido publicar la tarifa.",
+    duplicate: "Ya hay una tarifa para esta combinacion y este dia.",
+    invalidAmount: "Escribe un importe con dos decimales como maximo.",
+    negativeAmount: "El importe no puede ser negativo.",
+    emptyAmount: "Escribe un importe.",
+    appendOnlyNote:
+      "Las tarifas no se modifican ni se borran: se publica una nueva con una fecha de vigencia. Cada hora se valora con la que estaba vigente el dia en que se trabajo, asi que publicar una hoy no cambia ningun margen anterior.",
+    amountHint: "Por hora, en la moneda elegida. Ejemplo: 45,50",
+    noMembers: "Hacen falta miembros para publicar un coste por hora.",
+    perHour: "/h"
+  },
+  en: {
+    eyebrow: "MARGINS",
+    title: "Rates",
+    description: "The hourly cost of each person and the hourly price per customer or project.",
+    costTitle: "Hourly cost",
+    costDescription: "What an hour of each person costs. It sits next to a salary, so only the owner publishes it.",
+    billingTitle: "Hourly billing rate",
+    billingDescription: "What an hour is charged at. A rate on a project wins over the one on its customer.",
+    member: "Person",
+    scope: "Applies to",
+    scopeCustomer: "Customer",
+    scopeProject: "Project",
+    amount: "Amount per hour",
+    currency: "Currency",
+    effectiveFrom: "In force from",
+    publish: "Publish",
+    history: "History",
+    current: "In force",
+    superseded: "Superseded",
+    emptyCost: "No hourly cost published.",
+    emptyBilling: "No billing rate published.",
+    loadError: "Rates could not be loaded.",
+    formError: "The rate could not be published.",
+    duplicate: "A rate already exists for that combination and that day.",
+    invalidAmount: "Write an amount with at most two decimals.",
+    negativeAmount: "The amount cannot be negative.",
+    emptyAmount: "Write an amount.",
+    appendOnlyNote:
+      "Rates are never edited or deleted: a new one is published with the day it takes effect. Every hour is valued with the rate in force on the day it was worked, so publishing one today changes no earlier margin.",
+    amountHint: "Per hour, in the chosen currency. For example 45.50",
+    noMembers: "There have to be members before an hourly cost can be published.",
+    perHour: "/h"
+  }
+} as const;
+
+export function getRatesDictionary(locale: Locale) {
+  return rateDictionaries[locale];
+}
 
 export function getProjectsDictionary(locale: Locale) {
   return projectDictionaries[locale];
