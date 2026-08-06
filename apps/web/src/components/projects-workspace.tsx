@@ -3,28 +3,17 @@
 import { AlertTriangle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { SelectField, TextField } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
+import { projectStatusTone, StatusPill } from "@/components/status-pill";
 import type { CustomerOption, ProjectRow, TablePreference } from "@/lib/api-types";
 import { formValue, optionalFormValue } from "@/lib/form";
+import { formatHours } from "@/lib/format";
 import { eventHandler } from "@/lib/handlers";
 
 type Labels = Record<string, string>;
 
 const statuses = ["draft", "active", "on_hold", "delivered", "closed", "canceled"] as const;
-
-/**
- * Minutes as something a person reads.
- *
- * Announced with the units spelled out rather than as `1:30`, which a screen reader says as a
- * time of day.
- */
-export function formatHours(minutes: number): string {
-  const whole = Math.max(0, Math.round(minutes));
-  const hours = Math.floor(whole / 60);
-  if (hours === 0) return `${whole} min`;
-  const rest = whole % 60;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
-}
 
 export function ProjectsWorkspace({
   projects,
@@ -94,7 +83,9 @@ export function ProjectsWorkspace({
     {
       id: "status",
       label: t.status!,
-      render: (project) => <span className={`state state-${project.status}`}>{t[project.status]}</span>,
+      render: (project) => (
+        <StatusPill tone={projectStatusTone[project.status] ?? "neutral"} label={t[project.status] ?? project.status} />
+      ),
       filter: {
         parameter: "status",
         options: statuses.map((status) => ({ value: status, label: t[status] ?? status }))
@@ -186,50 +177,48 @@ export function ProjectsWorkspace({
                 <X size={18} />
               </button>
             </header>
-            <form className="commerce-form" onSubmit={eventHandler(create, fail)}>
-              <label>
-                {t.customer}
-                <select name="customerId" required disabled={busy}>
-                  {customers.map((customer) => (
-                    <option value={customer.id} key={customer.id}>
-                      {customer.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t.projectCode}
-                <input
-                  name="code"
-                  required
-                  minLength={3}
-                  maxLength={64}
-                  pattern="[a-z0-9][a-z0-9\-]{1,62}[a-z0-9]"
-                  aria-describedby="project-code-help"
-                  disabled={busy}
-                />
-                <small id="project-code-help">{t.codeHelp}</small>
-              </label>
-              <label>
-                {t.projectName}
-                <input name="name" required minLength={3} maxLength={200} disabled={busy} />
-              </label>
-              <label>
-                {t.startedAt}
-                <input name="startedAt" type="date" disabled={busy} />
-              </label>
-              <label>
-                {t.dueAt}
-                <input name="dueAt" type="date" disabled={busy} />
-              </label>
-              <label className="full-width">
-                {t.projectDescription}
-                <textarea name="description" rows={3} maxLength={2000} disabled={busy} />
-              </label>
-              {error && <p className="form-error">{error}</p>}
-              <button className="primary-button" disabled={busy || customers.length === 0}>
-                {t.create}
-              </button>
+            <form className="dialog-form" onSubmit={eventHandler(create, fail)}>
+              <SelectField
+                label={t.customer!}
+                name="customerId"
+                required
+                disabled={busy}
+                options={customers.map((customer) => ({ value: customer.id, label: customer.displayName }))}
+              />
+              <TextField
+                label={t.projectCode!}
+                name="code"
+                required
+                minLength={3}
+                maxLength={64}
+                pattern="[a-z0-9][a-z0-9\-]{1,62}[a-z0-9]"
+                hint={t.codeHelp}
+                data-mono="true"
+                autoComplete="off"
+                disabled={busy}
+              />
+              <TextField label={t.projectName!} name="name" required minLength={3} maxLength={200} disabled={busy} />
+              <TextField label={t.startedAt!} name="startedAt" type="date" data-mono="true" disabled={busy} />
+              <TextField label={t.dueAt!} name="dueAt" type="date" data-mono="true" disabled={busy} />
+              <div className="field wide">
+                <label className="field-label" htmlFor="project-description">
+                  {t.projectDescription}
+                </label>
+                <textarea id="project-description" name="description" rows={3} maxLength={2000} disabled={busy} />
+              </div>
+              {error && (
+                <p className="form-error wide" role="alert">
+                  {error}
+                </p>
+              )}
+              <footer>
+                <button type="button" className="secondary-button" onClick={() => setDialog(false)} disabled={busy}>
+                  {t.cancel}
+                </button>
+                <button className="primary-button" disabled={busy || customers.length === 0}>
+                  {t.create}
+                </button>
+              </footer>
             </form>
           </section>
         </div>

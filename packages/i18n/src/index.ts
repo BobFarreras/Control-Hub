@@ -1178,7 +1178,27 @@ const projectDictionaries = {
     invalidDuration: "No s'ha entes la durada. Escriu-la en minuts (90) o com 1h 30m.",
     futureDate: "No es poden imputar hores d'un dia que encara no ha arribat.",
     projectClosed: "El projecte esta tancat i no accepta hores noves.",
-    duplicateCode: "Ja hi ha un projecte amb aquest codi."
+    duplicateCode: "Ja hi ha un projecte amb aquest codi.",
+    overview: "Resum",
+    totalHours: "Hores totals",
+    billablePart: "Del total, facturables",
+    started: "Iniciat",
+    notStarted: "Sense iniciar",
+    quickLog: "Registre rapid",
+    logHelp: "Escriu la durada i desa. La data ja ve posada a avui.",
+    durationPlaceholder: "1h 30m",
+    notePlaceholder: "En que has treballat",
+    lastEntries: "Ultimes imputacions",
+    total: "Total",
+    onlyMine: "Nomes les meves",
+    noRatesYet: "Cap barem publicat",
+    ratesHint: "Els barems es publiquen per API mentre no hi hagi pantalla.",
+    marginHelp:
+      "Ingres menys cost de les hores imputades, valorades amb el barem vigent el dia treballat. Publicar un barem nou avui no canvia aquest numero.",
+    revenueHelp: "Hores facturables valorades amb el preu de venda vigent el dia que es van treballar.",
+    costHelp: "Totes les hores, facturables o no, valorades amb el cost per hora de cada persona.",
+    perCurrency: "Detall per moneda",
+    statusOf: "Estat del projecte"
   },
   es: {
     eyebrow: "ENTREGAS",
@@ -1265,7 +1285,27 @@ const projectDictionaries = {
     invalidDuration: "No se ha entendido la duracion. Escribela en minutos (90) o como 1h 30m.",
     futureDate: "No se pueden imputar horas de un dia que aun no ha llegado.",
     projectClosed: "El proyecto esta cerrado y no acepta horas nuevas.",
-    duplicateCode: "Ya hay un proyecto con este codigo."
+    duplicateCode: "Ya hay un proyecto con este codigo.",
+    overview: "Resumen",
+    totalHours: "Horas totales",
+    billablePart: "Del total, facturables",
+    started: "Iniciado",
+    notStarted: "Sin iniciar",
+    quickLog: "Registro rapido",
+    logHelp: "Escribe la duracion y guarda. La fecha ya viene puesta a hoy.",
+    durationPlaceholder: "1h 30m",
+    notePlaceholder: "En que has trabajado",
+    lastEntries: "Ultimas imputaciones",
+    total: "Total",
+    onlyMine: "Solo las mias",
+    noRatesYet: "Ninguna tarifa publicada",
+    ratesHint: "Las tarifas se publican por API mientras no haya pantalla.",
+    marginHelp:
+      "Ingreso menos coste de las horas imputadas, valoradas con la tarifa vigente el dia trabajado. Publicar una tarifa nueva hoy no cambia este numero.",
+    revenueHelp: "Horas facturables valoradas con el precio de venta vigente el dia en que se trabajaron.",
+    costHelp: "Todas las horas, facturables o no, valoradas con el coste por hora de cada persona.",
+    perCurrency: "Detalle por moneda",
+    statusOf: "Estado del proyecto"
   },
   en: {
     eyebrow: "DELIVERY",
@@ -1352,7 +1392,27 @@ const projectDictionaries = {
     invalidDuration: "That duration could not be read. Write it in minutes (90) or as 1h 30m.",
     futureDate: "Hours cannot be logged for a day that has not arrived yet.",
     projectClosed: "The project is closed and takes no new hours.",
-    duplicateCode: "A project with this code already exists."
+    duplicateCode: "A project with this code already exists.",
+    overview: "Overview",
+    totalHours: "Total hours",
+    billablePart: "Of that, billable",
+    started: "Started",
+    notStarted: "Not started",
+    quickLog: "Quick log",
+    logHelp: "Type the duration and save. The date is already set to today.",
+    durationPlaceholder: "1h 30m",
+    notePlaceholder: "What you worked on",
+    lastEntries: "Latest entries",
+    total: "Total",
+    onlyMine: "Only mine",
+    noRatesYet: "No rate published",
+    ratesHint: "Rates are published over the API until there is a screen for them.",
+    marginHelp:
+      "Revenue minus the cost of the hours logged, valued with the rate in force on the day worked. Publishing a new rate today does not change this number.",
+    revenueHelp: "Billable hours valued with the billing rate in force on the day they were worked.",
+    costHelp: "Every hour, billable or not, valued with each person's hourly cost.",
+    perCurrency: "By currency",
+    statusOf: "Project status"
   }
 } as const;
 
