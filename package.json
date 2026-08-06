@@ -29,6 +29,8 @@
     "db:migrate": "node --env-file=.env scripts/run-local-command.mjs migrate",
     "db:seed:dev": "node --env-file=.env scripts/run-local-command.mjs seed",
     "db:seed:e2e": "node scripts/run-local-command.mjs seed:e2e",
+    "db:seed:verify": "node --env-file=.env.verify scripts/run-local-command.mjs seed:e2e",
+    "db:migrate:verify": "node --env-file=.env.verify scripts/run-local-command.mjs migrate",
     "bootstrap:owner": "node --env-file=.env scripts/run-local-command.mjs bootstrap"
   },
   "devDependencies": {
