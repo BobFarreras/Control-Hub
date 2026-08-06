@@ -157,6 +157,7 @@ export function ProjectsWorkspace({
         ]}
         empty={t.empty!}
         labels={t}
+        rowHref={(project) => `/${locale}/projects/${project.id}`}
         primaryControls={
           <button
             className="primary-command"
