@@ -198,6 +198,25 @@ navegador, i la resposta es "apagada" en comptes d'un error. Va passar amb
 **Solucio.** Les flags es resolen **una vegada al layout arrel**, que es servidor, i baixen per
 context (`components/feature-provider.tsx`). Cap component de client les llegeix de l'entorn.
 
+### Cada canvi al codi et treu del producte i et porta a login
+
+**Causa.** `requireSession` tractava igual dues coses diferents: que l'API digui que la sessio no
+val, i que l'API no respongui. Amb `catch { authenticated = false }`, una connexio refusada
+acabava en una redireccio a login. I l'API es reinicia sola a cada edicio d'un fitxer seu
+(`tsx watch`), aixi que qualsevol navegacio dins d'aquella finestra de dos segons et feia fora
+amb la sessio perfectament valida a PostgreSQL. Es veia a la taula `session`: quatre files noves
+en trenta-cinc minuts, cada una un login que ningu necessitava fer.
+
+**Solucio.** Tres respostes en comptes de dues. Nomes una negativa que l'API hagi donat de debo
+porta a login; una connexio refusada, un 5xx o un cos illegible llancen `ApiUnreachableError`, i
+`app/[locale]/error.tsx` mostra que el servei no respon amb un boto de tornar a provar. La sessio
+no es toca.
+
+**Com comprovar-ho sense esperar que passi.** Arrenca nomes el web (`pnpm --filter
+@control-hub/web dev`, sense API) i demana una pagina protegida amb una cookie qualsevol: ha de
+sortir l'avis, no el formulari d'entrada. Hi ha set tests a
+`apps/web/src/lib/require-session.test.ts` que fixen la regla.
+
 ### Un canvi a un paquet del workspace no es veu al navegador fins que recarregues
 
 **Simptoma.** Edites un text a `packages/i18n` o un component a `packages/ui` i `localhost:3001`

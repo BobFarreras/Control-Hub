@@ -1066,6 +1066,32 @@ export function getSupportDictionary(locale: Locale) {
   return supportDictionaries[locale];
 }
 
+/**
+ * Shown when the API could not be reached. Deliberately does not mention the session: the point
+ * of the screen is that the session is still there and nobody has to sign in again.
+ */
+const unreachableDictionaries = {
+  ca: {
+    title: "No hi ha connexio amb el servei",
+    body: "La sessio continua oberta. El servei no ha respost; segurament s'esta reiniciant. Torna-ho a provar en uns segons.",
+    retry: "Tornar a provar"
+  },
+  es: {
+    title: "No hay conexion con el servicio",
+    body: "La sesion sigue abierta. El servicio no ha respondido; probablemente se esta reiniciando. Vuelve a intentarlo en unos segundos.",
+    retry: "Volver a intentarlo"
+  },
+  en: {
+    title: "No connection to the service",
+    body: "Your session is still open. The service did not answer, most likely because it is restarting. Try again in a few seconds.",
+    retry: "Try again"
+  }
+} as const;
+
+export function getUnreachableDictionary(locale: Locale) {
+  return unreachableDictionaries[locale];
+}
+
 const projectDictionaries = {
   ca: {
     eyebrow: "ENTREGUES",
