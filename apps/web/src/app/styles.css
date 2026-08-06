@@ -11,7 +11,15 @@
   --brand-contrast: #fff;
   --accent: #00687a;
   --success: #087a55;
+  --warning: #9a5b00;
   --danger: #ba1a1a;
+  --info: #00687a;
+  /* Tinted surfaces for status chips and notices. Derived from the semantic colour rather than
+     picked by eye, so a token change carries through instead of leaving a stale pastel behind. */
+  --success-subtle: color-mix(in srgb, var(--success) 12%, var(--surface));
+  --warning-subtle: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  --danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  --brand-subtle: color-mix(in srgb, var(--brand) 12%, var(--surface));
   --shadow: 0 10px 30px rgb(20 24 31 / 7%);
   --pipeline-new: #52606d;
   --pipeline-contacted: #00687a;
@@ -32,7 +40,14 @@
   --brand-contrast: #001f25;
   --accent: #b7c4ff;
   --success: #52e0b0;
+  --warning: #ffbd66;
   --danger: #ffb4ab;
+  --info: #7bdff2;
+  /* A heavier mix in dark: 12% of a light accent over a near-black surface is invisible. */
+  --success-subtle: color-mix(in srgb, var(--success) 18%, var(--surface));
+  --warning-subtle: color-mix(in srgb, var(--warning) 18%, var(--surface));
+  --danger-subtle: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  --brand-subtle: color-mix(in srgb, var(--brand) 18%, var(--surface));
   --shadow: none;
   --pipeline-new: #aebbc0;
   --pipeline-contacted: #5cdef3;
@@ -2286,6 +2301,219 @@ main {
   justify-content: space-between;
 }
 
+/* Shared form primitives (components/form-field.tsx)
+   One layout for label, control, hint and error, so no screen invents its own spacing. Controls
+   are 44px tall to meet the touch target minimum, and the focus ring is a real outline rather
+   than a border colour change: a border swap is invisible to anyone who navigates by keyboard on
+   a dense screen. */
+.field {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+.field.wide {
+  grid-column: 1 / -1;
+}
+.field-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.field-hint,
+.field-error {
+  font-size: 12px;
+  line-height: 16px;
+}
+.field-hint {
+  color: var(--muted);
+}
+.field-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.field input,
+.field select,
+.field textarea {
+  min-width: 0;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  transition: border-color 140ms ease-out;
+}
+.field textarea {
+  height: auto;
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--brand);
+}
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+/* A mono value where what is typed is data: a duration, a date, an amount. */
+.field input[data-mono="true"] {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+}
+.select-shell {
+  position: relative;
+  display: grid;
+}
+.select-shell select {
+  appearance: none;
+  padding-right: 38px;
+  cursor: pointer;
+}
+.select-shell > svg {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  translate: 0 -50%;
+  pointer-events: none;
+  color: var(--muted);
+}
+.toggle-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  align-content: center;
+}
+.toggle-field label {
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.toggle-field .field-hint {
+  grid-column: 2;
+}
+/* A switch built on a checkbox: the control keeps its own semantics and keyboard behaviour. */
+.toggle-field input[type="checkbox"] {
+  appearance: none;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease-out,
+    border-color 140ms ease-out;
+}
+.toggle-field input[type="checkbox"]::after {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 2px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition: translate 140ms ease-out;
+}
+.toggle-field input[type="checkbox"]:checked {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+.toggle-field input[type="checkbox"]:checked::after {
+  translate: 16px 0;
+  background: var(--brand-contrast);
+}
+.toggle-field input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Status pill (components/status-pill.tsx)
+   Icon plus word plus colour. Remove the colour and it still reads. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.status-pill.tone-active {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+  color: var(--brand);
+}
+.status-pill.tone-warning {
+  border-color: var(--warning);
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+.status-pill.tone-done,
+.status-pill.tone-closed {
+  border-color: var(--success);
+  background: var(--success-subtle);
+  color: var(--success);
+}
+.status-pill.tone-danger {
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+/* Metric tile (components/metric-tile.tsx) */
+.metric-tile {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.metric-tile header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.metric-value {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+.metric-value.positive {
+  color: var(--success);
+}
+.metric-value.negative {
+  color: var(--danger);
+}
+.metric-tile small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* A row that leads somewhere.
    The pointer and the hover say so, but the row is never the only way in: the anchor in the cell
    remains the real link, so keyboard and screen reader users reach the page through it. */
@@ -2324,48 +2552,301 @@ main {
 }
 
 /* Projects and time
-   The status chip reuses the shared .state pill. Delivered and closed read as finished rather
-   than as good or bad, and a negative margin is marked with weight as well as colour so that it
-   does not depend on telling red from green. */
-.state-delivered {
-  color: var(--accent);
-}
-.state-closed,
-.state-canceled {
-  color: var(--text-muted);
-}
-.state-on_hold {
-  color: var(--warning-strong, #b54708);
-}
-.project-sections {
+   The screen is a stack of flat panels, not cards inside cards: the page itself is the surface and
+   each panel is a bordered region on it. Figures use the mono face so a row of them lines up. */
+.project-detail {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  margin-top: 1.75rem;
+  gap: 14px;
 }
-.project-sections h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-}
-.project-figures {
+.project-identity {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.5rem;
-  align-items: baseline;
-  margin: 0 0 0.75rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  /* The one accent on the screen: a hairline in brand down the leading edge, which reads as
+     "this is the thing you opened" without a glow that would pulse forever. */
+  border-left: 3px solid var(--brand);
 }
-.project-money td,
-.project-money th[scope="row"] {
-  font-variant-numeric: tabular-nums;
-}
-.project-money .negative {
-  color: var(--danger-strong, #b42318);
+.project-code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
 }
-.project-history {
+.project-identity h2 {
+  margin: 4px 0 2px;
+  font-size: 20px;
+  line-height: 28px;
+}
+.project-customer {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 650;
+}
+.project-description {
+  max-width: 62ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+.project-identity-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.project-identity-controls .field {
+  min-width: 190px;
+}
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+/* A figure that is absent is a sentence, not a number, so it drops the mono face: "Cap barem
+   publicat" set in a data font reads as a value that failed to load rather than as one nobody has
+   configured yet. */
+.metric-absent {
+  color: var(--muted);
+  font-family: "Hanken Grotesk Variable", system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+}
+.project-panel {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.project-panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.project-panel-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+.project-panel-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+/* One row, so logging time is a sentence and not a form to fill in. */
+.quick-log {
+  display: grid;
+  grid-template-columns: 160px 170px minmax(200px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+}
+.quick-log .primary-button {
+  height: 44px;
+  padding: 0 20px;
+}
+.entry-list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+.entry-list li {
+  display: grid;
+  grid-template-columns: 108px 92px 1fr 2fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.entry-list li:first-child {
+  border-top: 0;
+}
+.entry-list time,
+.entry-duration {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+.entry-duration {
+  font-weight: 600;
+}
+.entry-member {
+  color: var(--muted);
+}
+.entry-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entry-billable {
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 650;
+}
+.entry-billable.muted {
+  color: var(--muted);
+}
+.project-money td,
+.project-money th[scope="row"] {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+.project-money .negative {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Timeline
+   A rail with a mark per event. The mark is decorative; the state it refers to is written next to
+   it as a pill with its own icon and word. */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 12px;
+  padding-bottom: 16px;
+}
+.timeline li:last-child {
+  padding-bottom: 0;
+}
+.timeline li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: var(--border);
+}
+.timeline-mark {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border: 2px solid var(--brand);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.timeline-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.timeline-reason {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 14px;
+}
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.timeline-meta time {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Notices
+   A bordered strip rather than a coloured background alone, with the icon carrying the same
+   meaning as the colour. */
+.notice {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 19px;
+}
+.notice-warning {
+  border-color: var(--warning);
+  background: var(--warning-subtle);
+  color: var(--text);
+}
+.notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+
+/* Dialog form, sharing the field primitives with the rest of the product. */
+.dialog-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 20px;
+}
+.dialog-form .wide {
+  grid-column: 1 / -1;
+}
+.dialog-form footer {
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: end;
+}
+.dialog-form footer .primary-button,
+.dialog-form footer .secondary-button {
+  height: 44px;
+  padding: 0 20px;
+}
+
+@media (max-width: 1100px) {
+  .quick-log {
+    grid-template-columns: 1fr 1fr;
+  }
+  .quick-log .primary-button {
+    grid-column: 1 / -1;
+  }
+  .entry-list li {
+    grid-template-columns: 100px 84px 1fr auto;
+  }
+  .entry-note,
+  .entry-member {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .dialog-form {
+    grid-template-columns: 1fr;
+  }
+  .quick-log {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field input,
+  .field select,
+  .field textarea,
+  .toggle-field input[type="checkbox"],
+  .toggle-field input[type="checkbox"]::after {
+    transition: none;
+  }
 }
