@@ -198,6 +198,26 @@ navegador, i la resposta es "apagada" en comptes d'un error. Va passar amb
 **Solucio.** Les flags es resolen **una vegada al layout arrel**, que es servidor, i baixen per
 context (`components/feature-provider.tsx`). Cap component de client les llegeix de l'entorn.
 
+### Totes les rutes responen 404, fins i tot `/ca/login`
+
+**Simptoma.** El servidor diu `✓ Ready`, l'API va be, i tota pagina sota `/{locale}` respon 404.
+Sembla que s'hagi trencat el routing.
+
+**Com saber que no es el codi.** Prova `/ca/login`: no crida `notFound()` enlloc. Si aquella
+tambe fa 404, el segment `[locale]` no s'esta resolent i el problema no es de cap pagina.
+
+**Causa.** La cache de `.next` ha quedat en un estat incoherent. Passa arrencant i aturant
+servidors de desenvolupament repetidament, canviant de branca amb el servidor viu, o mesclant un
+`pnpm dev` de l'arrel amb un `pnpm --filter @control-hub/web dev`: cadascun escriu al mateix
+directori i el manifest de rutes es queda a mitges.
+
+**Solucio.** Atura els processos i esborra **`apps/web/.next` sencera**, no nomes `.next/types`
+ni `.next/dev`. Torna a arrencar; el primer arrencatge triga mes perque recompila tot.
+
+Relacionat: canviar de branca amb el servidor viu tambe deixa `.next/types/validator.ts`
+referenciant pagines que a la branca nova no existeixen, i llavors `pnpm typecheck` falla amb
+`Cannot find module '.../page.js'` sense que el codi tingui res.
+
 ### Cada canvi al codi et treu del producte i et porta a login
 
 **Causa.** `requireSession` tractava igual dues coses diferents: que l'API digui que la sessio no
