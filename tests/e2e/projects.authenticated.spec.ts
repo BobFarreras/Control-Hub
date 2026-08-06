@@ -19,8 +19,7 @@ const t = {
   save: "Desar",
   entries: "Imputacions",
   overview: "Resum",
-  noRatesYet: "Cap barem publicat",
-  ratesNeeded: "Cal publicar un barem",
+  entriesUnpriced: "imputacions sense valorar",
   projectClosed: "El projecte esta tancat i no accepta hores noves.",
   closed: "Tancat",
   totalHours: "Hores totals",
@@ -46,10 +45,10 @@ async function createProject(page: Page): Promise<{ code: string; name: string }
   await open.click();
 
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel(t.projectCode).fill(code);
-  await dialog.getByLabel(t.projectName).fill(name);
+  await dialog.getByLabel(t.projectCode, { exact: true }).fill(code);
+  await dialog.getByLabel(t.projectName, { exact: true }).fill(name);
   // Whichever customer the seed created first; the point is that a project needs one.
-  await dialog.getByLabel(t.customer).selectOption({ index: 0 });
+  await dialog.getByLabel(t.customer, { exact: true }).selectOption({ index: 0 });
 
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/projects") && response.request().method() === "POST"
@@ -78,7 +77,7 @@ test.describe("projects", () => {
     await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
 
     // ---------------------------------------------------------------- logging time
-    const duration = page.getByLabel(t.duration);
+    const duration = page.getByLabel(t.duration, { exact: true });
     await waitForHydration(duration);
     // Written rather than in minutes, because that is the form people will actually type into.
     await duration.fill("1h 30m");
@@ -103,22 +102,25 @@ test.describe("projects", () => {
 
     // ---------------------------------------------------------------- what it is worth
     /**
-     * The account is an Owner, so it has `financials:read` and the figures are rendered. No rate
-     * has been published for this project, so the margin tile says what is missing where the
-     * number would be, rather than reporting a margin of a hundred per cent: the most flattering
-     * possible way to be wrong. The words are asserted, not the absence of a figure, because an
-     * empty tile would also satisfy "no margin shown".
+     * The account is an Owner, so it has `financials:read` and the figures are rendered. This
+     * project has no billing rate, so the margin has to report that an entry could not be priced
+     * rather than quietly counting those hours as free: a margin of a hundred per cent is the most
+     * flattering possible way to be wrong.
+     *
+     * Asserted on the unpriced count, not on "no rate published at all". Once the rates suite has
+     * run, a cost rate for the only member exists in this database and applies to every project, so
+     * "nothing is priced" holds only where nobody has ever published a rate. What stays true is
+     * that this project's hours could not be given a price.
      */
     const overview = page.getByRole("region", { name: t.overview });
-    await expect(overview).toContainText(t.noRatesYet);
-    await expect(overview).toContainText(t.ratesNeeded);
+    await expect(overview).toContainText(t.entriesUnpriced);
   });
 
   test("refuses new hours once the project is closed", async ({ page }) => {
     const { name } = await createProject(page);
     await row(page, name).getByRole("link").click();
 
-    const status = page.getByLabel(t.statusOf);
+    const status = page.getByLabel(t.statusOf, { exact: true });
     await waitForHydration(status);
 
     // draft does not close directly; it goes through active, which is the path the domain allows.
@@ -131,9 +133,9 @@ test.describe("projects", () => {
       await page.reload({ waitUntil: "domcontentloaded" });
     }
 
-    await expect(page.getByLabel(t.statusOf)).toHaveValue("closed");
+    await expect(page.getByLabel(t.statusOf, { exact: true })).toHaveValue("closed");
     // The form is closed too, and says why rather than failing on submit.
-    await expect(page.getByLabel(t.duration)).toBeDisabled();
+    await expect(page.getByLabel(t.duration, { exact: true })).toBeDisabled();
     await expect(page.getByText(t.projectClosed)).toBeVisible();
   });
 });
