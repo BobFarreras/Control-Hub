@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "//": "The flag registry has a subpath of its own so a consumer can take it without the environment schema, and with it zod. The web tier needs the flags and nothing else.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./flags": "./src/flags.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
