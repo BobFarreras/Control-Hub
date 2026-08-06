@@ -59,6 +59,15 @@ export default async function RatesPage({ params }: { params: Promise<{ locale: 
           title={labels.title}
           description={labels.description}
           themeLabel={t.header.theme}
+          // The append-only rule explains both tables and is the reason they read as a log rather
+          // than as settings. Too long to hover over, so it opens on click instead of costing two
+          // rows of the page for good.
+          help={{
+            label: labels.whyLog,
+            title: labels.whyLog,
+            body: labels.appendOnlyNote,
+            closeLabel: t.crm.cancel
+          }}
           actions={
             <Link className="secondary-button" href={`/${locale}/projects`}>
               <ArrowLeft size={17} />

@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
+import { HelpTip } from "@/components/help";
 import { MetricTile } from "@/components/metric-tile";
 import { projectStatusTone, StatusPill } from "@/components/status-pill";
 import type { Profitability, ProjectDetail as ProjectDetailData, TimeEntry } from "@/lib/api-types";
@@ -122,7 +123,7 @@ export function ProjectDetail({
   return (
     <div className="project-detail">
       {error && (
-        <p className="crm-error" role="alert">
+        <p className="notice notice-danger" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />
           {error}
         </p>
@@ -309,14 +310,13 @@ export function ProjectDetail({
 
       {/* The form people use several times a day, so it is one row and keeps focus after saving. */}
       <section className="project-panel" aria-label={t.quickLog}>
-        <header className="project-panel-heading">
+        <div className="panel-row">
           <h3>
             <Timer size={17} aria-hidden="true" />
             {t.quickLog}
+            <HelpTip label={t.quickLog!} description={t.logHelp!} />
           </h3>
-          <p>{t.logHelp}</p>
-        </header>
-        <form className="quick-log" onSubmit={eventHandler(log, fail)}>
+          <form className="quick-log" onSubmit={eventHandler(log, fail)}>
           <TextField
             label={t.duration!}
             name="duration"
@@ -347,10 +347,11 @@ export function ProjectDetail({
             disabled={busy || !acceptsHours}
           />
           <ToggleField label={t.billable!} name="billable" defaultChecked disabled={busy || !acceptsHours} />
-          <button className="primary-button" disabled={busy || !acceptsHours}>
-            {t.save}
-          </button>
-        </form>
+            <button className="primary-button" disabled={busy || !acceptsHours}>
+              {t.save}
+            </button>
+          </form>
+        </div>
         {!acceptsHours && (
           <p className="notice notice-warning" role="status">
             <AlertTriangle size={17} aria-hidden="true" />

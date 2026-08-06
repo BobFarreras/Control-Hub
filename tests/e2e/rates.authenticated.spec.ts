@@ -54,9 +54,9 @@ test("publishes rates and prices the hours with the one in force on the day work
   await waitForHydration(open);
   await open.click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Codi del projecte").fill(code);
-  await dialog.getByLabel("Nom del projecte").fill(`Barems ${code}`);
-  await dialog.getByLabel("Client").selectOption({ index: 0 });
+  await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
+  await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Barems ${code}`);
+  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -67,10 +67,10 @@ test("publishes rates and prices the hours with the one in force on the day work
 
   // Two hours exactly, so the arithmetic below has no rounding to argue about.
   const quickLog = page.getByRole("region", { name: "Registre rapid" });
-  const duration = quickLog.getByLabel(t.duration);
+  const duration = quickLog.getByLabel(t.duration, { exact: true });
   await waitForHydration(duration);
   await duration.fill("2h");
-  await quickLog.getByLabel(t.spentOn).fill(workedOn);
+  await quickLog.getByLabel(t.spentOn, { exact: true }).fill(workedOn);
   const logged = page.waitForResponse((r) => r.url().endsWith("/api/v1/time-entries") && r.request().method() === "POST");
   await duration.press("Enter");
   expect((await logged).status()).toBe(201);
@@ -78,23 +78,23 @@ test("publishes rates and prices the hours with the one in force on the day work
   // ------------------------------------------------------------------ publish the two rates
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const cost = page.getByRole("region", { name: t.costTitle });
-  const amount = cost.getByLabel(t.amount);
+  const amount = cost.getByLabel(t.amount, { exact: true });
   await waitForHydration(amount);
 
   // 30.00 an hour of cost, in force from the day the work was done.
-  await cost.getByLabel(t.member).selectOption({ index: 0 });
+  await cost.getByLabel(t.member, { exact: true }).selectOption({ index: 0 });
   await amount.fill("30,00");
-  await cost.getByLabel(t.effectiveFrom).fill(workedOn);
+  await cost.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   const costSaved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/cost") && r.request().method() === "POST");
   await cost.getByRole("button", { name: t.publish }).click();
   expect((await costSaved).status()).toBe(201);
 
   // 90.00 an hour of sale, on this project.
   const billing = page.getByRole("region", { name: t.billingTitle });
-  await billing.getByLabel(t.applies).selectOption("project");
-  await billing.getByLabel(t.project).selectOption({ label: `${code} · Barems ${code}` });
-  await billing.getByLabel(t.amount).fill("90,00");
-  await billing.getByLabel(t.effectiveFrom).fill(workedOn);
+  await billing.getByLabel(t.applies, { exact: true }).selectOption("project");
+  await billing.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Barems ${code}` });
+  await billing.getByLabel(t.amount, { exact: true }).fill("90,00");
+  await billing.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   const billingSaved = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST"
   );
@@ -128,9 +128,9 @@ test("a rate published today does not change what earlier work was worth", async
   await waitForHydration(open);
   await open.click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Codi del projecte").fill(code);
-  await dialog.getByLabel("Nom del projecte").fill(`Historic ${code}`);
-  await dialog.getByLabel("Client").selectOption({ index: 0 });
+  await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
+  await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Historic ${code}`);
+  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -141,10 +141,10 @@ test("a rate published today does not change what earlier work was worth", async
   // An hour worked a month ago.
   const workedOn = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   const quickLog = page.getByRole("region", { name: "Registre rapid" });
-  const duration = quickLog.getByLabel(t.duration);
+  const duration = quickLog.getByLabel(t.duration, { exact: true });
   await waitForHydration(duration);
   await duration.fill("1h");
-  await quickLog.getByLabel(t.spentOn).fill(workedOn);
+  await quickLog.getByLabel(t.spentOn, { exact: true }).fill(workedOn);
   const logged = page.waitForResponse((r) => r.url().endsWith("/api/v1/time-entries") && r.request().method() === "POST");
   await duration.press("Enter");
   expect((await logged).status()).toBe(201);
@@ -152,11 +152,11 @@ test("a rate published today does not change what earlier work was worth", async
   // A sale rate of 50.00 that was already in force then.
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const billing = page.getByRole("region", { name: t.billingTitle });
-  await waitForHydration(billing.getByLabel(t.amount));
-  await billing.getByLabel(t.applies).selectOption("project");
-  await billing.getByLabel(t.project).selectOption({ label: `${code} · Historic ${code}` });
-  await billing.getByLabel(t.amount).fill("50,00");
-  await billing.getByLabel(t.effectiveFrom).fill("2020-01-01");
+  await waitForHydration(billing.getByLabel(t.amount, { exact: true }));
+  await billing.getByLabel(t.applies, { exact: true }).selectOption("project");
+  await billing.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Historic ${code}` });
+  await billing.getByLabel(t.amount, { exact: true }).fill("50,00");
+  await billing.getByLabel(t.effectiveFrom, { exact: true }).fill("2020-01-01");
   let saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
   await billing.getByRole("button", { name: t.publish }).click();
   expect((await saved).status()).toBe(201);
@@ -167,11 +167,11 @@ test("a rate published today does not change what earlier work was worth", async
   // Now a much higher rate starting today. The hour worked a month ago must not move.
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const again = page.getByRole("region", { name: t.billingTitle });
-  await waitForHydration(again.getByLabel(t.amount));
-  await again.getByLabel(t.applies).selectOption("project");
-  await again.getByLabel(t.project).selectOption({ label: `${code} · Historic ${code}` });
-  await again.getByLabel(t.amount).fill("500,00");
-  await again.getByLabel(t.effectiveFrom).fill(today);
+  await waitForHydration(again.getByLabel(t.amount, { exact: true }));
+  await again.getByLabel(t.applies, { exact: true }).selectOption("project");
+  await again.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Historic ${code}` });
+  await again.getByLabel(t.amount, { exact: true }).fill("500,00");
+  await again.getByLabel(t.effectiveFrom, { exact: true }).fill(today);
   saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
   await again.getByRole("button", { name: t.publish }).click();
   expect((await saved).status()).toBe(201);

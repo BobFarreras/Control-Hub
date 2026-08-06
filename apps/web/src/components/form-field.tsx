@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, CircleHelp } from "lucide-react";
 import { useId, type ReactNode, type SelectHTMLAttributes, type InputHTMLAttributes } from "react";
 
 /**
@@ -24,6 +24,14 @@ type FieldProps = {
   children: (ids: { id: string; describedBy: string | undefined }) => ReactNode;
 };
 
+/**
+ * The hint is a `?` beside the label, not a line of text under the control.
+ *
+ * A sentence under every field costs a row of height per field and pushes the controls out of line
+ * with each other, which is what made the forms look noisy. The same affordance the data tables
+ * already use shows it on hover and on focus, and `aria-describedby` still points at it so it is
+ * announced with the control rather than only shown to whoever can see the tooltip.
+ */
 export function Field({ label, hint, error, wide, children }: FieldProps) {
   const id = useId();
   const hintId = `${id}-hint`;
@@ -32,15 +40,25 @@ export function Field({ label, hint, error, wide, children }: FieldProps) {
 
   return (
     <div className={wide ? "field wide" : "field"}>
-      <label className="field-label" htmlFor={id}>
-        {label}
-      </label>
+      <span className="field-label-row">
+        <label className="field-label" htmlFor={id}>
+          {label}
+        </label>
+        {hint && (
+          // Named with the hint alone, not `label: hint`. Prefixing it with the field name gave two
+          // things in the form the same accessible name, so anything looking for the field by name
+          // found the icon as well — a screen reader reads it as a second control, and the test that
+          // caught it was only the first thing to trip over it.
+          <span className="field-help" tabIndex={0} aria-label={hint}>
+            <CircleHelp size={13} aria-hidden="true" />
+            <span role="tooltip" id={hintId}>
+              <strong>{label}</strong>
+              {hint}
+            </span>
+          </span>
+        )}
+      </span>
       {children({ id, describedBy })}
-      {hint && (
-        <small className="field-hint" id={hintId}>
-          {hint}
-        </small>
-      )}
       {error && (
         <small className="field-error" id={errorId} role="alert">
           {error}

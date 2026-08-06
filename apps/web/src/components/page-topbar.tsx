@@ -1,4 +1,5 @@
 import { Bell } from "lucide-react";
+import { HelpDialog } from "@/components/help";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function PageTopbar({
@@ -6,13 +7,21 @@ export function PageTopbar({
   title,
   description,
   themeLabel,
-  actions
+  actions,
+  help
 }: {
   eyebrow: string;
   title: string;
   description?: string | undefined;
   themeLabel: string;
   actions?: React.ReactNode;
+  /**
+   * An explanation of how the screen behaves, behind a `?` beside the title.
+   *
+   * A paragraph is too long to hover over and too valuable to delete, so it opens in a dialog on
+   * click rather than living permanently in the layout where it would cost two rows of the page.
+   */
+  help?: { label: string; title: string; body: string; closeLabel: string } | undefined;
 }) {
   return (
     <header className="topbar">
@@ -20,6 +29,7 @@ export function PageTopbar({
         <p>{eyebrow}</p>
         <div>
           <h1>{title}</h1>
+          {help && <HelpDialog {...help} />}
           {description && <span>{description}</span>}
         </div>
       </div>

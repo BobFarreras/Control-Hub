@@ -2315,24 +2315,59 @@ main {
 .field.wide {
   grid-column: 1 / -1;
 }
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 18px;
+}
 .field-label {
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
 }
-/* 13px, not 12: a hint at 12px is text nobody reads, which defeats the point of writing it.
-   `DESIGN_SYSTEM.md` puts the smallest legible size at 13px and this is the floor of the screen. */
-.field-hint,
-.field-error {
-  font-size: 13px;
-  line-height: 18px;
-}
-.field-hint {
+/* The hint, as a `?` next to the label. Same behaviour as the one on a table column: shown on
+   hover and on focus, and reachable with Tab so it is not mouse-only. */
+.field-help {
+  position: relative;
+  display: inline-grid;
   color: var(--muted);
+  cursor: help;
+}
+.field-help > [role="tooltip"] {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  left: 0;
+  display: none;
+  width: 250px;
+  /* A heading keeps its text on one line, and the bubble inside it was inheriting that: the
+     sentence ran straight out of the box instead of wrapping. */
+  white-space: normal;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.field-help > [role="tooltip"] strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.field-help:hover > [role="tooltip"],
+.field-help:focus > [role="tooltip"] {
+  display: block;
 }
 .field-error {
   color: var(--danger);
+  font-size: 13px;
   font-weight: 600;
+  line-height: 18px;
 }
 .field input,
 .field select,
@@ -2698,13 +2733,14 @@ main {
    out of line with its neighbours, which is the visual noise that made the row look careless. */
 .quick-log {
   display: grid;
-  grid-template-columns: 168px 172px minmax(200px, 1fr) auto auto;
-  grid-template-rows: auto 44px auto;
-  gap: 6px 14px;
+  grid-template-columns: 150px 158px minmax(220px, 460px) auto auto;
+  grid-template-rows: auto 44px;
+  gap: 6px 12px;
   align-items: start;
+  justify-content: start;
 }
 .quick-log > * {
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   display: grid;
   grid-template-rows: subgrid;
 }
@@ -2838,14 +2874,17 @@ main {
 }
 
 /* Notices
-   A bordered strip rather than a coloured background alone, with the icon carrying the same
-   meaning as the colour. */
+   Sized to their text, not stretched across the page: a one-line message inside a full-width band
+   reads as an alarm and leaves a stripe of empty colour beside it. The icon carries the same
+   meaning as the colour, so neither is load-bearing on its own. */
 .notice {
-  display: flex;
-  gap: 10px;
+  display: inline-flex;
+  gap: 9px;
   align-items: start;
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 13px;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
@@ -2864,23 +2903,118 @@ main {
 .notice-info svg {
   color: var(--accent);
 }
-.notice-info span {
-  max-width: 92ch;
+.notice-danger {
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+  color: var(--text);
+}
+.notice-danger svg {
+  color: var(--danger);
+}
+.notice span {
+  max-width: 88ch;
 }
 
 /* Rates
    One row per rate, and the published rows read as a log because that is what they are: nothing is
    edited, a new row supersedes an older one. */
+/* A panel whose heading and controls share one row.
+   The heading used to sit above a description above the form: three rows to say what one row says,
+   and the description is now behind the `?` beside the title. */
+.panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.panel-row > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Aligned with the controls beside it rather than with the top of the row. */
+  margin: 22px 0 0;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.panel-row .rate-form {
+  margin-bottom: 0;
+}
+/* The `?` on a heading and in the topbar: a button, because it opens something on click. */
+.heading-help {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms ease-out;
+}
+.heading-help:hover {
+  color: var(--brand);
+  border-color: var(--brand);
+}
+.heading-help:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.help-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 20px 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 28%);
+}
+.help-dialog header {
+  display: flex;
+  gap: 16px;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.help-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.help-dialog p {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 22px;
+}
+.topbar-page-title > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+/* Columns sized to their content, and the row does not stretch to the panel.
+   With a `1fr` first column the person select grew to fill the width and left a gap between it and
+   the amount: a hole in the middle of a form that reads as something missing. `justify-content:
+   start` keeps the row where the eye starts rather than spread across the panel. */
 .rate-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 150px 110px 165px auto;
-  grid-template-rows: auto 44px auto;
-  gap: 6px 14px;
+  grid-template-columns: 220px 132px 104px 158px auto;
+  grid-template-rows: auto 44px;
+  gap: 6px 12px;
   align-items: start;
-  margin-bottom: 18px;
+  justify-content: start;
+  margin-bottom: 16px;
+}
+/* The billing form has one control more than the cost form. Left on five columns the grid invented
+   a sixth and squeezed the amount, splitting its label across two lines. */
+.rate-form.with-scope {
+  grid-template-columns: 132px 190px 132px 104px 158px auto;
 }
 .rate-form > * {
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   display: grid;
   grid-template-rows: subgrid;
 }
