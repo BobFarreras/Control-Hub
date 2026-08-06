@@ -1,4 +1,4 @@
-import { parseApiEnvironment } from "@control-hub/config";
+import { parseApiEnvironment, parseFeatureFlags, unknownFeatureFlags } from "@control-hub/config";
 import { buildApp } from "./app.js";
 import { createAuth } from "./auth.js";
 import { createMailSender } from "./email.js";
@@ -18,8 +18,14 @@ const app = buildApp({
   invitationAuth: createAuth(environment, { allowSignUp: true }),
   sendMail,
   logLevel: environment.LOG_LEVEL,
-  exposeApiDocs: environment.NODE_ENV !== "production"
+  exposeApiDocs: environment.NODE_ENV !== "production",
+  featureFlags: parseFeatureFlags(environment.CONTROL_HUB_FLAGS)
 });
+
+// A flag name nobody declared is a typo that would otherwise be indistinguishable from a
+// capability that is simply off, and somebody would spend an afternoon on it.
+const unknown = unknownFeatureFlags(environment.CONTROL_HUB_FLAGS);
+if (unknown.length > 0) app.log.warn({ unknown }, "ignoring feature flags that are not declared");
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutdown requested");

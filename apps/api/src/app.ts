@@ -5,9 +5,12 @@ import {
   CompanySubscriptionService,
   CrmError,
   CrmService,
+  ProjectsError,
+  ProjectsService,
   SupportError,
   SupportService
 } from "@control-hub/application";
+import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet } from "@control-hub/config";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
@@ -17,6 +20,7 @@ import {
   PostgresCrmRepository,
   IdentityInvariantError,
   InvitationError,
+  PostgresProjectsRepository,
   PostgresSupportRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
@@ -34,6 +38,7 @@ import { registerCompanySubscriptionRoutes } from "./routes/company-subscription
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
+import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerSupportRoutes } from "./routes/support.js";
 import { ApiSecurityError } from "./security.js";
@@ -49,6 +54,8 @@ type BuildAppOptions = {
   logLevel?: string;
   version?: string;
   exposeApiDocs?: boolean;
+  /** Enabled feature flags. Absent means the environment decides; see @control-hub/config. */
+  featureFlags?: FeatureFlagSet;
 };
 
 /**
@@ -65,6 +72,8 @@ export function buildApp(options: BuildAppOptions) {
   const commerce = new CommerceService(new PostgresCommerceRepository(database));
   const companySubscriptions = new CompanySubscriptionService(new PostgresCompanySubscriptionRepository(database));
   const support = new SupportService(new PostgresSupportRepository(database));
+  const projects = new ProjectsService(new PostgresProjectsRepository(database));
+  const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => app.log.warn({ err: error }, "queue connection unavailable"));
   // A connection of its own: sharing the health-check client would let a slow limiter command
@@ -144,6 +153,21 @@ export function buildApp(options: BuildAppOptions) {
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof ProjectsError) {
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code === "PERMISSION_DENIED"
+          ? 403
+          : error.code === "FUTURE_DATE"
+            ? 422
+            : error.code.startsWith("DUPLICATE") ||
+                error.code === "INVALID_TRANSITION" ||
+                error.code === "PROJECT_CLOSED" ||
+                error.code === "PROJECT_CUSTOMER_MISMATCH"
+              ? 409
+              : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     if (error instanceof CompanySubscriptionError) {
       const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -171,6 +195,10 @@ export function buildApp(options: BuildAppOptions) {
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });
       registerSupportRoutes({ ...context, support });
+      // Behind a flag so the schema can be deployed before the module is opened. Off, the
+      // routes are never declared and the API answers 404, which is the truth: there is
+      // nothing there. A flag decides what is deployed, never who may use it.
+      if (isFeatureEnabled(featureFlags, "projects_and_time")) registerProjectRoutes({ ...context, projects });
     }
 
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
