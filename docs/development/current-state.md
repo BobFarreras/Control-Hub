@@ -270,8 +270,8 @@ Implementat i committat:
 - `apps/api/src/routes/attendance.ts`: sis rutes. Llegir el registre d'una altra persona queda
   auditat encara que qui ho fa hi tingui dret.
 - `apps/web`: boto a la capcalera de totes les pantalles, pantalla `/attendance` amb el mes
-  propi i l'historial complet, i `/attendance/team` amb la vista de tothom, l'exportacio CSV
-  (una fila per persona i dia, amb entrada i sortida) i la conciliacio.
+  propi i l'historial complet, i `/attendance/team` amb la vista de tothom, l'exportacio Excel
+  (una fila per persona i dia, amb entrada, sortida i hores en format decimal) i la conciliacio.
 
 Verificat: **89 proves de domini, 82 d'aplicacio, 31 d'API, 11 d'integracio de l'esquema, 11 de
 l'adaptador i 4 E2E autenticades noves**, aquestes ultimes executades contra la pila de verificacio.
