@@ -6,6 +6,7 @@
  * sight. An application cannot import from another application, and duplicating the queries
  * would give the two processes two versions of the same truth.
  */
+export * from "./attendance-repository.js";
 export * from "./commerce-repository.js";
 export * from "./company-subscription-repository.js";
 export * from "./crm-repository.js";
