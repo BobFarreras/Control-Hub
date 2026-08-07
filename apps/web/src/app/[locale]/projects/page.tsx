@@ -5,7 +5,14 @@ import { InstantSearch } from "@/components/instant-search";
 import { PageTopbar } from "@/components/page-topbar";
 import { ProjectsWorkspace } from "@/components/projects-workspace";
 import { apiFetch, readJson } from "@/lib/api";
-import type { CustomerOption, Page, ProjectsPage, TablePreference, TablePreferenceResponse } from "@/lib/api-types";
+import type {
+  CustomerOption,
+  Page,
+  ProjectsPage,
+  ServiceTypesResponse,
+  TablePreference,
+  TablePreferenceResponse
+} from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
 
@@ -30,15 +37,19 @@ async function load(search: URLSearchParams) {
       : defaultPreference;
 
     if (!search.has("pageSize")) search.set("pageSize", String(preference.pageSize));
-    const [response, customersResponse] = await Promise.all([
+    const [response, customersResponse, serviceTypesResponse] = await Promise.all([
       apiFetch(`/api/v1/projects?${search}`),
-      apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc")
+      apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc"),
+      apiFetch("/api/v1/service-types")
     ]);
     const customers = customersResponse.ok ? (await readJson<Page<CustomerOption>>(customersResponse)).items : [];
-    if (!response.ok) return { projects: emptyPage, preference, customers, loadError: true };
-    return { projects: await readJson<ProjectsPage>(response), preference, customers, loadError: false };
+    const serviceTypes = serviceTypesResponse.ok
+      ? (await readJson<ServiceTypesResponse>(serviceTypesResponse)).serviceTypes
+      : [];
+    if (!response.ok) return { projects: emptyPage, preference, customers, serviceTypes, loadError: true };
+    return { projects: await readJson<ProjectsPage>(response), preference, customers, serviceTypes, loadError: false };
   } catch {
-    return { projects: emptyPage, preference: defaultPreference, customers: [], loadError: true };
+    return { projects: emptyPage, preference: defaultPreference, customers: [], serviceTypes: [], loadError: true };
   }
 }
 
@@ -86,6 +97,7 @@ export default async function ProjectsPage({
             projects={data.projects}
             preference={data.preference}
             customers={data.customers}
+            serviceTypes={data.serviceTypes}
             loadError={data.loadError}
             labels={labels}
             locale={locale}

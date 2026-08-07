@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import { SelectField, TextField } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import { projectStatusTone, StatusPill } from "@/components/status-pill";
-import type { CustomerOption, ProjectRow, TablePreference } from "@/lib/api-types";
+import type { CustomerOption, ProjectRow, ServiceType, TablePreference } from "@/lib/api-types";
 import { formValue, optionalFormValue } from "@/lib/form";
 import { formatHours } from "@/lib/format";
 import { eventHandler } from "@/lib/handlers";
@@ -19,6 +19,7 @@ export function ProjectsWorkspace({
   projects,
   preference,
   customers,
+  serviceTypes,
   labels: t,
   locale,
   loadError,
@@ -27,6 +28,7 @@ export function ProjectsWorkspace({
   projects: { items: ProjectRow[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
   preference: TablePreference;
   customers: CustomerOption[];
+  serviceTypes: ServiceType[];
   labels: Labels;
   locale: string;
   loadError: boolean;
@@ -52,6 +54,11 @@ export function ProjectsWorkspace({
         customerId: formValue(data, "customerId"),
         code: formValue(data, "code"),
         name: formValue(data, "name"),
+        // Optional, and left out rather than sent empty: a project without a kind of work simply
+        // does not resolve a price per kind, which is a state the schema allows.
+        ...(optionalFormValue(data, "serviceTypeId")
+          ? { serviceTypeId: optionalFormValue(data, "serviceTypeId") }
+          : {}),
         ...(optionalFormValue(data, "description") ? { description: optionalFormValue(data, "description") } : {}),
         // A date input gives a day; the API takes an instant, and midnight UTC is the only
         // reading of "this day" that does not shift when somebody else opens the project.
@@ -80,6 +87,11 @@ export function ProjectsWorkspace({
       )
     },
     { id: "customer", label: t.customer!, render: (project) => project.customerName },
+    {
+      id: "serviceType",
+      label: t.serviceType!,
+      render: (project) => project.serviceTypeName ?? <span className="crm-muted">—</span>
+    },
     {
       id: "status",
       label: t.status!,
@@ -206,6 +218,16 @@ export function ProjectsWorkspace({
                 disabled={busy}
               />
               <TextField label={t.projectName!} name="name" required minLength={3} maxLength={200} disabled={busy} />
+              <SelectField
+                label={t.serviceType!}
+                name="serviceTypeId"
+                disabled={busy || serviceTypes.every((type) => !type.active)}
+                hint={t.serviceTypeHint}
+                options={[
+                  { value: "", label: t.serviceTypeNone ?? "—" },
+                  ...serviceTypes.filter((type) => type.active).map((type) => ({ value: type.id, label: type.name }))
+                ]}
+              />
               <TextField label={t.startedAt!} name="startedAt" type="date" data-mono="true" disabled={busy} />
               <TextField label={t.dueAt!} name="dueAt" type="date" data-mono="true" disabled={busy} />
               <div className="field wide">

@@ -11,7 +11,8 @@ import type {
   MembersResponse,
   Page,
   ProjectsPage,
-  RatesResponse
+  RatesResponse,
+  ServiceTypesResponse
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
@@ -24,11 +25,12 @@ import { requireSession } from "@/lib/require-session";
  * against `rates:manage` anyway, which is the API's job to enforce and not this page's to guess.
  */
 async function load() {
-  const [rates, members, customers, projects] = await Promise.all([
+  const [rates, members, customers, projects, serviceTypes] = await Promise.all([
     apiFetch("/api/v1/rates"),
     apiFetch("/api/v1/members"),
     apiFetch("/api/v1/crm/customers?page=1&pageSize=100&sort=name_asc"),
-    apiFetch("/api/v1/projects?page=1&pageSize=100&sort=name_asc")
+    apiFetch("/api/v1/projects?page=1&pageSize=100&sort=name_asc"),
+    apiFetch("/api/v1/service-types")
   ]);
 
   return {
@@ -36,6 +38,7 @@ async function load() {
     members: members.ok ? (await readJson<MembersResponse>(members)).members : [],
     customers: customers.ok ? (await readJson<Page<CustomerOption>>(customers)).items : [],
     projects: projects.ok ? (await readJson<ProjectsPage>(projects)).items : [],
+    serviceTypes: serviceTypes.ok ? (await readJson<ServiceTypesResponse>(serviceTypes)).serviceTypes : [],
     loadError: !rates.ok
   };
 }
@@ -82,6 +85,7 @@ export default async function RatesPage({ params }: { params: Promise<{ locale: 
             members={data.members}
             customers={data.customers}
             projects={data.projects}
+            serviceTypes={data.serviceTypes}
             loadError={data.loadError}
             labels={labels}
             locale={locale}

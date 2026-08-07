@@ -3066,6 +3066,174 @@ main {
   background: var(--success-subtle);
   color: var(--success);
 }
+/* A withdrawn rate stays legible but stops competing for attention: it is history, not a setting.
+   The struck-through amount carries the same message without relying on the dimming, because a
+   dimmed row alone is not a difference somebody can name. */
+.rate-row.annulled th[scope="row"],
+.rate-row.annulled td {
+  color: var(--muted);
+}
+.rate-state.annulled {
+  border-style: dashed;
+}
+/* The state and the action share a cell so the table does not spend a column on a button that is
+   used once in a while. `nowrap` keeps "Confirmar Cancel·lar" from stacking mid-decision. */
+.rate-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  white-space: nowrap;
+}
+.quiet-link,
+.danger-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.quiet-link:hover:not(:disabled) {
+  color: var(--text);
+}
+.danger-link {
+  color: var(--danger);
+  font-weight: 650;
+}
+.quiet-link:disabled,
+.danger-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.th-with-help {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+/* Two fields and a button: narrower than the rate forms, and sized to what it holds.
+   `space-between` on the row would push a short form to the far right and leave a hole between the
+   heading and the first field, which is the dead space this whole screen was redesigned to remove.
+   `margin-right: auto` keeps the form beside its heading and lets the panel end where it ends. */
+.rate-form.service-form {
+  grid-template-columns: 220px 190px auto;
+  margin-right: auto;
+}
+/* The service types themselves. A table for a handful of two-word rows would be four lines of
+   chrome around eight words; chips say the same thing in one row. */
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A pill with the name and, flush against its right edge, the way to take it away.
+   The remove control is a segment of the pill and not a button floating inside it: a circle inside a
+   rounded rectangle is two competing shapes at 28px, which is what made it look stuck on. It gets no
+   padding of its own on the right so its rounded corner is the pill's corner. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13.5px;
+}
+.chip-label {
+  white-space: nowrap;
+}
+/* Deactivated: still readable, because it is still the kind of work a past rate was filed under.
+   The dashed border says it without relying on the dimming alone, which is not a difference
+   somebody can name. */
+.chip.inactive {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+/* How many projects are of this kind. It is here because it is what decides whether removing it
+   detaches anything, and reading that off the chip is faster than opening a dialog to find out. */
+/* How many projects are of this kind. It decides whether taking it away detaches anything, and
+   reading that off the pill beats opening a dialog to find out. */
+.chip-count {
+  margin-left: 7px;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  /* A hairline seam rather than a gap, so the two halves read as one control. */
+  border-left: 1px solid var(--border);
+  /* Only the right corners: the left edge is a seam with the label, not an end. */
+  border-radius: 0 999px 999px 0;
+  background: none;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    background 120ms ease-out;
+}
+.chip-remove:hover:not(:disabled),
+.chip-remove:focus-visible {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+.chip-remove:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.chip-remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* The confirmation that explains what is about to happen. Shares `.help-dialog` because it is the
+   same box; what it adds is a row of actions and a second paragraph. */
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: end;
+  margin-top: 18px;
+}
+.dialog-actions button {
+  height: 44px;
+  padding: 0 20px;
+}
+.dialog-note {
+  margin-top: 10px !important;
+  color: var(--muted) !important;
+  font-size: 13.5px !important;
+}
+/* An action that cannot be undone does not get the brand colour: it reads as the primary thing to
+   do, and here the primary thing to do is usually to cancel. */
+.danger-button {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger);
+  color: var(--surface);
+  font-family: "Hanken Grotesk Variable", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.danger-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 86%, black);
+}
+.danger-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 @media (max-width: 1180px) {
   .rate-form {
     grid-template-columns: 1fr 1fr;
@@ -3080,6 +3248,9 @@ main {
   .rate-form .primary-button {
     grid-row: auto;
     grid-column: 1 / -1;
+  }
+  .rate-form.service-form {
+    grid-template-columns: 1fr 1fr;
   }
 }
 .notice svg {

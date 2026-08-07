@@ -18,7 +18,7 @@ import { SelectField, TextField, ToggleField } from "@/components/form-field";
 import { HelpTip } from "@/components/help";
 import { MetricTile } from "@/components/metric-tile";
 import { projectStatusTone, StatusPill } from "@/components/status-pill";
-import type { Profitability, ProjectDetail as ProjectDetailData, TimeEntry } from "@/lib/api-types";
+import type { Profitability, ProjectDetail as ProjectDetailData, ServiceType, TimeEntry } from "@/lib/api-types";
 import { formValue, optionalFormValue } from "@/lib/form";
 import { formatHours, formatMoney } from "@/lib/format";
 import { actionHandler, eventHandler } from "@/lib/handlers";
@@ -54,12 +54,14 @@ export function ProjectDetail({
   detail,
   entries,
   profitability,
+  serviceTypes,
   labels: t,
   locale
 }: {
   detail: ProjectDetailData;
   entries: TimeEntry[];
   profitability: Profitability | null;
+  serviceTypes: ServiceType[];
   labels: Labels;
   locale: string;
 }) {
@@ -161,6 +163,34 @@ export function ProjectDetail({
             </dd>
           </div>
           <div>
+            <dt>{t.serviceType}</dt>
+            <dd>
+              <SelectField
+                label={t.serviceType!}
+                labelHidden
+                value={project.serviceTypeId ?? ""}
+                disabled={busy || serviceTypes.length === 0}
+                onChange={actionHandler(
+                  (event: React.ChangeEvent<HTMLSelectElement>) =>
+                    send(
+                      `/api/v1/projects/${project.id}/service-type`,
+                      { serviceTypeId: event.target.value || null },
+                      "PATCH"
+                    ),
+                  fail
+                )}
+                // Deactivated kinds are out of the list, except the one this project already has:
+                // hiding it would leave the select showing a value it does not offer.
+                options={[
+                  { value: "", label: t.serviceTypeNone ?? "—" },
+                  ...serviceTypes
+                    .filter((type) => type.active || type.id === project.serviceTypeId)
+                    .map((type) => ({ value: type.id, label: type.name }))
+                ]}
+              />
+            </dd>
+          </div>
+          <div>
             <dt>{t.entries}</dt>
             <dd>{entries.length}</dd>
           </div>
@@ -172,7 +202,10 @@ export function ProjectDetail({
           </div>
         </dl>
         <div className="project-identity-controls">
-          <StatusPill tone={projectStatusTone[project.status] ?? "neutral"} label={t[project.status] ?? project.status} />
+          <StatusPill
+            tone={projectStatusTone[project.status] ?? "neutral"}
+            label={t[project.status] ?? project.status}
+          />
           <SelectField
             label={t.statusOf!}
             value={project.status}
@@ -193,9 +226,7 @@ export function ProjectDetail({
           help={t.loggedHelp}
           icon={Clock}
           value={formatHours(project.loggedMinutes)}
-          {...(profitability
-            ? { footnote: `${t.billablePart}: ${formatHours(profitability.billableMinutes)}` }
-            : {})}
+          {...(profitability ? { footnote: `${t.billablePart}: ${formatHours(profitability.billableMinutes)}` } : {})}
         />
         <MetricTile
           label={t.due!}
@@ -317,36 +348,36 @@ export function ProjectDetail({
             <HelpTip label={t.quickLog!} description={t.logHelp!} />
           </h3>
           <form className="quick-log" onSubmit={eventHandler(log, fail)}>
-          <TextField
-            label={t.duration!}
-            name="duration"
-            required
-            maxLength={20}
-            placeholder={t.durationPlaceholder}
-            hint={t.durationHelp}
-            data-mono="true"
-            autoComplete="off"
-            disabled={busy || !acceptsHours}
-          />
-          <TextField
-            label={t.spentOn!}
-            name="spentOn"
-            type="date"
-            required
-            defaultValue={today()}
-            max={today()}
-            data-mono="true"
-            disabled={busy || !acceptsHours}
-          />
-          <TextField
-            label={t.note!}
-            name="note"
-            maxLength={500}
-            placeholder={t.notePlaceholder}
-            autoComplete="off"
-            disabled={busy || !acceptsHours}
-          />
-          <ToggleField label={t.billable!} name="billable" defaultChecked disabled={busy || !acceptsHours} />
+            <TextField
+              label={t.duration!}
+              name="duration"
+              required
+              maxLength={20}
+              placeholder={t.durationPlaceholder}
+              hint={t.durationHelp}
+              data-mono="true"
+              autoComplete="off"
+              disabled={busy || !acceptsHours}
+            />
+            <TextField
+              label={t.spentOn!}
+              name="spentOn"
+              type="date"
+              required
+              defaultValue={today()}
+              max={today()}
+              data-mono="true"
+              disabled={busy || !acceptsHours}
+            />
+            <TextField
+              label={t.note!}
+              name="note"
+              maxLength={500}
+              placeholder={t.notePlaceholder}
+              autoComplete="off"
+              disabled={busy || !acceptsHours}
+            />
+            <ToggleField label={t.billable!} name="billable" defaultChecked disabled={busy || !acceptsHours} />
             <button className="primary-button" disabled={busy || !acceptsHours}>
               {t.save}
             </button>
