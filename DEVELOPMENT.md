@@ -125,7 +125,18 @@ pnpm dev:verify
 ```
 
 Aixeca web a `3002` i API a `4002` contra la base acabada en `_e2e`, i pot conviure amb un
-`pnpm dev` a `3001`. Per entrar-hi, `pnpm db:seed:e2e` amb aquell mateix fitxer d'entorn.
+`pnpm dev` a `3001`. Per entrar-hi, `pnpm db:seed:verify`, que es el mateix seed amb aquell fitxer
+d'entorn.
+
+Per correr-hi el suite autenticat, les dues variables van juntes:
+
+```bash
+PLAYWRIGHT_BASE_URL="http://127.0.0.1:3002" E2E_CREDENTIALS_FILE="$PWD/.e2e/verify-credentials.json" pnpm test:e2e:authenticated
+```
+
+La primera perque ha de ser la mateixa cadena que `APP_ORIGIN` de `.env.verify`; la segona perque
+el fitxer de credencials d'aquesta pila no es el de `.e2e/credentials.json`. Playwright reaprofita
+els servidors ja aixecats en comptes d'engegar-ne uns altres.
 
 **No apuntis mai el port 3001 a una altra base de dades ni amb un altre secret.**
 
@@ -159,8 +170,12 @@ pnpm test:e2e:authenticated
   i es nega a escriure credencials si el compte no acaba amb MFA activada.
 - Escriu el secret a `E2E_CREDENTIALS_FILE`. `.e2e/` esta ignorat per git: no el comparteixis
   ni l'adjuntis a cap issue.
-- Torna a executar `pnpm db:seed:e2e` abans de cada tanda. Les proves canvien estat i
-  assignacio, i el seed les retorna al punt de partida.
+- **El suite es pot correr dos cops seguits sense sembrar entremig, i ha de continuar sent aixi.**
+  Cap prova muta el que sembra `seed-e2e.ts`: la que canvia un estat i la que assigna un
+  responsable obren el seu propi ticket pel dialeg. Una prova nova que depengui de trobar una fila
+  sembrada en un estat concret falla al primer reintent de Playwright, que passa dins de la mateixa
+  execucio i molt despres del seed. Sembrar de nou continua sent util per netejar el que s'hi ha
+  anat acumulant, no per fer passar el suite.
 - Sense el fitxer de credencials, els projectes autenticats simplement no existeixen i
   `pnpm test:e2e` executa la suite anonima de sempre.
 

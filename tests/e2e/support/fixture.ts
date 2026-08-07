@@ -15,8 +15,8 @@ export type Fixture = {
   tenantId: string;
   membershipId: string;
   ownerName: string;
-  tickets: Record<"breached" | "within" | "conversation" | "transition" | "assignment", string>;
-  subjects: Record<"breached" | "within" | "conversation" | "transition" | "assignment", string>;
+  tickets: Record<"breached" | "within" | "conversation", string>;
+  subjects: Record<"breached" | "within" | "conversation", string>;
   internalNote: string;
   customerReply: string;
 };

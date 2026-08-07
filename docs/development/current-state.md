@@ -195,6 +195,34 @@ Tots dos corregits; la causa i la solucio son a `troubleshooting.md`.
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
   en un entorn local acabat de sembrar.
 
+### Estabilitat del suite E2E (7 d'agost de 2026)
+
+CI va quedar en vermell despres de tancar la 5B, i **no per cap defecte de producte**: eren tres
+defectes de les proves, tots de la mateixa familia -- una prova que depen d'un estat que no
+controla. Les tres correccions estan a `troubleshooting.md` amb el simptoma sencer.
+
+- **Les proves que muten obren el seu propi ticket.** Canviar `new` a `open` no te tornada, aixi
+  que una prova que ho feia sobre una fila sembrada nomes passava al primer intent: **el reintent
+  de Playwright passa dins de la mateixa execucio**, molt despres del seed, i hi trobava el ticket
+  ja obert. Ara `createTicket` obre el seu pel dialeg real, com ja feien projectes i barems, i
+  **res del que sembra `seed-e2e.ts` es muta**. El seed passa de cinc tickets a tres.
+- **La fitxa d'un projecte sense barem s'asserta pel que es cert sota les dues lectures.** Amb dos
+  workers sobre una sola base, que la suite de barems hagi publicat o no un cost canvia el text del
+  tile de marge; el que no canvia es que les hores sense valorar s'avisen en comptes de comptar-se
+  com a gratis, i aixo es el que es comprova.
+- **La hidratacio s'espera dins del bucle, no abans.** Cada `page.reload()` reemplaça l'element, i
+  la segona volta actuava sobre marcatge sense cap handler: el desplegable es movia i no s'enviava
+  res. Aquest encara no havia fallat a CI.
+
+La safata es cerca (`?search=`) en comptes de llegir-se de la primera pagina, perque les proves ara
+obren tickets propis i vint-i-cinc files noves amagarien les sembrades.
+
+Verificat contra la pila de `pnpm dev:verify`: **15 proves autenticades en verd amb dos workers**,
+la forma que fa servir CI, i **en verd dues vegades seguides sense tornar a sembrar entremig** --
+que es la propietat que abans no es tenia. Les dues branques de l'assercio del marge s'han
+executat: la base acabada de sembrar dona "Cap barem publicat" i, un cop la suite de barems hi ha
+publicat un cost, "imputacions sense valorar".
+
 ## El seguent increment: Fase 5C
 
 **El seguent pas es la Fase 5C: registre de jornada**, amb especificacio aprovada a

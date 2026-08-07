@@ -317,17 +317,74 @@ te construit.
 **Solucio.** `git checkout -- apps/web/next-env.d.ts` en acabar. Un `pnpm dev` normal el torna a
 escriure be tot sol, pero convé revertir-lo abans de fer commit i no despres.
 
-### El suite E2E autenticat falla la segona vegada que es corre seguit
+### El primer intent d'una prova E2E passa i el reintent falla
 
-**Causa.** Algunes proves muten la fixture i no la deixen com l'han trobada. Les dues de
-`support.authenticated.spec.ts` que canvien l'estat i l'assignacio d'un ticket esperen trobar-lo
-sense responsable, i despres del primer pas ja en te un. No es un error del codi: es que la base de
-dades de la fixture es queda com la va deixar l'execucio anterior.
+**Simptoma.** CI en vermell amb `Expected "new", Received "open"`. El primer intent havia fet
+exactament la seva feina; el reintent troba el ticket ja obert i no pot tornar a obrir-lo.
 
-**Solucio.** `pnpm db:seed:verify` (o `db:seed:e2e`) abans de cada passada completa. Val la pena
-esperar-hi els 60-90 segons del limit de credencials abans d'engegar el suite; si no, la prova de
-sign-in es queda sense pressupost.
+**Causa.** La prova mutava una fila sembrada, i el moviment no te tornada: `new` a `open` es
+irreversible i un responsable no es pot treure des de la pantalla. **Un reintent passa dins de la
+mateixa execucio, molt despres del seed**, aixi que tornar a sembrar abans de cada tanda no ho
+arregla: nomes amaga el problema fins que alguna cosa provoca el primer reintent.
 
-**El que sí es defecte nostre** es escriure una prova nova que depengui d'aquest estat. Les de
-barems localitzen les files pel codi del projecte, generat a cada execucio, precisament perque una
-que filtrava per import va trobar la fila que una passada anterior ja havia anul·lat.
+**Solucio.** Ja resolt: les proves que muten obren el seu propi ticket pel dialeg real
+(`createTicket` a `support.authenticated.spec.ts`), com les de projectes i barems ja feien. La
+regla, que val per a tota prova nova: **res del que sembra `seed-e2e.ts` es muta**, i cap prova
+depen de l'estat que hagi deixat una altra passada ni el seu propi primer intent. Ara el suite es
+pot correr dos cops seguits sense sembrar entremig, i aixo es el que s'ha de comprovar abans de
+donar per bona una prova nova.
+
+### Una prova E2E passa o falla segons quin worker acabi primer
+
+**Simptoma.** `projects.authenticated.spec.ts` esperava `imputacions sense valorar` i rebia
+`Cap barem publicat`. Marcada com a *flaky*: al reintent passava.
+
+**Causa.** CI corre amb dos workers sobre **una sola base de dades**. La suite de barems publica un
+cost per l'unica persona del tenant, i aquell cost val per a tots els projectes des del seu dia
+d'efecte. Mentre no ho ha fet, la fitxa d'un projecte no pot valorar res i el tile ho diu d'una
+manera; despres, les hores tenen cost pero encara no preu de venda, i ho diu d'una altra. Quin dels
+dos textos surt no depen del producte, sino de quin worker acaba primer.
+
+**Solucio.** Assertar el que es cert sota les dues lectures -- que les hores sense valorar
+s'avisen, en comptes de comptar-se com a gratis -- i no la redaccio concreta d'una de les dues.
+Quan una prova toqui estat compartit entre suites, pregunta't que passa si l'altra suite encara no
+ha corregut.
+
+### Un desplegable no envia res despres d'un `page.reload()`
+
+**Simptoma.** `page.waitForResponse` esgota el temps de la prova esperant una peticio que no s'ha
+arribat a fer mai. La pantalla, a la captura, es perfecta.
+
+**Causa.** El mateix defecte d'hidratacio de sempre, pero amagat en un bucle: `waitForHydration` es
+cridava **un sol cop abans del bucle**, i cada `reload` reemplaça l'element. La segona volta actua
+sobre marcatge acabat de servir i sense cap handler encara, el desplegable es mou i React no
+se n'assabenta.
+
+**Solucio.** Tornar a agafar el localitzador i tornar a esperar la hidratacio **dins** del bucle,
+despres de cada recarrega. Un localitzador de Playwright es una consulta, no un element: sobreviu a
+la recarrega i per aixo no es queixa.
+
+### `Applied migration changed` a la base de verificacio local
+
+**Causa.** Diferent de la de CI d'aqui dalt: aqui la migracio **si** que ha canviat. Passa quan
+s'aplica una migracio mentre encara s'esta escrivint i despres s'edita el fitxer. La base es queda
+amb un esquema que ja no es el que descriu el repositori.
+
+**Solucio.** Recrear la base d'usar i llencar (`drop database ... with (force)`, `create database`),
+`pnpm db:migrate:verify` i `pnpm db:seed:verify`. **No reparar el checksum a ma:** deixaria una base
+que diu que te aplicada una migracio que no te, i el seguent que hi verifiqui res verificara contra
+un esquema que CI no tindra mai.
+
+### Correr el suite autenticat contra la pila de verificacio
+
+No es cap error, pero costa de reconstruir cada vegada. Amb `pnpm dev:verify` aixecat a 3002:
+
+```bash
+PLAYWRIGHT_BASE_URL="http://127.0.0.1:3002" E2E_CREDENTIALS_FILE="$PWD/.e2e/verify-credentials.json" pnpm test:e2e:authenticated
+```
+
+Les dues variables han d'anar juntes: la primera perque `APP_ORIGIN` de `.env.verify` es
+`http://127.0.0.1:3002` i han de ser la mateixa cadena, i la segona perque el fitxer de credencials
+de la pila de verificacio no es el de `.e2e/credentials.json`. Per repetir una prova concreta sense
+tornar a passar pel segon factor, `--project authenticated --no-deps` reaprofita la sessio ja
+guardada.

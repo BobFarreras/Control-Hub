@@ -20,6 +20,7 @@ const t = {
   entries: "Imputacions",
   overview: "Resum",
   entriesUnpriced: "imputacions sense valorar",
+  ratesNeeded: "Cal publicar un barem",
   projectClosed: "El projecte esta tancat i no accepta hores noves.",
   closed: "Tancat",
   totalHours: "Hores totals",
@@ -107,24 +108,36 @@ test.describe("projects", () => {
      * rather than quietly counting those hours as free: a margin of a hundred per cent is the most
      * flattering possible way to be wrong.
      *
-     * Asserted on the unpriced count, not on "no rate published at all". Once the rates suite has
-     * run, a cost rate for the only member exists in this database and applies to every project, so
-     * "nothing is priced" holds only where nobody has ever published a rate. What stays true is
-     * that this project's hours could not be given a price.
+     * Either warning satisfies it, and which one appears is not this suite's to decide. The rates
+     * suite runs in a worker of its own against the same database and publishes a cost rate for the
+     * only member, which applies to every project from its effective day onwards. Before it has
+     * done so nothing here can be priced at all and the tile says so; afterwards these hours have a
+     * cost but still no sale price, and the margin carries the count of what it could not value.
+     *
+     * What holds under both, and is the promise being tested, is that unpriced hours are reported
+     * rather than counted as free: a margin of a hundred per cent is the most flattering possible
+     * way to be wrong. Asserting only the second reading made the suite depend on which worker
+     * finished first.
      */
     const overview = page.getByRole("region", { name: t.overview });
-    await expect(overview).toContainText(t.entriesUnpriced);
+    await expect(overview).toContainText(new RegExp(`${t.entriesUnpriced}|${t.ratesNeeded}`));
   });
 
   test("refuses new hours once the project is closed", async ({ page }) => {
     const { name } = await createProject(page);
     await row(page, name).getByRole("link").click();
 
-    const status = page.getByLabel(t.statusOf, { exact: true });
-    await waitForHydration(status);
-
     // draft does not close directly; it goes through active, which is the path the domain allows.
     for (const next of ["active", "closed"]) {
+      /**
+       * Re-acquired and waited for on every pass, because the reload at the end of the previous
+       * one replaced this element. Hydrating once before the loop only covers the first change:
+       * the second lands on fresh markup with no handler attached yet, the dropdown moves and
+       * nothing is sent, and the test times out waiting for a request that was never made.
+       */
+      const status = page.getByLabel(t.statusOf, { exact: true });
+      await waitForHydration(status);
+
       const saved = page.waitForResponse(
         (response) => response.url().includes("/status") && response.request().method() === "PATCH"
       );

@@ -193,12 +193,15 @@ try {
    * now against an eight hour target is inside it under any calendar. Without that pair the
    * column could only be asserted on whichever branch the CI runner happened to land in.
    *
-   * The rest are the ones the suite mutates, one each, so a status change in one test cannot
-   * decide the outcome of another.
+   * The third carries the conversation the suite reads.
    *
-   * Status, assignee and the opening time are reset on every run. The suite changes exactly
-   * those, and a fixture that kept whatever the last run left behind would pass once and then
-   * fail against a ticket that is already in the state the test means to move it to.
+   * **Nothing seeded here is mutated by a test.** The two tests that change a status and an
+   * assignee open a ticket of their own through the dialog, because those moves are one way: a
+   * seeded row would be in the target state already on the second attempt, and Playwright retries.
+   * Resetting on every run is not enough — a retry happens inside one run, long after this seed.
+   *
+   * Status, assignee and the opening time are still reset, so a database left over from an older
+   * revision of the suite cannot decide what these rows say today.
    */
   const tickets = [
     {
@@ -221,20 +224,6 @@ try {
       priority: "high",
       status: "open",
       openedMinutesAgo: 180
-    },
-    {
-      key: "transition",
-      subject: "E2E Sol·licitud d'alta d'un usuari nou",
-      priority: "normal",
-      status: "new",
-      openedMinutesAgo: 120
-    },
-    {
-      key: "assignment",
-      subject: "E2E La còpia de seguretat setmanal no s'ha completat",
-      priority: "normal",
-      status: "open",
-      openedMinutesAgo: 300
     }
   ] as const;
 
