@@ -9,6 +9,8 @@
  * day at all, and each of those is representable.
  */
 
+import { localParts } from "./tenant-clock.js";
+
 /** `0` is Sunday, matching `Date.getUTCDay`. Local times are `HH:MM` in the tenant's zone. */
 export type SupportWindow = { weekday: number; opensAt: string; closesAt: string };
 
@@ -21,33 +23,6 @@ export type SupportCalendar = {
 
 const MINUTE = 60_000;
 const DAY_MINUTES = 24 * 60;
-
-/**
- * The tenant's wall clock for an instant, as parts.
- *
- * `Intl` is what knows that Madrid is UTC+1 in January and UTC+2 in August, so the offset is
- * read from the calendar rather than assumed. Doing this arithmetic with fixed offsets is how
- * a clock change silently gains or loses an hour.
- */
-function localParts(instant: Date, timeZone: string) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    weekday: "short"
-  });
-  const parts = Object.fromEntries(formatter.formatToParts(instant).map(({ type, value }) => [type, value]));
-  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minutesIntoDay: Number(parts.hour) * 60 + Number(parts.minute),
-    weekday: weekdays.indexOf(parts.weekday ?? "")
-  };
-}
 
 /** Local `HH:MM` as minutes from midnight, so windows can be compared as plain numbers. */
 function toMinutes(time: string): number {

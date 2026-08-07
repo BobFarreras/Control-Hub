@@ -13,6 +13,16 @@ export const featureFlags = {
     description: "Projects, time entries, hourly rates and profitability (Phase 5B).",
     owner: "owner",
     retireOn: "2026-12-31"
+  },
+  /**
+   * Off until the accountancy confirms the shape of the record is acceptable, which is a
+   * conversation and not a deployment. The code ships regardless: this is the case the registry
+   * was built for, per `docs/specifications/attendance.md`.
+   */
+  attendance: {
+    description: "Working time records, corrections and reconciliation against logged hours (Phase 5C).",
+    owner: "owner",
+    retireOn: "2027-06-30"
   }
 } as const;
 

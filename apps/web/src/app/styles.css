@@ -1,59 +1,59 @@
 :root {
   color-scheme: light;
-  --canvas: #f7f9fb;
-  --surface: #fff;
-  --surface-subtle: #f1f3f5;
-  --surface-raised: #e8ebee;
-  --text: #191c1e;
-  --muted: #625d6a;
-  --border: #d8d4df;
-  --brand: #6b38d4;
-  --brand-contrast: #fff;
-  --accent: #00687a;
-  --success: #087a55;
-  --warning: #9a5b00;
-  --danger: #ba1a1a;
-  --info: #00687a;
+  --canvas: #f5f2ee;
+  --surface: #fffdf9;
+  --surface-subtle: #f0ece6;
+  --surface-raised: #e8e3db;
+  --text: #2c2824;
+  --muted: #7a7067;
+  --border: #d6cfc5;
+  --brand: #8b5e3c;
+  --brand-contrast: #fffdf9;
+  --accent: #5a7a6b;
+  --success: #4a7c5c;
+  --warning: #b8860b;
+  --danger: #a84032;
+  --info: #5a7a6b;
   /* Tinted surfaces for status chips and notices. Derived from the semantic colour rather than
      picked by eye, so a token change carries through instead of leaving a stale pastel behind. */
   --success-subtle: color-mix(in srgb, var(--success) 12%, var(--surface));
   --warning-subtle: color-mix(in srgb, var(--warning) 12%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 12%, var(--surface));
-  --shadow: 0 10px 30px rgb(20 24 31 / 7%);
-  --pipeline-new: #52606d;
-  --pipeline-contacted: #00687a;
-  --pipeline-qualified: #725c00;
-  --pipeline-proposal: #6b38d4;
-  --pipeline-won: #087a55;
+  --shadow: 0 10px 30px rgb(44 40 36 / 7%);
+  --pipeline-new: #7a7067;
+  --pipeline-contacted: #5a7a6b;
+  --pipeline-qualified: #b8860b;
+  --pipeline-proposal: #8b5e3c;
+  --pipeline-won: #4a7c5c;
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #0b0e14;
-  --surface: #10131a;
-  --surface-subtle: #191c22;
-  --surface-raised: #22262e;
-  --text: #e1e2eb;
-  --muted: #aebbc0;
-  --border: #354349;
-  --brand: #00daf8;
-  --brand-contrast: #001f25;
-  --accent: #b7c4ff;
-  --success: #52e0b0;
-  --warning: #ffbd66;
-  --danger: #ffb4ab;
-  --info: #7bdff2;
+  --canvas: #1a1a1e;
+  --surface: #222226;
+  --surface-subtle: #2a2a2e;
+  --surface-raised: #333338;
+  --text: #e8e4df;
+  --muted: #9a9590;
+  --border: #3a3a3f;
+  --brand: #c96442;
+  --brand-contrast: #fdf5f2;
+  --accent: #d4a88c;
+  --success: #6b9e78;
+  --warning: #d4a04a;
+  --danger: #c47070;
+  --info: #8a9eaf;
   /* A heavier mix in dark: 12% of a light accent over a near-black surface is invisible. */
   --success-subtle: color-mix(in srgb, var(--success) 18%, var(--surface));
   --warning-subtle: color-mix(in srgb, var(--warning) 18%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 18%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 18%, var(--surface));
   --shadow: none;
-  --pipeline-new: #aebbc0;
-  --pipeline-contacted: #5cdef3;
-  --pipeline-qualified: #e5c457;
-  --pipeline-proposal: #cbb8ff;
-  --pipeline-won: #52e0b0;
+  --pipeline-new: #9a9590;
+  --pipeline-contacted: #8a9eaf;
+  --pipeline-qualified: #d4a04a;
+  --pipeline-proposal: #c96442;
+  --pipeline-won: #6b9e78;
 }
 * {
   box-sizing: border-box;
@@ -2915,6 +2915,100 @@ main {
   max-width: 88ch;
 }
 
+/* Toast notifications
+   Fixed at the top of the viewport, just below the topbar (64px + 8px gutter). Auto-dismiss after 5s,
+   manually dismissible. Uses the same semantic tokens as notices so the visual language is consistent. */
+.toast-container {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  width: min(480px, calc(100vw - 48px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+  pointer-events: auto;
+  animation: toast-in 160ms ease-out;
+}
+.toast svg {
+  flex: none;
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+}
+.toast-dismiss {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toast-dismiss:hover {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.toast-success {
+  border-color: var(--success);
+  background: var(--success-subtle);
+}
+.toast-success svg {
+  color: var(--success);
+}
+.toast-error {
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+}
+.toast-error svg {
+  color: var(--danger);
+}
+.toast-warning {
+  border-color: var(--warning);
+  background: var(--warning-subtle);
+}
+.toast-warning svg {
+  color: var(--warning);
+}
+.toast-info {
+  border-color: var(--border);
+  background: var(--surface-subtle);
+}
+.toast-info svg {
+  color: var(--accent);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Rates
    One row per rate, and the published rows read as a log because that is what they are: nothing is
    edited, a new row supersedes an older one. */
@@ -3341,4 +3435,142 @@ main {
   .toggle-field input[type="checkbox"]::after {
     transition: none;
   }
+}
+
+/* ------------------------------------------------------------------ working time record */
+
+/*
+  The clock control in the topbar. The state is carried by the word beside the dot, never by the
+  dot alone: the colour is a second, faster signal for the people it works for, and useless to
+  everybody else.
+*/
+.clock-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.clock-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.clock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.clock-control[data-state="in"] .clock-dot {
+  background: var(--success);
+}
+.clock-control[data-state="paused"] .clock-dot {
+  background: var(--warning);
+}
+.clock-control[data-state="in"] .clock-state {
+  color: var(--success);
+}
+.clock-control[data-state="paused"] .clock-state {
+  color: var(--warning);
+}
+.clock-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clock-action.secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+.clock-action:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.clock-action:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* On a narrow screen the word goes and the button stays: clocking in matters, reading the state
+   twice does not, and the button already says which way it goes. */
+@media (max-width: 720px) {
+  .clock-state {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/*
+  A retired or declared entry is marked with a word, not with styling alone. The dimming is a
+  second signal for whoever it helps; the word is what survives a printout, and a printout is
+  what an inspection reads.
+*/
+.attendance-mark {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.attendance-retired td {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.attendance-retired .attendance-mark {
+  text-decoration: none;
+}
+
+.month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.month-current {
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 9ch;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.project-panel > .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.project-panel > .panel-head h3 {
+  margin: 0;
+}
+
+.attendance-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }

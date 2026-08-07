@@ -1,4 +1,6 @@
 import {
+  AttendanceError,
+  AttendanceService,
   CommerceError,
   CommerceService,
   CompanySubscriptionError,
@@ -15,6 +17,7 @@ import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
+  PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
   PostgresCrmRepository,
@@ -32,6 +35,7 @@ import Redis from "ioredis";
 import type { ControlHubAuth } from "./auth.js";
 import type { MailSender } from "./email.js";
 import { rateLimitKey } from "./rate-limit.js";
+import { registerAttendanceRoutes } from "./routes/attendance.js";
 import { registerAuthProxyRoutes } from "./routes/auth-proxy.js";
 import { registerCommerceRoutes } from "./routes/commerce.js";
 import { registerCompanySubscriptionRoutes } from "./routes/company-subscriptions.js";
@@ -73,6 +77,7 @@ export function buildApp(options: BuildAppOptions) {
   const companySubscriptions = new CompanySubscriptionService(new PostgresCompanySubscriptionRepository(database));
   const support = new SupportService(new PostgresSupportRepository(database));
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
+  const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => app.log.warn({ err: error }, "queue connection unavailable"));
@@ -170,6 +175,25 @@ export function buildApp(options: BuildAppOptions) {
               : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof AttendanceError) {
+      /**
+       * `PUNCH_NOT_ALLOWED` is a conflict and not a bad request: nothing about the request is
+       * malformed, it is the record that is not in a state where it can follow. A person who
+       * clocked in on another device gets an answer they can act on rather than a validation
+       * error about a field they never filled in.
+       */
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code === "PERMISSION_DENIED"
+          ? 403
+          : error.code === "PUNCH_NOT_ALLOWED" ||
+              error.code === "ALREADY_CORRECTED" ||
+              error.code === "RECORD_IMMUTABLE" ||
+              error.code.startsWith("DUPLICATE")
+            ? 409
+            : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     if (error instanceof CompanySubscriptionError) {
       const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -201,6 +225,9 @@ export function buildApp(options: BuildAppOptions) {
       // routes are never declared and the API answers 404, which is the truth: there is
       // nothing there. A flag decides what is deployed, never who may use it.
       if (isFeatureEnabled(featureFlags, "projects_and_time")) registerProjectRoutes({ ...context, projects });
+      // Off until the accountancy confirms the shape of the record is acceptable, which is a
+      // conversation and not a deployment. See `docs/specifications/attendance.md`.
+      if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
     }
 
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });

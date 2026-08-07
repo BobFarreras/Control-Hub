@@ -209,6 +209,39 @@ describe("feature flags", () => {
     expect(app.hasRoute({ method: "GET", url: "/api/v1/support/tickets" })).toBe(true);
     expect(app.hasRoute({ method: "GET", url: "/api/v1/crm/leads" })).toBe(true);
   });
+
+  const attendanceRoutes = [
+    ["POST", "/api/v1/attendance/events"],
+    ["GET", "/api/v1/attendance/me"],
+    ["POST", "/api/v1/attendance/corrections"],
+    ["GET", "/api/v1/attendance/summary"],
+    ["GET", "/api/v1/attendance"],
+    ["GET", "/api/v1/attendance/reconciliation"]
+  ] as const;
+
+  /**
+   * The flag this registry was built for: the schema and the code ship while the accountancy is
+   * still being asked whether the record is acceptable. Off means the routes do not exist, which
+   * is the truth, rather than existing and refusing everybody.
+   */
+  it("does not declare the attendance surface while its flag is off", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["projects_and_time"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(attendanceRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    expect((await app.inject({ method: "GET", url: "/api/v1/attendance/me" })).statusCode).toBe(404);
+  });
+
+  it("declares it once the flag is on", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["attendance"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(attendanceRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+    // And the two flags are independent: one on does not drag the other in.
+    expect(app.hasRoute({ method: "GET", url: "/api/v1/projects" })).toBe(false);
+  });
 });
 
 describe("metrics", () => {

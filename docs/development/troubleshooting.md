@@ -293,6 +293,33 @@ done
 Sobre aquest repositori, la primera llista te 71 fitxers i la segona n'hauria de tenir zero. Aixo va
 costar un CI en vermell despres d'haver dit que estava en verd.
 
+### Totes les pagines responen 500 amb `ECONNREFUSED` i sembla que el codi estigui trencat
+
+**Simptoma.** El web arrenca perfectament (`Ready in 1.4s`), i despres cada pagina peta amb
+`API_UNREACHABLE` i un `ECONNREFUSED 127.0.0.1:4000` al mig d'un stack trace de `requireSession`.
+
+**Causa.** Gairebé sempre, **Docker Desktop no s'esta executant**, aixi que no hi ha ni PostgreSQL
+ni Valkey. L'API arrenca igualment -- `/health/live` respon 200 -- pero no pot fer res. La pista
+bona no es a la consola del web sino aqui:
+
+```bash
+curl -s http://127.0.0.1:4000/health/ready
+```
+
+Amb `{"status":"not_ready", ... "postgres":{"status":"down"}}` ja no cal buscar res mes al codi.
+
+Un segon `ECONNREFUSED` al 4000 pot ser una altra cosa i no s'ha de confondre: si apareix nomes
+durant els primers segons, es que el web ha demanat la sessio abans que l'API acabes d'arrencar, i
+desapareix sol.
+
+**Solucio.** Obrir Docker Desktop, esperar que digui que esta en marxa, i `pnpm infra:up`. O
+directament `pnpm dev:all`, que aixeca la infraestructura, migra i despres arrenca.
+
+**Ja no hauria de tornar a passar sense avis:** `pnpm dev` executa abans `scripts/check-infra.mjs`,
+que comprova que Docker respon i que els contenidors hi son, i si no s'atura amb un missatge que
+diu que fer. Nomes informa; no engega res sol, perque un script que arregla coses en silenci es un
+script que amaga que les ha arreglat.
+
 ### Next.js peta amb `range start index ... out of range for slice`
 
 **Causa.** La cache persistent de Turbopack s'ha corromput. No te res a veure amb el codi.

@@ -82,14 +82,49 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
 9. El producte no assumeix cap jornada legal, cap limit d'hores ni cap regim de descansos: son
    coses que canvien per pais i per conveni. El modul registra i suma; no jutja.
 
+### Decisions afegides el 7 d'agost de 2026
+
+10. **Les pauses son opcionals per instal·lacio, i venen apagades.** L'article 34.9 obliga a
+    registrar inici i fi de jornada; el que passa entremig depen del conveni, i moltes empreses
+    fan torn seguit sense descomptar l'esmorzar ni el dinar. Amb les pauses apagades el boto
+    nomes fa entrar i sortir, i la pausa que algu es deixa oberta no pot ni existir. Qui les
+    necessiti les activa.
+
+    Apagar-les **no altera el passat**: els events de pausa ja escrits continuen comptant igual,
+    perque el registre es append-only i un canvi de configuracio no pot moure hores ja
+    registrades. La configuracio decideix nomes que es pot escriure a partir d'ara.
+
+11. **Cada persona corregeix el seu propi registre, amb motiu obligatori.** Substitueix
+    l'assignacio anterior, que reservava tota correccio a `attendance:manage`.
+
+    El cas que ho decideix es real i frequent: entrada a les 08:00, pausa a les 12:00 per anar
+    al metge, torna a les 13:00 i no ho marca. A les 16:00 el registre diu quatre hores de
+    pausa i quatre de feina, quan n'ha treballat set. Amb la regla anterior aquell dia queda
+    malament fins que un administrador el mira, i es el registre de la persona -- el document
+    que la llei li reconeix -- el que en surt perjudicat.
+
+    La correccio no afluixa cap garantia: continua sent append-only, l'original es queda
+    consultable, exigeix motiu, i queda auditada amb qui la va fer i quan. El que es defensa
+    davant d'una inspeccio no es que ningu hagi corregit mai res, sino que tota correccio es
+    visible i que **la versio anterior no ha desaparegut**. `attendance:manage` continua podent
+    corregir el de tothom.
+
+12. **Fitxar sortida estant en pausa es rebutja, i la pantalla pregunta en comptes de suposar.**
+    Tancar la pausa implicitament a la sortida deixaria un registre amb una pausa que no acaba
+    enlloc i un total que nomes s'explica llegint el codi. Davant d'una pausa oberta la pantalla
+    demana **quan es va tornar** i escriu la correccio corresponent; el que no fa mai es desar
+    en silenci un numero que ja sap que probablement es fals. El mateix criteri val per a una
+    sessio que ningu ha tancat: surt com a oberta, mai com a zero.
+
 ## Fluxos
 
 **Fitxar.** Un boto a l'aplicacio, amb sessio iniciada, escriu un event amb l'hora del
 servidor. L'estat actual (dins, fora, en pausa) es dedueix de l'ultim event de la persona.
 
-**Corregir.** Qui te el permis escriu un event de correccio que apunta a l'original, amb el
-motiu. L'original no desapareix; els totals passen a comptar el valor corregit i l'historial
-mostra les dues coses.
+**Corregir.** S'escriu un event de correccio que apunta a l'original, amb el motiu. L'original
+no desapareix; els totals passen a comptar el valor corregit i l'historial mostra les dues coses,
+amb qui va fer la correccio i quan. Cadascu pot corregir el seu registre; `attendance:manage`
+pot corregir el de qualsevol.
 
 **Consultar el mes.** Cada persona veu els seus dies, el total i les correccions. Amb permis
 de gestio, es veu el de tothom.
@@ -107,8 +142,14 @@ pot donar aquest modul: es el cost real d'estructura.
 - Una persona no pot consultar el registre d'una altra.
 - Cap event de fitxatge es pot modificar ni esborrar; una correccio en crea un de nou.
 - Una correccio conserva l'original consultable i en registra autor i motiu.
-- L'hora la fixa el servidor: enviar una hora des del client no la canvia.
+- Una correccio sense motiu es rebutjada.
+- Una persona pot corregir el seu registre i **no** el d'una altra sense `attendance:manage`.
+- L'hora la fixa el servidor: enviar una hora des del client no la canvia. L'unica manera
+  d'escriure una hora passada es una correccio, i llavors consta que ho es.
 - Una sortida sense entrada previa es rebutjada.
+- Una sortida estant en pausa es rebutjada; primer es tanca la pausa.
+- Amb les pauses apagades, un event de pausa nou es rebutjat, pero els que ja hi ha continuen
+  comptant igual als totals.
 - Un fitxatge amb hora futura es rebutjat.
 - Una sessio que comenca a les 23:00 i acaba a les 01:00 compta dues hores el dia d'inici.
 - L'informe de conciliacio no confon hores registrades amb hores imputades.
@@ -122,8 +163,11 @@ pot donar aquest modul: es el cost real d'estructura.
 | `attendance:record` | X | X | X |
 | `attendance:manage` | X | X |  |
 
-- `attendance:record` permet fitxar i llegir **el propi** registre. La lectura propia no depen
-  de cap permis addicional a proposit.
+- `attendance:record` permet fitxar, llegir **el propi** registre i **corregir-lo**. Ni la
+  lectura ni la correccio del propi registre depenen de cap permis addicional, a proposit: son
+  el document que la llei reconeix a la persona, i fer-los dependre de la disponibilitat d'algu
+  altre perjudica precisament qui la norma protegeix. Tota correccio exigeix motiu, conserva
+  l'original i queda auditada.
 - `attendance:manage` permet llegir el registre de tothom, corregir-lo i exportar-lo. Fins i
   tot amb aquest permis, corregir es append-only i auditat.
 - La conciliacio contra hores imputades exigeix a mes `financials:read`, perque revela cost.
@@ -149,6 +193,8 @@ Restriccions a la base de dades:
 - Index per `(tenant_id, membership_id, occurred_at)` per als informes mensuals.
 - El termini de retencio viu a `tenant_settings` i es documenta a `data-governance.md`;
   l'esborrat abans d'aquest termini queda bloquejat.
+- **Si les pauses es registren** viu al mateix lloc, apagat per defecte. Es configuracio de
+  l'installacio, no una columna del log: canviar-la no pot moure cap hora ja registrada.
 
 ## Calcul
 
@@ -172,12 +218,16 @@ POST   /api/v1/attendance/events          (clock_in, clock_out, pause_start, pau
 GET    /api/v1/attendance/me
 GET    /api/v1/attendance/summary
 GET    /api/v1/attendance                 (attendance:manage)
-POST   /api/v1/attendance/corrections     (attendance:manage)
+POST   /api/v1/attendance/corrections     (el propi; el d'altri, attendance:manage)
 GET    /api/v1/attendance/export          (attendance:manage)
 GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
 ```
 
 - El cos de `POST /events` no accepta hora: nomes el tipus. L'hora la posa el servidor.
+- `POST /corrections` **si** accepta hora, perque una correccio serveix precisament per dir que
+  una cosa va passar abans. Exigeix motiu, apunta a l'event que substitueix, i queda registrat
+  que es va escriure mes tard: `occurred_at` es el que es declara i `recorded_at` el del
+  servidor. Corregir el registre d'una altra persona demana `attendance:manage`.
 - Fitxar es naturalment repetible per error de xarxa. Accepta `clientReference` opcional, unic
   per membership, perque un reintent no generi dues entrades.
 - Els codis d'error segueixen `errors-and-api.md`.

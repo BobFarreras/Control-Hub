@@ -301,3 +301,44 @@ export type RenewalAlertsResponse = { alerts: RenewalAlert[] };
 export type ImportResultsResponse = { results: ImportResult[] };
 export type ProfitabilityResponse = { profitability: Profitability };
 export type ErrorResponse = { code?: string; error?: { code?: string } };
+
+/** The working time record, as `/api/v1/attendance/summary` returns it. */
+export type AttendanceEvent = {
+  id: string;
+  membershipId: string;
+  kind: "clock_in" | "clock_out" | "pause_start" | "pause_end";
+  occurredAt: string;
+  recordedAt: string;
+  recordedByMembershipId: string;
+  source: "web" | "api";
+  correctsEventId: string | null;
+  reason: string | null;
+};
+export type AttendanceDay = { day: string; workedMinutes: number; hasOpenSession: boolean };
+export type AttendanceSession = {
+  startedAt: string;
+  endedAt: string | null;
+  day: string;
+  pausedMinutes: number;
+  workedMinutes: number | null;
+};
+export type AttendanceMonth = {
+  membershipId: string;
+  days: AttendanceDay[];
+  sessions: AttendanceSession[];
+  totalMinutes: number;
+  events: AttendanceEvent[];
+};
+
+export type AttendanceTeamRow = {
+  membershipId: string;
+  memberName: string;
+  days: AttendanceDay[];
+  sessions: AttendanceSession[];
+  totalMinutes: number;
+  declaredEntries: number;
+  /** Present only on the reconciliation, which needs `financials:read` as well. */
+  loggedMinutes?: number;
+  unbilledMinutes?: number;
+};
+export type AttendanceTeamResponse = { members: AttendanceTeamRow[] };
