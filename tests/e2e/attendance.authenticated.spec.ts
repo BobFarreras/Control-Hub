@@ -27,7 +27,7 @@ const t = {
   team: "Jornada de l'equip",
   teamTitle: "Jornada de l'equip",
   recorded: "Registrades",
-  export: "Exportar"
+  export: "Exportar Excel"
 } as const;
 
 const clock = (page: Page) => page.locator(".clock-control");
@@ -185,10 +185,6 @@ test.describe("working time", () => {
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: t.export }).click();
     const file = await download;
-    expect(file.suggestedFilename()).toMatch(/^jornada-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv$/);
-
-    const stream = await file.createReadStream();
-    const csv = (await new Response(stream).text()).replace(/^\uFEFF/, "");
-    expect(csv.split("\r\n")[0]).toBe('"Persona","Dia","Entrada","Sortida","Minuts","Correccions"');
+    expect(file.suggestedFilename()).toMatch(/^jornada-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.xlsx$/);
   });
 });

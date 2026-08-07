@@ -1,20 +1,22 @@
 "use client";
 
 import { Clock, Download, Receipt, TrendingUp, Users } from "lucide-react";
+import ExcelJS from "exceljs";
 import { MetricTile } from "@/components/metric-tile";
 import type { AttendanceTeamRow } from "@/lib/api-types";
 import { formatHours } from "@/lib/format";
 
 type Labels = Record<string, string>;
 
-/** Doubled quotes and wrapped: the whole of CSV escaping, and the whole of what a name needs. */
-function csvCell(value: string | number): string {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
 /** `HH:MM` in the reader's own zone, which is the one the times were counted in. */
 function clock(value: string | null, locale: string): string {
   return value ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "";
+}
+
+/** Abbreviated weekday name from an ISO date string. */
+function weekday(isoDate: string, locale: string): string {
+  const date = new Date(isoDate + "T12:00:00");
+  return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
 }
 
 /**
@@ -42,45 +44,107 @@ export function AttendanceTeam({
   const logged = rows.reduce((total, row) => total + (row.loggedMinutes ?? 0), 0);
   const corrections = rows.reduce((total, row) => total + row.declaredEntries, 0);
 
-  /**
-   * One row per person and day, with the time in and the time out, which is what the
-   * specification asks the export to be. A column of monthly totals is not a record anybody can
-   * check: it is the conclusion with the evidence left out.
-   *
-   * Built from what is already on screen rather than from a second endpoint, so what lands in the
-   * spreadsheet is exactly what the person who sent it was looking at.
-   */
-  function download() {
-    const header = [t.person!, t.day!, t.entry!, t.exit!, t.minutes!, t.declaredEntries!];
-    const lines = [header.map(csvCell).join(",")];
+  async function download() {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(t.exportName);
+
+    // Column definitions with widths
+    sheet.columns = [
+      { header: t.person!, key: "person", width: 20 },
+      { header: t.day!, key: "day", width: 14 },
+      { header: t.exportWeekday!, key: "weekday", width: 8 },
+      { header: t.entry!, key: "entry", width: 10 },
+      { header: t.exit!, key: "exit", width: 10 },
+      { header: t.exportDuration!, key: "duration", width: 12 },
+      { header: t.declaredEntries!, key: "corrections", width: 14 }
+    ];
+
+    // Style header row
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF6B38D4" }
+    };
+    headerRow.alignment = { horizontal: "center" };
+    headerRow.border = {
+      bottom: { style: "thin", color: { argb: "FF000000" } }
+    };
+
+    let rowIndex = 2;
 
     for (const row of rows) {
       for (const session of row.sessions) {
-        lines.push(
-          [
-            csvCell(row.memberName),
-            csvCell(session.day),
-            csvCell(clock(session.startedAt, locale)),
-            csvCell(clock(session.endedAt, locale)),
-            // Minutes as a number, not as "7 h 30 min": this column is going to be added up by a
-            // spreadsheet, and a figure it has to parse out of prose is one it will parse wrong.
-            session.workedMinutes ?? "",
-            row.declaredEntries
-          ].join(",")
-        );
+        const hours = session.workedMinutes != null ? session.workedMinutes / 60 : null;
+        sheet.addRow({
+          person: row.memberName,
+          day: session.day,
+          weekday: weekday(session.day, locale),
+          entry: clock(session.startedAt, locale),
+          exit: clock(session.endedAt, locale),
+          duration: hours,
+          corrections: row.declaredEntries
+        });
+
+        // Format the duration cell as number with 2 decimals
+        const dataRow = sheet.getRow(rowIndex);
+        dataRow.getCell("duration").numFmt = "0.00";
+        dataRow.alignment = { horizontal: "center" };
+        dataRow.getCell("weekday").alignment = { horizontal: "center" };
+        dataRow.getCell("corrections").alignment = { horizontal: "center" };
+
+        // Alternate row colors
+        if (rowIndex % 2 === 0) {
+          dataRow.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFF5F2EE" }
+          };
+        }
+
+        rowIndex++;
       }
-      // Somebody with nothing recorded still gets a line, so an absence reads as an absence
-      // rather than as a person the export forgot.
-      if (row.sessions.length === 0) lines.push([csvCell(row.memberName), "", "", "", 0, 0].join(","));
+
+      // Summary row per person
+      if (row.sessions.length > 0) {
+        const totalHours = row.totalMinutes / 60;
+        const summaryRow = sheet.addRow({
+          person: row.memberName,
+          day: "",
+          weekday: "",
+          entry: "",
+          exit: t.exportTotal!,
+          duration: totalHours,
+          corrections: ""
+        });
+
+        summaryRow.font = { bold: true };
+        summaryRow.getCell("duration").numFmt = "0.00";
+        summaryRow.alignment = { horizontal: "center" };
+        summaryRow.border = {
+          top: { style: "thin", color: { argb: "FF000000" } }
+        };
+
+        rowIndex++;
+      }
     }
 
-    // A byte order mark, written as an escape rather than as an invisible character: Excel needs
-    // it to open accented names as accented names, and a reader has to see that it is there.
-    const blob = new Blob([`\uFEFF${lines.join("\r\n")}\r\n`], { type: "text/csv;charset=utf-8" });
+    // Auto-filter
+    sheet.autoFilter = {
+      from: "A1",
+      to: "G1"
+    };
+
+    // Generate buffer and download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${t.exportName}-${range.from}-${range.to}.csv`;
+    anchor.download = `${t.exportName}-${range.from}-${range.to}.xlsx`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
