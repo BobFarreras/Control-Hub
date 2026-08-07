@@ -4,49 +4,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AttendanceRecord } from "@/components/attendance-record";
+import { AttendanceTeamLink } from "@/components/attendance-team-link";
 import { PageTopbar } from "@/components/page-topbar";
 import { apiFetch, readJson } from "@/lib/api";
 import type { AttendanceMonth } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
+import { monthName, monthRange, shiftMonth } from "./month-range";
 
 const emptyMonth: AttendanceMonth = { membershipId: "", days: [], sessions: [], totalMinutes: 0, events: [] };
-
-/**
- * The first and last day of a month, as the local days the API compares against.
- *
- * Built from the parts rather than from an instant, because a month boundary turned into UTC
- * lands in the previous month for anybody east of Greenwich, and this record is counted in local
- * days from end to end.
- */
-function monthRange(value: string | undefined): { from: string; to: string; month: string } {
-  const now = new Date();
-  const matched = /^(\d{4})-(\d{2})$/.exec(value ?? "");
-  const year = matched ? Number(matched[1]) : now.getFullYear();
-  const month = matched ? Number(matched[2]) : now.getMonth() + 1;
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    from: `${year}-${pad(month)}-01`,
-    to: `${year}-${pad(month)}-${pad(lastDay)}`,
-    month: `${year}-${pad(month)}`
-  };
-}
-
-/** The month before or after this one, as `YYYY-MM`, carried across a year boundary. */
-function shiftMonth(month: string, by: number): string {
-  const [year, index] = month.split("-").map(Number);
-  const moved = new Date(Date.UTC(year!, index! - 1 + by, 1));
-  return `${moved.getUTCFullYear()}-${String(moved.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthName(month: string, locale: string): string {
-  const [year, index] = month.split("-").map(Number);
-  // Midday, so the label cannot slip into the previous month in a zone behind UTC.
-  return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(
-    new Date(Date.UTC(year!, index! - 1, 1, 12))
-  );
-}
 
 export default async function AttendancePage({
   params,
@@ -105,6 +71,8 @@ export default async function AttendancePage({
                 {labels.monthNext}
                 <ChevronRight size={16} aria-hidden="true" />
               </Link>
+              {/* Absent for anybody who may not read another person's record. */}
+              <AttendanceTeamLink href={`/${locale}/attendance/team?month=${range.month}`} label={labels.team} />
             </nav>
           }
         />

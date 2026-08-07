@@ -61,7 +61,10 @@ export function ClockButton() {
 
     // The state comes back with the entry, so the screen never keeps its own copy of the rules
     // about what may be pressed next. Two versions of that would drift.
-    if (payload?.state) setStatus({ state: payload.state, policy: payload.policy ?? status!.policy });
+    // `canManage` is about the person and cannot change by clocking in, so it is carried over
+    // rather than re-read: only the state and the policy come back with the entry.
+    if (payload?.state)
+      setStatus({ state: payload.state, policy: payload.policy ?? status!.policy, canManage: status!.canManage });
     toast("success", t.saved);
     // So a record open on another tab, or the month below, sees the new entry.
     router.refresh();

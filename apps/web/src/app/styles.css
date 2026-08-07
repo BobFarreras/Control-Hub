@@ -3556,3 +3556,13 @@ main {
   text-align: center;
   text-transform: capitalize;
 }
+
+.project-panel > .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.project-panel > .panel-head h3 {
+  margin: 0;
+}

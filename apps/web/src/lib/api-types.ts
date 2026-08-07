@@ -329,3 +329,14 @@ export type AttendanceMonth = {
   totalMinutes: number;
   events: AttendanceEvent[];
 };
+
+export type AttendanceTeamRow = {
+  membershipId: string;
+  memberName: string;
+  days: AttendanceDay[];
+  totalMinutes: number;
+  /** Present only on the reconciliation, which needs `financials:read` as well. */
+  loggedMinutes?: number;
+  unbilledMinutes?: number;
+};
+export type AttendanceTeamResponse = { members: AttendanceTeamRow[] };

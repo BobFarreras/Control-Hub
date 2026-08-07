@@ -174,12 +174,24 @@ export class AttendanceService {
     });
   }
 
-  /** Where a person is right now, which is what the button in the header renders. */
-  async currentState(context: TenantContext): Promise<{ state: AttendanceState; policy: AttendancePolicy }> {
+  /**
+   * Where a person is right now, which is what the button in the header renders.
+   *
+   * It also answers whether this person manages the record, because the screens need to know
+   * whether to offer the team view and this is the one call every page already makes. Asking a
+   * second endpoint just to find out would be a request per navigation for a boolean.
+   */
+  async currentState(
+    context: TenantContext
+  ): Promise<{ state: AttendanceState; policy: AttendancePolicy; canManage: boolean }> {
     if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
     const policy = await this.repository.policy(context);
     const state = await this.stateOfMember(context, context.membershipId, policy.timeZone);
-    return { state, policy: { pausesEnabled: policy.pausesEnabled } };
+    return {
+      state,
+      policy: { pausesEnabled: policy.pausesEnabled },
+      canManage: hasPermission(context, "attendance:manage")
+    };
   }
 
   /**

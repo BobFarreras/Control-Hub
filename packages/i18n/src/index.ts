@@ -1773,6 +1773,20 @@ const attendanceDictionaries = {
     failed: "No s'ha pogut desar. Torna-ho a provar.",
     notAllowed: "Aquest moviment no encaixa amb el teu estat actual. Recarrega la pagina.",
     help: "Com funciona",
+    team: "Jornada de l'equip",
+    teamTitle: "Jornada de l'equip",
+    teamDescription: "Hores registrades per persona, per lliurar a la gestoria o atendre un requeriment.",
+    person: "Persona",
+    exportCsv: "Exportar",
+    exportName: "jornada",
+    reconciliation: "Conciliacio",
+    recorded: "Registrades",
+    logged: "Imputades",
+    unbilled: "No imputables",
+    unbilledHelp:
+      "Hores registrades menys hores imputades a projectes i tickets del mateix periode. Es el temps d'estructura: reunions internes, administracio, formacio i comercial. Negatiu vol dir que s'han imputat mes hores de les fitxades, i llavors un dels dos registres esta malament.",
+    backToOwn: "El meu registre",
+    noReconciliation: "Cal financials:read per veure la conciliacio.",
     helpBody:
       "L'hora la posa el servidor, no el teu navegador. Un fitxatge no es pot esborrar ni editar: si t'equivoques, s'escriu una correccio que diu que va passar de debo, amb el motiu, i les dues versions es queden. Pots consultar i corregir el teu registre sempre."
   },
@@ -1820,6 +1834,20 @@ const attendanceDictionaries = {
     failed: "No se ha podido guardar. Vuelve a intentarlo.",
     notAllowed: "Este movimiento no encaja con tu estado actual. Recarga la pagina.",
     help: "Como funciona",
+    team: "Jornada del equipo",
+    teamTitle: "Jornada del equipo",
+    teamDescription: "Horas registradas por persona, para entregar a la gestoria o atender un requerimiento.",
+    person: "Persona",
+    exportCsv: "Exportar",
+    exportName: "jornada",
+    reconciliation: "Conciliacion",
+    recorded: "Registradas",
+    logged: "Imputadas",
+    unbilled: "No imputables",
+    unbilledHelp:
+      "Horas registradas menos horas imputadas a proyectos y tickets del mismo periodo. Es el tiempo de estructura: reuniones internas, administracion, formacion y comercial. Negativo significa que se han imputado mas horas de las fichadas, y entonces uno de los dos registros esta mal.",
+    backToOwn: "Mi registro",
+    noReconciliation: "Hace falta financials:read para ver la conciliacion.",
     helpBody:
       "La hora la pone el servidor, no tu navegador. Un fichaje no se puede borrar ni editar: si te equivocas, se escribe una correccion que dice que ocurrio de verdad, con el motivo, y las dos versiones se quedan. Puedes consultar y corregir tu registro siempre."
   },
@@ -1866,6 +1894,20 @@ const attendanceDictionaries = {
     failed: "Could not save. Try again.",
     notAllowed: "That entry does not fit your current state. Reload the page.",
     help: "How this works",
+    team: "Team working time",
+    teamTitle: "Team working time",
+    teamDescription: "Hours recorded per person, to hand to the accountancy or answer a request.",
+    person: "Person",
+    exportCsv: "Export",
+    exportName: "working-time",
+    reconciliation: "Reconciliation",
+    recorded: "Recorded",
+    logged: "Logged",
+    unbilled: "Unbilled",
+    unbilledHelp:
+      "Hours recorded minus hours logged to projects and tickets over the same period. It is structural time: internal meetings, administration, training and selling. Negative means more was logged than worked, and then one of the two records is wrong.",
+    backToOwn: "My record",
+    noReconciliation: "financials:read is needed to see the reconciliation.",
     helpBody:
       "The time comes from the server, not from your browser. An entry cannot be deleted or edited: if you get one wrong, a correction is written saying what really happened, with the reason, and both versions stay. You can always read and correct your own record."
   }

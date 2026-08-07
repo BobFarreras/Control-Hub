@@ -3,7 +3,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export type AttendanceState = "out" | "in" | "paused";
-export type AttendanceStatus = { state: AttendanceState; policy: { pausesEnabled: boolean } };
+export type AttendanceStatus = {
+  state: AttendanceState;
+  policy: { pausesEnabled: boolean };
+  /** Whether this person may read anybody else's record, which decides if the team view exists. */
+  canManage: boolean;
+};
 
 /**
  * Where this person stands, resolved once on the server and handed to the tree.
