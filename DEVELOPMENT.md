@@ -75,7 +75,7 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 
 | Ordre | Responsabilitat |
 |---|---|
-| `pnpm dev` | Web, API i worker en watch mode |
+| `pnpm dev` | Web, API i worker en watch mode. Comprova abans que Docker i els contenidors hi siguin, i s'atura amb un missatge accionable si no |
 | `pnpm dev:all` | Infraestructura local + `pnpm dev` |
 | `pnpm dev:verify` | Segona pila aillada a 3002/4002 per verificar sense tocar la sessio de ningu |
 | `pnpm infra:up` | PostgreSQL, cua i Mailpit |

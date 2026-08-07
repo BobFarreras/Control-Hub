@@ -7,6 +7,7 @@
     "node": ">=22.16.0"
   },
   "scripts": {
+    "predev": "node scripts/check-infra.mjs",
     "dev": "node --env-file=.env node_modules/turbo/bin/turbo dev",
     "dev:api": "node --env-file=.env scripts/run-local-command.mjs api",
     "dev:all": "pnpm infra:up && pnpm db:migrate && pnpm dev",
