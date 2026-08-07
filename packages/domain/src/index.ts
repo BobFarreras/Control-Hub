@@ -18,6 +18,8 @@ export const permissionCodes = [
   "tickets:read",
   "tickets:manage",
   "support:configure",
+  "attendance:record",
+  "attendance:manage",
   "infrastructure:read",
   "infrastructure:operate",
   "integrations:read",
@@ -50,6 +52,8 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "tickets:read",
     "tickets:manage",
     "support:configure",
+    "attendance:record",
+    "attendance:manage",
     "infrastructure:read",
     "integrations:read",
     "usage:read"
@@ -65,6 +69,9 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "time:log",
     "tickets:read",
     "tickets:manage",
+    // Fitxa i llegeix el seu registre, i no el de ningu mes: `attendance:manage` revela patrons
+    // de presencia, que son dada personal, i per aixo no acompanya els permisos operatius.
+    "attendance:record",
     "infrastructure:read",
     "infrastructure:operate",
     "integrations:read",
