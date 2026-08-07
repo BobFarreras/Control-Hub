@@ -2915,6 +2915,100 @@ main {
   max-width: 88ch;
 }
 
+/* Toast notifications
+   Fixed at the top of the viewport, just below the topbar (64px + 8px gutter). Auto-dismiss after 5s,
+   manually dismissible. Uses the same semantic tokens as notices so the visual language is consistent. */
+.toast-container {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  width: min(480px, calc(100vw - 48px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+  pointer-events: auto;
+  animation: toast-in 160ms ease-out;
+}
+.toast svg {
+  flex: none;
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+}
+.toast-dismiss {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toast-dismiss:hover {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.toast-success {
+  border-color: var(--success);
+  background: var(--success-subtle);
+}
+.toast-success svg {
+  color: var(--success);
+}
+.toast-error {
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+}
+.toast-error svg {
+  color: var(--danger);
+}
+.toast-warning {
+  border-color: var(--warning);
+  background: var(--warning-subtle);
+}
+.toast-warning svg {
+  color: var(--warning);
+}
+.toast-info {
+  border-color: var(--border);
+  background: var(--surface-subtle);
+}
+.toast-info svg {
+  color: var(--accent);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Rates
    One row per rate, and the published rows read as a log because that is what they are: nothing is
    edited, a new row supersedes an older one. */

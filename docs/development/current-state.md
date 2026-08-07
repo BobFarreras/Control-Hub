@@ -187,9 +187,6 @@ Tots dos corregits; la causa i la solucio son a `troubleshooting.md`.
 
 - Alta d'incidencies i el seu vincle amb tickets: l'esquema hi es, la UI no.
 - Pantalla de configuracio de suport (horari, festius, objectius): l'API hi es, la UI no.
-- **Pantalla de barems** (`IMPLEMENTATION_PLAN.md` la llista com a entregable de la Fase 5B):
-  l'API publica i llegeix barems de cost i de venda, pero no hi ha UI per fer-ho. Avui es
-  configuren per API.
 - L'E2E autenticat cobreix suport i projectes. CRM, productes i subscripcions no tenen encara
   proves amb sessio iniciada, tot i que la infraestructura ja hi es.
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
@@ -222,6 +219,31 @@ la forma que fa servir CI, i **en verd dues vegades seguides sense tornar a semb
 que es la propietat que abans no es tenia. Les dues branques de l'assercio del marge s'han
 executat: la base acabada de sembrar dona "Cap barem publicat" i, un cop la suite de barems hi ha
 publicat un cost, "imputacions sense valorar".
+
+### Millores a la UI de barems (branca `feature/rates-ui-improvements`)
+
+**Toast global.** S'ha creat un sistema de notificacions Toast (`toast.tsx`) que substitueix els
+errors inline de la pantalla de barems. Els missatges surten fixos a la part superior de la
+viewport, just a sota de la topbar, amb auto-dismiss als 5 segons i boto per tancar manualment.
+Suporta variants success, error, warning i info amb els tokens semantics del Design System. El
+provider esta integrat al layout arrel (`layout.tsx`).
+
+**Taula de preu de venda amb SmartDataTable.** La taula de barems de venda ha passat d'un
+component `RateTable` simple a un `BillingRatesTable` que utilitza `SmartDataTable`. Inclou:
+- Cerca per nom, import o data (`InstantSearch`)
+- Filtres per tipus d'abast (client, projecte, tipus de servei) i estat (vigent, substituit,
+  anul·lat)
+- Ordenacio per abast, import i data
+- Paginacio amb preferencies persistides per tenant i usuari
+- Les etiquetes i18n s'han afegit als diccionaris de rates (ca, es, en)
+
+**Fitxers afectats:**
+- `apps/web/src/components/toast.tsx` (nou)
+- `apps/web/src/components/billing-rates-table.tsx` (nou)
+- `apps/web/src/components/rates-workspace.tsx` (usa toast + BillingRatesTable)
+- `apps/web/src/app/layout.tsx` (ToastProvider)
+- `apps/web/src/app/styles.css` (estils toast)
+- `packages/i18n/src/index.ts` (etiquetes noves)
 
 ## El seguent increment: Fase 5C
 
@@ -264,6 +286,9 @@ L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 - `MetricHelp` explica sigles i metriques per hover i focus amb text traduit.
 - `SmartDataTable` proporciona paginacio server-side, cerca instantania, ordenacio,
   filtres i preferencies de columnes persistides per tenant i usuari.
+- `ToastProvider` ofereix notificacions efimeres (auto-dismiss 5s) per errors i confirmacions.
+  Ubicat a la part superior de la viewport, just a sota de la topbar. Utilitzar `useToast()` des
+  de qualsevol component de client.
 - CRM permet canviar visualment les etapes actives del lead; Guanyat converteix el lead
   en client i Perdut es una accio terminal separada.
 - Tota UI nova ha de seguir `DESIGN_SYSTEM.md` i reutilitzar aquestes primitives.

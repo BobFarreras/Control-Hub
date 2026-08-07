@@ -1,10 +1,12 @@
 "use client";
 
-import { AlertTriangle, Layers, Receipt, RotateCcw, Wallet, X } from "lucide-react";
+import { Layers, Receipt, RotateCcw, Wallet, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { BillingRatesTable } from "@/components/billing-rates-table";
 import { SelectField, TextField } from "@/components/form-field";
 import { HelpTip } from "@/components/help";
+import { useToast } from "@/components/toast";
 import type {
   BillingRate,
   BillingScope,
@@ -70,7 +72,7 @@ export function RatesWorkspace({
   locale: string;
 }) {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<BillingScope>("customer");
   /**
@@ -84,20 +86,12 @@ export function RatesWorkspace({
   const [codeTouched, setCodeTouched] = useState(false);
   /** The service type whose removal is being confirmed, if any. */
   const [removing, setRemoving] = useState<ServiceType | null>(null);
-  const fail = () => setError(t.formError ?? "OPERATION_FAILED");
-
-  const scopeNames: Record<BillingScope, string | undefined> = {
-    customer: t.scopeCustomer,
-    project: t.scopeProject,
-    service_type: t.scopeServiceType
-  };
+  const fail = () => toast("error", t.formError ?? "OPERATION_FAILED");
 
   const currentCost = currentIds(cost, (rate) => `${rate.membershipId}:${rate.currency}`);
-  const currentBilling = currentIds(billing, (rate) => `${rate.scope}:${rate.scopeId}:${rate.currency}`);
 
   async function publish(path: string, body: unknown) {
     setBusy(true);
-    setError("");
     const response = await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -106,7 +100,7 @@ export function RatesWorkspace({
     setBusy(false);
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { code?: string } | null;
-      setError(payload?.code === "DUPLICATE_RATE" ? (t.duplicate ?? "") : (t.formError ?? ""));
+      toast("error", payload?.code === "DUPLICATE_RATE" ? (t.duplicate ?? "") : (t.formError ?? ""));
       return false;
     }
     router.refresh();
@@ -123,7 +117,7 @@ export function RatesWorkspace({
       "too-precise": t.invalidAmount,
       "not-a-number": t.invalidAmount
     };
-    setError(messages[parsed.error] ?? t.invalidAmount ?? "");
+    toast("error", messages[parsed.error] ?? t.invalidAmount ?? "");
     return null;
   }
 
@@ -161,11 +155,10 @@ export function RatesWorkspace({
   /** Withdraws a published rate. The row survives; what changes is that it stops resolving. */
   async function annul(kind: "cost" | "billing", rateId: string) {
     setBusy(true);
-    setError("");
     const response = await fetch(`/api/v1/rates/${kind}/${rateId}/annul`, { method: "POST" });
     setBusy(false);
     if (!response.ok) {
-      setError(t.annulError ?? "");
+      toast("error", t.annulError ?? "");
       return;
     }
     router.refresh();
@@ -179,7 +172,6 @@ export function RatesWorkspace({
    */
   async function removeServiceType(serviceType: ServiceType) {
     setBusy(true);
-    setError("");
     const response =
       serviceType.rateCount > 0
         ? await fetch(`/api/v1/service-types/${serviceType.id}`, {
@@ -191,7 +183,7 @@ export function RatesWorkspace({
     setBusy(false);
     setRemoving(null);
     if (!response.ok) {
-      setError(t.removeServiceError ?? "");
+      toast("error", t.removeServiceError ?? "");
       return;
     }
     router.refresh();
@@ -199,7 +191,6 @@ export function RatesWorkspace({
 
   async function reactivateServiceType(serviceType: ServiceType) {
     setBusy(true);
-    setError("");
     const response = await fetch(`/api/v1/service-types/${serviceType.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -207,7 +198,7 @@ export function RatesWorkspace({
     });
     setBusy(false);
     if (!response.ok) {
-      setError(t.removeServiceError ?? "");
+      toast("error", t.removeServiceError ?? "");
       return;
     }
     router.refresh();
@@ -218,7 +209,6 @@ export function RatesWorkspace({
     const form = event.currentTarget;
     const data = new FormData(form);
     setBusy(true);
-    setError("");
     const response = await fetch("/api/v1/service-types", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -231,7 +221,7 @@ export function RatesWorkspace({
         DUPLICATE_SERVICE_TYPE: t.duplicateService,
         INVALID_CODE: t.invalidServiceCode
       };
-      setError(messages[payload?.code ?? ""] ?? t.serviceFormError ?? "");
+      toast("error", messages[payload?.code ?? ""] ?? t.serviceFormError ?? "");
       return;
     }
     form.reset();
@@ -264,14 +254,7 @@ export function RatesWorkspace({
     <div className="project-detail">
       {loadError && (
         <p className="notice notice-danger" role="alert">
-          <AlertTriangle size={17} aria-hidden="true" />
           {t.loadError}
-        </p>
-      )}
-      {error && (
-        <p className="notice notice-danger" role="alert">
-          <AlertTriangle size={17} aria-hidden="true" />
-          {error}
         </p>
       )}
 
@@ -492,21 +475,12 @@ export function RatesWorkspace({
           </form>
         </div>
 
-        <RateTable
-          rows={billing.map((rate) => ({
-            id: rate.id,
-            who: `${scopeNames[rate.scope]} · ${rate.scopeName ?? rate.scopeId}`,
-            amount: formatMoney(rate.amountMinorPerHour, rate.currency, locale),
-            effectiveFrom: rate.effectiveFrom,
-            current: currentBilling.has(rate.id),
-            annulledBy: rate.annulledAt ? rate.annulledByName : null,
-            annulled: Boolean(rate.annulledAt)
-          }))}
-          headings={[t.scope!, t.amount!, t.effectiveFrom!]}
-          empty={t.emptyBilling!}
+        <BillingRatesTable
+          rates={billing}
           onAnnul={actionHandler((id: string) => annul("billing", id), fail)}
           busy={busy}
           labels={t}
+          locale={locale}
         />
       </section>
 
