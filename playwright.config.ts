@@ -35,7 +35,16 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL, trace: "on-first-retry" },
+  /**
+   * A stuck element fails in fifteen seconds, not in the test's whole budget.
+   *
+   * Without these, a locator that will never resolve -- a select rendered with no options, a
+   * control behind a flag that is off -- burns the full two or three minute test timeout, and
+   * then does it twice more on retry. One broken test cost nine minutes of a run and the log said
+   * only "waiting for locator". The test timeout still exists for tests that legitimately drive
+   * several screens; this caps the wait for any single action inside them.
+   */
+  use: { baseURL, trace: "on-first-retry", actionTimeout: 15_000, navigationTimeout: 30_000 },
   projects: [
     {
       name: "desktop-chromium",

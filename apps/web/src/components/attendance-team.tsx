@@ -1,7 +1,7 @@
 "use client";
 
-import { Clock, Download, Receipt, TrendingUp, Users } from "lucide-react";
 import ExcelJS from "exceljs";
+import { Clock, Download, Receipt, TrendingUp, Users } from "lucide-react";
 import { MetricTile } from "@/components/metric-tile";
 import type { AttendanceTeamRow } from "@/lib/api-types";
 import { formatHours } from "@/lib/format";
@@ -176,7 +176,12 @@ export function AttendanceTeam({
       <section className="project-panel" aria-label={t.teamTitle}>
         <header className="panel-head">
           <h3>{t.teamTitle}</h3>
-          <button className="secondary-button" onClick={download} disabled={rows.length === 0} title={t.exportHelp}>
+          <button
+            className="secondary-button"
+            onClick={() => void download()}
+            disabled={rows.length === 0}
+            title={t.exportHelp}
+          >
             <Download size={16} aria-hidden="true" />
             {t.exportCsv}
           </button>
