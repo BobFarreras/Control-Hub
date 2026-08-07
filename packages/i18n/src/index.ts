@@ -16,6 +16,7 @@ const dictionaries = {
       companySubscriptions: "Subscripcions contractades",
       projects: "Projectes",
       support: "Suport",
+      attendance: "Jornada",
       infrastructure: "Infraestructura",
       integrations: "Integracions",
       settings: "Configuracio"
@@ -157,6 +158,7 @@ const dictionaries = {
       companySubscriptions: "Suscripciones contratadas",
       projects: "Proyectos",
       support: "Soporte",
+      attendance: "Jornada",
       infrastructure: "Infraestructura",
       integrations: "Integraciones",
       settings: "Configuracion"
@@ -298,6 +300,7 @@ const dictionaries = {
       companySubscriptions: "Company subscriptions",
       projects: "Projects",
       support: "Support",
+      attendance: "Working time",
       infrastructure: "Infrastructure",
       integrations: "Integrations",
       settings: "Settings"

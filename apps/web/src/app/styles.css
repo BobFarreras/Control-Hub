@@ -3519,3 +3519,40 @@ main {
     white-space: nowrap;
   }
 }
+
+/*
+  A retired or declared entry is marked with a word, not with styling alone. The dimming is a
+  second signal for whoever it helps; the word is what survives a printout, and a printout is
+  what an inspection reads.
+*/
+.attendance-mark {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.attendance-retired td {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.attendance-retired .attendance-mark {
+  text-decoration: none;
+}
+
+.month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.month-current {
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 9ch;
+  text-align: center;
+  text-transform: capitalize;
+}

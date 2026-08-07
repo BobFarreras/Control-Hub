@@ -3,6 +3,7 @@
 import {
   Boxes,
   ChevronDown,
+  Clock,
   CloudCog,
   Command,
   FolderKanban,
@@ -28,6 +29,7 @@ type Labels = {
   companySubscriptions: string;
   projects: string;
   support: string;
+  attendance: string;
   infrastructure: string;
   integrations: string;
   settings: string;
@@ -38,6 +40,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   // Resolved on the server by the root layout: a menu entry leading to a route the API does not
   // serve is worse than no entry at all, and the sidebar cannot read the environment itself.
   const projectsEnabled = useFeature("projects_and_time");
+  const attendanceEnabled = useFeature("attendance");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false) => (
     <Link
       className={
@@ -86,6 +89,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
         </details>
         {projectsEnabled && item(`/${locale}/projects`, labels.projects, FolderKanban)}
         {item(`/${locale}/support`, labels.support, Headphones)}
+        {attendanceEnabled && item(`/${locale}/attendance`, labels.attendance, Clock)}
         {item("#", labels.infrastructure, CloudCog)}
         {item("#", labels.integrations, Boxes)}
         {item(`/${locale}/security`, labels.settings, Settings)}
