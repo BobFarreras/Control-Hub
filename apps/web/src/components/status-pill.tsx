@@ -1,12 +1,4 @@
-import {
-  Ban,
-  CircleCheck,
-  CircleDashed,
-  CircleDot,
-  PackageCheck,
-  PauseCircle,
-  type LucideIcon
-} from "lucide-react";
+import { Ban, CircleCheck, CircleDashed, CircleDot, PackageCheck, PauseCircle, type LucideIcon } from "lucide-react";
 
 /**
  * The visual tone a state carries. Never the only carrier: every pill also shows an icon and the
