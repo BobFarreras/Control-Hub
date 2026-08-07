@@ -1,59 +1,59 @@
 :root {
   color-scheme: light;
-  --canvas: #f7f9fb;
-  --surface: #fff;
-  --surface-subtle: #f1f3f5;
-  --surface-raised: #e8ebee;
-  --text: #191c1e;
-  --muted: #625d6a;
-  --border: #d8d4df;
-  --brand: #6b38d4;
-  --brand-contrast: #fff;
-  --accent: #00687a;
-  --success: #087a55;
-  --warning: #9a5b00;
-  --danger: #ba1a1a;
-  --info: #00687a;
+  --canvas: #f5f2ee;
+  --surface: #fffdf9;
+  --surface-subtle: #f0ece6;
+  --surface-raised: #e8e3db;
+  --text: #2c2824;
+  --muted: #7a7067;
+  --border: #d6cfc5;
+  --brand: #8b5e3c;
+  --brand-contrast: #fffdf9;
+  --accent: #5a7a6b;
+  --success: #4a7c5c;
+  --warning: #b8860b;
+  --danger: #a84032;
+  --info: #5a7a6b;
   /* Tinted surfaces for status chips and notices. Derived from the semantic colour rather than
      picked by eye, so a token change carries through instead of leaving a stale pastel behind. */
   --success-subtle: color-mix(in srgb, var(--success) 12%, var(--surface));
   --warning-subtle: color-mix(in srgb, var(--warning) 12%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 12%, var(--surface));
-  --shadow: 0 10px 30px rgb(20 24 31 / 7%);
-  --pipeline-new: #52606d;
-  --pipeline-contacted: #00687a;
-  --pipeline-qualified: #725c00;
-  --pipeline-proposal: #6b38d4;
-  --pipeline-won: #087a55;
+  --shadow: 0 10px 30px rgb(44 40 36 / 7%);
+  --pipeline-new: #7a7067;
+  --pipeline-contacted: #5a7a6b;
+  --pipeline-qualified: #b8860b;
+  --pipeline-proposal: #8b5e3c;
+  --pipeline-won: #4a7c5c;
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #0b0e14;
-  --surface: #10131a;
-  --surface-subtle: #191c22;
-  --surface-raised: #22262e;
-  --text: #e1e2eb;
-  --muted: #aebbc0;
-  --border: #354349;
-  --brand: #00daf8;
-  --brand-contrast: #001f25;
-  --accent: #b7c4ff;
-  --success: #52e0b0;
-  --warning: #ffbd66;
-  --danger: #ffb4ab;
-  --info: #7bdff2;
+  --canvas: #1a1a1e;
+  --surface: #222226;
+  --surface-subtle: #2a2a2e;
+  --surface-raised: #333338;
+  --text: #e8e4df;
+  --muted: #9a9590;
+  --border: #3a3a3f;
+  --brand: #c96442;
+  --brand-contrast: #fdf5f2;
+  --accent: #d4a88c;
+  --success: #6b9e78;
+  --warning: #d4a04a;
+  --danger: #c47070;
+  --info: #8a9eaf;
   /* A heavier mix in dark: 12% of a light accent over a near-black surface is invisible. */
   --success-subtle: color-mix(in srgb, var(--success) 18%, var(--surface));
   --warning-subtle: color-mix(in srgb, var(--warning) 18%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 18%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 18%, var(--surface));
   --shadow: none;
-  --pipeline-new: #aebbc0;
-  --pipeline-contacted: #5cdef3;
-  --pipeline-qualified: #e5c457;
-  --pipeline-proposal: #cbb8ff;
-  --pipeline-won: #52e0b0;
+  --pipeline-new: #9a9590;
+  --pipeline-contacted: #8a9eaf;
+  --pipeline-qualified: #d4a04a;
+  --pipeline-proposal: #c96442;
+  --pipeline-won: #6b9e78;
 }
 * {
   box-sizing: border-box;
