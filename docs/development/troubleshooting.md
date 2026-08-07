@@ -415,3 +415,22 @@ Les dues variables han d'anar juntes: la primera perque `APP_ORIGIN` de `.env.ve
 de la pila de verificacio no es el de `.e2e/credentials.json`. Per repetir una prova concreta sense
 tornar a passar pel segon factor, `--project authenticated --no-deps` reaprofita la sessio ja
 guardada.
+
+### Una prova E2E espera dos minuts un element que no pot existir
+
+**Simptoma.** A CI, `waiting for locator('.clock-control') to be visible` fins a esgotar el temps,
+tres vegades per reintent, i el log no diu res mes. En local passa.
+
+**Causa.** El modul esta darrere una flag i **la flag no hi era a CI**. Sense ella l'API no declara
+les rutes, `/api/v1/attendance/me` respon 404, el layout no rep estat i no dibuixa el control. La
+prova espera un element que no pot arribar mai.
+
+Va costar una tanda sencera perque el fitxer de CI **es va editar i el canvi no va entrar al
+commit**, i no ho vaig comprovar. Un `git add -A` no es una verificacio.
+
+**Solucio.** Dues:
+
+1. `git show <branca>:<fitxer>` despres de fer commit, quan el canvi es el que decideix si una
+   feina funciona. La copia de treball i el que hi ha a la branca no son el mateix.
+2. Les proves d'un modul darrere una flag comproven **primer** que la ruta hi es, i fallen amb el
+   nom de la variable que falta. Un minut de diagnosi en comptes de sis d'espera.
