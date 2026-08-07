@@ -276,14 +276,43 @@ Implementat i committat:
 Verificat: **89 proves de domini, 82 d'aplicacio, 31 d'API, 11 d'integracio de l'esquema, 11 de
 l'adaptador i 4 E2E autenticades noves**, aquestes ultimes executades contra la pila de verificacio.
 
-### Que falta per tancar la fase
+### Que falta per tancar la fase, i el que ho bloqueja
 
-- **Tres proves E2E de projectes i barems fallen** a la base de verificacio local, que porta un dia
-  d'execucions acumulades (el panell de tipus de servei ja en llista cinc de passades anteriors).
-  Cal decidir si es acumulacio o una regressio del boto nou a la capcalera; CI, que sempre sembra
-  de zero, ho dira.
-- La revisio del propietari.
-- Confirmacio de la gestoria abans d'encendre la flag en produccio.
+**CI esta en vermell a `develop` (`0881bee`), nomes al job `authenticated-end-to-end`.** Els
+altres set jobs passen: lint, format, typecheck, unit, integracio, build, imatge i secrets.
+
+El que diu el log de CI, que es el punt de partida de la propera sessio:
+
+```
+⨯ Error: The destination stream closed early.
+⨯ Error: SUPPORT_LOAD_ERROR
+⨯ Error: PROJECT_LOAD_ERROR
+```
+
+Fallen proves de **suport, projectes i barems alhora**, no de jornada. El simptoma visible es un
+`<select>` buit i deshabilitat, pero la causa no es la pantalla: **les crides a l'API no serveixen
+les llistes**. Passa amb **dos workers i una base sembrada de zero**, que es la combinacio que en
+local no s'havia provat mai.
+
+**El forat de metodologia, que es el que cal tapar primer.** `pnpm check` es lint, format,
+typecheck, test i build: **no inclou les E2E autenticades**. Per aixo "verd en local" no volia dir
+res sobre aquest job. Cal un `pnpm check:e2e` que sembri una base neta i corri **la suite sencera
+amb dos workers**, igual que CI, i que sigui el que es passa abans de cada push.
+
+Diferencies que van amagar el problema durant tres tandes: local corria nomes
+`attendance.authenticated.spec.ts`, amb un worker, sobre una base amb un dia de dades acumulades i
+a Windows; CI corre 19 proves, amb dos workers, base neta i Linux.
+
+Ja resolt i no cal tornar-hi:
+
+- La flag `attendance` es al workflow, i les proves de jornada fallen de pressa dient el nom de la
+  variable si no hi es.
+- `actionTimeout: 15_000` i `navigationTimeout: 30_000` a `playwright.config.ts`: una tanda
+  vermella triga 3 minuts en comptes de 9.
+- Els dos errors de lint de l'exportacio Excel.
+
+Pendent, a banda d'aixo: la revisio del propietari i la confirmacio de la gestoria abans d'encendre
+la flag en produccio.
 
 ## El seguent increment (previ a la 5C, ja superat)
 
