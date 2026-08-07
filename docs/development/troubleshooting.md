@@ -279,6 +279,20 @@ diff <(pnpm exec prettier "$f" | tr -d '\r') <(cat "$f" | tr -d '\r')
 
 CI corre sobre Linux i es l'autoritat sobre el format.
 
+**Comparar nomes els fitxers que tens modificats ara no n'hi ha prou.** Un fitxer que has creat en
+un commit anterior de la mateixa sessio ja no surt a `git diff`, i CI el continua veient. La
+comprovacio local equivalent a la de CI es intersecar les dues llistes: agafar tot el que Prettier
+marca i quedar-te nomes amb el que tambe difereix ignorant els finals de linia.
+
+```bash
+pnpm exec prettier --list-different . | tr -d '' | while read -r f; do
+  diff -q <(pnpm exec prettier "$f" | tr -d '') <(tr -d '' < "$f") >/dev/null || echo "$f"
+done
+```
+
+Sobre aquest repositori, la primera llista te 71 fitxers i la segona n'hauria de tenir zero. Aixo va
+costar un CI en vermell despres d'haver dit que estava en verd.
+
 ### Next.js peta amb `range start index ... out of range for slice`
 
 **Causa.** La cache persistent de Turbopack s'ha corromput. No te res a veure amb el codi.
