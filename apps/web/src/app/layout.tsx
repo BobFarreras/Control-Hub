@@ -4,6 +4,7 @@ import "./styles.css";
 import type { Metadata } from "next";
 import { FeatureProvider } from "@/components/feature-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastProvider } from "@/components/toast";
 import { enabledFeatures } from "@/lib/features";
 
 export const metadata: Metadata = { title: "Control Hub", description: "Business operations control center" };
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html suppressHydrationWarning>
       <body>
         <FeatureProvider features={enabledFeatures()}>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
         </FeatureProvider>
       </body>
     </html>
