@@ -201,6 +201,33 @@ describe("reading a record", () => {
     await expect(new AttendanceService(repository()).everyone(worker, august)).rejects.toThrow("PERMISSION_DENIED");
   });
 
+  /**
+   * The export the accountancy reads is a list of days with a time in and a time out, so the
+   * sessions have to travel with the totals. A column of monthly totals is the conclusion with
+   * the evidence left out, and nobody can check it.
+   */
+  it("carries the sessions behind each total, and counts what was written after the fact", async () => {
+    const store = repository({
+      listEventsForTenant: vi.fn<AttendanceRepository["listEventsForTenant"]>().mockResolvedValue([
+        ...day,
+        // Marked three hours after it says it happened, so it counts as declared.
+        event({
+          id: "late",
+          kind: "clock_in",
+          occurredAt: new Date("2026-08-05T06:00:00Z"),
+          recordedAt: new Date("2026-08-05T09:00:00Z"),
+          reason: "Vaig oblidar-me de fitxar"
+        }),
+        event({ id: "late-out", kind: "clock_out", occurredAt: new Date("2026-08-05T10:00:00Z") })
+      ])
+    });
+
+    const [aina] = await new AttendanceService(store).everyone(manager, august);
+    expect(aina!.sessions.map((session) => session.day)).toEqual(["2026-08-04", "2026-08-05"]);
+    expect(aina!.sessions[0]!.workedMinutes).toBe(480);
+    expect(aina!.declaredEntries).toBe(1);
+  });
+
   it("splits the tenant's log per person rather than adding it up", async () => {
     const store = repository({
       listEventsForTenant: vi.fn<AttendanceRepository["listEventsForTenant"]>().mockResolvedValue([

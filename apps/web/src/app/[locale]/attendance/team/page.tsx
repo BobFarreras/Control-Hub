@@ -75,7 +75,7 @@ export default async function AttendanceTeamPage({
           }
         />
         <main className="compact-main">
-          <AttendanceTeam rows={rows} range={range} reconciled={reconciled} labels={labels} />
+          <AttendanceTeam rows={rows} range={range} reconciled={reconciled} labels={labels} locale={locale} />
         </main>
       </div>
     </div>

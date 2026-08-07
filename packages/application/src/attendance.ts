@@ -4,6 +4,7 @@ import {
   hasPermission,
   isAcceptableEntry,
   liveEvents,
+  needsReason,
   localDay,
   reconcile,
   stateOf,
@@ -64,6 +65,16 @@ export type MemberAttendance = {
   memberName: string;
   days: AttendanceDay[];
   totalMinutes: number;
+  /**
+   * The clock ins and outs behind the totals.
+   *
+   * Carried because the export the accountancy reads is a list of days with a time in and a time
+   * out, per `docs/specifications/attendance.md`, not a column of monthly totals. A total nobody
+   * can take apart is a total nobody can check.
+   */
+  sessions: AttendanceSession[];
+  /** How many entries in the period were written after the fact, so a reader knows to look. */
+  declaredEntries: number;
 };
 
 export type ReconciliationRow = MemberAttendance & ReconciliationLine;
@@ -220,13 +231,18 @@ export class AttendanceService {
     ]);
 
     return members.map((member) => {
-      const days = summariseDays(
-        deriveSessions(
-          events.filter((event) => event.membershipId === member.membershipId),
-          timeZone
-        )
-      );
-      return { ...member, days, totalMinutes: totalMinutes(days) };
+      const mine = events.filter((event) => event.membershipId === member.membershipId);
+      const sessions = deriveSessions(mine, timeZone);
+      const days = summariseDays(sessions);
+      return {
+        ...member,
+        days,
+        sessions,
+        totalMinutes: totalMinutes(days),
+        // Counted over every entry, corrected ones included: the question this answers is
+        // "was this month touched after the fact", and a retired entry is part of that answer.
+        declaredEntries: mine.filter((event) => needsReason(event)).length
+      };
     });
   }
 

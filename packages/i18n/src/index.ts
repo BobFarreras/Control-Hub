@@ -1785,6 +1785,16 @@ const attendanceDictionaries = {
     unbilled: "No imputables",
     unbilledHelp:
       "Hores registrades menys hores imputades a projectes i tickets del mateix periode. Es el temps d'estructura: reunions internes, administracio, formacio i comercial. Negatiu vol dir que s'han imputat mes hores de les fitxades, i llavors un dels dos registres esta malament.",
+    entry: "Entrada",
+    exit: "Sortida",
+    minutes: "Minuts",
+    declaredEntries: "Correccions",
+    teamTotal: "Total registrat",
+    teamLogged: "Total imputat",
+    teamUnbilled: "No imputable",
+    people: "Persones",
+    exportHelp:
+      "Un full amb una fila per dia i persona: entrada, sortida i minuts. Es el format que la gestoria pot obrir i sumar sense preparar res.",
     backToOwn: "El meu registre",
     noReconciliation: "Cal financials:read per veure la conciliacio.",
     helpBody:
@@ -1846,6 +1856,16 @@ const attendanceDictionaries = {
     unbilled: "No imputables",
     unbilledHelp:
       "Horas registradas menos horas imputadas a proyectos y tickets del mismo periodo. Es el tiempo de estructura: reuniones internas, administracion, formacion y comercial. Negativo significa que se han imputado mas horas de las fichadas, y entonces uno de los dos registros esta mal.",
+    entry: "Entrada",
+    exit: "Salida",
+    minutes: "Minutos",
+    declaredEntries: "Correcciones",
+    teamTotal: "Total registrado",
+    teamLogged: "Total imputado",
+    teamUnbilled: "No imputable",
+    people: "Personas",
+    exportHelp:
+      "Una hoja con una fila por dia y persona: entrada, salida y minutos. Es el formato que la gestoria puede abrir y sumar sin preparar nada.",
     backToOwn: "Mi registro",
     noReconciliation: "Hace falta financials:read para ver la conciliacion.",
     helpBody:
@@ -1906,6 +1926,16 @@ const attendanceDictionaries = {
     unbilled: "Unbilled",
     unbilledHelp:
       "Hours recorded minus hours logged to projects and tickets over the same period. It is structural time: internal meetings, administration, training and selling. Negative means more was logged than worked, and then one of the two records is wrong.",
+    entry: "In",
+    exit: "Out",
+    minutes: "Minutes",
+    declaredEntries: "Corrections",
+    teamTotal: "Total recorded",
+    teamLogged: "Total logged",
+    teamUnbilled: "Unbilled",
+    people: "People",
+    exportHelp:
+      "A sheet with one row per person and day: in, out and minutes. It is the shape an accountant can open and add up without preparing anything.",
     backToOwn: "My record",
     noReconciliation: "financials:read is needed to see the reconciliation.",
     helpBody:

@@ -334,7 +334,9 @@ export type AttendanceTeamRow = {
   membershipId: string;
   memberName: string;
   days: AttendanceDay[];
+  sessions: AttendanceSession[];
   totalMinutes: number;
+  declaredEntries: number;
   /** Present only on the reconciliation, which needs `financials:read` as well. */
   loggedMinutes?: number;
   unbilledMinutes?: number;

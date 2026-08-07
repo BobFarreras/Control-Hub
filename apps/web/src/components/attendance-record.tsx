@@ -90,18 +90,35 @@ export function AttendanceRecord({
             <thead>
               <tr>
                 <th>{t.day}</th>
+                <th>{t.entry}</th>
                 <th>{t.worked}</th>
               </tr>
             </thead>
             <tbody>
               {month.days.length === 0 && (
                 <tr>
-                  <td colSpan={2}>{t.empty}</td>
+                  <td colSpan={3}>{t.empty}</td>
                 </tr>
               )}
               {month.days.map((day) => (
                 <tr key={day.day}>
                   <td>{date.format(new Date(`${day.day}T12:00:00`))}</td>
+                  {/*
+                    The hours that make up the total, beside it. A day of seven hours can be one
+                    stretch or three, and which of the two it was is the first thing somebody
+                    checking their own record wants to see.
+                  */}
+                  <td className="attendance-times">
+                    {month.sessions
+                      .filter((session) => session.day === day.day)
+                      .map((session) => (
+                        <span key={session.startedAt}>
+                          {time.format(new Date(session.startedAt))}
+                          {"–"}
+                          {session.endedAt ? time.format(new Date(session.endedAt)) : ""}
+                        </span>
+                      ))}
+                  </td>
                   <td>
                     {formatHours(day.workedMinutes)}
                     {/*

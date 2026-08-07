@@ -3566,3 +3566,11 @@ main {
 .project-panel > .panel-head h3 {
   margin: 0;
 }
+
+.attendance-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
