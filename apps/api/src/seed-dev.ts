@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createDatabaseClient } from "@control-hub/database";
+import { normalizeComparableName } from "@control-hub/domain";
 
 if (!process.argv.includes("--confirm-local")) throw new Error("Development seed requires --confirm-local");
 if (process.env.NODE_ENV === "production") throw new Error("Development seed is disabled in production");
@@ -88,6 +89,17 @@ try {
   for (const [priority, firstResponse, resolution] of slaTargets)
     await database`insert into sla_targets (id, tenant_id, priority, first_response_minutes, resolution_minutes, effective_from) values (${id(`${tenantId}:sla:${priority}`)}, ${tenantId}, ${priority}, ${firstResponse}, ${resolution}, '2020-01-01T00:00:00Z') on conflict do nothing`;
 
+  // The kinds of work the business sells. Seeded because a standing sale price is published against
+  // one of these, and an empty catalogue makes that half of the rates screen unusable on day one.
+  const serviceTypes = [
+    ["agent-ia", "Agent d'IA"],
+    ["pagina-web", "Pagina web"],
+    ["software-a-mida", "Software a mida"],
+    ["automatitzacio", "Automatitzacio"]
+  ] as const;
+  for (const [code, name] of serviceTypes)
+    await database`insert into service_types (id, tenant_id, code, name, normalized_name) values (${id(`${tenantId}:service-type:${code}`)}, ${tenantId}, ${code}, ${name}, ${normalizeComparableName(name)}) on conflict do nothing`;
+
   const seededCustomers = await database<
     { id: string }[]
   >`select id from customers where tenant_id = ${tenantId} order by created_at limit 4`;
@@ -108,7 +120,7 @@ try {
   await database`insert into ticket_counters (tenant_id, next_number) values (${tenantId}, ${tickets.length + 1}) on conflict (tenant_id) do update set next_number = greatest(ticket_counters.next_number, ${tickets.length + 1})`;
 
   console.log(
-    `Development examples ready for tenant ${tenantId}: ${leads.length} leads, ${customers.length} customers, ${products.length} products, 3 customer subscriptions, ${expenses.length} expenses, ${tickets.length} tickets.`
+    `Development examples ready for tenant ${tenantId}: ${leads.length} leads, ${customers.length} customers, ${products.length} products, 3 customer subscriptions, ${expenses.length} expenses, ${tickets.length} tickets, ${serviceTypes.length} service types.`
   );
 } finally {
   await database.end({ timeout: 5 });
