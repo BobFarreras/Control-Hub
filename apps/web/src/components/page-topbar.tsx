@@ -1,4 +1,5 @@
 import { Bell } from "lucide-react";
+import { ClockButton } from "@/components/clock-button";
 import { HelpDialog } from "@/components/help";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -35,6 +36,13 @@ export function PageTopbar({
       </div>
       <div className="top-actions">
         {actions}
+        {/*
+          Here rather than on each page: clocking in has to be reachable from wherever somebody
+          happens to be, and a control that only exists on one screen is one people forget. It
+          renders nothing at all while the `attendance` flag is off, and nothing while the state
+          is unknown, so no page has to know it exists.
+        */}
+        <ClockButton />
         <button className="icon-button" aria-label="Notifications" title="Notifications">
           <Bell size={18} />
         </button>

@@ -1717,3 +1717,157 @@ export function getRatesDictionary(locale: Locale) {
 export function getProjectsDictionary(locale: Locale) {
   return projectDictionaries[locale];
 }
+
+/**
+ * Working time records.
+ *
+ * The state is never carried by colour alone: every one of these reads as a word, so somebody
+ * who cannot separate green from red, or is looking at a printout, still knows where they are.
+ */
+const attendanceDictionaries = {
+  ca: {
+    eyebrow: "JORNADA",
+    title: "Registre de jornada",
+    description: "Les teves entrades i sortides, el total del mes i les correccions.",
+    clockIn: "Fitxar entrada",
+    clockOut: "Fitxar sortida",
+    pauseStart: "Pausa",
+    pauseEnd: "Reprendre",
+    stateOut: "Fora",
+    stateIn: "Treballant",
+    statePaused: "En pausa",
+    since: "des de les",
+    day: "Dia",
+    worked: "Hores",
+    openSession: "Sense tancar",
+    total: "Total del mes",
+    empty: "Cap fitxatge aquest mes.",
+    history: "Moviments",
+    kind: "Moviment",
+    at: "Hora",
+    declared: "Declarat",
+    declaredHelp:
+      "Marcat mes tard de l'hora que diu que va passar. Consta qui ho va escriure i quan, i el registre original no s'esborra.",
+    corrected: "Corregit",
+    correctedHelp:
+      "Aquest moviment ha estat substituit per un de posterior. Es queda a l'historial i no compta al total.",
+    reason: "Motiu",
+    correct: "Corregir",
+    correctTitle: "Corregir un moviment",
+    correctBody:
+      "Un fitxatge no s'esborra mai. Escrius quan va passar de debo i per que ho corregeixes, i les dues versions queden a l'historial.",
+    occurredAt: "Quan va passar",
+    save: "Desar",
+    cancel: "Cancel·lar",
+    stillPaused: "Consta que estas en pausa",
+    stillPausedBody:
+      "Per plegar, primer digues a quina hora vas tornar. Si no ho fas, el descans es comptaria fins ara.",
+    returnedAt: "A quina hora has tornat?",
+    monthPrevious: "Mes anterior",
+    monthNext: "Mes seguent",
+    saved: "Fitxatge desat",
+    correctionSaved: "Correccio desada",
+    failed: "No s'ha pogut desar. Torna-ho a provar.",
+    notAllowed: "Aquest moviment no encaixa amb el teu estat actual. Recarrega la pagina.",
+    help: "Com funciona",
+    helpBody:
+      "L'hora la posa el servidor, no el teu navegador. Un fitxatge no es pot esborrar ni editar: si t'equivoques, s'escriu una correccio que diu que va passar de debo, amb el motiu, i les dues versions es queden. Pots consultar i corregir el teu registre sempre."
+  },
+  es: {
+    eyebrow: "JORNADA",
+    title: "Registro de jornada",
+    description: "Tus entradas y salidas, el total del mes y las correcciones.",
+    clockIn: "Fichar entrada",
+    clockOut: "Fichar salida",
+    pauseStart: "Pausa",
+    pauseEnd: "Reanudar",
+    stateOut: "Fuera",
+    stateIn: "Trabajando",
+    statePaused: "En pausa",
+    since: "desde las",
+    day: "Dia",
+    worked: "Horas",
+    openSession: "Sin cerrar",
+    total: "Total del mes",
+    empty: "Ningun fichaje este mes.",
+    history: "Movimientos",
+    kind: "Movimiento",
+    at: "Hora",
+    declared: "Declarado",
+    declaredHelp:
+      "Marcado mas tarde de la hora que dice que ocurrio. Consta quien lo escribio y cuando, y el registro original no se borra.",
+    corrected: "Corregido",
+    correctedHelp:
+      "Este movimiento ha sido sustituido por uno posterior. Se queda en el historial y no cuenta en el total.",
+    reason: "Motivo",
+    correct: "Corregir",
+    correctTitle: "Corregir un movimiento",
+    correctBody:
+      "Un fichaje no se borra nunca. Escribes cuando ocurrio de verdad y por que lo corriges, y las dos versiones quedan en el historial.",
+    occurredAt: "Cuando ocurrio",
+    save: "Guardar",
+    cancel: "Cancelar",
+    stillPaused: "Consta que estas en pausa",
+    stillPausedBody: "Para salir, primero di a que hora volviste. Si no lo haces, el descanso se contaria hasta ahora.",
+    returnedAt: "A que hora has vuelto?",
+    monthPrevious: "Mes anterior",
+    monthNext: "Mes siguiente",
+    saved: "Fichaje guardado",
+    correctionSaved: "Correccion guardada",
+    failed: "No se ha podido guardar. Vuelve a intentarlo.",
+    notAllowed: "Este movimiento no encaja con tu estado actual. Recarga la pagina.",
+    help: "Como funciona",
+    helpBody:
+      "La hora la pone el servidor, no tu navegador. Un fichaje no se puede borrar ni editar: si te equivocas, se escribe una correccion que dice que ocurrio de verdad, con el motivo, y las dos versiones se quedan. Puedes consultar y corregir tu registro siempre."
+  },
+  en: {
+    eyebrow: "WORKING TIME",
+    title: "Working time record",
+    description: "Your clock ins and outs, the month's total and any corrections.",
+    clockIn: "Clock in",
+    clockOut: "Clock out",
+    pauseStart: "Break",
+    pauseEnd: "Resume",
+    stateOut: "Out",
+    stateIn: "Working",
+    statePaused: "On a break",
+    since: "since",
+    day: "Day",
+    worked: "Hours",
+    openSession: "Not closed",
+    total: "Month total",
+    empty: "Nothing recorded this month.",
+    history: "Entries",
+    kind: "Entry",
+    at: "Time",
+    declared: "Declared",
+    declaredHelp:
+      "Recorded later than the time it says it happened. Who wrote it and when is on the record, and the original is not deleted.",
+    corrected: "Corrected",
+    correctedHelp: "A later entry replaced this one. It stays in the history and does not count towards the total.",
+    reason: "Reason",
+    correct: "Correct",
+    correctTitle: "Correct an entry",
+    correctBody:
+      "An entry is never deleted. You write when it really happened and why you are correcting it, and both versions stay in the history.",
+    occurredAt: "When it happened",
+    save: "Save",
+    cancel: "Cancel",
+    stillPaused: "You are still on a break",
+    stillPausedBody: "To clock out, first say what time you came back. Otherwise the break would count up to now.",
+    returnedAt: "What time did you come back?",
+    monthPrevious: "Previous month",
+    monthNext: "Next month",
+    saved: "Recorded",
+    correctionSaved: "Correction saved",
+    failed: "Could not save. Try again.",
+    notAllowed: "That entry does not fit your current state. Reload the page.",
+    help: "How this works",
+    helpBody:
+      "The time comes from the server, not from your browser. An entry cannot be deleted or edited: if you get one wrong, a correction is written saying what really happened, with the reason, and both versions stay. You can always read and correct your own record."
+  }
+} as const;
+
+export function getAttendanceDictionary(locale: Locale) {
+  return attendanceDictionaries[locale];
+}

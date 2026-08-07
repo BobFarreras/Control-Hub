@@ -3436,3 +3436,86 @@ main {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------------ working time record */
+
+/*
+  The clock control in the topbar. The state is carried by the word beside the dot, never by the
+  dot alone: the colour is a second, faster signal for the people it works for, and useless to
+  everybody else.
+*/
+.clock-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.clock-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.clock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.clock-control[data-state="in"] .clock-dot {
+  background: var(--success);
+}
+.clock-control[data-state="paused"] .clock-dot {
+  background: var(--warning);
+}
+.clock-control[data-state="in"] .clock-state {
+  color: var(--success);
+}
+.clock-control[data-state="paused"] .clock-state {
+  color: var(--warning);
+}
+.clock-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clock-action.secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+.clock-action:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.clock-action:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* On a narrow screen the word goes and the button stays: clocking in matters, reading the state
+   twice does not, and the button already says which way it goes. */
+@media (max-width: 720px) {
+  .clock-state {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

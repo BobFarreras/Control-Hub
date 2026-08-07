@@ -87,7 +87,10 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
         outcome: "success",
         metadata: { kind: event.kind }
       });
-      return reply.code(201).send({ event });
+      // The resulting state travels with the entry so the screen does not have to keep its own
+      // copy of the state machine. Two implementations of "what may I press now" would drift,
+      // and the one on screen would be the one nobody tested.
+      return reply.code(201).send({ event, ...(await attendance.currentState(context)) });
     }
   );
 
