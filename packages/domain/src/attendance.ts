@@ -105,8 +105,8 @@ export function canRecord(
 export type AttendanceEntry = {
   occurredAt: Date;
   recordedAt: Date;
-  correctsEventId?: string | null;
-  reason?: string | null;
+  correctsEventId?: string | null | undefined;
+  reason?: string | null | undefined;
 };
 
 /**
