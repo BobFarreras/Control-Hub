@@ -1,4 +1,5 @@
 import type {
+  AttendanceService,
   CommerceService,
   CompanySubscriptionService,
   CrmService,
@@ -28,6 +29,7 @@ export type CommerceContext = RouteContext & { commerce: CommerceService };
 export type CompanySubscriptionContext = RouteContext & { companySubscriptions: CompanySubscriptionService };
 export type SupportContext = RouteContext & { support: SupportService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
+export type AttendanceContext = RouteContext & { attendance: AttendanceService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };
 
 /** The public routes run before any session exists, so they take no auth instance. */
