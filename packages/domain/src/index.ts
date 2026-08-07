@@ -191,3 +191,5 @@ export {
 } from "./support-calendar.js";
 export * from "./support.js";
 export * from "./projects.js";
+export * from "./attendance.js";
+export { localDay, localParts, type LocalParts } from "./tenant-clock.js";
