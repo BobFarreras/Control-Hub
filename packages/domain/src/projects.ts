@@ -38,6 +38,37 @@ export type IsoDate = string;
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * The combining marks `NFD` leaves behind, as a pattern built from escapes.
+ *
+ * Written with `new RegExp` and not as a literal on purpose: inside a regex literal the range
+ * ends up as two invisible characters in the source, which is an edit nobody can review and
+ * which `no-irregular-whitespace` has already caught once in this repository.
+ */
+const COMBINING_MARKS = new RegExp("[\u0300-\u036f]", "g");
+
+/**
+ * Turns what somebody typed into the stable code of a service type.
+ *
+ * The code is what a published rate is filed under, so it has to survive being renamed and has to
+ * be the same whether it was typed with accents, capitals or double spaces. Accents are stripped
+ * rather than transliterated by hand: `NFD` splits a letter from its mark and the mark is dropped,
+ * which turns "Pagina Web" and "Pàgina  Web" into the same `pagina-web`.
+ *
+ * This is the authority. `apps/web/src/lib/slug.ts` runs the same rule while somebody types, so the
+ * form can show the code it is going to get; whatever it sends comes back through here regardless.
+ */
+export function toServiceCode(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(COMBINING_MARKS, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/g, "");
+}
+
 export function isIsoDate(value: string): value is IsoDate {
   if (!isoDatePattern.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number) as [number, number, number];

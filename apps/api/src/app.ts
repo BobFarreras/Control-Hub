@@ -163,7 +163,9 @@ export function buildApp(options: BuildAppOptions) {
             : error.code.startsWith("DUPLICATE") ||
                 error.code === "INVALID_TRANSITION" ||
                 error.code === "PROJECT_CLOSED" ||
-                error.code === "PROJECT_CUSTOMER_MISMATCH"
+                error.code === "PROJECT_CUSTOMER_MISMATCH" ||
+                error.code === "RATE_IMMUTABLE" ||
+                error.code === "SERVICE_TYPE_HAS_RATES"
               ? 409
               : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });

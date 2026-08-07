@@ -1,4 +1,4 @@
-import type { ProjectListQuery, TimeEntryListQuery } from "@control-hub/application";
+import type { BillingScope, ProjectListQuery, TimeEntryListQuery } from "@control-hub/application";
 import { projectStatuses, type ProjectStatus } from "@control-hub/domain";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { ProjectsContext } from "./context.js";
@@ -79,6 +79,7 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
       name: string;
       description?: string;
       ownerMembershipId?: string;
+      serviceTypeId?: string;
       startedAt?: string;
       dueAt?: string;
     };
@@ -96,6 +97,7 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
             name: { type: "string", minLength: 3, maxLength: 200 },
             description: { type: "string", maxLength: 2000 },
             ownerMembershipId: uuid,
+            serviceTypeId: uuid,
             startedAt: { type: "string", format: "date-time" },
             dueAt: { type: "string", format: "date-time" }
           }
@@ -111,6 +113,7 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
         name: request.body.name,
         ...(request.body.description ? { description: request.body.description } : {}),
         ...(request.body.ownerMembershipId ? { ownerMembershipId: request.body.ownerMembershipId } : {}),
+        ...(request.body.serviceTypeId ? { serviceTypeId: request.body.serviceTypeId } : {}),
         ...(request.body.startedAt ? { startedAt: new Date(request.body.startedAt) } : {}),
         ...(request.body.dueAt ? { dueAt: new Date(request.body.dueAt) } : {})
       });
@@ -163,6 +166,33 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
         targetId: project.id,
         outcome: "success",
         metadata: { status: project.status }
+      });
+      return { project };
+    }
+  );
+
+  app.patch<{ Params: { projectId: string }; Body: { serviceTypeId: string | null } }>(
+    "/api/v1/projects/:projectId/service-type",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["serviceTypeId"],
+          properties: { serviceTypeId: { anyOf: [uuid, { type: "null" }] } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "projects:manage");
+      const project = await projects.setServiceType(context, request.params.projectId, request.body.serviceTypeId);
+      await writeAudit(database, context, request, {
+        action: "project.service_type.changed",
+        targetType: "project",
+        targetId: project.id,
+        outcome: "success",
+        metadata: { serviceTypeId: project.serviceTypeId }
       });
       return { project };
     }
@@ -314,6 +344,99 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
     }
   );
 
+  app.get("/api/v1/service-types", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "projects:read");
+    return { serviceTypes: await projects.listServiceTypes(context) };
+  });
+
+  app.post<{ Body: { code?: string; name: string } }>(
+    "/api/v1/service-types",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name"],
+          properties: {
+            code: { type: "string", maxLength: 48 },
+            name: { type: "string", minLength: 2, maxLength: 120 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "rates:manage");
+      const serviceType = await projects.createServiceType(context, {
+        name: request.body.name,
+        code: request.body.code ?? ""
+      });
+      await writeAudit(database, context, request, {
+        action: "service_type.created",
+        targetType: "service_type",
+        targetId: serviceType.id,
+        outcome: "success",
+        metadata: { code: serviceType.code }
+      });
+      return reply.code(201).send({ serviceType });
+    }
+  );
+
+  /**
+   * Removes a kind of work. A `DELETE` and not a flag, because when it succeeds the row really is
+   * gone; when it cannot be, the answer is a `409` and the caller deactivates instead.
+   */
+  app.delete<{ Params: { serviceTypeId: string } }>(
+    "/api/v1/service-types/:serviceTypeId",
+    { schema: { params: { type: "object", required: ["serviceTypeId"], properties: { serviceTypeId: uuid } } } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "rates:manage");
+      const removal = await projects.deleteServiceType(context, request.params.serviceTypeId);
+      await writeAudit(database, context, request, {
+        action: "service_type.deleted",
+        targetType: "service_type",
+        targetId: request.params.serviceTypeId,
+        outcome: "success",
+        metadata: { detachedProjects: removal.detachedProjects }
+      });
+      return removal;
+    }
+  );
+
+  app.patch<{ Params: { serviceTypeId: string }; Body: { active: boolean } }>(
+    "/api/v1/service-types/:serviceTypeId",
+    {
+      schema: {
+        params: { type: "object", required: ["serviceTypeId"], properties: { serviceTypeId: uuid } },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["active"],
+          properties: { active: { type: "boolean" } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "rates:manage");
+      const serviceType = await projects.setServiceTypeActive(
+        context,
+        request.params.serviceTypeId,
+        request.body.active
+      );
+      await writeAudit(database, context, request, {
+        action: request.body.active ? "service_type.reactivated" : "service_type.deactivated",
+        targetType: "service_type",
+        targetId: serviceType.id,
+        outcome: "success",
+        metadata: { code: serviceType.code }
+      });
+      return { serviceType };
+    }
+  );
+
   app.get("/api/v1/rates", async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "financials:read");
@@ -359,9 +482,50 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
     }
   );
 
+  app.post<{ Params: { rateId: string } }>(
+    "/api/v1/rates/cost/:rateId/annul",
+    { schema: { params: { type: "object", required: ["rateId"], properties: { rateId: uuid } } } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "rates:manage");
+      const rate = await projects.annulCostRate(context, request.params.rateId);
+      await writeAudit(database, context, request, {
+        action: "rate.cost.annulled",
+        targetType: "member_cost_rate",
+        targetId: rate.id,
+        outcome: "success",
+        metadata: { membershipId: rate.membershipId, currency: rate.currency, effectiveFrom: rate.effectiveFrom }
+      });
+      return { rate };
+    }
+  );
+
+  app.post<{ Params: { rateId: string } }>(
+    "/api/v1/rates/billing/:rateId/annul",
+    { schema: { params: { type: "object", required: ["rateId"], properties: { rateId: uuid } } } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "rates:manage");
+      const rate = await projects.annulBillingRate(context, request.params.rateId);
+      await writeAudit(database, context, request, {
+        action: "rate.billing.annulled",
+        targetType: "billing_rate",
+        targetId: rate.id,
+        outcome: "success",
+        metadata: {
+          scope: rate.scope,
+          scopeId: rate.scopeId,
+          currency: rate.currency,
+          effectiveFrom: rate.effectiveFrom
+        }
+      });
+      return { rate };
+    }
+  );
+
   app.post<{
     Body: {
-      scope: "customer" | "project";
+      scope: BillingScope;
       scopeId: string;
       currency: string;
       amountMinorPerHour: number;
@@ -376,7 +540,7 @@ export function registerProjectRoutes({ app, database, auth, projects }: Project
           additionalProperties: false,
           required: ["scope", "scopeId", "currency", "amountMinorPerHour"],
           properties: {
-            scope: { type: "string", enum: ["customer", "project"] },
+            scope: { type: "string", enum: ["customer", "project", "service_type"] },
             scopeId: uuid,
             currency: { type: "string", pattern: "^[A-Z]{3}$" },
             amountMinorPerHour: { type: "integer", minimum: 0, maximum: 9007199254740991 },

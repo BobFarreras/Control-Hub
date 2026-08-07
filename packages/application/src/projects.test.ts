@@ -24,6 +24,7 @@ const technical = context(["projects:manage", "time:log"], "member-b");
 const project = (overrides: Partial<ProjectRecord> = {}): ProjectRecord => ({
   id: "project-1",
   customerId: "customer-1",
+  serviceTypeId: null,
   code: "web-nova",
   name: "Web nova",
   description: null,
@@ -59,13 +60,26 @@ const repository = (overrides: Partial<ProjectsRepository> = {}): ProjectsReposi
   createProject: vi.fn<ProjectsRepository["createProject"]>().mockResolvedValue(project()),
   getProject: vi.fn<ProjectsRepository["getProject"]>().mockResolvedValue(project()),
   getProjectDetail: vi.fn<ProjectsRepository["getProjectDetail"]>().mockResolvedValue({
-    project: { ...project(), customerName: "Client A", ownerName: null, loggedMinutes: 0 },
+    project: { ...project(), customerName: "Client A", ownerName: null, serviceTypeName: null, loggedMinutes: 0 },
     events: [],
     assignableMembers: []
   }),
   updateProjectStatus: vi
     .fn<ProjectsRepository["updateProjectStatus"]>()
     .mockResolvedValue(project({ status: "closed" })),
+  updateProjectServiceType: vi
+    .fn<ProjectsRepository["updateProjectServiceType"]>()
+    .mockImplementation((_context, _id, serviceTypeId) => Promise.resolve(project({ serviceTypeId }))),
+  listServiceTypes: vi.fn<ProjectsRepository["listServiceTypes"]>().mockResolvedValue([]),
+  createServiceType: vi
+    .fn<ProjectsRepository["createServiceType"]>()
+    .mockImplementation((_context, input) =>
+      Promise.resolve({ id: "type-1", ...input, active: true, projectCount: 0, rateCount: 0 })
+    ),
+  deleteServiceType: vi.fn<ProjectsRepository["deleteServiceType"]>().mockResolvedValue({ detachedProjects: 0 }),
+  setServiceTypeActive: vi.fn<ProjectsRepository["setServiceTypeActive"]>().mockResolvedValue(null),
+  annulCostRate: vi.fn<ProjectsRepository["annulCostRate"]>().mockResolvedValue(null),
+  annulBillingRate: vi.fn<ProjectsRepository["annulBillingRate"]>().mockResolvedValue(null),
   listTimeEntries: vi
     .fn<ProjectsRepository["listTimeEntries"]>()
     .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 25 }),
@@ -87,7 +101,9 @@ const repository = (overrides: Partial<ProjectsRepository> = {}): ProjectsReposi
       memberName: "Ana",
       currency: input.currency,
       costMinorPerHour: input.costMinorPerHour,
-      effectiveFrom: input.effectiveFrom
+      effectiveFrom: input.effectiveFrom,
+      annulledAt: null,
+      annulledByName: null
     })
   ),
   publishBillingRate: vi.fn<ProjectsRepository["publishBillingRate"]>().mockImplementation((_context, input) =>
@@ -98,20 +114,33 @@ const repository = (overrides: Partial<ProjectsRepository> = {}): ProjectsReposi
       scopeName: "Client A",
       currency: input.currency,
       amountMinorPerHour: input.amountMinorPerHour,
-      effectiveFrom: input.effectiveFrom
+      effectiveFrom: input.effectiveFrom,
+      annulledAt: null,
+      annulledByName: null
     })
   ),
   loadProjectProfitability: vi.fn<ProjectsRepository["loadProjectProfitability"]>().mockResolvedValue({
-    entries: [{ membershipId: "member-a", projectId: "project-1", spentOn: "2026-08-04", minutes: 60, billable: true }],
+    entries: [
+      {
+        membershipId: "member-a",
+        projectId: "project-1",
+        serviceTypeId: null,
+        spentOn: "2026-08-04",
+        minutes: 60,
+        billable: true
+      }
+    ],
     costRates: { "member-a": [{ currency: "EUR", minorPerHour: 2000, effectiveFrom: "2026-01-01" }] },
     projectRates: { "project-1": [{ currency: "EUR", minorPerHour: 6000, effectiveFrom: "2026-01-01" }] },
-    customerRates: []
+    customerRates: [],
+    serviceTypeRates: {}
   }),
   loadCustomerProfitability: vi.fn<ProjectsRepository["loadCustomerProfitability"]>().mockResolvedValue({
     entries: [],
     costRates: {},
     projectRates: {},
-    customerRates: []
+    customerRates: [],
+    serviceTypeRates: {}
   }),
   ...overrides
 });
@@ -295,8 +324,42 @@ describe("rates and margin", () => {
 describe("rate matching", () => {
   const input: ProfitabilityInput = {
     entries: [
-      { membershipId: "member-a", projectId: "project-1", spentOn: "2026-07-15", minutes: 60, billable: true },
-      { membershipId: "member-a", projectId: null, spentOn: "2026-07-15", minutes: 60, billable: true }
+      {
+        membershipId: "member-a",
+        projectId: "project-1",
+        serviceTypeId: "web",
+        spentOn: "2026-07-15",
+        minutes: 60,
+        billable: true
+      },
+      {
+        membershipId: "member-a",
+        projectId: null,
+        serviceTypeId: "web",
+        spentOn: "2026-07-15",
+        minutes: 60,
+        billable: true
+      },
+      // A project of a known kind of work, with no rate of its own and no customer rate: the only
+      // thing left to price it with is the standing rate for that kind of work.
+      {
+        membershipId: "member-a",
+        projectId: "project-2",
+        serviceTypeId: "ai-agent",
+        spentOn: "2026-07-15",
+        minutes: 60,
+        billable: true
+      },
+      // Neither a rate of its own nor a kind of work: nothing can price this, and that has to stay
+      // visible rather than quietly resolve to zero.
+      {
+        membershipId: "member-a",
+        projectId: "project-3",
+        serviceTypeId: null,
+        spentOn: "2026-07-15",
+        minutes: 60,
+        billable: true
+      }
     ],
     costRates: {
       "member-a": [
@@ -305,7 +368,11 @@ describe("rate matching", () => {
       ]
     },
     projectRates: { "project-1": [{ currency: "EUR", minorPerHour: 9000, effectiveFrom: "2026-01-01" }] },
-    customerRates: [{ currency: "EUR", minorPerHour: 6000, effectiveFrom: "2026-01-01" }]
+    customerRates: [{ currency: "EUR", minorPerHour: 6000, effectiveFrom: "2026-01-01" }],
+    serviceTypeRates: {
+      web: [{ currency: "EUR", minorPerHour: 7000, effectiveFrom: "2026-01-01" }],
+      "ai-agent": [{ currency: "EUR", minorPerHour: 12_000, effectiveFrom: "2026-01-01" }]
+    }
   };
 
   it("values work with the rate of the day it was done, not today's", () => {
@@ -320,8 +387,32 @@ describe("rate matching", () => {
     expect(valueEntries(input)[1]!.revenue).toEqual({ currency: "EUR", minorPerHour: 6000 });
   });
 
+  it("falls back to the rate of the kind of work when neither the project nor the customer has one", () => {
+    expect(valueEntries({ ...input, customerRates: [] })[2]!.revenue).toEqual({
+      currency: "EUR",
+      minorPerHour: 12_000
+    });
+  });
+
+  it("prefers the customer rate over the one for the kind of work", () => {
+    // 6000 is the customer's and 7000 the one for web work: the more specific of the two wins.
+    expect(valueEntries(input)[1]!.revenue).toEqual({ currency: "EUR", minorPerHour: 6000 });
+  });
+
+  it("leaves an entry unpriced when nothing resolves, instead of valuing it at zero", () => {
+    expect(valueEntries({ ...input, customerRates: [] })[3]!.revenue).toBeNull();
+  });
+
   it("leaves the rate absent when none was ever published", () => {
-    const valued = valueEntries({ ...input, costRates: {}, projectRates: {}, customerRates: [] });
+    // Every group emptied, including the one for the kind of work: with three places a sale price
+    // can come from, clearing two of them is no longer "none was published".
+    const valued = valueEntries({
+      ...input,
+      costRates: {},
+      projectRates: {},
+      customerRates: [],
+      serviceTypeRates: {}
+    });
     expect(valued[0]!.cost).toBeNull();
     expect(valued[0]!.revenue).toBeNull();
   });
