@@ -76,6 +76,7 @@ suite("PostgresProjectsRepository", () => {
       await admin`delete from member_cost_rates where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from tickets where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from projects where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from service_types where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from sla_targets where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
       for (const table of appendOnly) await admin.unsafe(`alter table ${table} enable trigger ${table}_append_only`);
@@ -87,12 +88,20 @@ suite("PostgresProjectsRepository", () => {
   });
 
   let sequence = 0;
-  const open = (overrides: { customerId?: string; name?: string } = {}) =>
+  const open = (overrides: { customerId?: string; name?: string; serviceTypeId?: string } = {}) =>
     service.createProject(ctx(), {
       customerId: overrides.customerId ?? customerA,
       code: `prj-${(sequence += 1)}-${randomUUID().slice(0, 8)}`,
-      name: overrides.name ?? "Projecte de prova"
+      name: overrides.name ?? "Projecte de prova",
+      ...(overrides.serviceTypeId ? { serviceTypeId: overrides.serviceTypeId } : {})
     });
+
+  // A name of its own per call, because two kinds of work cannot share one: the name is unique
+  // within the tenant on purpose, and a helper that reused it would be testing the wrong thing.
+  const openServiceType = () => {
+    const suffix = `${(sequence += 1)}-${randomUUID().slice(0, 8)}`;
+    return service.createServiceType(ctx(), { code: `svc-${suffix}`, name: `Pagina web ${suffix}` });
+  };
 
   const openTicket = async (customerId: string, projectId: string | null) => {
     const id = randomUUID();
@@ -309,6 +318,289 @@ suite("PostgresProjectsRepository", () => {
       const report = await service.projectProfitability(ctx(), project.id);
       expect(report.entriesWithoutBillingRate).toBe(1);
       expect(report.lines.every((line) => line.revenueMinor === 0)).toBe(true);
+    });
+
+    it("withdraws a rate published by mistake and stops it valuing anything", async () => {
+      const project = await open();
+      await service.logTime(ctx(), { projectId: project.id, duration: "60", spentOn: "2026-06-10" });
+      const wrong = await service.publishBillingRate(ctx(), {
+        scope: "project",
+        scopeId: project.id,
+        currency: "EUR",
+        amountMinorPerHour: 900_000,
+        effectiveFrom: "2026-01-01"
+      });
+      expect((await service.projectProfitability(ctx(), project.id)).lines[0]!.revenueMinor).toBe(900_000);
+
+      const annulled = await service.annulBillingRate(ctx(), wrong.id);
+      expect(annulled.annulledAt).toBeInstanceOf(Date);
+
+      // The row survives, so the mistake stays auditable, and it no longer prices the hour.
+      const report = await service.projectProfitability(ctx(), project.id);
+      expect(report.entriesWithoutBillingRate).toBe(1);
+      const rows = await service.listRates(ctx());
+      expect(rows.billing.some((rate) => rate.id === wrong.id)).toBe(true);
+    });
+
+    it("refuses to withdraw the same rate twice", async () => {
+      const project = await open();
+      const rate = await service.publishBillingRate(ctx(), {
+        scope: "project",
+        scopeId: project.id,
+        currency: "EUR",
+        amountMinorPerHour: 5000,
+        effectiveFrom: "2026-01-01"
+      });
+      await service.annulBillingRate(ctx(), rate.id);
+      await expect(service.annulBillingRate(ctx(), rate.id)).rejects.toMatchObject({ code: "RATE_NOT_FOUND" });
+    });
+
+    it("lets a wrong amount be corrected the same day it was published", async () => {
+      const project = await open();
+      const day = "2026-04-02";
+      const wrong = await service.publishBillingRate(ctx(), {
+        scope: "project",
+        scopeId: project.id,
+        currency: "EUR",
+        amountMinorPerHour: 9000,
+        effectiveFrom: day
+      });
+      // Without the withdrawal this second publish is a duplicate: same project, currency and day.
+      await expect(
+        service.publishBillingRate(ctx(), {
+          scope: "project",
+          scopeId: project.id,
+          currency: "EUR",
+          amountMinorPerHour: 9500,
+          effectiveFrom: day
+        })
+      ).rejects.toMatchObject({ code: "DUPLICATE_RATE" });
+
+      await service.annulBillingRate(ctx(), wrong.id);
+      const corrected = await service.publishBillingRate(ctx(), {
+        scope: "project",
+        scopeId: project.id,
+        currency: "EUR",
+        amountMinorPerHour: 9500,
+        effectiveFrom: day
+      });
+      expect(corrected.amountMinorPerHour).toBe(9500);
+    });
+
+    it("refuses to change anything but the withdrawal, even with a direct update", async () => {
+      const rate = await service.publishCostRate(ctx(), {
+        membershipId: membershipA,
+        currency: "EUR",
+        costMinorPerHour: 2000,
+        effectiveFrom: "2026-05-01"
+      });
+      // The trigger sees an update that leaves annulled_at null, which is an edit like any other.
+      await expect(
+        admin`update member_cost_rates set effective_from = '2026-05-02' where id = ${rate.id}`
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it("withdraws a cost rate and the hour falls back to the one in force before it", async () => {
+      const project = await open();
+      // Two dated cost rates of this person, and an hour worked after both of them started.
+      await service.publishCostRate(ctx(), {
+        membershipId: membershipA,
+        currency: "EUR",
+        costMinorPerHour: 5000,
+        effectiveFrom: "2026-07-01"
+      });
+      const correction = await service.publishCostRate(ctx(), {
+        membershipId: membershipA,
+        currency: "EUR",
+        costMinorPerHour: 8000,
+        effectiveFrom: "2026-07-15"
+      });
+      await service.logTime(ctx(), { projectId: project.id, duration: "60", spentOn: "2026-07-20" });
+      expect((await service.projectProfitability(ctx(), project.id)).lines[0]!.costMinor).toBe(8000);
+
+      // Withdrawing the newer one does not leave a hole: the previous rate is in force again,
+      // which is what makes withdrawal a correction rather than a deletion.
+      await service.annulCostRate(ctx(), correction.id);
+      expect((await service.projectProfitability(ctx(), project.id)).lines[0]!.costMinor).toBe(5000);
+    });
+
+    it("prices a project by its kind of work when it has no rate of its own", async () => {
+      const type = await openServiceType();
+      const project = await open({ serviceTypeId: type.id });
+      await service.logTime(ctx(), { projectId: project.id, duration: "60", spentOn: "2026-06-10" });
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-01-01"
+      });
+
+      const report = await service.projectProfitability(ctx(), project.id);
+      expect(report.lines[0]).toMatchObject({ currency: "EUR", revenueMinor: 7000 });
+    });
+
+    it("lets the rate of a project win over the one of its kind of work", async () => {
+      const type = await openServiceType();
+      const project = await open({ serviceTypeId: type.id });
+      await service.logTime(ctx(), { projectId: project.id, duration: "60", spentOn: "2026-06-10" });
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-01-01"
+      });
+      await service.publishBillingRate(ctx(), {
+        scope: "project",
+        scopeId: project.id,
+        currency: "EUR",
+        amountMinorPerHour: 11_000,
+        effectiveFrom: "2026-01-01"
+      });
+
+      expect((await service.projectProfitability(ctx(), project.id)).lines[0]!.revenueMinor).toBe(11_000);
+    });
+
+    it("assigns a kind of work to a project that was opened without one", async () => {
+      const type = await openServiceType();
+      const project = await open();
+      expect(project.serviceTypeId).toBeNull();
+      const updated = await service.setServiceType(ctx(), project.id, type.id);
+      expect(updated.serviceTypeId).toBe(type.id);
+    });
+
+    it("refuses a second rate for the same kind of work and day", async () => {
+      const type = await openServiceType();
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-02-01"
+      });
+      await expect(
+        service.publishBillingRate(ctx(), {
+          scope: "service_type",
+          scopeId: type.id,
+          currency: "EUR",
+          amountMinorPerHour: 8000,
+          effectiveFrom: "2026-02-01"
+        })
+      ).rejects.toMatchObject({ code: "DUPLICATE_RATE" });
+    });
+
+    it("refuses a second kind of work with the same code", async () => {
+      const type = await openServiceType();
+      await expect(
+        service.createServiceType(ctx(), { code: type.code, name: `Un altre ${randomUUID().slice(0, 8)}` })
+      ).rejects.toMatchObject({ code: "DUPLICATE_SERVICE_TYPE" });
+    });
+
+    it("refuses a second kind of work with the same name, however it is written", async () => {
+      const type = await openServiceType();
+      // Accents, capitals and extra spacing are not a different name, and a code of its own does not
+      // make it one: two entries saying the same thing is what makes a catalogue useless.
+      for (const written of [type.name, type.name.toUpperCase(), `  ${type.name}  `, `${type.name}!`])
+        await expect(
+          service.createServiceType(ctx(), { code: `alt-${randomUUID().slice(0, 8)}`, name: written })
+        ).rejects.toMatchObject({ code: "DUPLICATE_SERVICE_TYPE" });
+    });
+
+    it("removes a kind of work that nothing depends on", async () => {
+      const type = await openServiceType();
+      expect(await service.deleteServiceType(ctx(), type.id)).toEqual({ detachedProjects: 0 });
+      expect((await service.listServiceTypes(ctx())).some((row) => row.id === type.id)).toBe(false);
+    });
+
+    it("detaches the projects of that kind instead of refusing, and says how many", async () => {
+      const type = await openServiceType();
+      const first = await open({ serviceTypeId: type.id });
+      await open({ serviceTypeId: type.id });
+
+      // Two projects were of this kind, and the count is what the screen tells the owner.
+      expect(await service.deleteServiceType(ctx(), type.id)).toEqual({ detachedProjects: 2 });
+
+      // The projects survive; what they lose is the kind of work, and with it the standing price.
+      const detached = await repository.getProject(ctx(), first.id);
+      expect(detached?.serviceTypeId).toBeNull();
+    });
+
+    it("refuses to remove a kind of work that has a published rate", async () => {
+      const type = await openServiceType();
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-03-04"
+      });
+      await expect(service.deleteServiceType(ctx(), type.id)).rejects.toMatchObject({
+        code: "SERVICE_TYPE_HAS_RATES"
+      });
+    });
+
+    it("refuses even when the only rate under it has been withdrawn", async () => {
+      // The row is what blocks the removal, not whether it still prices anything: it valued hours
+      // once, and those hours have to keep answering the same numbers.
+      const type = await openServiceType();
+      const rate = await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-03-05"
+      });
+      await service.annulBillingRate(ctx(), rate.id);
+      await expect(service.deleteServiceType(ctx(), type.id)).rejects.toMatchObject({
+        code: "SERVICE_TYPE_HAS_RATES"
+      });
+    });
+
+    it("deactivates a kind of work without touching what its rate already valued", async () => {
+      const type = await openServiceType();
+      const project = await open({ serviceTypeId: type.id });
+      await service.logTime(ctx(), { projectId: project.id, duration: "60", spentOn: "2026-06-11" });
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-01-01"
+      });
+
+      const deactivated = await service.setServiceTypeActive(ctx(), type.id, false);
+      expect(deactivated.active).toBe(false);
+
+      // Still 70,00: deactivating decides what is offered for new work, not what past work was
+      // worth. Reading it any other way would rewrite a closed month.
+      expect((await service.projectProfitability(ctx(), project.id)).lines[0]!.revenueMinor).toBe(7000);
+    });
+
+    it("counts what depends on a kind of work so the screen can warn before removing it", async () => {
+      const type = await openServiceType();
+      await open({ serviceTypeId: type.id });
+      await service.publishBillingRate(ctx(), {
+        scope: "service_type",
+        scopeId: type.id,
+        currency: "EUR",
+        amountMinorPerHour: 7000,
+        effectiveFrom: "2026-03-06"
+      });
+
+      const listed = (await service.listServiceTypes(ctx())).find((row) => row.id === type.id);
+      expect(listed).toMatchObject({ projectCount: 1, rateCount: 1 });
+    });
+
+    it("derives the code from the name, dashes included", async () => {
+      const suffix = randomUUID().slice(0, 6);
+      const created = await service.createServiceType(ctx(), { code: "", name: `Pàgina Web ${suffix}` });
+      expect(created.code).toBe(`pagina-web-${suffix}`);
+    });
+
+    it("keeps one tenant's kinds of work invisible to another", async () => {
+      await openServiceType();
+      expect(await service.listServiceTypes(context(tenantB, membershipB))).toEqual([]);
     });
 
     it("keeps cost and margin away from a member without financials:read", async () => {

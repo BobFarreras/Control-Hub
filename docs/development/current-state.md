@@ -39,28 +39,76 @@ marge d'un projecte real s'ha comparat amb un calcul manual i quadra, i esta esc
   `financials:read`: el servidor no el demana, no s'amaga amb CSS.
 
 - `apps/web/src/app/[locale]/projects/rates/page.tsx`: la pantalla de barems. Cost per hora per
-  persona i preu de venda per client o projecte, cadascun amb el seu formulari i el seu historial
-  publicat, amb la fila vigent marcada. Els imports es converteixen a unitats menors a
+  persona i preu de venda per tipus de servei, client o projecte, cadascun amb el seu formulari i el seu historial
+  publicat, amb la fila vigent marcada, i el panell de tipus de servei. Els imports es converteixen a unitats menors a
   `apps/web/src/lib/money.ts`, **mai per coma flotant**, i es refusa un tercer decimal en comptes
   d'arrodonir-lo. 17 tests.
 - Primitives compartides a `apps/web/src/components/`: `form-field.tsx` (Field, SelectField,
   TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg), `status-pill.tsx` i
   `metric-tile.tsx`. El desplegable es un `<select>` natiu estilitzat i no un popover propi, a
   proposit: el comportament es de la plataforma i la icona es nostra.
-- **Proves E2E autenticades: 11.** Les de projectes creen un projecte pel dialeg real i hi imputen
+- **Proves E2E autenticades: 13.** Les de projectes creen un projecte pel dialeg real i hi imputen
   hores; les de barems publiquen un cost i un preu i comproven el marge contra l'aritmetica escrita
   a l'assercio, i que **un barem publicat avui no canvia el valor d'una hora de fa un mes**. El job
   `authenticated-end-to-end` porta `CONTROL_HUB_FLAGS=projects_and_time`; sense la variable
   anirien contra un 404.
 
-### El que queda obert de la Fase 5B
+### Barems per tipus de servei i anul·lacio (revisio del propietari, 7 d'agost de 2026)
 
-**El preu de venda nomes es pot fixar per client o per projecte, i el propietari vol poder-lo fixar
-per tipus de servei** (agent d'IA, pagina web, software a mida). Avui vol dir repetir el mateix preu
-a cada client nou. No esta decidit com es modela: podria ser un abast nou a `billing_rates`, o
-reutilitzar el cataleg de productes de la Fase 4, que ja existeix i ja te aquests noms. **Es una
-decisio de model de dades pendent del propietari**, i canvia la migracio, el domini i la resolucio
-del barem, aixi que no s'ha comencat.
+El que quedava obert de la Fase 5B ja esta implementat. El propietari va decidir les dues coses que
+faltaven i les dues estan a `docs/specifications/projects-and-time.md`:
+
+**Preu de venda per tipus de feina.** Fixar el preu client per client obligava a repetir-lo a cada
+client nou. Ara hi ha un cataleg propi de tipus de servei (`service_types`) -- agent d'IA, pagina
+web, software a mida, automatitzacio -- i el preu de venda es pot publicar per tipus. La resolucio
+te tres nivells i va del mes especific al mes general: **projecte, despres client, despres tipus de
+servei**. Es va descartar reutilitzar els productes de la Fase 4: son el cataleg comercial de
+subscripcions, i acoblar-hi els projectes faria que renombrar un producte mogues preus.
+
+**Anul·lar un barem publicat per error.** Un barem no s'esborra mai. Es marca amb `annulled_at` i
+qui el retira, la fila es queda a l'historial i la resolucio la ignora. Tres consequencies, que son
+el motiu de triar-ho aixi:
+
+- L'errada continua sent auditable.
+- La unicitat nomes val per a les files vives, aixi que un import mal escrit **es pot corregir el
+  mateix dia**. Abans calia esperar a l'endema.
+- Retirar un barem no deixa forat: torna a ser vigent el que hi havia abans.
+
+El trigger `reject_rate_mutation` accepta exactament aquest canvi i cap altre, i el rol de
+l'aplicacio nomes te `grant update (annulled_at, annulled_by_membership_id)`. Un `update` o un
+`delete` sobre qualsevol altra columna rebota tambe amb SQL directe.
+
+**Treure un tipus de servei.** Una `x` a cada etiqueta. Que passa depen de que en depen, i la
+pantalla ho diu abans de clicar: si no hi ha res vinculat s'esborra; si hi ha projectes, es
+desvinculen i el dialeg avisa que **hauran de tenir barem propi**; i si hi ha algun barem publicat
+sota aquell tipus no es pot esborrar, perque canviaria el valor d'hores ja facturades -- llavors es
+desactiva, surt dels desplegables per a feina nova i el seu barem continua valorant el que ja
+valorava. Les etiquetes desactivades es poden reactivar.
+
+**El codi s'escriu sol.** S'escriu el nom i el codi es va omplint amb els guions posats:
+"Pàgina Web" dona `pagina-web`. Es pot sobreescriure, i buidar-lo el torna a lligar al nom.
+`toServiceCode` al domini es l'autoritat i qualsevol codi que arribi hi torna a passar, aixi que del
+formulari no en pot sortir res invalid.
+
+Fitxers: `0018_service_rates_and_annulment.sql`, i les capes de sempre fins a
+`components/rates-workspace.tsx`, que ara porta el panell de tipus de servei, el tercer abast al
+formulari de venda i l'accio de retirar a cada historial (amb confirmacio en dos passos, perque no
+es pot desfer). El tipus de feina d'un projecte es pot triar al dialeg d'alta i canviar despres a la
+seva fitxa: no es append-only, perque es una propietat del projecte i no un preu.
+
+Respostes a les dues preguntes que el propietari va fer, perque son les que decideixen si el model
+serveix: **si**, un barem amb data de dema es fa efectiu dema i no abans; i **si**, un mateix
+projecte pot haver tingut preus diferents al llarg del temps, i cada hora es valora amb el que era
+vigent el dia que es va treballar.
+
+Verificat executant: 63 proves al domini, 62 a `application`, 62 d'integracio contra PostgreSQL i
+**15 proves E2E autenticades**. De les noves d'integracio: retirada, doble retirada, correccio el
+mateix dia, `update` directe rebutjat, els tres nivells de resolucio, esborrar un tipus sense res
+vinculat, desvincular-ne els projectes i comptar-los, la negativa amb barem publicat (tambe amb el
+barem anul·lat), i que desactivar no mou el que el barem ja valorava. Les quatre E2E noves fan el
+recorregut per la UI real: preu per tipus de feina amb el del projecte manant-hi per sobre; escriure
+900,00 en comptes de 90,00, retirar-ho i publicar el correcte el mateix dia; el codi omplint-se sol
+a partir d'un nom amb accent; i la `x` que esborra quan pot i desactiva quan no.
 
 La resta de la fase esta completa, inclosa la pantalla de barems que `IMPLEMENTATION_PLAN.md`
 demanava.
@@ -156,10 +204,8 @@ apagat mentre s'espera la confirmacio, que es exactament per aixo que existeix e
 flags.
 
 La 5C concilia hores registrades contra hores imputades a projectes i tickets, aixi que depen de la
-5B, que ja esta tancada i amb el marge verificat.
-
-Abans o despres de la 5C, segons decideixi el propietari: **el barem de venda per tipus de
-servei**, descrit a "El que queda obert de la Fase 5B".
+5B, que ja esta tancada i amb el marge verificat, i tambe amb els barems per tipus de servei i
+l'anul·lacio ja implementats. **Es comenca en una sessio i una branca noves.**
 
 L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 `docs/phase-5-preflight-audit.md`.
@@ -177,7 +223,7 @@ L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 - Web canonica: `http://localhost:3001`.
 - API interna: `http://127.0.0.1:4000`; el navegador usa exclusivament `/api/*` via Next.js.
 - Rutes operatives: dashboard, CRM, detall de client, productes, subscripcions de clients,
-  subscripcions d'empresa, suport, projectes i seguretat.
+  subscripcions d'empresa, suport, projectes, barems i seguretat.
 - `/{locale}/projects` i `/{locale}/projects/{projectId}` nomes existeixen amb
   `CONTROL_HUB_FLAGS=projects_and_time`. Sense la flag responen 404 i el menu no les mostra.
 - `/{locale}/commerce` es una redireccio de compatibilitat cap a `/{locale}/products`.

@@ -3,10 +3,12 @@ import {
   canTransitionProject,
   hasPermission,
   isIsoDate,
+  normalizeComparableName,
   parseDurationMinutes,
   profitability,
   rateOn,
   todayIso,
+  toServiceCode,
   type DatedRate,
   type IsoDate,
   type Profitability,
@@ -24,6 +26,8 @@ export class ProjectsError extends Error {
 export type ProjectRecord = {
   id: string;
   customerId: string;
+  /** The kind of work, which is what a standing price per service can be resolved against. */
+  serviceTypeId: string | null;
   code: string;
   name: string;
   description: string | null;
@@ -39,6 +43,7 @@ export type ProjectRecord = {
 export type ProjectListRow = ProjectRecord & {
   customerName: string;
   ownerName: string | null;
+  serviceTypeName: string | null;
   loggedMinutes: number;
 };
 
@@ -67,6 +72,7 @@ export type CreateProjectInput = {
   customerId: string;
   code: string;
   name: string;
+  serviceTypeId?: string | undefined;
   description?: string | undefined;
   ownerMembershipId?: string | undefined;
   startedAt?: Date | undefined;
@@ -144,17 +150,52 @@ export type CostRateRecord = {
   currency: string;
   costMinorPerHour: number;
   effectiveFrom: IsoDate;
+  annulledAt: Date | null;
+  annulledByName: string | null;
 };
+
+/** The three levels a sale price can be agreed at, from the most specific to the most general. */
+export type BillingScope = "project" | "customer" | "service_type";
 
 export type BillingRateRecord = {
   id: string;
-  scope: "customer" | "project";
+  scope: BillingScope;
   scopeId: string;
   scopeName: string | null;
   currency: string;
   amountMinorPerHour: number;
   effectiveFrom: IsoDate;
+  /** Set when the rate was published by mistake and withdrawn. Never valued against. */
+  annulledAt: Date | null;
+  annulledByName: string | null;
 };
+
+export type ServiceTypeRecord = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  /** How many projects are of this kind. Decides whether removing it detaches anything. */
+  projectCount: number;
+  /**
+   * How many sale rates have ever been filed under it, annulled ones included. A single row makes
+   * removal impossible: a rate cannot be deleted, and deleting the kind of work under it would
+   * change what past hours were worth.
+   */
+  rateCount: number;
+};
+
+/** What removing a kind of work actually did, so the screen can say it rather than guess. */
+export type ServiceTypeRemoval = { detachedProjects: number };
+/** What a caller asks for. The code may be empty: it is derived from the name. */
+export type CreateServiceTypeInput = { code: string; name: string };
+
+/**
+ * What reaches storage. `normalizedName` is derived and never supplied by a caller: it is what the
+ * unique constraint compares, and letting anybody pass their own would be letting them choose
+ * whether their name counts as a duplicate.
+ */
+export type ServiceTypeInsert = CreateServiceTypeInput & { normalizedName: string };
 
 export type PublishCostRateInput = {
   membershipId: string;
@@ -164,7 +205,7 @@ export type PublishCostRateInput = {
 };
 
 export type PublishBillingRateInput = {
-  scope: "customer" | "project";
+  scope: BillingScope;
   scopeId: string;
   currency: string;
   amountMinorPerHour: number;
@@ -173,11 +214,21 @@ export type PublishBillingRateInput = {
 
 /** Everything the profitability of one project or customer needs, fetched together. */
 export type ProfitabilityInput = {
-  entries: { membershipId: string; projectId: string | null; spentOn: IsoDate; minutes: number; billable: boolean }[];
+  entries: {
+    membershipId: string;
+    projectId: string | null;
+    /** The kind of work, from the project. Null when the project has no type set. */
+    serviceTypeId: string | null;
+    spentOn: IsoDate;
+    minutes: number;
+    billable: boolean;
+  }[];
   costRates: Record<string, DatedRate[]>;
-  /** Billing rates by project identifier, for the more specific scope. */
+  /** Billing rates by project identifier, the most specific scope. */
   projectRates: Record<string, DatedRate[]>;
   customerRates: DatedRate[];
+  /** Billing rates by kind of work, the fallback when nothing was agreed for this customer. */
+  serviceTypeRates: Record<string, DatedRate[]>;
 };
 
 export type ProfitabilityReport = Profitability & { scope: "project" | "customer"; scopeId: string };
@@ -213,6 +264,22 @@ export type ProjectsRepository = {
     at: Date
   ): Promise<TimeEntryRecord>;
   deleteTimeEntry(context: TenantContext, timeEntryId: string): Promise<void>;
+
+  updateProjectServiceType(
+    context: TenantContext,
+    projectId: string,
+    serviceTypeId: string | null
+  ): Promise<ProjectRecord | null>;
+  listServiceTypes(context: TenantContext): Promise<ServiceTypeRecord[]>;
+  createServiceType(context: TenantContext, input: ServiceTypeInsert): Promise<ServiceTypeRecord>;
+  deleteServiceType(context: TenantContext, serviceTypeId: string): Promise<ServiceTypeRemoval | null>;
+  setServiceTypeActive(
+    context: TenantContext,
+    serviceTypeId: string,
+    active: boolean
+  ): Promise<ServiceTypeRecord | null>;
+  annulCostRate(context: TenantContext, rateId: string, at: Date): Promise<CostRateRecord | null>;
+  annulBillingRate(context: TenantContext, rateId: string, at: Date): Promise<BillingRateRecord | null>;
 
   listCostRates(context: TenantContext): Promise<CostRateRecord[]>;
   listBillingRates(context: TenantContext): Promise<BillingRateRecord[]>;
@@ -265,6 +332,23 @@ export class ProjectsService {
     if (!project) throw new ProjectsError("PROJECT_NOT_FOUND");
     if (!canTransitionProject(project.status, status)) throw new ProjectsError("INVALID_TRANSITION");
     return this.repository.updateProjectStatus(context, projectId, status, reason, now);
+  }
+
+  /**
+   * Changes what kind of work a project is.
+   *
+   * Not append-only, and it does not need to be: the kind of work is a property of the project, not
+   * a price. What it changes is which standing rate the project falls back to, and every rate it
+   * could resolve to is itself dated, so a past month keeps answering the same numbers.
+   */
+  async setServiceType(
+    context: TenantContext,
+    projectId: string,
+    serviceTypeId: string | null
+  ): Promise<ProjectRecord> {
+    const project = await this.repository.updateProjectServiceType(context, projectId, serviceTypeId);
+    if (!project) throw new ProjectsError("PROJECT_NOT_FOUND");
+    return project;
   }
 
   listTimeEntries(context: TenantContext, query: TimeEntryListQuery): Promise<TimeEntryPage> {
@@ -398,6 +482,78 @@ export class ProjectsService {
     return this.repository.publishBillingRate(context, { ...input, effectiveFrom });
   }
 
+  /**
+   * Withdraws a rate published by mistake.
+   *
+   * Nothing is deleted: the row stays, marked with who withdrew it and when, and the resolution
+   * skips it. That is what lets a wrong amount be corrected the same day it was typed while a
+   * closed month keeps answering the same numbers it answered yesterday.
+   */
+  async annulCostRate(context: TenantContext, rateId: string, now = new Date()): Promise<CostRateRecord> {
+    const rate = await this.repository.annulCostRate(context, rateId, now);
+    if (!rate) throw new ProjectsError("RATE_NOT_FOUND");
+    return rate;
+  }
+
+  async annulBillingRate(context: TenantContext, rateId: string, now = new Date()): Promise<BillingRateRecord> {
+    const rate = await this.repository.annulBillingRate(context, rateId, now);
+    if (!rate) throw new ProjectsError("RATE_NOT_FOUND");
+    return rate;
+  }
+
+  listServiceTypes(context: TenantContext): Promise<ServiceTypeRecord[]> {
+    return this.repository.listServiceTypes(context);
+  }
+
+  /**
+   * Removes a kind of work, or refuses to.
+   *
+   * Projects that were of this kind are detached and keep working; they simply stop resolving a
+   * standing price and need one of their own. That is a loss of convenience, not of history.
+   *
+   * A kind of work with a published rate is a different matter and the repository refuses it: the
+   * rate priced hours that somebody has already been invoiced for, and removing what it was filed
+   * under would change what those hours were worth. Deactivating it is the way out -- it stops
+   * being offered for new work and the rate keeps valuing what it already valued.
+   */
+  async deleteServiceType(context: TenantContext, serviceTypeId: string): Promise<ServiceTypeRemoval> {
+    const removal = await this.repository.deleteServiceType(context, serviceTypeId);
+    if (!removal) throw new ProjectsError("SERVICE_TYPE_NOT_FOUND");
+    return removal;
+  }
+
+  async setServiceTypeActive(
+    context: TenantContext,
+    serviceTypeId: string,
+    active: boolean
+  ): Promise<ServiceTypeRecord> {
+    const serviceType = await this.repository.setServiceTypeActive(context, serviceTypeId, active);
+    if (!serviceType) throw new ProjectsError("SERVICE_TYPE_NOT_FOUND");
+    return serviceType;
+  }
+
+  /**
+   * Opens a kind of work.
+   *
+   * The code is re-derived here even when the caller sent one, so what gets stored is the same
+   * whether it arrived from the form, from a script or with accents and capitals in it. An empty
+   * code falls back to the name, which is what the form relies on.
+   */
+  async createServiceType(context: TenantContext, input: CreateServiceTypeInput): Promise<ServiceTypeRecord> {
+    const name = input.name.trim();
+    if (name.length < 2) throw new ProjectsError("INVALID_INPUT");
+    const code = toServiceCode(input.code.trim() || name);
+    if (code.length < 2) throw new ProjectsError("INVALID_CODE");
+    // Two services with the same name are two ways to say one thing, and whoever publishes a rate
+    // later has no way to tell which one they meant. The comparable name is what the unique
+    // constraint sees, so accents and spacing cannot be used to slip a second one past it.
+    return this.repository.createServiceType(context, {
+      code,
+      name,
+      normalizedName: normalizeComparableName(name)
+    });
+  }
+
   private validRateInput(
     currency: string,
     minorPerHour: number,
@@ -429,16 +585,23 @@ export class ProjectsService {
 /**
  * Matches each entry with the rates that were in force the day it was worked.
  *
- * The billing rate of the project wins over the one of its customer, because the more specific
- * agreement is the one that was actually made. A member with rates published in more than one
- * currency resolves to the most recently published of them, which is what "the rate in force"
- * means when somebody has deliberately superseded one currency with another.
+ * Three levels, most specific first: a price agreed for this project, then one agreed with this
+ * customer, then the standing price for this kind of work. The order is the order of how
+ * deliberate each one is — a price set on one project was set for that project, and a price for
+ * "web pages" is what applies when nobody agreed anything more specific.
+ *
+ * A member with rates published in more than one currency resolves to the most recently published
+ * of them, which is what "the rate in force" means when somebody has deliberately superseded one
+ * currency with another.
  */
 export function valueEntries(input: ProfitabilityInput): ValuedTimeEntry[] {
   return input.entries.map((entry) => {
     const cost = rateOn(input.costRates[entry.membershipId] ?? [], entry.spentOn);
     const projectRate = entry.projectId ? rateOn(input.projectRates[entry.projectId] ?? [], entry.spentOn) : null;
-    const revenue = projectRate ?? rateOn(input.customerRates, entry.spentOn);
+    const serviceRate = entry.serviceTypeId
+      ? rateOn(input.serviceTypeRates[entry.serviceTypeId] ?? [], entry.spentOn)
+      : null;
+    const revenue = projectRate ?? rateOn(input.customerRates, entry.spentOn) ?? serviceRate;
     return {
       minutes: entry.minutes,
       billable: entry.billable,

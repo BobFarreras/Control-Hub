@@ -6,6 +6,7 @@ import {
   parseDurationMinutes,
   profitability,
   rateOn,
+  toServiceCode,
   valueOfMinutes,
   type ValuedTimeEntry
 } from "./projects.js";
@@ -61,6 +62,27 @@ describe("durations", () => {
     expect(parseDurationMinutes("1440")).toBe(1440);
     expect(parseDurationMinutes("1441")).toBeNull();
     expect(parseDurationMinutes("0")).toBeNull();
+  });
+});
+
+describe("service codes", () => {
+  it("derives the same code however the name was written", () => {
+    // This is the authority: whatever the form sends comes back through here before being stored,
+    // so a client that skips its own slug still gets a valid, stable code.
+    for (const written of ["Pagina web", "Pàgina Web", "  pagina   web  ", "Pagina, web!"])
+      expect(toServiceCode(written)).toBe("pagina-web");
+  });
+
+  it("refuses to produce a code that the column would reject", () => {
+    // The check is `^[a-z0-9][a-z0-9-]{0,46}[a-z0-9]$`: no leading or trailing dash, no upper case.
+    const pattern = /^[a-z0-9][a-z0-9-]{0,46}[a-z0-9]$/;
+    for (const written of ["Agent d'IA", "  web  ", "Web 3 amb IA", "Software a mida", "??? web ???"])
+      expect(toServiceCode(written)).toMatch(pattern);
+  });
+
+  it("returns nothing rather than something invalid when there is no code to derive", () => {
+    expect(toServiceCode("---")).toBe("");
+    expect(toServiceCode("")).toBe("");
   });
 });
 

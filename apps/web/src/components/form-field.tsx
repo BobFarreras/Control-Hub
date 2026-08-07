@@ -21,6 +21,12 @@ type FieldProps = {
   error?: string | undefined;
   /** Spans the full width of a grid form. For notes and descriptions. */
   wide?: boolean | undefined;
+  /**
+   * Keeps the label for screen readers but not on screen. For a control that sits under a heading
+   * already saying the same words, where showing it twice is noise for whoever can see it and
+   * dropping it leaves an unnamed control for whoever cannot.
+   */
+  labelHidden?: boolean | undefined;
   children: (ids: { id: string; describedBy: string | undefined }) => ReactNode;
 };
 
@@ -32,7 +38,7 @@ type FieldProps = {
  * already use shows it on hover and on focus, and `aria-describedby` still points at it so it is
  * announced with the control rather than only shown to whoever can see the tooltip.
  */
-export function Field({ label, hint, error, wide, children }: FieldProps) {
+export function Field({ label, hint, error, wide, labelHidden, children }: FieldProps) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
@@ -40,7 +46,7 @@ export function Field({ label, hint, error, wide, children }: FieldProps) {
 
   return (
     <div className={wide ? "field wide" : "field"}>
-      <span className="field-label-row">
+      <span className={labelHidden && !hint ? "sr-only" : "field-label-row"}>
         <label className="field-label" htmlFor={id}>
           {label}
         </label>
@@ -83,6 +89,7 @@ export function SelectField({
   hint,
   error,
   wide,
+  labelHidden,
   options,
   placeholder,
   ...select
@@ -92,7 +99,13 @@ export function SelectField({
   placeholder?: string | undefined;
 } & SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <Field label={label} {...(hint ? { hint } : {})} {...(error ? { error } : {})} {...(wide ? { wide } : {})}>
+    <Field
+      label={label}
+      {...(hint ? { hint } : {})}
+      {...(error ? { error } : {})}
+      {...(wide ? { wide } : {})}
+      {...(labelHidden ? { labelHidden } : {})}
+    >
       {({ id, describedBy }) => (
         <div className="select-shell">
           <select id={id} aria-describedby={describedBy} aria-invalid={error ? true : undefined} {...select}>

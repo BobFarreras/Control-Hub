@@ -10,6 +10,7 @@ import type {
   Profitability,
   ProfitabilityResponse,
   ProjectDetail as ProjectDetailData,
+  ServiceTypesResponse,
   TimeEntriesPage
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
@@ -23,10 +24,11 @@ import { requireSession } from "@/lib/require-session";
  * in the HTML of somebody who is not allowed to know it.
  */
 async function loadProject(projectId: string) {
-  const [detailResponse, entriesResponse, profitabilityResponse] = await Promise.all([
+  const [detailResponse, entriesResponse, profitabilityResponse, serviceTypesResponse] = await Promise.all([
     apiFetch(`/api/v1/projects/${projectId}`),
     apiFetch(`/api/v1/time-entries?projectId=${projectId}&pageSize=100&sort=spent_desc`),
-    apiFetch(`/api/v1/projects/${projectId}/profitability`)
+    apiFetch(`/api/v1/projects/${projectId}/profitability`),
+    apiFetch("/api/v1/service-types")
   ]);
   if (detailResponse.status === 404) notFound();
   if (!detailResponse.ok) throw new Error("PROJECT_LOAD_ERROR");
@@ -38,7 +40,11 @@ async function loadProject(projectId: string) {
     ? (await readJson<ProfitabilityResponse>(profitabilityResponse)).profitability
     : null;
 
-  return { detail: await readJson<ProjectDetailData>(detailResponse), entries, profitability };
+  const serviceTypes = serviceTypesResponse.ok
+    ? (await readJson<ServiceTypesResponse>(serviceTypesResponse)).serviceTypes
+    : [];
+
+  return { detail: await readJson<ProjectDetailData>(detailResponse), entries, profitability, serviceTypes };
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ locale: string; projectId: string }> }) {
@@ -49,7 +55,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ locale
 
   const t = getDictionary(locale);
   const labels = getProjectsDictionary(locale);
-  const { detail, entries, profitability } = await loadProject(projectId);
+  const { detail, entries, profitability, serviceTypes } = await loadProject(projectId);
 
   return (
     <div className="app-shell">
@@ -72,6 +78,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ locale
             detail={detail}
             entries={entries.items}
             profitability={profitability}
+            serviceTypes={serviceTypes}
             labels={labels}
             locale={locale}
           />

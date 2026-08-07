@@ -125,6 +125,8 @@ export type ProjectRow = {
   dueAt: string | null;
   closedAt: string | null;
   createdAt: string;
+  serviceTypeId: string | null;
+  serviceTypeName: string | null;
   loggedMinutes: number;
 };
 
@@ -181,17 +183,37 @@ export type CostRate = {
   currency: string;
   costMinorPerHour: number;
   effectiveFrom: string;
+  /** Set once the rate has been withdrawn; the row stays in the history and stops resolving. */
+  annulledAt: string | null;
+  annulledByName: string | null;
 };
+
+/** What a sale price is attached to: one project, one customer, or a whole kind of work. */
+export type BillingScope = "customer" | "project" | "service_type";
 
 export type BillingRate = {
   id: string;
-  scope: "customer" | "project";
+  scope: BillingScope;
   scopeId: string;
   scopeName: string | null;
   currency: string;
   amountMinorPerHour: number;
   effectiveFrom: string;
+  annulledAt: string | null;
+  annulledByName: string | null;
 };
+
+export type ServiceType = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  /** Projects of this kind. They keep working if it is removed; they just lose the standing price. */
+  projectCount: number;
+  /** Sale rates ever filed under it. One is enough to make removal impossible. */
+  rateCount: number;
+};
+export type ServiceTypesResponse = { serviceTypes: ServiceType[] };
 
 export type RatesResponse = { cost: CostRate[]; billing: BillingRate[] };
 export type Member = { id: string; name: string; email: string; status: string; roles: string[] };

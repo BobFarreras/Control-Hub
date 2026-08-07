@@ -292,3 +292,28 @@ sembla que l'SQL s'hagi executat.
 
 **Solucio.** `docker exec -i`. I comprova sempre el resultat (`select count(*)`) abans de
 concloure res a partir d'aquella ordre: aixo va invalidar una reproduccio sencera d'un error.
+
+### `apps/web/next-env.d.ts` surt modificat despres de `pnpm dev:verify`
+
+**Causa.** Next escriu aquest fitxer amb el `distDir` que esta fent servir. L'stack de verificacio
+fa servir `.next-verify`, aixi que el reescriu apuntant-hi. No es un canvi teu i no ha d'anar a cap
+commit: si hi va, el `typecheck` de qualsevol altre desenvolupador apunta a un directori que ell no
+te construit.
+
+**Solucio.** `git checkout -- apps/web/next-env.d.ts` en acabar. Un `pnpm dev` normal el torna a
+escriure be tot sol, pero convé revertir-lo abans de fer commit i no despres.
+
+### El suite E2E autenticat falla la segona vegada que es corre seguit
+
+**Causa.** Algunes proves muten la fixture i no la deixen com l'han trobada. Les dues de
+`support.authenticated.spec.ts` que canvien l'estat i l'assignacio d'un ticket esperen trobar-lo
+sense responsable, i despres del primer pas ja en te un. No es un error del codi: es que la base de
+dades de la fixture es queda com la va deixar l'execucio anterior.
+
+**Solucio.** `pnpm db:seed:verify` (o `db:seed:e2e`) abans de cada passada completa. Val la pena
+esperar-hi els 60-90 segons del limit de credencials abans d'engegar el suite; si no, la prova de
+sign-in es queda sense pressupost.
+
+**El que sí es defecte nostre** es escriure una prova nova que depengui d'aquest estat. Les de
+barems localitzen les files pel codi del projecte, generat a cada execucio, precisament perque una
+que filtrava per import va trobar la fila que una passada anterior ja havia anul·lat.
