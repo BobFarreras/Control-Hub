@@ -245,7 +245,47 @@ component `RateTable` simple a un `BillingRatesTable` que utilitza `SmartDataTab
 - `apps/web/src/app/styles.css` (estils toast)
 - `packages/i18n/src/index.ts` (etiquetes noves)
 
-## El seguent increment: Fase 5C
+## Fase 5C: registre de jornada (en curs, branca `feature/phase-5c-attendance`)
+
+Especificacio a `docs/specifications/attendance.md`, ampliada el 7 d'agost amb tres decisions del
+propietari: **pauses configurables i apagades per defecte**, **cadascu corregeix el seu registre amb
+motiu obligatori**, i **fitxar sortida estant en pausa es rebutja**. Govern de dades a
+`docs/security/data-governance.md`.
+
+Tot el modul viu darrere la flag `attendance`, apagada per defecte fins que la gestoria confirmi
+que la forma del registre li serveix.
+
+Implementat i committat:
+
+- `packages/domain/src/attendance.ts`: sessions derivades del log, estat, pauses, correccions
+  encadenades i conciliacio. Pur. Compta temps real transcorregut, aixi que una nit de canvi d'hora
+  son cinc hores i no quatre, i una sessio oberta no val zero.
+- `0019_attendance.sql` i `0020_attendance_permissions.sql`: log append-only. El rol de
+  l'aplicacio te `select` i `insert` i res mes, aixi que un `update` rebota tambe amb SQL directe.
+  Un event nomes es pot corregir un cop. **Avui res no pot esborrar un fitxatge**, ni passat el
+  termini de retencio: la purga encara no existeix i el perque esta a `data-governance.md`.
+- `packages/application/src/attendance.ts` i `packages/persistence/src/attendance-repository.ts`.
+  Un fitxatge no envia `occurred_at`: els dos rellotges agafen el `now()` de la transaccio i
+  surten iguals, que es el que distingeix un fitxatge d'una declaracio posterior.
+- `apps/api/src/routes/attendance.ts`: sis rutes. Llegir el registre d'una altra persona queda
+  auditat encara que qui ho fa hi tingui dret.
+- `apps/web`: boto a la capcalera de totes les pantalles, pantalla `/attendance` amb el mes
+  propi i l'historial complet, i `/attendance/team` amb la vista de tothom, l'exportacio CSV
+  (una fila per persona i dia, amb entrada i sortida) i la conciliacio.
+
+Verificat: **89 proves de domini, 82 d'aplicacio, 31 d'API, 11 d'integracio de l'esquema, 11 de
+l'adaptador i 4 E2E autenticades noves**, aquestes ultimes executades contra la pila de verificacio.
+
+### Que falta per tancar la fase
+
+- **Tres proves E2E de projectes i barems fallen** a la base de verificacio local, que porta un dia
+  d'execucions acumulades (el panell de tipus de servei ja en llista cinc de passades anteriors).
+  Cal decidir si es acumulacio o una regressio del boto nou a la capcalera; CI, que sempre sembra
+  de zero, ho dira.
+- La revisio del propietari.
+- Confirmacio de la gestoria abans d'encendre la flag en produccio.
+
+## El seguent increment (previ a la 5C, ja superat)
 
 **El seguent pas es la Fase 5C: registre de jornada**, amb especificacio aprovada a
 `docs/specifications/attendance.md`. Pendent de confirmacio de la gestoria abans d'activar-la en
