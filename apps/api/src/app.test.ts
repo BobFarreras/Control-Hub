@@ -122,6 +122,7 @@ describe("route registration", () => {
     ["GET", "/api/v1/crm/leads"],
     ["POST", "/api/v1/crm/leads"],
     ["PATCH", "/api/v1/crm/leads/:leadId/status"],
+    ["POST", "/api/v1/crm/leads/:leadId/reopen"],
     ["POST", "/api/v1/crm/leads/:leadId/convert"],
     ["GET", "/api/v1/crm/customers"],
     ["GET", "/api/v1/crm/customers/:customerId"],

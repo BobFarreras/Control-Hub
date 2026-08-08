@@ -6,6 +6,7 @@ import {
   normalizeEmail,
   normalizePhone,
   permissionCodes,
+  recoverLeadStatus,
   rolePermissions,
   type TenantContext
 } from "./index.js";
@@ -22,6 +23,12 @@ describe("CRM domain", () => {
     expect(normalizeEmail(" Sales@Example.COM ")).toBe("sales@example.com");
     expect(normalizePhone("+34 600-123-456")).toBe("+34600123456");
     expect(normalizeComparableName("Àvant  Business, S.L.")).toBe("avant business s l");
+  });
+
+  it("recovers a lost lead to its latest active state and falls back to new", () => {
+    expect(recoverLeadStatus(["lost", "proposal", "qualified"])).toBe("proposal");
+    expect(recoverLeadStatus(["lost", null])).toBe("new");
+    expect(recoverLeadStatus(["won", "lost"])).toBe("new");
   });
 
   it("grants technical users CRM read access without write access", () => {

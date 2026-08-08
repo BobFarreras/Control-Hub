@@ -136,6 +136,33 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
       return { customer };
     }
   );
+  app.post<{ Params: { leadId: string }; Body: { reason: string } }>(
+    "/api/v1/crm/leads/:leadId/reopen",
+    {
+      schema: {
+        params: { type: "object", required: ["leadId"], properties: { leadId: { type: "string", format: "uuid" } } },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["reason"],
+          properties: { reason: { type: "string", minLength: 3, maxLength: 500 } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:manage");
+      const lead = await crm.reopenLead(context, request.params.leadId, request.body.reason);
+      await writeAudit(database, context, request, {
+        action: "lead.reopened",
+        targetType: "lead",
+        targetId: lead.id,
+        outcome: "success",
+        metadata: { status: lead.status }
+      });
+      return { lead };
+    }
+  );
   app.get<{ Querystring: ListQuery }>("/api/v1/crm/customers", { schema: listSchema }, async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "customers:read");
