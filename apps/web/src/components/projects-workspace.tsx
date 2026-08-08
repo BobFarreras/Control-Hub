@@ -10,6 +10,7 @@ import type { CustomerOption, ProjectRow, ServiceType, TablePreference } from "@
 import { formValue, optionalFormValue } from "@/lib/form";
 import { formatHours } from "@/lib/format";
 import { eventHandler } from "@/lib/handlers";
+import { addCalendarDays, projectDateDefaults } from "@/lib/project-date-defaults";
 
 type Labels = Record<string, string>;
 
@@ -38,7 +39,24 @@ export function ProjectsWorkspace({
   const [dialog, setDialog] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [startedAt, setStartedAt] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [dueAtEdited, setDueAtEdited] = useState(false);
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
+
+  function openCreateDialog() {
+    const defaults = projectDateDefaults(new Date());
+    setStartedAt(defaults.startedAt);
+    setDueAt(defaults.dueAt);
+    setDueAtEdited(false);
+    setError("");
+    setDialog(true);
+  }
+
+  function changeStart(value: string) {
+    setStartedAt(value);
+    if (!dueAtEdited && value) setDueAt(addCalendarDays(value, 30));
+  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,13 +181,7 @@ export function ProjectsWorkspace({
         rowHref={(project) => `/${locale}/projects/${project.id}`}
         primaryControls={
           <>
-            <button
-              className="primary-command"
-              onClick={() => {
-                setError("");
-                setDialog(true);
-              }}
-            >
+            <button className="primary-command" onClick={openCreateDialog}>
               <Plus size={17} />
               {t.newProject}
             </button>
@@ -228,8 +240,28 @@ export function ProjectsWorkspace({
                   ...serviceTypes.filter((type) => type.active).map((type) => ({ value: type.id, label: type.name }))
                 ]}
               />
-              <TextField label={t.startedAt!} name="startedAt" type="date" data-mono="true" disabled={busy} />
-              <TextField label={t.dueAt!} name="dueAt" type="date" data-mono="true" disabled={busy} />
+              <TextField
+                label={t.startedAt!}
+                name="startedAt"
+                type="date"
+                data-mono="true"
+                value={startedAt}
+                onChange={(event) => changeStart(event.currentTarget.value)}
+                disabled={busy}
+              />
+              <TextField
+                label={t.dueAt!}
+                name="dueAt"
+                type="date"
+                data-mono="true"
+                value={dueAt}
+                min={startedAt || undefined}
+                onChange={(event) => {
+                  setDueAt(event.currentTarget.value);
+                  setDueAtEdited(true);
+                }}
+                disabled={busy}
+              />
               <div className="field wide">
                 <label className="field-label" htmlFor="project-description">
                   {t.projectDescription}

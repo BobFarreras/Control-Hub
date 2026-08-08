@@ -1,5 +1,16 @@
 # Estat actual i continuacio
 
+> Hi ha una branca de planificacio separada, `feature/pre-phase-6-product-polish`, amb el pla
+> incremental de consolidacio previ a la Fase 6 a
+> `docs/development/pre-phase-6-product-polish.md`. Encara no canvia cap comportament ni cap
+> especificacio aprovada; les portes de decisio del document s'han de resoldre abans de cada
+> increment.
+>
+> Primer increment implementat en aquesta branca: el toast global ara apareix a baix a la
+> dreta, respecta la safe-area, s'adapta a mobil i desactiva l'animacio amb reduced motion.
+> L'alta de projecte tambe proposa inici avui i entrega 30 dies naturals despres; si es canvia
+> l'inici, l'entrega es recalcula fins que l'usuari l'edita manualment.
+
 ## Punt de projecte
 
 Les fases 0 a 5B estan implementades. El producte executa web, API i worker en monorepo,
