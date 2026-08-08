@@ -19,9 +19,27 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { InstantSearch } from "@/components/instant-search";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
-import type { CrmSummary, CustomerRow, ImportResult, LeadRow, Page, TablePreference } from "@/lib/api-types";
+import type {
+  CrmSummary,
+  CustomerRow,
+  ImportResult,
+  ImportSummary,
+  LeadRow,
+  Page,
+  TablePreference
+} from "@/lib/api-types";
 import { formValue, textEntries } from "@/lib/form";
 import { actionHandler } from "@/lib/handlers";
+import {
+  canonicalLeadCsv,
+  leadImportReportCsv,
+  leadImportFields,
+  readLeadImportFile,
+  suggestLeadColumnMapping,
+  SUPPORTED_TEMPLATE_VERSION,
+  type LeadColumnMapping,
+  type ParsedLeadImport
+} from "@/lib/lead-import-file";
 
 type Labels = Record<string, string>;
 const pipeline = [
@@ -63,8 +81,11 @@ export function CrmWorkspace({
   const [error, setError] = useState("");
   /** Last resort for a handler that rejected outright, so a failure is never silent. */
   const fail = () => setError("CRM_ERROR");
-  const [csv, setCsv] = useState("");
+  const [parsedImport, setParsedImport] = useState<ParsedLeadImport | null>(null);
+  const [columnMapping, setColumnMapping] = useState<LeadColumnMapping>(() => suggestLeadColumnMapping([]));
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [importBatchId, setImportBatchId] = useState("");
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [pending, startTransition] = useTransition();
   const refresh = () => startTransition(() => router.refresh());
   async function request(path: string, init: RequestInit) {
@@ -107,17 +128,33 @@ export function CrmWorkspace({
   async function importCsv(commit: boolean) {
     try {
       setError("");
+      if (!parsedImport) throw new Error("IMPORT_EMPTY");
+      const csv = canonicalLeadCsv(parsedImport, columnMapping);
       const response = await request("/api/v1/crm/leads/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ csv, commit })
+        body: JSON.stringify({ csv, batchId: importBatchId, commit })
       });
-      const payload = (await response.json()) as { results: ImportResult[] };
+      const payload = (await response.json()) as {
+        batchId: string;
+        results: ImportResult[];
+        summary: ImportSummary;
+      };
       setImportResults(payload.results);
+      setImportSummary(commit ? payload.summary : null);
       if (commit && payload.results.some((result) => result.status === "imported")) refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "CRM_ERROR");
     }
+  }
+  function downloadImportReport() {
+    const csv = leadImportReportCsv(importBatchId, importResults);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `control-hub-lead-import-${importBatchId}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
   async function reopenLead(formData: FormData) {
     if (!leadToReopen) return;
@@ -446,41 +483,118 @@ export function CrmWorkspace({
       {dialog === "import" && (
         <Dialog title={labels.importCsv} close={() => setDialog(null)}>
           <div className="import-panel">
+            <a className="secondary-button" href={`/api/v1/crm/leads/import-template?locale=${locale}`}>
+              <Download size={16} />
+              {labels.downloadTemplate}
+            </a>
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) void file.text().then(setCsv);
+                if (!file) return;
+                setImportResults([]);
+                setImportSummary(null);
+                setImportBatchId(crypto.randomUUID());
+                void readLeadImportFile(file)
+                  .then((parsed) => {
+                    setParsedImport(parsed);
+                    setColumnMapping(suggestLeadColumnMapping(parsed.headers));
+                    setError("");
+                  })
+                  .catch((caught: unknown) => {
+                    setParsedImport(null);
+                    setError(caught instanceof Error ? caught.message : "IMPORT_INVALID_FILE");
+                  });
               }}
             />
+            {parsedImport && (
+              <>
+                <p className="dialog-note">
+                  {labels.importRows?.replace("{count}", String(parsedImport.rows.length))}
+                  {parsedImport.templateVersion && parsedImport.templateVersion !== SUPPORTED_TEMPLATE_VERSION
+                    ? ` · ${labels.unsupportedTemplate}`
+                    : ""}
+                </p>
+                <div className="import-mapping" aria-label={labels.mapColumns}>
+                  {leadImportFields.map((field) => (
+                    <label key={field}>
+                      {labels[field] ?? field}
+                      {(["name", "source", "priority"] as const).includes(field as "name" | "source" | "priority") &&
+                        " *"}
+                      <select
+                        value={columnMapping[field]}
+                        onChange={(event) =>
+                          setColumnMapping((current) => ({ ...current, [field]: event.currentTarget.value }))
+                        }
+                      >
+                        <option value="">{labels.ignoreColumn}</option>
+                        {parsedImport.headers.map((header) => (
+                          <option value={header} key={`${field}-${header}`}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="import-actions">
               <button
                 className="secondary-button"
-                disabled={!csv}
+                disabled={!parsedImport || !columnMapping.name || !columnMapping.source || !columnMapping.priority}
                 onClick={actionHandler(() => importCsv(false), fail)}
               >
                 {labels.preview}
               </button>
               <button
                 className="primary-command"
-                disabled={!csv || importResults.some((result) => result.status === "error")}
+                disabled={
+                  !parsedImport ||
+                  !columnMapping.name ||
+                  !columnMapping.source ||
+                  !columnMapping.priority ||
+                  importResults.length === 0 ||
+                  !importResults.some((result) => result.status === "valid" || result.status === "warning")
+                }
                 onClick={actionHandler(() => importCsv(true), fail)}
               >
                 {labels.import}
               </button>
             </div>
+            {importResults.length > 0 &&
+              !importSummary &&
+              !importResults.some((result) => result.status === "valid" || result.status === "warning") && (
+                <p className="dialog-note" role="status">
+                  {labels.importBlocked}
+                </p>
+              )}
             {importResults.length > 0 && (
-              <ul className="import-results">
-                {importResults.map((result) => (
-                  <li key={result.row}>
-                    #{result.row}{" "}
-                    <span className={`state state-${result.status === "error" ? "lost" : "won"}`}>
-                      {result.code ?? result.status}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {importSummary && (
+                  <div className="dialog-note" role="status">
+                    {labels.importSummary
+                      ?.replace("{imported}", String(importSummary.imported))
+                      .replace("{skipped}", String(importSummary.skipped))
+                      .replace("{errors}", String(importSummary.errors))}
+                    <button type="button" className="secondary-button" onClick={downloadImportReport}>
+                      <Download size={16} />
+                      {labels.downloadImportReport}
+                    </button>
+                  </div>
+                )}
+                <ul className="import-results">
+                  {importResults.map((result) => (
+                    <li key={result.row}>
+                      #{result.row}{" "}
+                      <span className={`state state-${result.status === "error" ? "lost" : "won"}`}>
+                        {(result.code && labels[result.code]) ?? labels[result.status] ?? result.code ?? result.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         </Dialog>

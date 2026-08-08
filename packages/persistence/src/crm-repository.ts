@@ -113,6 +113,33 @@ export class PostgresCrmRepository implements CrmRepository {
     }
   }
 
+  async importLead(
+    context: TenantContext,
+    input: CreateLeadInput & { normalizedName: string; normalizedEmail: string | null; normalizedPhone: string | null },
+    importReference: string
+  ) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const id = randomUUID();
+        const rows = await tx<{ id: string }[]>`
+          insert into leads (id, tenant_id, name, normalized_name, company_name, email, normalized_email,
+            phone, normalized_phone, source, priority, owner_membership_id, import_reference)
+          values (${id}, ${context.tenantId}, ${input.name}, ${input.normalizedName}, ${input.companyName ?? null},
+            ${input.email ?? null}, ${input.normalizedEmail}, ${input.phone ?? null}, ${input.normalizedPhone},
+            ${input.source}, ${input.priority}, ${input.ownerMembershipId ?? null}, ${importReference})
+          on conflict (tenant_id, import_reference) where import_reference is not null do nothing
+          returning id`;
+        if (!rows[0]) return "already_imported" as const;
+        await tx`insert into crm_activity (id, tenant_id, lead_id, actor_user_id, type, metadata)
+          values (${randomUUID()}, ${context.tenantId}, ${id}, ${context.userId}, 'lead.imported',
+            ${tx.json({ importReference })})`;
+        return "imported" as const;
+      });
+    } catch (error) {
+      return mapDuplicate(error);
+    }
+  }
+
   async transitionLead(context: TenantContext, leadId: string, status: LeadStatus) {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const current = await tx<{ status: LeadStatus }[]>`

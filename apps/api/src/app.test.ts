@@ -133,6 +133,7 @@ describe("route registration", () => {
     ["GET", "/api/v1/crm/summary"],
     ["GET", "/api/v1/crm/leads/export"],
     ["POST", "/api/v1/crm/leads/import"],
+    ["GET", "/api/v1/crm/leads/import-template"],
     ["GET", "/api/v1/support/tickets"],
     ["POST", "/api/v1/support/tickets"],
     ["GET", "/api/v1/support/tickets/:ticketId"],

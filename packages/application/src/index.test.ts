@@ -30,6 +30,7 @@ function repository(overrides: Partial<CrmRepository> = {}): CrmRepository {
     listLeads: vi.fn().mockResolvedValue({ items: [lead], total: 1, page: 1, pageSize: 1 }),
     listCustomers: vi.fn(),
     createLead: vi.fn().mockResolvedValue(lead),
+    importLead: vi.fn().mockResolvedValue("imported"),
     transitionLead: vi.fn().mockResolvedValue({ ...lead, status: "contacted" }),
     reopenLead: vi.fn().mockResolvedValue({ ...lead, status: "proposal" }),
     convertLead: vi.fn(),
@@ -63,6 +64,20 @@ describe("CrmService", () => {
         normalizedEmail: "sales@example.com",
         normalizedPhone: "+34600123123"
       })
+    );
+  });
+  it("normalizes an imported lead and preserves its idempotency reference", async () => {
+    const adapter = repository();
+    const service = new CrmService(adapter);
+    await service.importLead(
+      context,
+      { name: " Àvant ", email: " SALES@EXAMPLE.COM ", source: " web ", priority: "normal" },
+      "batch-a:2"
+    );
+    expect(adapter.importLead).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ name: "Àvant", normalizedEmail: "sales@example.com", source: "web" }),
+      "batch-a:2"
     );
   });
   it("rejects invalid transitions before writing", async () => {

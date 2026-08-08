@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
-**Estat:** proposta de treball; no autoritza encara canvis de domini o migracions.
-**Branca activa:** `feature/pre-phase-6-product-polish-implementation`.
+**Estat:** implementacio incremental en curs.
+**Branca activa:** `develop`.
 
 ## Objectiu
 
@@ -15,7 +15,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 0 — Pla, decisions inicials i llenguatge de producte.
 - [x] Increment 1 — Leads perduts recuperables i filtre de perduts.
 - [x] Increment 2 — Exportacio Excel professional del CRM.
-- [ ] Increment 3 — Importacio guiada de leads.
+- [x] Increment 3 — Importacio guiada de leads.
 - [ ] Increment 4 — Fitxa de client com a vista 360.
 - [ ] Increment 5 — Simplificar el cataleg comercial.
 - [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
@@ -75,7 +75,14 @@ server-side i E2E de perdre/filtrar/reobrir.
 Proves minimes: workbook llegible, filtres respectats, tres locales, formula injection,
 permis insuficient, tenant scope i volum maxim especificat.
 
-### Increment 3 — importacio guiada de leads
+### Increment 3 — importacio guiada de leads (implementat)
+
+Progres intern:
+
+- [x] Plantilla Excel versionada amb instruccions, valors restringits i exemple no importable.
+- [x] Lectura CSV/XLSX i mapatge de columnes.
+- [x] Previsualitzacio completa sense escriptura i errors accionables per fila.
+- [x] Confirmacio idempotent i resum descarregable.
 
 Flux recomanat en cinc passos:
 

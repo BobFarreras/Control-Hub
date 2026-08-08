@@ -1,10 +1,8 @@
 # Estat actual i continuacio
 
-> La implementacio continua a `feature/pre-phase-6-product-polish-implementation`, amb el pla
+> La implementacio continua a `develop`, amb el pla
 > incremental de consolidacio previ a la Fase 6 a
-> `docs/development/pre-phase-6-product-polish.md`. Encara no canvia cap comportament ni cap
-> especificacio aprovada; les portes de decisio del document s'han de resoldre abans de cada
-> increment.
+> `docs/development/pre-phase-6-product-polish.md`.
 >
 > Primer increment implementat en aquesta branca: el toast global ara apareix a baix a la
 > dreta, respecta la safe-area, s'adapta a mobil i desactiva l'animacio amb reduced motion.
@@ -14,6 +12,15 @@
 > registrat, o a `new` quan no n'hi ha cap, i la reobertura queda a l'historial i l'auditoria.
 > L'exportacio de leads genera un Excel professional al backend, respecta cerca i filtres,
 > neutralitza formules, incorpora metadades i queda auditada.
+> La importacio guiada ha començat amb una plantilla Excel `crm-leads-v1`, descarregable des
+> del dialeg, amb full d'instruccions, columnes estables i prioritats restringides. La UI llegeix
+> CSV i XLSX, rebutja formules, suggereix i permet corregir el mapatge, i previsualitza sense
+> escriure. La confirmacio usa una referencia unica per tenant, lot i fila: un reintent no
+> duplica leads, ni tan sols quan no tenen correu o telefon. Les files valides s'importen de
+> forma atomica, els errors no bloquegen la resta, el resultat queda auditat sense PII i es pot
+> descarregar com a CSV. El punt de continuacio es l'increment 4, la fitxa 360 del client.
+> La plantilla inclou una pestanya d'exemple separada que no s'importa. La previsualitzacio
+> identifica per fila el camp incorrecte i explica per que la confirmacio encara no es pot fer.
 
 ## Punt de projecte
 

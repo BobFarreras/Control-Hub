@@ -81,6 +81,20 @@ suite("PostgresCrmRepository", () => {
     ).toBe(1);
   });
 
+  it("imports the same batch row exactly once within each tenant", async () => {
+    const input = {
+      name: "Batch-only lead",
+      source: "spreadsheet",
+      priority: "normal" as const,
+      normalizedName: "batch-only lead",
+      normalizedEmail: null,
+      normalizedPhone: null
+    };
+    await expect(repository.importLead(context(tenantA), input, "batch-a:2")).resolves.toBe("imported");
+    await expect(repository.importLead(context(tenantA), input, "batch-a:2")).resolves.toBe("already_imported");
+    await expect(repository.importLead(context(tenantB), input, "batch-a:2")).resolves.toBe("imported");
+  });
+
   it("reopens a lost lead to its latest active state with an append-only reason", async () => {
     const created = await repository.createLead(context(tenantA), {
       name: "Recoverable",

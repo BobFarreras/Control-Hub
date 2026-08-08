@@ -123,6 +123,11 @@ export interface CrmRepository {
     context: TenantContext,
     input: CreateLeadInput & { normalizedName: string; normalizedEmail: string | null; normalizedPhone: string | null }
   ): Promise<LeadRecord>;
+  importLead(
+    context: TenantContext,
+    input: CreateLeadInput & { normalizedName: string; normalizedEmail: string | null; normalizedPhone: string | null },
+    importReference: string
+  ): Promise<"imported" | "already_imported">;
   transitionLead(context: TenantContext, leadId: string, status: LeadStatus): Promise<LeadRecord>;
   reopenLead(context: TenantContext, leadId: string, reason: string): Promise<LeadRecord>;
   convertLead(context: TenantContext, leadId: string): Promise<CustomerRecord>;
@@ -163,6 +168,26 @@ export class CrmService {
       normalizedEmail: email ? normalizeEmail(email) : null,
       normalizedPhone: phone ? normalizePhone(phone) : null
     });
+  }
+  importLead(context: TenantContext, input: CreateLeadInput, importReference: string) {
+    const reference = importReference.trim();
+    if (reference.length === 0 || reference.length > 120) throw new CrmError("INVALID_INPUT");
+    const name = input.name.trim();
+    if (name.length < 2 || name.length > 160 || input.source.trim().length === 0) throw new CrmError("INVALID_INPUT");
+    const email = input.email?.trim() || undefined;
+    const phone = input.phone?.trim() || undefined;
+    return this.repository.importLead(
+      context,
+      {
+        ...input,
+        name,
+        source: input.source.trim(),
+        normalizedName: normalizeComparableName(name),
+        normalizedEmail: email ? normalizeEmail(email) : null,
+        normalizedPhone: phone ? normalizePhone(phone) : null
+      },
+      reference
+    );
   }
   async transitionLead(context: TenantContext, leadId: string, status: LeadStatus) {
     const current = (

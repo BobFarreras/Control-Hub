@@ -7,8 +7,8 @@ import {
   type LeadPriority,
   type LeadStatus
 } from "@control-hub/domain";
+import { createCrmImportTemplate, createCrmLeadsWorkbook } from "../crm-export.js";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
-import { createCrmLeadsWorkbook } from "../crm-export.js";
 import type { CrmContext } from "./context.js";
 
 /** Leads, customers, contacts, notes, tasks and the CSV import/export pair. */
@@ -369,16 +369,17 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
         .send(Buffer.from(workbook));
     }
   );
-  app.post<{ Body: { csv: string; commit?: boolean } }>(
+  app.post<{ Body: { csv: string; batchId: string; commit?: boolean } }>(
     "/api/v1/crm/leads/import",
     {
       schema: {
         body: {
           type: "object",
           additionalProperties: false,
-          required: ["csv"],
+          required: ["csv", "batchId"],
           properties: {
             csv: { type: "string", minLength: 1, maxLength: 5_000_000 },
+            batchId: { type: "string", format: "uuid" },
             commit: { type: "boolean", default: false }
           }
         }
@@ -397,31 +398,44 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
       const required = ["name", "source", "priority"];
       if (!required.every((column) => header.includes(column))) throw new CrmError("INVALID_INPUT");
       const index = (column: string) => header.indexOf(column);
-      const results: { row: number; status: "valid" | "warning" | "imported" | "error"; code?: string }[] = [];
+      const results: {
+        row: number;
+        status: "valid" | "warning" | "imported" | "skipped" | "error";
+        code?: string;
+      }[] = [];
       const fileEmails = new Set<string>();
       const filePhones = new Set<string>();
       const fileNames = new Set<string>();
       for (const [offset, row] of rows.entries()) {
         const input: CreateLeadInput = {
           name: row[index("name")] ?? "",
-          source: row[index("source")] ?? "manual",
-          priority: (row[index("priority")] || "normal") as LeadPriority,
+          source: row[index("source")] ?? "",
+          priority: (row[index("priority")] ?? "") as LeadPriority,
           ...(row[index("company")] ? { companyName: row[index("company")] } : {}),
           ...(row[index("email")] ? { email: row[index("email")] } : {}),
           ...(row[index("phone")] ? { phone: row[index("phone")] } : {})
         };
         try {
-          if (
-            !leadPriorities.includes(input.priority) ||
-            input.name.trim().length < 2 ||
-            input.source.trim().length === 0
-          )
-            throw new CrmError("INVALID_INPUT");
+          if (input.name.trim().length < 2) {
+            results.push({ row: offset + 2, status: "error", code: "INVALID_LEAD_NAME" });
+            continue;
+          }
+          if (input.source.trim().length === 0) {
+            results.push({ row: offset + 2, status: "error", code: "SOURCE_REQUIRED" });
+            continue;
+          }
+          if (!leadPriorities.includes(input.priority)) {
+            results.push({ row: offset + 2, status: "error", code: "INVALID_PRIORITY" });
+            continue;
+          }
           const emailKey = input.email?.trim().toLowerCase();
           const phoneKey = input.phone?.replace(/\D/g, "");
           if (emailKey && fileEmails.has(emailKey)) throw new CrmError("DUPLICATE_EMAIL");
           if (phoneKey && filePhones.has(phoneKey)) throw new CrmError("DUPLICATE_PHONE");
-          if (emailKey && !/^\S+@\S+\.\S+$/.test(emailKey)) throw new CrmError("INVALID_INPUT");
+          if (emailKey && !/^\S+@\S+\.\S+$/.test(emailKey)) {
+            results.push({ row: offset + 2, status: "error", code: "INVALID_EMAIL" });
+            continue;
+          }
           const nameKey = normalizeComparableName(input.name);
           let similarName = fileNames.has(nameKey);
           if (!request.body.commit) {
@@ -436,7 +450,13 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
             if (duplicate.items.some((lead) => phoneKey && lead.phone?.replace(/\D/g, "") === phoneKey))
               throw new CrmError("DUPLICATE_PHONE");
             similarName ||= duplicate.items.some((lead) => normalizeComparableName(lead.name) === nameKey);
-          } else await crm.createLead(context, input);
+          } else {
+            const outcome = await crm.importLead(context, input, `${request.body.batchId}:${offset + 2}`);
+            if (outcome === "already_imported") {
+              results.push({ row: offset + 2, status: "skipped", code: "ALREADY_IMPORTED" });
+              continue;
+            }
+          }
           if (emailKey) fileEmails.add(emailKey);
           if (phoneKey) filePhones.add(phoneKey);
           fileNames.add(nameKey);
@@ -446,24 +466,55 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
             ...(similarName && !request.body.commit ? { code: "SIMILAR_NAME" } : {})
           });
         } catch (error) {
+          if (!(error instanceof CrmError)) throw error;
           results.push({
             row: offset + 2,
             status: "error",
-            code: error instanceof CrmError ? error.code : "INVALID_INPUT"
+            code: error.code
           });
         }
       }
+      const summary = {
+        total: results.length,
+        imported: results.filter((result) => result.status === "imported").length,
+        skipped: results.filter((result) => result.status === "skipped").length,
+        warnings: results.filter((result) => result.status === "warning").length,
+        errors: results.filter((result) => result.status === "error").length
+      };
       if (request.body.commit)
         await writeAudit(database, context, request, {
           action: "lead.imported",
           targetType: "lead",
           outcome: "success",
           metadata: {
-            imported: results.filter((result) => result.status === "imported").length,
-            failed: results.filter((result) => result.status === "error").length
+            batchId: request.body.batchId,
+            imported: summary.imported,
+            skipped: summary.skipped,
+            failed: summary.errors
           }
         });
-      return { results };
+      return { batchId: request.body.batchId, results, summary };
+    }
+  );
+  app.get<{ Querystring: { locale?: "ca" | "es" | "en" } }>(
+    "/api/v1/crm/leads/import-template",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: { locale: { type: "string", enum: ["ca", "es", "en"], default: "ca" } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:read");
+      const workbook = await createCrmImportTemplate(request.query.locale ?? "ca");
+      return reply
+        .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .header("content-disposition", "attachment; filename=control-hub-leads-template-v1.xlsx")
+        .send(Buffer.from(workbook));
     }
   );
 }

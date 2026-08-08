@@ -159,6 +159,9 @@ importers:
       '@control-hub/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@control-hub/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@control-hub/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

@@ -63,6 +63,7 @@ export type CrmSummary = {
 };
 
 export type ImportResult = { row: number; status: string; code?: string };
+export type ImportSummary = { total: number; imported: number; skipped: number; warnings: number; errors: number };
 
 export type SlaTargetState = {
   consumedMinutes: number;

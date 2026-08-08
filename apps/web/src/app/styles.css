@@ -1216,6 +1216,32 @@ main {
   justify-content: end;
   gap: 8px;
 }
+.import-mapping {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.import-mapping label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.import-mapping select {
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+@media (max-width: 620px) {
+  .import-mapping {
+    grid-template-columns: 1fr;
+  }
+}
 .import-results {
   max-height: 240px;
   overflow: auto;
