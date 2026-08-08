@@ -14,7 +14,14 @@ import {
   type TaskRecord
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import { leadStatuses, normalizeEmail, normalizePhone, type LeadStatus, type TenantContext } from "@control-hub/domain";
+import {
+  leadStatuses,
+  normalizeEmail,
+  normalizePhone,
+  recoverLeadStatus,
+  type LeadStatus,
+  type TenantContext
+} from "@control-hub/domain";
 
 type DatabaseError = { code?: string; constraint_name?: string };
 
@@ -108,13 +115,40 @@ export class PostgresCrmRepository implements CrmRepository {
 
   async transitionLead(context: TenantContext, leadId: string, status: LeadStatus) {
     return withTenant(this.database, context.tenantId, async (tx) => {
+      const current = await tx<{ status: LeadStatus }[]>`
+        select status from leads where tenant_id = ${context.tenantId} and id = ${leadId} for update`;
+      if (!current[0]) throw new CrmError("LEAD_NOT_FOUND");
       const rows = await tx<
         LeadRecord[]
       >`update leads set status = ${status}, updated_at = now() where tenant_id = ${context.tenantId} and id = ${leadId}
         returning id, name, company_name as "companyName", email, phone, source, status, priority, owner_membership_id as "ownerMembershipId", converted_customer_id as "convertedCustomerId", created_at as "createdAt", updated_at as "updatedAt"`;
-      if (!rows[0]) throw new CrmError("LEAD_NOT_FOUND");
-      await tx`insert into crm_activity (id, tenant_id, lead_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${leadId}, ${context.userId}, 'lead.status.changed', ${tx.json({ status })})`;
-      return rows[0];
+      await tx`insert into crm_activity (id, tenant_id, lead_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${leadId}, ${context.userId}, 'lead.status.changed', ${tx.json({ fromStatus: current[0].status, toStatus: status, status })})`;
+      return rows[0]!;
+    });
+  }
+
+  async reopenLead(context: TenantContext, leadId: string, reason: string) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const current = await tx<{ status: LeadStatus }[]>`
+        select status from leads where tenant_id = ${context.tenantId} and id = ${leadId} for update`;
+      if (!current[0]) throw new CrmError("LEAD_NOT_FOUND");
+      if (current[0].status !== "lost") throw new CrmError("INVALID_TRANSITION");
+      const history = await tx<{ status: LeadStatus | null }[]>`
+        select coalesce(metadata->>'toStatus', metadata->>'status')::text as status
+        from crm_activity
+        where tenant_id = ${context.tenantId} and lead_id = ${leadId} and type = 'lead.status.changed'
+        order by occurred_at desc, id desc`;
+      const status = recoverLeadStatus(history.map((entry) => entry.status));
+      const rows = await tx<LeadRecord[]>`
+        update leads set status = ${status}, updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${leadId}
+        returning id, name, company_name as "companyName", email, phone, source, status, priority,
+          owner_membership_id as "ownerMembershipId", converted_customer_id as "convertedCustomerId",
+          created_at as "createdAt", updated_at as "updatedAt"`;
+      await tx`insert into crm_activity (id, tenant_id, lead_id, actor_user_id, type, metadata)
+        values (${randomUUID()}, ${context.tenantId}, ${leadId}, ${context.userId}, 'lead.reopened',
+          ${tx.json({ fromStatus: "lost", toStatus: status, reason })})`;
+      return rows[0]!;
     });
   }
 

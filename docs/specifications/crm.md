@@ -6,7 +6,9 @@
 
 El pipeline inicial es `new`, `contacted`, `qualified`, `proposal`, `won` i `lost`.
 Les transicions no poden sortir d'un estat terminal. `won` nomes s'assoleix mitjancant
-la conversio idempotent a client. Els codis son estables i les etiquetes es localitzen.
+la conversio idempotent a client. `lost` es pot reobrir amb motiu obligatori: torna a l'ultim
+estat actiu registrat o a `new` si no n'hi ha cap. La reobertura es append-only i auditada.
+`won` continua sent terminal. Els codis son estables i les etiquetes es localitzen.
 L'arquitectura permetra pipelines configurables sense canviar les dades historiques.
 
 ## Duplicats
@@ -26,6 +28,7 @@ errors abans d'escriure i cada fila valida es processa atomicament.
 
 - Tot registre empresarial inclou `tenant_id` i queda protegit per RLS.
 - Un lead conserva origen, prioritat, responsable, estat i historial de transicions.
+- Perdre i reobrir un lead conserva estat anterior, estat nou, actor, data i motiu de reobertura.
 - La conversio crea com a maxim un client per lead i conserva la traçabilitat.
 - Els clients tenen contactes, notes, tasques i una timeline append-only.
 - Les baixes funcionals utilitzen estat; no s'esborra historial comercial des de la UI.

@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
 **Estat:** proposta de treball; no autoritza encara canvis de domini o migracions.
-**Branca:** `feature/pre-phase-6-product-polish`.
+**Branca activa:** `feature/pre-phase-6-product-polish-implementation`.
 
 ## Objectiu
 
@@ -9,6 +9,24 @@ Consolidar els moduls de CRM, cataleg, subscripcions, projectes, suport i jornad
 d'obrir la Fase 6. El treball es divideix en increments petits i desplegables. Cada increment
 actualitza especificacio, domini, persistencia, API, UI, i18n, proves i aquest estat quan
 correspongui; no es fa una reescriptura transversal.
+
+## Index d'implementacio
+
+- [x] Increment 0 — Pla, decisions inicials i llenguatge de producte.
+- [x] Increment 1 — Leads perduts recuperables i filtre de perduts.
+- [ ] Increment 2 — Exportacio Excel professional del CRM.
+- [ ] Increment 3 — Importacio guiada de leads.
+- [ ] Increment 4 — Fitxa de client com a vista 360.
+- [ ] Increment 5 — Simplificar el cataleg comercial.
+- [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
+- [ ] Increment 7 — Subscripcions contractades per l'empresa.
+- [x] Increment 8 — Defaults de dates a l'alta de projectes.
+- [ ] Increment 9 — Safata de suport explicable.
+- [ ] Increment 10 — Jornada amb calendari laboral.
+- [x] Increment 11 — Toast global a baix a la dreta.
+
+El check indica implementacio i validacio completades. Una decisio documentada sense codi no
+marca l'increment com a fet.
 
 ## Ordre recomanat
 
@@ -25,7 +43,7 @@ Abans de tocar codi:
 
 No hi ha migracions en aquest increment.
 
-### Increment 1 — leads perduts recuperables
+### Increment 1 — leads perduts recuperables (implementat)
 
 Canvi funcional petit i independent:
 
@@ -37,9 +55,8 @@ Canvi funcional petit i independent:
 - Mostrar els perduts fora del pipeline actiu per defecte, amb una vista o filtre clar, sense
   falsejar les metriques comercials.
 
-**Porta de decisio CRM-1:** estat de retorn. Recomanacio: tornar a l'ultim estat actiu anterior;
-si no existeix, `new`. Alternativa mes simple: sempre `new`. La decisio ha de quedar a
-`crm.md` abans d'implementar.
+**Decisio CRM-1:** tornar a l'ultim estat actiu anterior; si no existeix, `new`. La decisio
+queda fixada a `crm.md`.
 
 Proves minimes: transicio valida, motiu obligatori, `won` rebutjat, auditoria, RLS, filtre
 server-side i E2E de perdre/filtrar/reobrir.

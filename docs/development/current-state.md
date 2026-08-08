@@ -1,6 +1,6 @@
 # Estat actual i continuacio
 
-> Hi ha una branca de planificacio separada, `feature/pre-phase-6-product-polish`, amb el pla
+> La implementacio continua a `feature/pre-phase-6-product-polish-implementation`, amb el pla
 > incremental de consolidacio previ a la Fase 6 a
 > `docs/development/pre-phase-6-product-polish.md`. Encara no canvia cap comportament ni cap
 > especificacio aprovada; les portes de decisio del document s'han de resoldre abans de cada
@@ -10,6 +10,8 @@
 > dreta, respecta la safe-area, s'adapta a mobil i desactiva l'animacio amb reduced motion.
 > L'alta de projecte tambe proposa inici avui i entrega 30 dies naturals despres; si es canvia
 > l'inici, l'entrega es recalcula fins que l'usuari l'edita manualment.
+> Els leads perduts es poden recuperar amb motiu obligatori. Tornen a l'ultim estat actiu
+> registrat, o a `new` quan no n'hi ha cap, i la reobertura queda a l'historial i l'auditoria.
 
 ## Punt de projecte
 

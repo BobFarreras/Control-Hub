@@ -81,6 +81,49 @@ suite("PostgresCrmRepository", () => {
     ).toBe(1);
   });
 
+  it("reopens a lost lead to its latest active state with an append-only reason", async () => {
+    const created = await repository.createLead(context(tenantA), {
+      name: "Recoverable",
+      source: "manual",
+      priority: "normal",
+      normalizedName: "recoverable",
+      normalizedEmail: null,
+      normalizedPhone: null
+    });
+    await repository.transitionLead(context(tenantA), created.id, "proposal");
+    await repository.transitionLead(context(tenantA), created.id, "lost");
+
+    const reopened = await repository.reopenLead(context(tenantA), created.id, "The customer requested a new call");
+    expect(reopened.status).toBe("proposal");
+    const activity = await admin<{ metadata: { fromStatus: string; toStatus: string; reason: string } }[]>`
+      select metadata from crm_activity where tenant_id = ${tenantA} and lead_id = ${created.id}
+        and type = 'lead.reopened'`;
+    expect(activity[0]?.metadata).toEqual({
+      fromStatus: "lost",
+      toStatus: "proposal",
+      reason: "The customer requested a new call"
+    });
+    await expect(repository.reopenLead(context(tenantA), created.id, "Again")).rejects.toEqual(
+      expect.objectContaining({ code: "INVALID_TRANSITION" } satisfies Partial<CrmError>)
+    );
+    await expect(repository.reopenLead(context(tenantB), created.id, "Cross tenant")).rejects.toEqual(
+      expect.objectContaining({ code: "LEAD_NOT_FOUND" } satisfies Partial<CrmError>)
+    );
+  });
+
+  it("falls back to new when a legacy lost lead has no previous status event", async () => {
+    const created = await repository.createLead(context(tenantA), {
+      name: "Legacy Lost",
+      source: "manual",
+      priority: "normal",
+      normalizedName: "legacy lost",
+      normalizedEmail: null,
+      normalizedPhone: null
+    });
+    await repository.transitionLead(context(tenantA), created.id, "lost");
+    expect((await repository.reopenLead(context(tenantA), created.id, "Restart qualification")).status).toBe("new");
+  });
+
   it("builds customer activity without crossing tenant boundaries", async () => {
     const created = await repository.createLead(context(tenantA), {
       name: "Activity",

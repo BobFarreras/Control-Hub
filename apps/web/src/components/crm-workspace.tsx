@@ -10,6 +10,7 @@ import {
   Medal,
   PhoneCall,
   Plus,
+  RotateCcw,
   UserCheck,
   X
 } from "lucide-react";
@@ -19,7 +20,7 @@ import { useState, useTransition } from "react";
 import { InstantSearch } from "@/components/instant-search";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import type { CrmSummary, CustomerRow, ImportResult, LeadRow, Page, TablePreference } from "@/lib/api-types";
-import { textEntries } from "@/lib/form";
+import { formValue, textEntries } from "@/lib/form";
 import { actionHandler } from "@/lib/handlers";
 
 type Labels = Record<string, string>;
@@ -56,7 +57,8 @@ export function CrmWorkspace({
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"leads" | "customers">("leads");
-  const [dialog, setDialog] = useState<"lead" | "import" | null>(null);
+  const [dialog, setDialog] = useState<"lead" | "import" | "reopen" | null>(null);
+  const [leadToReopen, setLeadToReopen] = useState<LeadRow | null>(null);
   const [error, setError] = useState("");
   /** Last resort for a handler that rejected outright, so a failure is never silent. */
   const fail = () => setError("CRM_ERROR");
@@ -112,6 +114,22 @@ export function CrmWorkspace({
       const payload = (await response.json()) as { results: ImportResult[] };
       setImportResults(payload.results);
       if (commit && payload.results.some((result) => result.status === "imported")) refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "CRM_ERROR");
+    }
+  }
+  async function reopenLead(formData: FormData) {
+    if (!leadToReopen) return;
+    try {
+      setError("");
+      await request(`/api/v1/crm/leads/${leadToReopen.id}/reopen`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: formValue(formData, "reason") })
+      });
+      setDialog(null);
+      setLeadToReopen(null);
+      refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "CRM_ERROR");
     }
@@ -207,6 +225,19 @@ export function CrmWorkspace({
               onClick={actionHandler(() => mutate(`/api/v1/crm/leads/${lead.id}/status`, { status: "lost" }), fail)}
             >
               <Ban size={16} />
+            </button>
+          )}
+          {lead.status === "lost" && (
+            <button
+              title={l("reopenLead")}
+              aria-label={`${l("reopenLead")}: ${lead.name}`}
+              onClick={() => {
+                setError("");
+                setLeadToReopen(lead);
+                setDialog("reopen");
+              }}
+            >
+              <RotateCcw size={16} />
             </button>
           )}
         </div>
@@ -444,6 +475,38 @@ export function CrmWorkspace({
               </ul>
             )}
           </div>
+        </Dialog>
+      )}
+      {dialog === "reopen" && leadToReopen && (
+        <Dialog
+          title={labels.reopenLead}
+          close={() => {
+            setDialog(null);
+            setLeadToReopen(null);
+          }}
+        >
+          <form action={reopenLead} className="crm-form">
+            <p className="wide">{labels.reopenDescription?.replace("{name}", leadToReopen.name)}</p>
+            <label className="wide">
+              {labels.reopenReason}
+              <textarea name="reason" required minLength={3} maxLength={500} rows={4} autoFocus />
+            </label>
+            <footer>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setDialog(null);
+                  setLeadToReopen(null);
+                }}
+              >
+                {labels.cancel}
+              </button>
+              <button className="primary-command" type="submit">
+                {labels.confirmReopen}
+              </button>
+            </footer>
+          </form>
         </Dialog>
       )}
     </>

@@ -100,6 +100,11 @@ export function canTransitionLead(from: LeadStatus, to: LeadStatus): boolean {
   return leadTransitions[from].includes(to);
 }
 
+/** The newest active state wins; old activity rows may not contain a state at all. */
+export function recoverLeadStatus(history: readonly (LeadStatus | null)[]): Exclude<LeadStatus, "won" | "lost"> {
+  return history.find((status) => status !== null && status !== "won" && status !== "lost") ?? "new";
+}
+
 export function normalizeEmail(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
 }

@@ -31,6 +31,7 @@ function repository(overrides: Partial<CrmRepository> = {}): CrmRepository {
     listCustomers: vi.fn(),
     createLead: vi.fn().mockResolvedValue(lead),
     transitionLead: vi.fn().mockResolvedValue({ ...lead, status: "contacted" }),
+    reopenLead: vi.fn().mockResolvedValue({ ...lead, status: "proposal" }),
     convertLead: vi.fn(),
     getCustomer: vi.fn(),
     addContact: vi.fn(),
@@ -82,5 +83,12 @@ describe("CrmService", () => {
     const service = new CrmService(repository());
     expect(() => service.addNote(context, "customer-a", "   ")).toThrow("INVALID_INPUT");
     expect(() => service.addTask(context, "customer-a", { title: " " })).toThrow("INVALID_INPUT");
+  });
+  it("requires a meaningful reason before reopening a lead", async () => {
+    const adapter = repository();
+    const service = new CrmService(adapter);
+    expect(() => service.reopenLead(context, lead.id, "  ")).toThrow("INVALID_INPUT");
+    await service.reopenLead(context, lead.id, " Client has renewed interest ");
+    expect(adapter.reopenLead).toHaveBeenCalledWith(context, lead.id, "Client has renewed interest");
   });
 });

@@ -124,6 +124,7 @@ export interface CrmRepository {
     input: CreateLeadInput & { normalizedName: string; normalizedEmail: string | null; normalizedPhone: string | null }
   ): Promise<LeadRecord>;
   transitionLead(context: TenantContext, leadId: string, status: LeadStatus): Promise<LeadRecord>;
+  reopenLead(context: TenantContext, leadId: string, reason: string): Promise<LeadRecord>;
   convertLead(context: TenantContext, leadId: string): Promise<CustomerRecord>;
   getCustomer(context: TenantContext, customerId: string): Promise<CustomerDetail>;
   addContact(
@@ -170,6 +171,11 @@ export class CrmService {
     if (!current) throw new CrmError("LEAD_NOT_FOUND");
     if (!canTransitionLead(current.status, status)) throw new CrmError("INVALID_TRANSITION");
     return this.repository.transitionLead(context, leadId, status);
+  }
+  reopenLead(context: TenantContext, leadId: string, reason: string) {
+    const normalized = reason.trim();
+    if (normalized.length < 3 || normalized.length > 500) throw new CrmError("INVALID_INPUT");
+    return this.repository.reopenLead(context, leadId, normalized);
   }
   convertLead(context: TenantContext, leadId: string) {
     return this.repository.convertLead(context, leadId);
