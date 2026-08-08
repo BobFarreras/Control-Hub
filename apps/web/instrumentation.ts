@@ -4,11 +4,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
-      /**
-       * Enabled in all environments for testing.
-       * TODO: Change to `process.env.NODE_ENV === "production"` before deploying to VPS.
-       */
-      enabled: true,
+      enabled: process.env.NODE_ENV === "production",
       tracesSampleRate: 0.1
     });
   }
@@ -16,11 +12,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "edge") {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
-      /**
-       * Enabled in all environments for testing.
-       * TODO: Change to `process.env.NODE_ENV === "production"` before deploying to VPS.
-       */
-      enabled: true,
+      enabled: process.env.NODE_ENV === "production",
       tracesSampleRate: 0.1
     });
   }

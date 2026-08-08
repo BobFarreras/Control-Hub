@@ -44,12 +44,12 @@ SENTRY_PROJECT=control-hub
 
 ### En desenvolupament
 
-Sentry està **activat** (`enabled: true`) per facilitar les proves.
-Assegura't que `NEXT_PUBLIC_SENTRY_DSN` i `SENTRY_DSN` siguin presents a `apps/web/.env.local`.
+Sentry està **desactivat** (`enabled: false` quan `NODE_ENV !== "production"`).
+Els errors apareixen a la consola del navegador/servidor com sempre.
 
-**Nota important:** Si no veus errors a Sentry, verifica que:
-1. La CSP a `next.config.ts` inclogui `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`
-2. Les variables d'entorn siguin correctes (no al `.env` arrel del monorepo)
+Si vols provar Sentry al desenvolupament temporalment, canvia `enabled` a `true` als fitxers
+`instrumentation-client.ts` i `instrumentation.ts`. Recorda tornar-ho a posar a `process.env.NODE_ENV === "production"`
+abans de fer commit.
 
 ### A producció
 

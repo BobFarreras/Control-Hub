@@ -410,8 +410,7 @@ Variables d'entorn necessaries (a `apps/web/.env.local`):
 
 **Important:** Les variables han d'estar a `apps/web/.env.local`, NO al `.env` arrel del monorepo.
 La CSP a `next.config.ts` ha d'incloure `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`.
-En desenvolupament Sentry esta activat per proves. Abans de desplegar a produccio, canviar
-`enabled: true` a `enabled: process.env.NODE_ENV === "production"` als fitxers `instrumentation-*.ts`.
+En desenvolupament Sentry esta desactivat; els errors van a la consola.
 
 ## Validacio abans de continuar
 
