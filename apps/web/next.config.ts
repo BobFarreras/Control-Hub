@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const apiUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:4000";
 const isProduction = process.env.NODE_ENV === "production";
@@ -59,4 +60,21 @@ const nextConfig: NextConfig = {
     ];
   }
 };
-export default nextConfig;
+
+export default withSentryConfig(nextConfig, {
+  org: "digitai-studios",
+  project: "control-hub",
+
+  // Only print logs for successful sourcemap uploads in CI.
+  silent: !process.env.CI,
+
+  /**
+   * Upload source maps to Sentry during build.
+   * Requires SENTRY_AUTH_TOKEN in the environment.
+   * Disabled automatically when the token is missing (local dev).
+   */
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  autolinkingIntegrationsEnabled: false
+});

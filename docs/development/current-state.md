@@ -390,6 +390,20 @@ L'auditoria previa a la Fase 5 i les correccions aplicades estan a
   absent.
 - La durada s'envia com a text (`90` o `1h 30m`) i la llegeix un unic parser del domini.
 
+## Observabilitat
+
+Sentry esta implementat al servei web (Next.js) per capturar errors en produccio.
+Configuracio completa a `docs/observability/SENTRY.md`.
+
+| Servei | Estat | Paquet |
+|--------|-------|--------|
+| web | ✅ | `@sentry/nextjs` |
+| api | ❌ futur | `@sentry/node` |
+| worker | ❌ futur | `@sentry/node` |
+
+Variables d'entorn necessaries: `NEXT_PUBLIC_SENTRY_DSN` i `SENTRY_AUTH_TOKEN`.
+En desenvolupament Sentry esta desactivat; els errors van a la consola.
+
 ## Validacio abans de continuar
 
 ```powershell

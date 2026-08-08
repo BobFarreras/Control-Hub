@@ -20,6 +20,7 @@ Control Hub es construeix des del primer increment com a producte professional i
 - Redis i BullMQ per cues.
 - Docker Compose portable per desplegar en VPS Linux.
 - Single-tenant per instal·lacio, amb model intern tenant-aware.
+- Sentry per observabilitat d'errors a producció.
 - Connectors opcionals per n8n, VPS, correu, IA, monitoratge i altres APIs.
 
 n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, webhooks i metriques, i pot obrir la seva URL. No l'incrusta ni en depen per funcionar.
