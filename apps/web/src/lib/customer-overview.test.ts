@@ -15,8 +15,16 @@ const customer: CustomerDetail = {
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-02T00:00:00.000Z",
   contacts: [
-    { id: "secondary", name: "Second", role: null, email: null, phone: null, isPrimary: false },
-    { id: "primary", name: "Primary", role: null, email: null, phone: null, isPrimary: true }
+    {
+      id: "secondary",
+      name: "Second",
+      role: null,
+      email: null,
+      phone: null,
+      isPrimary: false,
+      sourceLeadId: null
+    },
+    { id: "primary", name: "Primary", role: null, email: null, phone: null, isPrimary: true, sourceLeadId: null }
   ],
   notes: [],
   tasks: [

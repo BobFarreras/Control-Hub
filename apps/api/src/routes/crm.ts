@@ -228,6 +228,31 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
       return reply.code(201).send({ contact });
     }
   );
+  app.post<{ Params: { customerId: string } }>(
+    "/api/v1/crm/customers/:customerId/contacts/from-source-lead",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId"],
+          properties: { customerId: { type: "string", format: "uuid" } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const contact = await crm.createContactFromSourceLead(context, request.params.customerId);
+      await writeAudit(database, context, request, {
+        action: "contact.recovered_from_lead",
+        targetType: "contact",
+        targetId: contact.id,
+        outcome: "success",
+        metadata: { customerId: request.params.customerId, sourceLeadId: contact.sourceLeadId }
+      });
+      return reply.code(201).send({ contact });
+    }
+  );
   app.post<{ Params: { customerId: string }; Body: { body: string } }>(
     "/api/v1/crm/customers/:customerId/notes",
     {

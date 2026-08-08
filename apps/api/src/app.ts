@@ -137,7 +137,10 @@ export function buildApp(options: BuildAppOptions) {
     if (error instanceof CrmError) {
       const status = error.code.endsWith("NOT_FOUND")
         ? 404
-        : error.code.startsWith("DUPLICATE") || error.code === "INVALID_TRANSITION"
+        : error.code.startsWith("DUPLICATE") ||
+            error.code === "INVALID_TRANSITION" ||
+            error.code === "SOURCE_LEAD_NOT_AVAILABLE" ||
+            error.code === "CUSTOMER_ALREADY_HAS_CONTACTS"
           ? 409
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });

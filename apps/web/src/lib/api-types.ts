@@ -54,6 +54,7 @@ export type CustomerDetail = CustomerRow & {
     email: string | null;
     phone: string | null;
     isPrimary: boolean;
+    sourceLeadId: string | null;
   }[];
   notes: { id: string; body: string; createdAt: string }[];
   tasks: { id: string; title: string; dueAt: string | null; completedAt: string | null }[];

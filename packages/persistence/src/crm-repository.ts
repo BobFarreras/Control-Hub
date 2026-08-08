@@ -200,6 +200,17 @@ export class PostgresCrmRepository implements CrmRepository {
         >`insert into customers (id, tenant_id, display_name, normalized_name, billing_email, normalized_billing_email, phone, normalized_phone, owner_membership_id, created_from_lead_id)
           select ${customerId}, tenant_id, ${displayName}, normalized_name, email, normalized_email, phone, normalized_phone, owner_membership_id, id from leads where tenant_id = ${context.tenantId} and id = ${leadId}
           returning id, display_name as "displayName", legal_name as "legalName", billing_email as "billingEmail", phone, website, status, owner_membership_id as "ownerMembershipId", created_from_lead_id as "createdFromLeadId", created_at as "createdAt", updated_at as "updatedAt"`;
+        if (lead.companyName) {
+          const contactId = randomUUID();
+          await tx`insert into contacts (id, tenant_id, customer_id, name, email, normalized_email, phone,
+            normalized_phone, is_primary, source_lead_id)
+            values (${contactId}, ${context.tenantId}, ${customerId}, ${lead.name}, ${lead.email},
+              ${lead.email ? normalizeEmail(lead.email) : null}, ${lead.phone},
+              ${lead.phone ? normalizePhone(lead.phone) : null}, true, ${lead.id})`;
+          await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata)
+            values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'contact.created',
+              ${tx.json({ contactId, sourceLeadId: lead.id })})`;
+        }
         await tx`update leads set status = 'won', converted_customer_id = ${customerId}, updated_at = now() where tenant_id = ${context.tenantId} and id = ${leadId}`;
         await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'lead.converted', ${tx.json({ leadId })})`;
         return customers[0]!;
@@ -219,7 +230,7 @@ export class PostgresCrmRepository implements CrmRepository {
       const [contacts, notes, tasks, activity] = await Promise.all([
         tx<
           ContactRecord[]
-        >`select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", created_at as "createdAt" from contacts where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by is_primary desc, name`,
+        >`select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", source_lead_id as "sourceLeadId", created_at as "createdAt" from contacts where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by is_primary desc, name`,
         tx<
           NoteRecord[]
         >`select id, body, author_user_id as "authorUserId", created_at as "createdAt" from crm_notes where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by created_at desc`,
@@ -248,8 +259,50 @@ export class PostgresCrmRepository implements CrmRepository {
         const id = randomUUID();
         const rows = await tx<
           ContactRecord[]
-        >`insert into contacts (id, tenant_id, customer_id, name, role, email, normalized_email, phone, normalized_phone, is_primary) values (${id}, ${context.tenantId}, ${customerId}, ${input.name}, ${input.role ?? null}, ${input.email ?? null}, ${input.email ? normalizeEmail(input.email) : null}, ${input.phone ?? null}, ${input.phone ? normalizePhone(input.phone) : null}, ${input.isPrimary}) returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", created_at as "createdAt"`;
+        >`insert into contacts (id, tenant_id, customer_id, name, role, email, normalized_email, phone, normalized_phone, is_primary) values (${id}, ${context.tenantId}, ${customerId}, ${input.name}, ${input.role ?? null}, ${input.email ?? null}, ${input.email ? normalizeEmail(input.email) : null}, ${input.phone ?? null}, ${input.phone ? normalizePhone(input.phone) : null}, ${input.isPrimary}) returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", source_lead_id as "sourceLeadId", created_at as "createdAt"`;
         await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'contact.created', ${tx.json({ contactId: id })})`;
+        return rows[0]!;
+      });
+    } catch (error) {
+      return mapDuplicate(error);
+    }
+  }
+
+  async createContactFromSourceLead(context: TenantContext, customerId: string) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const customers = await tx<{ sourceLeadId: string | null }[]>`
+          select created_from_lead_id as "sourceLeadId" from customers
+          where tenant_id = ${context.tenantId} and id = ${customerId} for update`;
+        const customer = customers[0];
+        if (!customer) throw new CrmError("CUSTOMER_NOT_FOUND");
+        if (!customer.sourceLeadId) throw new CrmError("SOURCE_LEAD_NOT_AVAILABLE");
+        const recovered = await tx<ContactRecord[]>`
+          select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary",
+            source_lead_id as "sourceLeadId", created_at as "createdAt"
+          from contacts where tenant_id = ${context.tenantId} and source_lead_id = ${customer.sourceLeadId}`;
+        if (recovered[0]) return recovered[0];
+        const contacts = await tx`select 1 from contacts
+          where tenant_id = ${context.tenantId} and customer_id = ${customerId} limit 1`;
+        if (contacts[0]) throw new CrmError("CUSTOMER_ALREADY_HAS_CONTACTS");
+        const leads = await tx<
+          { id: string; name: string; companyName: string | null; email: string | null; phone: string | null }[]
+        >`select id, name, company_name as "companyName", email, phone from leads
+          where tenant_id = ${context.tenantId} and id = ${customer.sourceLeadId}`;
+        const lead = leads[0];
+        if (!lead?.companyName) throw new CrmError("SOURCE_LEAD_NOT_AVAILABLE");
+        const id = randomUUID();
+        const rows = await tx<ContactRecord[]>`
+          insert into contacts (id, tenant_id, customer_id, name, email, normalized_email, phone,
+            normalized_phone, is_primary, source_lead_id)
+          values (${id}, ${context.tenantId}, ${customerId}, ${lead.name}, ${lead.email},
+            ${lead.email ? normalizeEmail(lead.email) : null}, ${lead.phone},
+            ${lead.phone ? normalizePhone(lead.phone) : null}, true, ${lead.id})
+          returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary",
+            source_lead_id as "sourceLeadId", created_at as "createdAt"`;
+        await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata)
+          values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId},
+            'contact.recovered_from_lead', ${tx.json({ contactId: id, sourceLeadId: lead.id })})`;
         return rows[0]!;
       });
     } catch (error) {

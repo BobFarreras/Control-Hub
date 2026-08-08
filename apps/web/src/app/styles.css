@@ -1440,6 +1440,11 @@ main {
   color: var(--muted);
   font-size: 12px;
 }
+.recover-contact-button {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
 .inline-create textarea {
   grid-column: 1 / 4;
   resize: vertical;

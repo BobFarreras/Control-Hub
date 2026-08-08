@@ -77,6 +77,7 @@ export type ContactRecord = {
   email: string | null;
   phone: string | null;
   isPrimary: boolean;
+  sourceLeadId: string | null;
   createdAt: Date;
 };
 export type NoteRecord = { id: string; body: string; authorUserId: string | null; createdAt: Date };
@@ -110,6 +111,8 @@ export class CrmError extends Error {
       | "DUPLICATE_PHONE"
       | "LEAD_NOT_FOUND"
       | "CUSTOMER_NOT_FOUND"
+      | "SOURCE_LEAD_NOT_AVAILABLE"
+      | "CUSTOMER_ALREADY_HAS_CONTACTS"
       | "INVALID_INPUT"
   ) {
     super(code);
@@ -137,6 +140,7 @@ export interface CrmRepository {
     customerId: string,
     input: { name: string; role?: string; email?: string; phone?: string; isPrimary: boolean }
   ): Promise<ContactRecord>;
+  createContactFromSourceLead(context: TenantContext, customerId: string): Promise<ContactRecord>;
   addNote(context: TenantContext, customerId: string, body: string): Promise<NoteRecord>;
   addTask(
     context: TenantContext,
@@ -223,6 +227,9 @@ export class CrmService {
       ...(email ? { email } : {}),
       ...(phone ? { phone } : {})
     });
+  }
+  createContactFromSourceLead(context: TenantContext, customerId: string) {
+    return this.repository.createContactFromSourceLead(context, customerId);
   }
   addNote(context: TenantContext, customerId: string, body: string) {
     const normalized = body.trim();

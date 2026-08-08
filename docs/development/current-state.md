@@ -25,6 +25,9 @@
 > existeixen, contacte principal, tasques obertes, propera tasca i ultima activitat. Contactes,
 > notes, tasques i timeline tenen estats buits accionables; encara falten les relacions amb
 > interessos, serveis, projectes i suport abans de marcar la vista 360 com a completa.
+> Les conversions noves amb empresa i persona diferenciades creen el contacte principal dins
+> la mateixa transaccio. Un client antic sense contactes pot recuperar-lo explicitament del
+> lead original; `source_lead_id` evita duplicats en reintents i conserva la traçabilitat.
 
 ## Punt de projecte
 

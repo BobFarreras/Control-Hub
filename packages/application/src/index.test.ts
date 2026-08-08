@@ -36,6 +36,7 @@ function repository(overrides: Partial<CrmRepository> = {}): CrmRepository {
     convertLead: vi.fn(),
     getCustomer: vi.fn(),
     addContact: vi.fn(),
+    createContactFromSourceLead: vi.fn(),
     addNote: vi.fn(),
     addTask: vi.fn(),
     completeTask: vi.fn(),

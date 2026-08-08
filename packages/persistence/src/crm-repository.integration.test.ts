@@ -81,6 +81,23 @@ suite("PostgresCrmRepository", () => {
     ).toBe(1);
   });
 
+  it("creates and recovers the primary contact from an unambiguous company lead", async () => {
+    const lead = await repository.createLead(context(tenantA), {
+      name: "Maria Bosch",
+      companyName: "Bosch Atelier",
+      email: "maria@bosch.example",
+      source: "website",
+      priority: "high",
+      normalizedName: "maria bosch",
+      normalizedEmail: "maria@bosch.example",
+      normalizedPhone: null
+    });
+    const customer = await repository.convertLead(context(tenantA), lead.id);
+    const created = (await repository.getCustomer(context(tenantA), customer.id)).contacts[0]!;
+    expect(created).toMatchObject({ name: "Maria Bosch", isPrimary: true, sourceLeadId: lead.id });
+    expect((await repository.createContactFromSourceLead(context(tenantA), customer.id)).id).toBe(created.id);
+  });
+
   it("imports the same batch row exactly once within each tenant", async () => {
     const input = {
       name: "Batch-only lead",

@@ -30,6 +30,10 @@ errors abans d'escriure i cada fila valida es processa atomicament.
 - Un lead conserva origen, prioritat, responsable, estat i historial de transicions.
 - Perdre i reobrir un lead conserva estat anterior, estat nou, actor, data i motiu de reobertura.
 - La conversio crea com a maxim un client per lead i conserva la traçabilitat.
+- Quan `company_name` separa empresa i persona, la conversio crea atomicament el contacte
+  principal a partir del nom, correu i telefon del lead. Sense empresa separada no s'infereix
+  cap contacte. Els clients antics poden recuperar-lo explicitament des del lead original;
+  la referencia `source_lead_id` fa l'operacio idempotent i auditable.
 - Els clients tenen contactes, notes, tasques i una timeline append-only.
 - Les baixes funcionals utilitzen estat; no s'esborra historial comercial des de la UI.
 - Dates en UTC i camps monetaris fora d'aquesta fase.

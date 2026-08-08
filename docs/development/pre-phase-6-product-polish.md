@@ -112,6 +112,7 @@ Progres intern:
 
 - [x] Resum operatiu amb dades CRM existents, contacte principal, propera tasca i activitat.
 - [x] Dades empresarials visibles, formulari de contacte complet i estats buits accionables.
+- [x] Conversio amb contacte principal i recuperacio idempotent des del lead original.
 - [ ] Relacions amb interessos, serveis, projectes i suport, amb permisos financers separats.
 - [ ] Ampliacio opcional de dades fiscals, idioma, zona horaria i adreces.
 

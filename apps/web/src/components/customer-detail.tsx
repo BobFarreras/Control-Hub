@@ -52,6 +52,17 @@ export function CustomerDetail({ customer, labels, locale }: { customer: Custome
     if (response.ok) refresh();
     else setError("CRM_ERROR");
   }
+  async function recoverSourceContact() {
+    setError("");
+    const response = await fetch(`/api/v1/crm/customers/${customer.id}/contacts/from-source-lead`, {
+      method: "POST"
+    });
+    if (response.ok) refresh();
+    else {
+      const payload = (await response.json()) as { code?: string };
+      setError(payload.code ?? "CRM_ERROR");
+    }
+  }
   const date = (value: string) =>
     new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   const overview = customerOverview(customer);
@@ -60,7 +71,7 @@ export function CustomerDetail({ customer, labels, locale }: { customer: Custome
     <div className="customer-detail" aria-busy={pending}>
       {error && (
         <p className="crm-error" role="alert">
-          {error}
+          {labels[error] ?? error}
         </p>
       )}
       <section className="customer-overview-panel" aria-label={labels.customerOverview}>
@@ -130,7 +141,19 @@ export function CustomerDetail({ customer, labels, locale }: { customer: Custome
             </button>
           </form>
           {customer.contacts.length === 0 && (
-            <EmptyState title={labels.noContacts} description={labels.noContactsHint} />
+            <>
+              <EmptyState title={labels.noContacts} description={labels.noContactsHint} />
+              {customer.createdFromLeadId && (
+                <button
+                  type="button"
+                  className="secondary-button recover-contact-button"
+                  onClick={actionHandler(recoverSourceContact, fail)}
+                >
+                  <Plus size={16} />
+                  {labels.recoverContactFromLead}
+                </button>
+              )}
+            </>
           )}
           {customer.contacts.map((contact) => (
             <div className="detail-row" key={contact.id}>
