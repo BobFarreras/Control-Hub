@@ -1,5 +1,5 @@
 import { CrmError, type CreateLeadInput, type CrmListQuery } from "@control-hub/application";
-import { parseCsv, stringifyCsv } from "@control-hub/contracts";
+import { parseCsv } from "@control-hub/contracts";
 import {
   leadPriorities,
   leadStatuses,
@@ -8,6 +8,7 @@ import {
   type LeadStatus
 } from "@control-hub/domain";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
+import { createCrmLeadsWorkbook } from "../crm-export.js";
 import type { CrmContext } from "./context.js";
 
 /** Leads, customers, contacts, notes, tasks and the CSV import/export pair. */
@@ -300,36 +301,74 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
     });
     return { task };
   });
-  app.get("/api/v1/crm/leads/export", async (request, reply) => {
-    const context = await resolveTenantContext(auth, database, request);
-    requirePermission(context, "leads:read");
-    // Paged through rather than asked for in one 10000-row slice. The old cap silently
-    // produced a short file: an export of a larger book would look complete and simply be
-    // missing customers, which is the worst way for an export to fail.
-    const exportPageSize = 500;
-    const leads = [];
-    for (let page = 1; ; page++) {
-      const result = await crm.listLeads(context, { page, pageSize: exportPageSize, sort: "name_asc" });
-      leads.push(...result.items);
-      if (result.items.length < exportPageSize || leads.length >= result.total) break;
+  type ExportQuery = { search?: string; status?: string; priority?: LeadPriority; locale?: "ca" | "es" | "en" };
+  app.get<{ Querystring: ExportQuery }>(
+    "/api/v1/crm/leads/export",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            search: { type: "string", maxLength: 160 },
+            status: { type: "string", enum: leadStatuses },
+            priority: { type: "string", enum: leadPriorities },
+            locale: { type: "string", enum: ["ca", "es", "en"], default: "ca" }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "leads:read");
+      // Paged through rather than asked for in one 10000-row slice. The old cap silently
+      // produced a short file: an export of a larger book would look complete and simply be
+      // missing customers, which is the worst way for an export to fail.
+      const exportPageSize = 500;
+      const leads = [];
+      for (let page = 1; ; page++) {
+        const result = await crm.listLeads(context, {
+          page,
+          pageSize: exportPageSize,
+          sort: "name_asc",
+          ...(request.query.search ? { search: request.query.search } : {}),
+          ...(request.query.status ? { status: request.query.status } : {}),
+          ...(request.query.priority ? { priority: request.query.priority } : {})
+        });
+        leads.push(...result.items);
+        if (result.items.length < exportPageSize || leads.length >= result.total) break;
+      }
+      const exportedAt = new Date();
+      const workbook = await createCrmLeadsWorkbook({
+        leads,
+        locale: request.query.locale ?? "ca",
+        tenantId: context.tenantId,
+        exportedAt,
+        filters: {
+          ...(request.query.search ? { search: request.query.search } : {}),
+          ...(request.query.status ? { status: request.query.status } : {}),
+          ...(request.query.priority ? { priority: request.query.priority } : {})
+        }
+      });
+      await writeAudit(database, context, request, {
+        action: "lead.exported",
+        targetType: "lead",
+        outcome: "success",
+        metadata: {
+          rows: leads.length,
+          status: request.query.status ?? null,
+          priority: request.query.priority ?? null
+        }
+      });
+      return reply
+        .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .header(
+          "content-disposition",
+          `attachment; filename=control-hub-leads-${exportedAt.toISOString().slice(0, 10)}.xlsx`
+        )
+        .send(Buffer.from(workbook));
     }
-    const csv = stringifyCsv([
-      ["name", "company", "email", "phone", "source", "priority", "status"],
-      ...leads.map((lead) => [
-        lead.name,
-        lead.companyName,
-        lead.email,
-        lead.phone,
-        lead.source,
-        lead.priority,
-        lead.status
-      ])
-    ]);
-    return reply
-      .type("text/csv; charset=utf-8")
-      .header("content-disposition", "attachment; filename=control-hub-leads.csv")
-      .send(csv);
-  });
+  );
   app.post<{ Body: { csv: string; commit?: boolean } }>(
     "/api/v1/crm/leads/import",
     {

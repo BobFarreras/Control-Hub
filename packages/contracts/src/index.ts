@@ -46,3 +46,9 @@ export function stringifyCsv(rows: readonly (readonly (string | null | undefined
   };
   return rows.map((row) => row.map(escape).join(",")).join("\r\n") + "\r\n";
 }
+
+/** Prevents spreadsheet applications from interpreting imported business text as a formula. */
+export function sanitizeSpreadsheetText(value: string | null | undefined): string {
+  const text = value ?? "";
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+}

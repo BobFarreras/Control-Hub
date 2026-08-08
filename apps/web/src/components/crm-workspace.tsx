@@ -15,7 +15,7 @@ import {
   X
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { InstantSearch } from "@/components/instant-search";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
@@ -56,6 +56,7 @@ export function CrmWorkspace({
   loadError: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<"leads" | "customers">("leads");
   const [dialog, setDialog] = useState<"lead" | "import" | "reopen" | null>(null);
   const [leadToReopen, setLeadToReopen] = useState<LeadRow | null>(null);
@@ -137,6 +138,13 @@ export function CrmWorkspace({
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(value));
   const l = (key: string) => labels[key] ?? key;
+  const exportQuery = new URLSearchParams({ locale });
+  const currentSearch = searchParams.get("search");
+  const currentStatus = searchParams.get("leadStatus");
+  const currentPriority = searchParams.get("leadPriority");
+  if (currentSearch) exportQuery.set("search", currentSearch);
+  if (currentStatus) exportQuery.set("status", currentStatus);
+  if (currentPriority) exportQuery.set("priority", currentPriority);
   const leadColumns: SmartColumn<LeadRow>[] = [
     {
       id: "name",
@@ -333,9 +341,9 @@ export function CrmWorkspace({
           </div>
         </article>
         <div className="crm-commands">
-          <a className="secondary-button" href="/api/v1/crm/leads/export">
+          <a className="secondary-button" href={`/api/v1/crm/leads/export?${exportQuery}`}>
             <Download size={16} />
-            {labels.exportCsv}
+            {labels.exportExcel}
           </a>
           <button className="secondary-button" onClick={() => setDialog("import")}>
             <FileUp size={16} />

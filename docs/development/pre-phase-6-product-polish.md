@@ -14,7 +14,7 @@ correspongui; no es fa una reescriptura transversal.
 
 - [x] Increment 0 — Pla, decisions inicials i llenguatge de producte.
 - [x] Increment 1 — Leads perduts recuperables i filtre de perduts.
-- [ ] Increment 2 — Exportacio Excel professional del CRM.
+- [x] Increment 2 — Exportacio Excel professional del CRM.
 - [ ] Increment 3 — Importacio guiada de leads.
 - [ ] Increment 4 — Fitxa de client com a vista 360.
 - [ ] Increment 5 — Simplificar el cataleg comercial.
@@ -61,7 +61,7 @@ queda fixada a `crm.md`.
 Proves minimes: transicio valida, motiu obligatori, `won` rebutjat, auditoria, RLS, filtre
 server-side i E2E de perdre/filtrar/reobrir.
 
-### Increment 2 — exportacio Excel professional del CRM
+### Increment 2 — exportacio Excel professional del CRM (implementat)
 
 - Substituir el boto ambigu d'exportacio per una descarrega `.xlsx`, reutilitzant el patro de
   jornada: capcaleres localitzades, dates reals, autofilter, fila congelada, amplades llegibles

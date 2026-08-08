@@ -12,6 +12,8 @@
 > l'inici, l'entrega es recalcula fins que l'usuari l'edita manualment.
 > Els leads perduts es poden recuperar amb motiu obligatori. Tornen a l'ultim estat actiu
 > registrat, o a `new` quan no n'hi ha cap, i la reobertura queda a l'historial i l'auditoria.
+> L'exportacio de leads genera un Excel professional al backend, respecta cerca i filtres,
+> neutralitza formules, incorpora metadades i queda auditada.
 
 ## Punt de projecte
 
