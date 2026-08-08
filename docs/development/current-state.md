@@ -1,6 +1,6 @@
 # Estat actual i continuacio
 
-> La implementacio continua a `develop`, amb el pla
+> La implementacio continua a `feature/crm-customer-360`, amb el pla
 > incremental de consolidacio previ a la Fase 6 a
 > `docs/development/pre-phase-6-product-polish.md`.
 >
@@ -21,6 +21,10 @@
 > descarregar com a CSV. El punt de continuacio es l'increment 4, la fitxa 360 del client.
 > La plantilla inclou una pestanya d'exemple separada que no s'importa. La previsualitzacio
 > identifica per fila el camp incorrecte i explica per que la confirmacio encara no es pot fer.
+> L'increment 4 ha començat per la fitxa de client: mostra les dades empresarials que ja
+> existeixen, contacte principal, tasques obertes, propera tasca i ultima activitat. Contactes,
+> notes, tasques i timeline tenen estats buits accionables; encara falten les relacions amb
+> interessos, serveis, projectes i suport abans de marcar la vista 360 com a completa.
 
 ## Punt de projecte
 

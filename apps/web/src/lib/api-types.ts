@@ -42,6 +42,11 @@ export type CustomerRow = {
 };
 
 export type CustomerDetail = CustomerRow & {
+  legalName: string | null;
+  website: string | null;
+  ownerMembershipId: string | null;
+  createdFromLeadId: string | null;
+  updatedAt: string;
   contacts: {
     id: string;
     name: string;

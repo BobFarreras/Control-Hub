@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
 **Estat:** implementacio incremental en curs.
-**Branca activa:** `develop`.
+**Branca activa:** `feature/crm-customer-360`.
 
 ## Objectiu
 
@@ -107,6 +107,13 @@ Proves minimes: CSV i XLSX, delimitadors i BOM, emails/telèfons, duplicats, rei
 fitxer malformat, limits, formula injection, RLS i E2E del flux complet.
 
 ### Increment 4 — fitxa de client com a vista 360 del CRM
+
+Progres intern:
+
+- [x] Resum operatiu amb dades CRM existents, contacte principal, propera tasca i activitat.
+- [x] Dades empresarials visibles, formulari de contacte complet i estats buits accionables.
+- [ ] Relacions amb interessos, serveis, projectes i suport, amb permisos financers separats.
+- [ ] Ampliacio opcional de dades fiscals, idioma, zona horaria i adreces.
 
 Primer s'omple la fitxa actual amb dades i relacions existents; despres s'amplia el model.
 
