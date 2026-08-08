@@ -4,9 +4,10 @@ Sentry.init({
   dsn: process.env.SENTRY_DSN,
 
   /**
-   * Only enable in production.
+   * Enabled in all environments for testing.
+   * TODO: Change to `process.env.NODE_ENV === "production"` before deploying to VPS.
    */
-  enabled: process.env.NODE_ENV === "production",
+  enabled: true,
 
   /**
    * Edge runtime is lightweight; trace only critical paths.

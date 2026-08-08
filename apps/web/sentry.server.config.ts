@@ -4,9 +4,10 @@ Sentry.init({
   dsn: process.env.SENTRY_DSN,
 
   /**
-   * Only enable in production. Development errors stay in the console.
+   * Enabled in all environments for testing.
+   * TODO: Change to `process.env.NODE_ENV === "production"` before deploying to VPS.
    */
-  enabled: process.env.NODE_ENV === "production",
+  enabled: true,
 
   /**
    * Percentage of transactions to trace.

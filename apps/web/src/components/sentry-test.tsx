@@ -1,23 +1,20 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
 
 export function SentryTestButton() {
-  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   function triggerError() {
-    try {
-      throw new Error("Test error from Sentry integration - Controls Hub");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-      throw e;
-    }
+    Sentry.captureException(new Error("Test error from Sentry integration - Controls Hub"));
+    setSent(true);
   }
 
   return (
     <div style={{ padding: "20px", border: "1px solid #ccc", borderRadius: "8px", marginTop: "20px" }}>
       <h3>Sentry Test</h3>
-      <p>Fes clic per provocar un error de prova i verificar que Sentry funciona.</p>
+      <p>Fes clic per enviar un error de prova a Sentry.</p>
       <button
         onClick={triggerError}
         style={{
@@ -31,9 +28,9 @@ export function SentryTestButton() {
       >
         Provocar Error
       </button>
-      {error && (
-        <p style={{ color: "#e74c3c", marginTop: "10px" }}>
-          Error capturat: {error}
+      {sent && (
+        <p style={{ color: "#27ae60", marginTop: "10px" }}>
+          Error enviat a Sentry! Comprova-ho a la consola de Sentry.
         </p>
       )}
     </div>

@@ -17,29 +17,39 @@ En lloc d'esperar que un usuar es queixi, Sentry t'avisa automàticament.
 
 ```
 NEXT_PUBLIC_SENTRY_DSN=https://...@ingest.sentry.io/...
+SENTRY_DSN=https://...@ingest.sentry.io/...  #mateix valor, per al servidor
 SENTRY_AUTH_TOKEN=sntryu_...
+SENTRY_ORG=digitai-studios
+SENTRY_PROJECT=control-hub
 ```
 
-- `NEXT_PUBLIC_SENTRY_DSN`: Exposada al navegador (no és un secret). Configurada a Sentry.io → Settings → Projects → Client Keys.
-- `SENTRY_AUTH_TOKEN`: Usada només al build per pujar source maps. Configurada a Sentry.io → Settings → Auth Tokens.
+- `NEXT_PUBLIC_SENTRY_DSN`: Exposada al navegador (no és un secret). Per al client-side.
+- `SENTRY_DSN`: Per al servidor-side (`instrumentation.ts`, `sentry.server.config.ts`).
+- `SENTRY_AUTH_TOKEN`: Usada només al build per pujar source maps.
+- `SENTRY_ORG` / `SENTRY_PROJECT`: Identifiquen l'organització i projecte a Sentry.
+
+**Important:** Les variables són a `apps/web/.env.local` (no al `.env` arrel del monorepo).
 
 ## Fitxers creats
 
 | Fitxer | Funció |
 |--------|--------|
-| `apps/web/sentry.client.config.ts` | Configuració Sentry al navegador |
 | `apps/web/sentry.server.config.ts` | Configuració Sentry al servidor Node |
 | `apps/web/sentry.edge.config.ts` | Configuració Sentry a l'edge runtime |
-| `apps/web/instrumentation-client.ts` | Hook client per a React |
-| `apps/web/instrumentation.ts` | Hook servidor per a Next.js |
-| `apps/web/next.config.ts` | Wrapper `withSentryConfig()` |
+| `apps/web/instrumentation-client.ts` | Hook client per a React (DSN: `NEXT_PUBLIC_SENTRY_DSN`) |
+| `apps/web/instrumentation.ts` | Hook servidor per a Next.js (DSN: `SENTRY_DSN`) |
+| `apps/web/next.config.ts` | Wrapper `withSentryConfig()` + CSP |
 
 ## Com funciona
 
 ### En desenvolupament
 
-Sentry està **desactivat** (`enabled: false` quan `NODE_ENV !== "production"`).
-Els errors apareixen a la consola del navegador/servidor com sempre.
+Sentry està **activat** (`enabled: true`) per facilitar les proves.
+Assegura't que `NEXT_PUBLIC_SENTRY_DSN` i `SENTRY_DSN` siguin presents a `apps/web/.env.local`.
+
+**Nota important:** Si no veus errors a Sentry, verifica que:
+1. La CSP a `next.config.ts` inclogui `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`
+2. Les variables d'entorn siguin correctes (no al `.env` arrel del monorepo)
 
 ### A producció
 
@@ -119,9 +129,20 @@ echo $SENTRY_AUTH_TOKEN  # Ha de mostrar el token
 
 ### Errors no apareixen a Sentry
 
-1. Verifica que `NODE_ENV=production` al desplegament
-2. Verifica que `NEXT_PUBLIC_SENTRY_DSN` estigui configurat
+1. Verifica que les variables siguin a `apps/web/.env.local` (no al `.env` arrel)
+2. Verifica que `NEXT_PUBLIC_SENTRY_DSN` i `SENTRY_DSN` siguin correctes
 3. Mira la consola del navegador: si hi ha errors de Sentry, els veuràs
+4. **CSP bloqueja connexions**: Afegeix `https://o4510557342400512.ingest.de.sentry.io` al `connect-src` de `next.config.ts`
+
+### Dues inicialitzacions de Sentry (Next.js App Router)
+
+Next.js App Router usa `instrumentation-client.ts` (client) i `instrumentation.ts` (server), NO `sentry.client.config.ts`.
+Si tens els dos fitxers, pot haver-hi conflictes. Usa només els `instrumentation-*.ts`.
+
+### Variables d'entorn a .env local
+
+Next.js carrega `.env.local` del directori de l'app (`apps/web/.env.local`), NO del `.env` arrel del monorepo.
+Les variables `NEXT_PUBLIC_*` s'exposen al navegador; les altres només al servidor.
 
 ## Plan futur: api i worker
 

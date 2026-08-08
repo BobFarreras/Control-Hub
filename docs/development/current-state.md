@@ -401,8 +401,17 @@ Configuracio completa a `docs/observability/SENTRY.md`.
 | api | ❌ futur | `@sentry/node` |
 | worker | ❌ futur | `@sentry/node` |
 
-Variables d'entorn necessaries: `NEXT_PUBLIC_SENTRY_DSN` i `SENTRY_AUTH_TOKEN`.
-En desenvolupament Sentry esta desactivat; els errors van a la consola.
+Variables d'entorn necessaries (a `apps/web/.env.local`):
+- `NEXT_PUBLIC_SENTRY_DSN` (client-side)
+- `SENTRY_DSN` (server-side)
+- `SENTRY_AUTH_TOKEN` (build/source maps)
+- `SENTRY_ORG=digitai-studios`
+- `SENTRY_PROJECT=control-hub`
+
+**Important:** Les variables han d'estar a `apps/web/.env.local`, NO al `.env` arrel del monorepo.
+La CSP a `next.config.ts` ha d'incloure `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`.
+En desenvolupament Sentry esta activat per proves. Abans de desplegar a produccio, canviar
+`enabled: true` a `enabled: process.env.NODE_ENV === "production"` als fitxers `instrumentation-*.ts`.
 
 ## Validacio abans de continuar
 
