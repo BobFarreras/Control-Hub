@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
 import { ProjectDetail } from "@/components/project-detail";
-import { apiFetch, readJson } from "@/lib/api";
+import { apiFetch, loadFailure, readJson } from "@/lib/api";
 import type {
   Profitability,
   ProfitabilityResponse,
@@ -31,7 +31,7 @@ async function loadProject(projectId: string) {
     apiFetch("/api/v1/service-types")
   ]);
   if (detailResponse.status === 404) notFound();
-  if (!detailResponse.ok) throw new Error("PROJECT_LOAD_ERROR");
+  if (!detailResponse.ok) throw await loadFailure("PROJECT_LOAD_ERROR", detailResponse);
 
   const entries = entriesResponse.ok
     ? await readJson<TimeEntriesPage>(entriesResponse)

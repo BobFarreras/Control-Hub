@@ -11,7 +11,10 @@
  */
 import { execFileSync } from "node:child_process";
 
-const required = ["postgres", "valkey"];
+// Extra services can be named on the command line: the end to end seed also needs somewhere to
+// deliver Better Auth's verification message, and it awaits the send, so a missing Mailpit is a
+// failed seed rather than a missing email.
+const required = ["postgres", "valkey", ...process.argv.slice(2)];
 
 function docker(args) {
   return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();

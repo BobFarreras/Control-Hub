@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const commands = {
   migrate: ["--filter", "@control-hub/database", "migrate"],
+  "reset:e2e": ["--filter", "@control-hub/database", "exec", "tsx", "src/reset-e2e.ts", "--confirm-test"],
   bootstrap: ["--filter", "@control-hub/api", "exec", "tsx", "src/bootstrap.ts"],
   api: ["--filter", "@control-hub/api", "dev"],
   seed: ["--filter", "@control-hub/api", "exec", "tsx", "src/seed-dev.ts", "--confirm-local"],

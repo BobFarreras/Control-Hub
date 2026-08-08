@@ -157,7 +157,13 @@ export default tseslint.config(
 
   {
     // Operator commands: their whole job is to print progress to whoever ran them.
-    files: ["apps/api/src/bootstrap.ts", "apps/api/src/seed-dev.ts", "apps/api/src/seed-e2e.ts", "scripts/**"],
+    files: [
+      "apps/api/src/bootstrap.ts",
+      "apps/api/src/seed-dev.ts",
+      "apps/api/src/seed-e2e.ts",
+      "packages/database/src/reset-e2e.ts",
+      "scripts/**"
+    ],
     rules: { "no-console": "off" }
   },
 

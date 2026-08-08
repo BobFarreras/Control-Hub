@@ -5,14 +5,14 @@ import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
 import { TicketDetail } from "@/components/ticket-detail";
-import { apiFetch, readJson } from "@/lib/api";
+import { apiFetch, loadFailure, readJson } from "@/lib/api";
 import type { TicketDetail as TicketDetailData } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
 async function loadTicket(ticketId: string): Promise<TicketDetailData> {
   const response = await apiFetch(`/api/v1/support/tickets/${ticketId}`);
   if (response.status === 404) notFound();
-  if (!response.ok) throw new Error("SUPPORT_LOAD_ERROR");
+  if (!response.ok) throw await loadFailure("SUPPORT_LOAD_ERROR", response);
   return readJson<TicketDetailData>(response);
 }
 

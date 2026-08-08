@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { InstantSearch } from "@/components/instant-search";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import type { BillingRate, BillingScope, TablePreference } from "@/lib/api-types";
@@ -63,6 +63,14 @@ export function BillingRatesTable({
   locale: string;
 }) {
   const searchParams = useSearchParams();
+  /**
+   * Withdrawing a published rate cannot be undone: the row stays in the history for good and the
+   * figure it used to price hours changes. So it takes two clicks, exactly as the cost table has
+   * always done. Moving this table onto `SmartDataTable` dropped the second one and wired the
+   * first straight to the request, which meant a misclick on `Anul·lar` retired a live rate with
+   * no way back and no warning.
+   */
+  const [confirming, setConfirming] = useState("");
 
   const rows: BillingRow[] = useMemo(
     () =>
@@ -199,15 +207,34 @@ export function BillingRatesTable({
             <span className={row.status === "in_force" ? "rate-state current" : "rate-state"}>
               {row.status === "in_force" ? t.current : t.superseded}
             </span>
-            <button
-              type="button"
-              className="quiet-link"
-              disabled={busy}
-              aria-label={`${t.annul} · ${row.scopeName} · ${row.effectiveFrom}`}
-              onClick={() => onAnnul(row.id)}
-            >
-              {t.annul}
-            </button>
+            {confirming === row.id ? (
+              <>
+                <button
+                  type="button"
+                  className="danger-link"
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirming("");
+                    onAnnul(row.id);
+                  }}
+                >
+                  {t.annulConfirm}
+                </button>
+                <button type="button" className="quiet-link" onClick={() => setConfirming("")}>
+                  {t.annulCancel}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="quiet-link"
+                disabled={busy}
+                aria-label={`${t.annul} · ${row.scopeName} · ${row.effectiveFrom}`}
+                onClick={() => setConfirming(row.id)}
+              >
+                {t.annul}
+              </button>
+            )}
           </span>
         );
       }

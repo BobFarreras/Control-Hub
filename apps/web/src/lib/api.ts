@@ -42,6 +42,27 @@ export async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * A failed load that says what the API actually answered.
+ *
+ * `throw new Error("PROJECT_LOAD_ERROR")` writes one word to the server log and nothing else:
+ * not the status, not the API's own code, not the request id that would find the matching line
+ * on the other side. A CI run that failed on exactly that line cost three sessions, because the
+ * log said the page could not load and refused to say why. The status alone separates "the
+ * session was rejected" from "the budget ran out" from "the API broke", which are three
+ * different investigations.
+ *
+ * Only ever called on a response that is already known to be an error, so reading the body is
+ * not on any path that serves a page.
+ */
+export async function loadFailure(code: string, response: Response): Promise<Error> {
+  const payload = (await response.json().catch(() => null)) as { code?: string; requestId?: string } | null;
+  const detail = [`status=${response.status}`, payload?.code && `code=${payload.code}`, payload?.requestId]
+    .filter(Boolean)
+    .join(" ");
+  return new Error(`${code} ${detail}`);
+}
+
 export async function hasSessionCookie() {
   const cookieStore = await cookies();
   return cookieStore.getAll().length > 0;

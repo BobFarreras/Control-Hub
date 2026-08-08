@@ -5,14 +5,14 @@ import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CustomerDetail } from "@/components/customer-detail";
 import { PageTopbar } from "@/components/page-topbar";
-import { apiFetch, readJson } from "@/lib/api";
+import { apiFetch, loadFailure, readJson } from "@/lib/api";
 import type { CustomerDetail as CustomerDetailData, CustomerDetailResponse } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
 async function loadCustomer(customerId: string): Promise<CustomerDetailData> {
   const response = await apiFetch(`/api/v1/crm/customers/${customerId}`);
   if (response.status === 404) notFound();
-  if (!response.ok) throw new Error("CRM_LOAD_ERROR");
+  if (!response.ok) throw await loadFailure("CRM_LOAD_ERROR", response);
   return (await readJson<CustomerDetailResponse>(response)).customer;
 }
 
