@@ -2916,19 +2916,18 @@ main {
 }
 
 /* Toast notifications
-   Fixed at the top of the viewport, just below the topbar (64px + 8px gutter). Auto-dismiss after 5s,
+   Fixed to the conventional non-blocking corner, above the viewport safe area. Auto-dismiss after 5s,
    manually dismissible. Uses the same semantic tokens as notices so the visual language is consistent. */
 .toast-container {
   position: fixed;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-  width: min(480px, calc(100vw - 48px));
+  width: min(420px, calc(100vw - 48px));
 }
 .toast {
   display: flex;
@@ -2970,6 +2969,10 @@ main {
   background: var(--surface-subtle);
   color: var(--text);
 }
+.toast-dismiss:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .toast-success {
   border-color: var(--success);
   background: var(--success-subtle);
@@ -3001,11 +3004,24 @@ main {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@media (max-width: 520px) {
+  .toast-container {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
   }
 }
 
