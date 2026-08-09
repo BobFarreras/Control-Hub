@@ -18,6 +18,17 @@ Un producte conte versions i cada versio conte plans. Els preus son snapshots im
 publicar un preu nou crea una fila nova i les subscripcions existents conserven el preu
 contractat fins a un canvi explicit. Codis de producte i pla son estables dins del tenant.
 
+### Model mental de la interfície
+
+La portada del cataleg es centra en productes comercials. Mostra el nom, estat, descripcio,
+nombre de plans i ofertes publicades; no exposa versions, plans i preus com quatre altes globals
+que competeixen entre elles. La versio es conserva per traçabilitat, pero la seva gestio viu dins
+del producte. Cada pla i la publicacio del seu preu viuen dins la versio corresponent.
+
+L'unica accio principal de la portada es crear un producte. L'alta guiada completa de producte,
+primera versio, pla i preu ha de ser atomica: la UI no pot encadenar quatre peticions que deixin
+un cataleg parcial si una falla.
+
 ## Subscripcions
 
 Una subscripcio pertany a un client i referencia un pla i un preu concrets. Els estats son

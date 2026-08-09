@@ -1959,7 +1959,7 @@ main {
   gap: 12px;
 }
 .catalog-product {
-  min-height: 240px;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -1981,10 +1981,75 @@ main {
   color: var(--muted);
   font: 500 11px/1 "JetBrains Mono";
 }
-.catalog-version {
-  padding: 14px 16px;
+.catalog-product-summary {
+  min-height: 104px;
+  padding: 16px;
+  display: grid;
+  align-content: space-between;
+  gap: 16px;
 }
-.catalog-version > strong {
+.catalog-product-summary p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.catalog-product-summary > div {
+  display: flex;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.catalog-product-summary strong {
+  color: var(--text);
+  font: 650 15px/1 "JetBrains Mono";
+}
+.catalog-offer-details {
+  border-top: 1px solid var(--border);
+}
+.catalog-offer-details > summary {
+  min-height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.catalog-offer-details > summary:hover,
+.catalog-offer-details > summary:focus-visible {
+  background: var(--brand-subtle);
+}
+.catalog-offer-details > summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.catalog-offer-toolbar,
+.catalog-version > header {
+  min-height: 46px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.catalog-offer-toolbar {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+}
+.catalog-offer-toolbar .secondary-button,
+.catalog-version > header .secondary-button {
+  min-height: 30px;
+  padding: 4px 9px;
+}
+.catalog-version {
+  padding: 0 16px 10px;
+}
+.catalog-version > header {
+  padding-inline: 0;
+}
+.catalog-version > header > strong {
   color: var(--accent);
   font-size: 12px;
 }
@@ -2005,6 +2070,32 @@ main {
   margin: 3px 0;
   color: var(--success);
   font: 600 12px/1.3 "JetBrains Mono";
+}
+.catalog-price-action {
+  min-height: 28px;
+  padding: 4px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--brand);
+  font-size: 12px;
+  cursor: pointer;
+}
+.catalog-price-action:hover,
+.catalog-price-action:focus-visible {
+  background: var(--brand-subtle);
+  outline: none;
+}
+.catalog-inline-empty {
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .subscription-layout {
   display: grid;
@@ -2100,6 +2191,22 @@ main {
 .commerce-form footer {
   grid-column: 1 / -1;
 }
+.commerce-dialog-context {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.commerce-dialog-context span {
+  color: var(--muted);
+  font-size: 12px;
+}
 .commerce-form footer {
   display: flex;
   justify-content: end;
@@ -2145,6 +2252,15 @@ main {
 .commerce-summary-strip > .commerce-actions > * {
   min-height: 58px;
   white-space: nowrap;
+}
+.catalog-summary-strip article {
+  min-width: 0;
+  width: min(560px, 100%);
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+}
+.catalog-summary-strip article > div > span {
+  color: var(--muted);
+  font-size: 11px;
 }
 .metric-label {
   display: inline-flex;

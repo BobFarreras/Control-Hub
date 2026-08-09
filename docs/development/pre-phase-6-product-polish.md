@@ -143,6 +143,13 @@ si no pertoquen), tenant scope, estats buits i E2E de la vista 360.
 
 ### Increment 5 — simplificar el cataleg comercial
 
+Progres intern:
+
+- [x] Portada centrada en productes, amb resum de plans/ofertes i una unica accio principal.
+- [x] Versions, plans i publicacio de preus contextualitzats dins de cada producte.
+- [ ] Alta guiada atomica de producte i primera oferta.
+- [ ] Modalitats comercials completes i fitxa de producte dedicada.
+
 Model mental visible:
 
 ```text

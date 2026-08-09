@@ -1,6 +1,6 @@
 # Estat actual i continuacio
 
-> La implementacio continua a `feature/crm-customer-360`, amb el pla
+> La implementacio continua a `feature/catalog-simplification`, amb el pla
 > incremental de consolidacio previ a la Fase 6 a
 > `docs/development/pre-phase-6-product-polish.md`.
 >
@@ -48,6 +48,9 @@
 > i les adreces d'oficina, facturacio, enviament o altres es gestionen separadament amb una
 > principal per tipus, RLS i auditoria sense PII. El punt de continuacio es l'increment 5,
 > simplificar el cataleg comercial.
+> L'increment 5 ha començat per la jerarquia de la portada: ara resumeix productes, plans i
+> ofertes publicades, deixa una sola alta principal i mou versions, plans i preus al producte
+> corresponent. El següent subpas es l'assistent atomic de producte i primera oferta.
 
 ## Punt de projecte
 
@@ -93,9 +96,9 @@ marge d'un projecte real s'ha comparat amb un calcul manual i quadra, i esta esc
   `apps/web/src/lib/money.ts`, **mai per coma flotant**, i es refusa un tercer decimal en comptes
   d'arrodonir-lo. 17 tests.
 - Primitives compartides a `apps/web/src/components/`: `form-field.tsx` (Field, SelectField,
-  TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg), `status-pill.tsx` i
-  `metric-tile.tsx`. El desplegable es un `<select>` natiu estilitzat i no un popover propi, a
-  proposit: el comportament es de la plataforma i la icona es nostra.
+  SelectControl, TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg),
+  `status-pill.tsx` i `metric-tile.tsx`. El desplegable visible es un listbox tematitzat light/dark
+  amb teclat i lector de pantalla; un `<select>` intern conserva el contracte dels formularis.
 - **Proves E2E autenticades: 13.** Les de projectes creen un projecte pel dialeg real i hi imputen
   hores; les de barems publiquen un cost i un preu i comproven el marge contra l'aritmetica escrita
   a l'assercio, i que **un barem publicat avui no canvia el valor d'una hora de fa un mes**. El job
