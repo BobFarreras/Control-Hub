@@ -289,6 +289,12 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     }).catch(mapConstraint);
   }
 
+  async deleteVacation(context: TenantContext, vacationId: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from attendance_vacations where tenant_id = ${context.tenantId} and id = ${vacationId}`;
+    });
+  }
+
   async listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]> {
     return withTenant(
       this.database,
@@ -332,6 +338,12 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
           created_by_membership_id as "createdByMembershipId"`;
       return absence!;
     }).catch(mapConstraint);
+  }
+
+  async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from attendance_absences where tenant_id = ${context.tenantId} and id = ${absenceId}`;
+    });
   }
 
   async listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]> {

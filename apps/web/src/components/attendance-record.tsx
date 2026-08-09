@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, Clock, PencilLine, Plane, FileText } from "lucide-react";
+import { AlertTriangle, Clock, PencilLine, Plane, FileText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { MetricTile } from "@/components/metric-tile";
 import { useToast } from "@/components/toast";
 import type { AttendanceEvent, AttendanceMonth, AttendanceHoliday, AttendanceVacation, AttendanceAbsence } from "@/lib/api-types";
@@ -10,8 +10,6 @@ import { formValue } from "@/lib/form";
 import { formatHours } from "@/lib/format";
 
 type Labels = Record<string, string>;
-
-const ANNUAL_VACATION_DAYS = 28;
 
 function supersededIds(events: AttendanceEvent[]): Set<string> {
   return new Set(events.map((event) => event.correctsEventId).filter((id): id is string => Boolean(id)));
@@ -24,12 +22,6 @@ function wasDeclared(event: AttendanceEvent): boolean {
 function toLocalInput(value: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
-}
-
-function daysBetween(start: string, end: string): number {
-  const s = new Date(start + "T12:00:00");
-  const e = new Date(end + "T12:00:00");
-  return Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1;
 }
 
 export function AttendanceRecord({
@@ -48,6 +40,8 @@ export function AttendanceRecord({
   const [correcting, setCorrecting] = useState<AttendanceEvent | null>(null);
   const [showVacationForm, setShowVacationForm] = useState(false);
   const [showAbsenceForm, setShowAbsenceForm] = useState(false);
+  const [vacationFormDate, setVacationFormDate] = useState("");
+  const [absenceFormDate, setAbsenceFormDate] = useState("");
   const [busy, setBusy] = useState(false);
 
   const [holidays, setHolidays] = useState<AttendanceHoliday[]>([]);
@@ -74,11 +68,6 @@ export function AttendanceRecord({
       setAbsences(a.absences ?? []);
     });
   }, [view, month.days, month.membershipId]);
-
-  const vacationDaysTaken = vacations
-    .filter((v) => v.status === "approved")
-    .reduce((sum, v) => sum + daysBetween(v.startDate, v.endDate), 0);
-  const vacationDaysLeft = ANNUAL_VACATION_DAYS - vacationDaysTaken;
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -148,39 +137,31 @@ export function AttendanceRecord({
     router.refresh();
   }
 
+  async function cancelVacation(vacationId: string) {
+    if (!confirm(t.confirmCancel!)) return;
+    setBusy(true);
+    const response = await fetch(`/api/v1/attendance/vacations/${vacationId}`, { method: "DELETE" });
+    setBusy(false);
+    if (!response.ok) return toast("error", t.failed!);
+    toast("success", t.vacationCancelled!);
+    router.refresh();
+  }
+
+  async function cancelAbsence(absenceId: string) {
+    if (!confirm(t.confirmCancel!)) return;
+    setBusy(true);
+    const response = await fetch(`/api/v1/attendance/absences/${absenceId}`, { method: "DELETE" });
+    setBusy(false);
+    if (!response.ok) return toast("error", t.failed!);
+    toast("success", t.absenceCancelled!);
+    router.refresh();
+  }
+
   return (
     <>
       <section className="metric-row" aria-label={t.total}>
         <MetricTile label={t.total!} icon={Clock} value={formatHours(month.totalMinutes)} />
       </section>
-
-      {view === "calendar" && (
-        <div className="attendance-calendar-summary">
-          <span className="member-name">{month.memberName}</span>
-          <span className="total-hours">{formatHours(month.totalMinutes)} {t.thisMonth}</span>
-          <span className="vacation-days-left">
-            {t.vacationDaysLeft}: <strong>{vacationDaysLeft}</strong> / {ANNUAL_VACATION_DAYS}
-          </span>
-          <div className="request-buttons">
-            <button
-              className="secondary-button"
-              onClick={() => setShowVacationForm(true)}
-              aria-label={t.requestVacation}
-            >
-              <Plane size={14} aria-hidden="true" />
-              {t.vacation}
-            </button>
-            <button
-              className="secondary-button"
-              onClick={() => setShowAbsenceForm(true)}
-              aria-label={t.requestAbsence}
-            >
-              <FileText size={14} aria-hidden="true" />
-              {t.absence}
-            </button>
-          </div>
-        </div>
-      )}
 
       {view === "calendar" ? (
         <CalendarView
@@ -193,6 +174,10 @@ export function AttendanceRecord({
           holidays={holidays}
           vacations={vacations}
           absences={absences}
+          onVacationClick={(d) => { setVacationFormDate(d); setShowVacationForm(true); }}
+          onAbsenceClick={(d) => { setAbsenceFormDate(d); setShowAbsenceForm(true); }}
+          onCancelVacation={cancelVacation}
+          onCancelAbsence={cancelAbsence}
         />
       ) : (
         <TableView month={month} labels={t} locale={locale} time={time} date={date} superseded={superseded} />
@@ -287,11 +272,11 @@ export function AttendanceRecord({
             <form className="commerce-form" onSubmit={(event) => void submitVacation(event)}>
               <label>
                 {t.vacationStart}
-                <input name="startDate" type="date" required disabled={busy} />
+                <input name="startDate" type="date" required disabled={busy} defaultValue={vacationFormDate} />
               </label>
               <label>
                 {t.vacationEnd}
-                <input name="endDate" type="date" required disabled={busy} />
+                <input name="endDate" type="date" required disabled={busy} defaultValue={vacationFormDate} />
               </label>
               <label className="full-width">
                 {t.notes}
@@ -328,11 +313,11 @@ export function AttendanceRecord({
               </label>
               <label>
                 {t.absenceStart}
-                <input name="startDate" type="date" required disabled={busy} />
+                <input name="startDate" type="date" required disabled={busy} defaultValue={absenceFormDate} />
               </label>
               <label>
                 {t.absenceEnd}
-                <input name="endDate" type="date" required disabled={busy} />
+                <input name="endDate" type="date" required disabled={busy} defaultValue={absenceFormDate} />
               </label>
               <label className="full-width">
                 {t.notes}
@@ -438,7 +423,11 @@ function CalendarView({
   superseded,
   holidays,
   vacations,
-  absences
+  absences,
+  onVacationClick,
+  onAbsenceClick,
+  onCancelVacation,
+  onCancelAbsence
 }: {
   month: AttendanceMonth;
   labels: Labels;
@@ -449,13 +438,30 @@ function CalendarView({
   holidays: AttendanceHoliday[];
   vacations: AttendanceVacation[];
   absences: AttendanceAbsence[];
+  onVacationClick: (date: string) => void;
+  onAbsenceClick: (date: string) => void;
+  onCancelVacation: (id: string) => void;
+  onCancelAbsence: (id: string) => void;
 }) {
+  const [popover, setPopover] = useState<{ dayStr: string; x: number; y: number } | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!popover) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopover(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [popover]);
+
   const firstDay = month.days[0]?.day ?? new Date().toISOString().slice(0, 10);
   const parts = firstDay.split("-");
   const year = parseInt(parts[0] ?? "0", 10);
   const monthNum = parseInt(parts[1] ?? "1", 10);
   const daysInMonth = new Date(year, monthNum, 0).getDate();
-  // getDay(): 0=Sun,1=Mon,...6=Sat. Shift so Monday=0.
   const firstDayOfWeek = (new Date(`${firstDay}T12:00:00`).getDay() + 6) % 7;
 
   const calendarDays: (string | null)[] = [];
@@ -479,27 +485,32 @@ function CalendarView({
   );
 
   const holidayDates = new Set(holidays.map((h) => h.date));
-  const vacationDates = new Set<string>();
+  const vacationMap = new Map<string, AttendanceVacation>();
   for (const v of vacations) {
     if (v.status !== "approved") continue;
     const start = new Date(v.startDate + "T12:00:00");
     const end = new Date(v.endDate + "T12:00:00");
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0, 10);
-      if (ds >= v.startDate && ds <= v.endDate) vacationDates.add(ds);
+      if (ds >= v.startDate && ds <= v.endDate) vacationMap.set(ds, v);
     }
   }
-  const absenceDates = new Map<string, string>();
+  const absenceMap = new Map<string, AttendanceAbsence>();
   for (const a of absences) {
     const start = new Date(a.startDate + "T12:00:00");
     const end = new Date(a.endDate + "T12:00:00");
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0, 10);
-      if (ds >= a.startDate && ds <= a.endDate) absenceDates.set(ds, a.type);
+      if (ds >= a.startDate && ds <= a.endDate) absenceMap.set(ds, a);
     }
   }
 
   const dayNames = [t.monday, t.tuesday, t.wednesday, t.thursday, t.friday, t.saturday, t.sunday];
+
+  function handleCellClick(dayStr: string, e: React.MouseEvent) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPopover({ dayStr, x: rect.left + rect.width / 2, y: rect.bottom + 4 });
+  }
 
   return (
     <section className="project-panel" aria-label={t.calendarView}>
@@ -524,22 +535,22 @@ function CalendarView({
             const hasWorked = dayData && dayData.workedMinutes > 0;
             const hasOpenSession = dayData?.hasOpenSession ?? false;
             const isHoliday = holidayDates.has(dayStr);
-            const isVacation = vacationDates.has(dayStr);
-            const absenceType = absenceDates.get(dayStr);
+            const vacation = vacationMap.get(dayStr);
+            const absence = absenceMap.get(dayStr);
 
             const cellClass = [
               "calendar-cell",
               hasWorked ? "worked" : "",
               hasOpenSession ? "open" : "",
               isHoliday ? "holiday" : "",
-              isVacation ? "vacation" : "",
-              absenceType ? "absence" : ""
+              vacation ? "vacation" : "",
+              absence ? "absence" : ""
             ].filter(Boolean).join(" ");
 
             const labelParts: string[] = [];
             if (isHoliday) labelParts.push(t.holiday!);
-            if (isVacation) labelParts.push(t.vacation!);
-            if (absenceType) labelParts.push(t.absence!);
+            if (vacation) labelParts.push(t.vacation!);
+            if (absence) labelParts.push(t.absence!);
             if (hasWorked) labelParts.push(formatHours(dayData!.workedMinutes));
             if (hasOpenSession) labelParts.push(t.openSession!);
             const ariaParts = labelParts.length > 0 ? labelParts.join(", ") : t.empty!;
@@ -550,12 +561,14 @@ function CalendarView({
                 className={cellClass}
                 role="gridcell"
                 aria-label={`${date.format(new Date(`${dayStr}T12:00:00`))}: ${ariaParts}`}
+                onClick={(e) => handleCellClick(dayStr, e)}
+                style={{ cursor: "pointer" }}
               >
                 <span className="calendar-day-number">{dayNum}</span>
                 <div className="calendar-day-content">
                   {isHoliday && <span className="calendar-day-label">{t.holiday}</span>}
-                  {isVacation && <span className="calendar-day-label">{t.vacation}</span>}
-                  {absenceType && <span className="calendar-day-label">{t.absence}</span>}
+                  {vacation && <span className="calendar-day-label">{t.vacation}</span>}
+                  {absence && <span className="calendar-day-label">{t.absence}</span>}
                   {hasWorked && (
                     <>
                       <span className="calendar-hours">{formatHours(dayData!.workedMinutes)}</span>
@@ -578,6 +591,66 @@ function CalendarView({
           })}
         </div>
       </div>
+
+      {popover && (
+        <div
+          ref={popoverRef}
+          className="calendar-popover"
+          style={{ position: "fixed", left: popover.x, top: popover.y, transform: "translateX(-50%)", zIndex: 1000 }}
+        >
+          <div className="calendar-popover-header">
+            <span>{date.format(new Date(`${popover.dayStr}T12:00:00`))}</span>
+            <button className="icon-button" onClick={() => setPopover(null)} aria-label={t.cancel}>
+              <X size={14} />
+            </button>
+          </div>
+          {(() => {
+            const vacation = vacationMap.get(popover.dayStr);
+            const absence = absenceMap.get(popover.dayStr);
+            const holiday = holidayDates.has(popover.dayStr);
+
+            if (vacation) {
+              return (
+                <div className="calendar-popover-content">
+                  <span className="calendar-popover-label">{t.vacation}</span>
+                  <button className="secondary-button danger" onClick={() => { onCancelVacation(vacation.id); setPopover(null); }}>
+                    {t.cancelVacation}
+                  </button>
+                </div>
+              );
+            }
+            if (absence) {
+              return (
+                <div className="calendar-popover-content">
+                  <span className="calendar-popover-label">{t.absence}</span>
+                  <button className="secondary-button danger" onClick={() => { onCancelAbsence(absence.id); setPopover(null); }}>
+                    {t.cancelAbsence}
+                  </button>
+                </div>
+              );
+            }
+            if (holiday) {
+              return (
+                <div className="calendar-popover-content">
+                  <span className="calendar-popover-label">{t.holiday}</span>
+                </div>
+              );
+            }
+            return (
+              <div className="calendar-popover-actions">
+                <button className="secondary-button" onClick={() => { onVacationClick(popover.dayStr); setPopover(null); }}>
+                  <Plane size={14} aria-hidden="true" />
+                  {t.vacation}
+                </button>
+                <button className="secondary-button" onClick={() => { onAbsenceClick(popover.dayStr); setPopover(null); }}>
+                  <FileText size={14} aria-hidden="true" />
+                  {t.absence}
+                </button>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </section>
   );
 }

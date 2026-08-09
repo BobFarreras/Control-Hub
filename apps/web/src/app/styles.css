@@ -4481,6 +4481,58 @@ main {
   line-height: 1.1;
 }
 
+.calendar-popover {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 8px 12px;
+  min-width: 160px;
+}
+
+.calendar-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-popover-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-popover-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.calendar-popover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-popover-actions .secondary-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.secondary-button.danger {
+  color: var(--danger);
+}
+
+.secondary-button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .calendar-cell {
     transition: none;

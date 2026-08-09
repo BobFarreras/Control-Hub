@@ -64,12 +64,14 @@ const repository = (overrides: Partial<AttendanceRepository> = {}): AttendanceRe
     id: "v1", membershipId: "member-a", startDate: "2026-08-01", endDate: "2026-08-15",
     status: "approved", approvedByMembershipId: "member-manager", approvedAt: new Date(), notes: null
   }),
+  deleteVacation: vi.fn<AttendanceRepository["deleteVacation"]>().mockResolvedValue(undefined),
   listAbsences: vi.fn<AttendanceRepository["listAbsences"]>().mockResolvedValue([]),
   listAbsencesByMember: vi.fn<AttendanceRepository["listAbsencesByMember"]>().mockResolvedValue([]),
   createAbsence: vi.fn<AttendanceRepository["createAbsence"]>().mockResolvedValue({
     id: "a1", membershipId: "member-a", startDate: "2026-08-20", endDate: "2026-08-22",
     type: "sick_leave", documentUrl: null, notes: null, createdByMembershipId: "member-a"
   }),
+  deleteAbsence: vi.fn<AttendanceRepository["deleteAbsence"]>().mockResolvedValue(undefined),
   listBlocks: vi.fn<AttendanceRepository["listBlocks"]>().mockResolvedValue([]),
   listBlocksByMember: vi.fn<AttendanceRepository["listBlocksByMember"]>().mockResolvedValue([]),
   createBlock: vi.fn<AttendanceRepository["createBlock"]>().mockResolvedValue({

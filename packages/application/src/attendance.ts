@@ -127,10 +127,12 @@ export type AttendanceRepository = {
   listVacationsByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceVacation[]>;
   createVacation(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; notes?: string }): Promise<AttendanceVacation>;
   updateVacationStatus(context: TenantContext, input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }): Promise<AttendanceVacation>;
+  deleteVacation(context: TenantContext, vacationId: string): Promise<void>;
 
   listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]>;
   listAbsencesByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceAbsence[]>;
   createAbsence(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string; createdByMembershipId: string }): Promise<AttendanceAbsence>;
+  deleteAbsence(context: TenantContext, absenceId: string): Promise<void>;
 
   listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]>;
   listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]>;
@@ -371,6 +373,11 @@ export class AttendanceService {
     return this.repository.updateVacationStatus(context, { ...input, approvedByMembershipId: context.membershipId });
   }
 
+  async deleteVacation(context: TenantContext, vacationId: string): Promise<void> {
+    if (!hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
+    return this.repository.deleteVacation(context, vacationId);
+  }
+
   async listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]> {
     if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listAbsences(context, range);
@@ -386,6 +393,11 @@ export class AttendanceService {
     const own = input.membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.createAbsence(context, { ...input, createdByMembershipId: input.createdByMembershipId ?? context.membershipId });
+  }
+
+  async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
+    if (!hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
+    return this.repository.deleteAbsence(context, absenceId);
   }
 
   async listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]> {
