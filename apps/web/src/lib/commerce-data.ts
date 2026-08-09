@@ -7,6 +7,7 @@ import type {
   FinancialMetric,
   FinancialSummaryResponse,
   Page,
+  ProductCatalogDetail,
   RenewalAlert,
   RenewalAlertsResponse
 } from "./api-types";
@@ -64,4 +65,11 @@ export async function getCommerceData(): Promise<CommerceData> {
   } catch {
     return empty;
   }
+}
+
+export async function getProductCatalogDetail(productId: string): Promise<ProductCatalogDetail | null> {
+  const response = await apiFetch(`/api/v1/commerce/products/${encodeURIComponent(productId)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("PRODUCT_DETAIL_UNAVAILABLE");
+  return readJson<ProductCatalogDetail>(response);
 }

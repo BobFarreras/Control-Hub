@@ -82,6 +82,33 @@ suite("PostgresCommerceRepository", () => {
     ).rejects.toThrow();
   });
 
+  it("creates the first complete offer atomically and rolls every row back on a late conflict", async () => {
+    const offer = await service.createProductOffer(context(tenantA), {
+      product: { code: "atomic-offer", name: "Atomic Offer" },
+      version: { version: "1.0" },
+      plan: { code: "atomic-plan", name: "Atomic Plan", commercialModel: "subscription" },
+      price: { currency: "EUR", amountMinor: 4900, costMinor: 900, taxBasisPoints: 2100, interval: "monthly" }
+    });
+    expect(offer.price.planId).toBe(offer.plan.id);
+
+    await expect(
+      service.createProductOffer(context(tenantA), {
+        product: { code: "must-roll-back", name: "Must Roll Back" },
+        version: { version: "1.0" },
+        plan: { code: "atomic-plan", name: "Duplicated Plan", commercialModel: "subscription" },
+        price: { currency: "EUR", amountMinor: 1000, costMinor: 0, taxBasisPoints: 0, interval: "monthly" }
+      })
+    ).rejects.toEqual(expect.objectContaining({ code: "DUPLICATE_CODE" }));
+    expect(
+      (await service.catalog(context(tenantA))).products.some((product) => product.code === "must-roll-back")
+    ).toBe(false);
+    const detail = await service.productDetail(context(tenantA), offer.product.id);
+    expect(detail).toMatchObject({ product: { id: offer.product.id }, plans: [{ commercialModel: "subscription" }] });
+    await expect(service.productDetail(context(tenantB), offer.product.id)).rejects.toEqual(
+      expect.objectContaining({ code: "PRODUCT_NOT_FOUND" })
+    );
+  });
+
   it("calculates metrics, renewal alerts and immutable state changes", async () => {
     const catalog = await service.catalog(context(tenantA));
     const plan = catalog.plans[0]!;

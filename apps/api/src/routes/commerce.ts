@@ -8,6 +8,11 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
     requirePermission(context, "products:manage");
     return commerce.catalog(context);
   });
+  app.get<{ Params: { productId: string } }>("/api/v1/commerce/products/:productId", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "products:manage");
+    return commerce.productDetail(context, request.params.productId);
+  });
   app.post<{ Body: { code: string; name: string; description?: string } }>(
     "/api/v1/commerce/products",
     {
@@ -35,6 +40,96 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
         outcome: "success"
       });
       return reply.code(201).send({ product });
+    }
+  );
+  app.post<{
+    Body: {
+      product: { code: string; name: string; description?: string };
+      version: { version: string };
+      plan: {
+        code: string;
+        name: string;
+        description?: string;
+        commercialModel: "subscription" | "maintenance" | "one_time" | "project_service";
+      };
+      price: {
+        currency: string;
+        amountMinor: number;
+        costMinor: number;
+        taxBasisPoints: number;
+        interval: "free" | "one_time" | "monthly" | "quarterly" | "semiannual" | "annual";
+      };
+    };
+  }>(
+    "/api/v1/commerce/products/with-offer",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["product", "version", "plan", "price"],
+          properties: {
+            product: {
+              type: "object",
+              additionalProperties: false,
+              required: ["code", "name"],
+              properties: {
+                code: { type: "string", minLength: 3, maxLength: 64 },
+                name: { type: "string", minLength: 1, maxLength: 160 },
+                description: { type: "string", maxLength: 2000 }
+              }
+            },
+            version: {
+              type: "object",
+              additionalProperties: false,
+              required: ["version"],
+              properties: { version: { type: "string", minLength: 1, maxLength: 80 } }
+            },
+            plan: {
+              type: "object",
+              additionalProperties: false,
+              required: ["code", "name", "commercialModel"],
+              properties: {
+                code: { type: "string", minLength: 3, maxLength: 64 },
+                name: { type: "string", minLength: 1, maxLength: 160 },
+                description: { type: "string", maxLength: 2000 },
+                commercialModel: {
+                  type: "string",
+                  enum: ["subscription", "maintenance", "one_time", "project_service"]
+                }
+              }
+            },
+            price: {
+              type: "object",
+              additionalProperties: false,
+              required: ["currency", "amountMinor", "costMinor", "taxBasisPoints", "interval"],
+              properties: {
+                currency: { type: "string", pattern: "^[A-Za-z]{3}$" },
+                amountMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 },
+                costMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 },
+                taxBasisPoints: { type: "integer", minimum: 0, maximum: 10000 },
+                interval: {
+                  type: "string",
+                  enum: ["free", "one_time", "monthly", "quarterly", "semiannual", "annual"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "products:manage");
+      const offer = await commerce.createProductOffer(context, request.body);
+      await writeAudit(database, context, request, {
+        action: "product.offer.created",
+        targetType: "product",
+        targetId: offer.product.id,
+        outcome: "success",
+        metadata: { planId: offer.plan.id, currency: offer.price.currency, interval: offer.price.interval }
+      });
+      return reply.code(201).send({ offer });
     }
   );
   app.post<{
@@ -73,7 +168,15 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
       return reply.code(201).send({ version });
     }
   );
-  app.post<{ Params: { versionId: string }; Body: { code: string; name: string; description?: string } }>(
+  app.post<{
+    Params: { versionId: string };
+    Body: {
+      code: string;
+      name: string;
+      description?: string;
+      commercialModel?: "subscription" | "maintenance" | "one_time" | "project_service";
+    };
+  }>(
     "/api/v1/commerce/versions/:versionId/plans",
     {
       schema: {
@@ -84,7 +187,11 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
           properties: {
             code: { type: "string", minLength: 3, maxLength: 64 },
             name: { type: "string", minLength: 1, maxLength: 160 },
-            description: { type: "string", maxLength: 2000 }
+            description: { type: "string", maxLength: 2000 },
+            commercialModel: {
+              type: "string",
+              enum: ["subscription", "maintenance", "one_time", "project_service"]
+            }
           }
         }
       }
@@ -109,7 +216,7 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
       amountMinor: number;
       costMinor: number;
       taxBasisPoints: number;
-      interval: "free" | "monthly" | "quarterly" | "semiannual" | "annual";
+      interval: "free" | "one_time" | "monthly" | "quarterly" | "semiannual" | "annual";
       effectiveFrom?: string;
     };
   }>(
@@ -125,7 +232,10 @@ export function registerCommerceRoutes({ app, database, auth, commerce }: Commer
             amountMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 },
             costMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 },
             taxBasisPoints: { type: "integer", minimum: 0, maximum: 10000 },
-            interval: { type: "string", enum: ["free", "monthly", "quarterly", "semiannual", "annual"] },
+            interval: {
+              type: "string",
+              enum: ["free", "one_time", "monthly", "quarterly", "semiannual", "annual"]
+            },
             effectiveFrom: { type: "string", format: "date-time" }
           }
         }

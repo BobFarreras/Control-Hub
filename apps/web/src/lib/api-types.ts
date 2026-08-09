@@ -278,10 +278,19 @@ export type TimeEntriesPage = {
   pageSize: TablePreference["pageSize"];
 };
 
-export type Product = { id: string; code: string; name: string; status: string };
+export type Product = { id: string; code: string; name: string; description: string | null; status: string };
 export type Version = { id: string; productId: string; version: string; status: string };
-export type Plan = { id: string; productVersionId: string; code: string; name: string; status: string };
-export type BillingInterval = "free" | "monthly" | "quarterly" | "semiannual" | "annual";
+export type CommercialModel = "subscription" | "maintenance" | "one_time" | "project_service";
+export type Plan = {
+  id: string;
+  productVersionId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  commercialModel: CommercialModel;
+  status: string;
+};
+export type BillingInterval = "free" | "one_time" | "monthly" | "quarterly" | "semiannual" | "annual";
 
 export type Price = {
   id: string;
@@ -295,6 +304,7 @@ export type Price = {
 };
 
 export type Catalog = { products: Product[]; versions: Version[]; plans: Plan[]; prices: Price[] };
+export type ProductCatalogDetail = Catalog & { product: Product };
 
 export type CustomerSubscription = {
   id: string;

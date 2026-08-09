@@ -50,7 +50,13 @@
 > simplificar el cataleg comercial.
 > L'increment 5 ha començat per la jerarquia de la portada: ara resumeix productes, plans i
 > ofertes publicades, deixa una sola alta principal i mou versions, plans i preus al producte
-> corresponent. El següent subpas es l'assistent atomic de producte i primera oferta.
+> corresponent. L'assistent crea producte, versio activa, pla i preu en una unica transaccio tenant-scoped;
+> valida tots els camps abans d'escriure, genera codis editables des del nom i audita una sola
+> operacio. Un conflicte tardà desfà les quatre files. Les modalitats comercials viuen al pla:
+> subscripcio, manteniment, compra unica o servei per projecte, amb periodicitats incompatibles
+> rebutjades tant al domini com a PostgreSQL. La fitxa dedicada del producte mostra la seva
+> jerarquia completa amb una lectura tenant-scoped. L'increment 5 queda tancat i el punt de
+> continuacio es l'increment 6, serveis, subscripcions i compres dels clients.
 
 ## Punt de projecte
 

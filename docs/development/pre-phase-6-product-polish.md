@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
 **Estat:** implementacio incremental en curs.
-**Branca activa:** `feature/crm-customer-360`.
+**Branca activa:** `feature/catalog-simplification`.
 
 ## Objectiu
 
@@ -17,7 +17,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 2 — Exportacio Excel professional del CRM.
 - [x] Increment 3 — Importacio guiada de leads.
 - [x] Increment 4 — Fitxa de client com a vista 360.
-- [ ] Increment 5 — Simplificar el cataleg comercial.
+- [x] Increment 5 — Simplificar el cataleg comercial.
 - [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
 - [ ] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
@@ -147,8 +147,9 @@ Progres intern:
 
 - [x] Portada centrada en productes, amb resum de plans/ofertes i una unica accio principal.
 - [x] Versions, plans i publicacio de preus contextualitzats dins de cada producte.
-- [ ] Alta guiada atomica de producte i primera oferta.
-- [ ] Modalitats comercials completes i fitxa de producte dedicada.
+- [x] Alta guiada atomica de producte, primera versio, pla i preu publicat.
+- [x] Modalitats comercials al nivell del pla, amb compatibilitat de periodicitat protegida al domini i a PostgreSQL.
+- [x] Fitxa dedicada de producte amb jerarquia tenant-scoped de versions, plans i preus publicats.
 
 Model mental visible:
 

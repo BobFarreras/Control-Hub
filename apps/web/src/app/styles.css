@@ -2003,6 +2003,76 @@ main {
   color: var(--text);
   font: 650 15px/1 "JetBrains Mono";
 }
+.catalog-detail-link,
+.catalog-back-link {
+  width: fit-content;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.catalog-detail-link:hover,
+.catalog-detail-link:focus-visible,
+.catalog-back-link:hover,
+.catalog-back-link:focus-visible {
+  text-decoration: underline;
+}
+.catalog-model {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 650;
+}
+.product-detail-layout {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+.product-detail-hero,
+.product-offer-tree,
+.product-detail-version,
+.product-detail-plan,
+.product-detail-summary article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.product-detail-hero {
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.product-detail-hero h2 { margin: 5px 0 8px; font-size: 24px; }
+.product-detail-hero p { margin: 0; color: var(--muted); }
+.catalog-code { color: var(--muted); font: 500 11px/1 "JetBrains Mono"; }
+.product-detail-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.product-detail-summary article { padding: 14px 16px; display: grid; gap: 4px; }
+.product-detail-summary strong { font: 700 20px/1 "JetBrains Mono"; }
+.product-detail-summary span { color: var(--muted); font-size: 12px; }
+.product-offer-tree { padding: 18px; }
+.product-offer-tree > h2 { margin: 0 0 14px; font-size: 17px; }
+.product-detail-version { padding: 14px; margin-top: 10px; background: var(--surface-subtle); }
+.product-detail-version > header,
+.product-detail-plan > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.product-detail-version > header div,
+.product-detail-plan > header div { display: grid; gap: 4px; }
+.product-detail-version > header div span,
+.product-detail-plan small { color: var(--muted); font-size: 11px; }
+.product-detail-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 12px; }
+.product-detail-plan { padding: 14px; }
+.product-detail-plan p { margin: 12px 0; color: var(--muted); font-size: 13px; }
+.product-detail-prices { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 680px) {
+  .product-detail-summary { grid-template-columns: 1fr; }
+  .product-detail-hero { align-items: stretch; flex-direction: column; }
+}
 .catalog-offer-details {
   border-top: 1px solid var(--border);
 }
@@ -2175,6 +2245,39 @@ main {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+.commerce-wizard-section {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.commerce-wizard-section legend {
+  padding: 0 7px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.commerce-wizard-section legend span {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font: 700 11px/1 "JetBrains Mono";
+}
+.commerce-wizard-section .wide {
+  grid-column: 1 / -1;
+}
 .commerce-form label {
   display: grid;
   gap: 7px;
@@ -2206,6 +2309,14 @@ main {
 .commerce-dialog-context span {
   color: var(--muted);
   font-size: 12px;
+}
+@media (max-width: 600px) {
+  .commerce-wizard-section {
+    grid-template-columns: 1fr;
+  }
+  .commerce-wizard-section .wide {
+    grid-column: 1;
+  }
 }
 .commerce-form footer {
   display: flex;

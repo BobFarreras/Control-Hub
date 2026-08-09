@@ -17,13 +17,23 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import { SelectControl } from "@/components/form-field";
 import { MetricHelp } from "@/components/metric-help";
+import { toCatalogCode } from "@/lib/catalog-code";
 import { catalogProductOffering } from "@/lib/catalog-product-offering";
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
+import { parseAmountToMinor } from "@/lib/money";
 
 type Product = { id: string; code: string; name: string; description?: string | null; status: string };
 type Version = { id: string; productId: string; version: string; status: string };
-type Plan = { id: string; productVersionId: string; code: string; name: string; status: string };
+type CommercialModel = "subscription" | "maintenance" | "one_time" | "project_service";
+type Plan = {
+  id: string;
+  productVersionId: string;
+  code: string;
+  name: string;
+  commercialModel: CommercialModel;
+  status: string;
+};
 type Price = {
   id: string;
   planId: string;
@@ -31,7 +41,7 @@ type Price = {
   amountMinor: number;
   costMinor: number;
   taxBasisPoints: number;
-  interval: "free" | "monthly" | "quarterly" | "semiannual" | "annual";
+  interval: "free" | "one_time" | "monthly" | "quarterly" | "semiannual" | "annual";
   effectiveFrom: string;
 };
 type Subscription = {
@@ -91,6 +101,12 @@ export function CommerceWorkspace({
   const router = useRouter();
   const [dialog, setDialog] = useState<"product" | "version" | "plan" | "price" | "subscription" | null>(null);
   const [dialogContext, setDialogContext] = useState<{ productId?: string; versionId?: string; planId?: string }>({});
+  const [productCode, setProductCode] = useState("");
+  const [planCode, setPlanCode] = useState("");
+  const [productCodeEdited, setProductCodeEdited] = useState(false);
+  const [planCodeEdited, setPlanCodeEdited] = useState(false);
+  const [commercialModel, setCommercialModel] = useState<CommercialModel>("subscription");
+  const [billingInterval, setBillingInterval] = useState("monthly");
   const [error, setError] = useState("");
   /** Last resort for a handler that rejected outright, so a failure is never silent. */
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
@@ -117,6 +133,15 @@ export function CommerceWorkspace({
     next: "product" | "version" | "plan" | "price" | "subscription",
     context: { productId?: string; versionId?: string; planId?: string } = {}
   ) => {
+    if (next === "product" || next === "plan") {
+      setCommercialModel("subscription");
+      setBillingInterval("monthly");
+    }
+    if (next === "price") {
+      const model = catalog.plans.find((plan) => plan.id === context.planId)?.commercialModel ?? "subscription";
+      setCommercialModel(model);
+      setBillingInterval(model === "one_time" || model === "project_service" ? "one_time" : "monthly");
+    }
     setDialogContext(context);
     setDialog(next);
   };
@@ -128,8 +153,34 @@ export function CommerceWorkspace({
     let url = "";
     let body: Record<string, unknown> = {};
     if (dialog === "product") {
-      url = "/api/v1/commerce/products";
-      body = { code: data.get("code"), name: data.get("name"), description: data.get("description") || undefined };
+      const amount = parseAmountToMinor(formValue(data, "amount"));
+      const cost = parseAmountToMinor(formValue(data, "cost"));
+      const tax = parseAmountToMinor(formValue(data, "tax"));
+      if ("error" in amount || "error" in cost || "error" in tax || tax.minor > 10_000) {
+        setError(t.invalidFinancialInput ?? t.formError ?? "INVALID_INPUT");
+        return;
+      }
+      url = "/api/v1/commerce/products/with-offer";
+      body = {
+        product: {
+          code: data.get("productCode"),
+          name: data.get("productName"),
+          description: data.get("productDescription") || undefined
+        },
+        version: { version: data.get("version") },
+        plan: {
+          code: data.get("planCode"),
+          name: data.get("planName"),
+          commercialModel: data.get("commercialModel")
+        },
+        price: {
+          currency: data.get("currency"),
+          amountMinor: amount.minor,
+          costMinor: cost.minor,
+          taxBasisPoints: tax.minor,
+          interval: data.get("interval")
+        }
+      };
     }
     if (dialog === "version") {
       url = `/api/v1/commerce/products/${formValue(data, "productId")}/versions`;
@@ -141,7 +192,12 @@ export function CommerceWorkspace({
     }
     if (dialog === "plan") {
       url = `/api/v1/commerce/versions/${formValue(data, "versionId")}/plans`;
-      body = { code: data.get("code"), name: data.get("name"), description: data.get("description") || undefined };
+      body = {
+        code: data.get("code"),
+        name: data.get("name"),
+        description: data.get("description") || undefined,
+        commercialModel: data.get("commercialModel")
+      };
     }
     if (dialog === "price") {
       url = `/api/v1/commerce/plans/${formValue(data, "planId")}/prices`;
@@ -173,6 +229,10 @@ export function CommerceWorkspace({
     });
     if (!response.ok) return showResponseError(response);
     setDialog(null);
+    setProductCode("");
+    setPlanCode("");
+    setProductCodeEdited(false);
+    setPlanCodeEdited(false);
     router.refresh();
   }
   async function status(subscription: Subscription, next: "active" | "paused" | "canceled") {
@@ -302,6 +362,9 @@ export function CommerceWorkspace({
                         <strong>{productPrices.length}</strong> {(t.publishedOffers ?? "").toLocaleLowerCase(locale)}
                       </span>
                     </div>
+                    <Link className="catalog-detail-link" href={`/${locale}/products/${product.id}`}>
+                      {t.viewProduct}
+                    </Link>
                   </div>
                   <details className="catalog-offer-details">
                     <summary>{t.manageOffer}</summary>
@@ -341,6 +404,9 @@ export function CommerceWorkspace({
                                 <div>
                                   <strong>{plan.name}</strong>
                                   <small>{plan.code}</small>
+                                  <span className="catalog-model">
+                                    {t[plan.commercialModel] ?? plan.commercialModel}
+                                  </span>
                                 </div>
                                 <div>
                                   {prices.map((price) => (
@@ -493,18 +559,127 @@ export function CommerceWorkspace({
               )}
               {dialog === "product" && (
                 <>
-                  <label>
-                    {t.code}
-                    <input name="code" pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]" required />
-                  </label>
-                  <label>
-                    {t.name}
-                    <input name="name" required />
-                  </label>
-                  <label className="wide">
-                    {t.descriptionLabel}
-                    <textarea name="description" maxLength={2000} />
-                  </label>
+                  <fieldset className="commerce-wizard-section">
+                    <legend>
+                      <span>1</span>
+                      {t.productDetails}
+                    </legend>
+                    <label>
+                      {t.name}
+                      <input
+                        name="productName"
+                        required
+                        onChange={(event) => {
+                          if (!productCodeEdited) setProductCode(toCatalogCode(event.target.value, "product"));
+                        }}
+                      />
+                    </label>
+                    <label>
+                      {t.code}
+                      <input
+                        name="productCode"
+                        value={productCode}
+                        pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"
+                        required
+                        onChange={(event) => {
+                          setProductCodeEdited(true);
+                          setProductCode(event.target.value);
+                        }}
+                      />
+                    </label>
+                    <label className="wide">
+                      {t.descriptionLabel}
+                      <textarea name="productDescription" maxLength={2000} />
+                    </label>
+                  </fieldset>
+                  <fieldset className="commerce-wizard-section">
+                    <legend>
+                      <span>2</span>
+                      {t.firstPlan}
+                    </legend>
+                    <label>
+                      {t.version}
+                      <input name="version" defaultValue="1.0" required />
+                    </label>
+                    <label>
+                      {t.planName}
+                      <input
+                        name="planName"
+                        required
+                        onChange={(event) => {
+                          if (!planCodeEdited) setPlanCode(toCatalogCode(event.target.value, "plan"));
+                        }}
+                      />
+                    </label>
+                    <label>
+                      {t.planCode}
+                      <input
+                        name="planCode"
+                        value={planCode}
+                        pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"
+                        required
+                        onChange={(event) => {
+                          setPlanCodeEdited(true);
+                          setPlanCode(event.target.value);
+                        }}
+                      />
+                    </label>
+                    <label>
+                      {t.commercialModel}
+                      <SelectControl
+                        name="commercialModel"
+                        value={commercialModel}
+                        onChange={(event) => {
+                          const model = event.target.value as CommercialModel;
+                          setCommercialModel(model);
+                          setBillingInterval(
+                            model === "one_time" || model === "project_service" ? "one_time" : "monthly"
+                          );
+                        }}
+                        options={["subscription", "maintenance", "one_time", "project_service"].map((item) => ({
+                          value: item,
+                          label: t[item] ?? item
+                        }))}
+                      />
+                    </label>
+                  </fieldset>
+                  <fieldset className="commerce-wizard-section">
+                    <legend>
+                      <span>3</span>
+                      {t.firstPrice}
+                    </legend>
+                    <label>
+                      {t.currency}
+                      <input name="currency" defaultValue="EUR" pattern="[A-Za-z]{3}" required />
+                    </label>
+                    <label>
+                      {t.netPrice}
+                      <input name="amount" inputMode="decimal" required />
+                    </label>
+                    <label>
+                      {t.cost}
+                      <input name="cost" inputMode="decimal" defaultValue="0" required />
+                    </label>
+                    <label>
+                      {t.tax}
+                      <input name="tax" inputMode="decimal" defaultValue="21" required />
+                    </label>
+                    <label>
+                      {t.interval}
+                      <SelectControl
+                        name="interval"
+                        value={billingInterval}
+                        onChange={(event) => setBillingInterval(event.target.value)}
+                        options={(commercialModel === "one_time" || commercialModel === "project_service"
+                          ? ["one_time"]
+                          : ["monthly", "quarterly", "semiannual", "annual", "free"]
+                        ).map((item) => ({
+                          value: item,
+                          label: t[item] ?? item
+                        }))}
+                      />
+                    </label>
+                  </fieldset>
                 </>
               )}
               {dialog === "version" && (
@@ -572,6 +747,18 @@ export function CommerceWorkspace({
                     {t.descriptionLabel}
                     <input name="description" />
                   </label>
+                  <label>
+                    {t.commercialModel}
+                    <SelectControl
+                      name="commercialModel"
+                      value={commercialModel}
+                      onChange={(event) => setCommercialModel(event.target.value as CommercialModel)}
+                      options={["subscription", "maintenance", "one_time", "project_service"].map((item) => ({
+                        value: item,
+                        label: t[item] ?? item
+                      }))}
+                    />
+                  </label>
                 </>
               )}
               {dialog === "price" && (
@@ -610,8 +797,12 @@ export function CommerceWorkspace({
                     {t.interval}
                     <SelectControl
                       name="interval"
-                      defaultValue="monthly"
-                      options={["monthly", "quarterly", "semiannual", "annual", "free"].map((item) => ({
+                      value={billingInterval}
+                      onChange={(event) => setBillingInterval(event.target.value)}
+                      options={(commercialModel === "one_time" || commercialModel === "project_service"
+                        ? ["one_time"]
+                        : ["monthly", "quarterly", "semiannual", "annual", "free"]
+                      ).map((item) => ({
                         value: item,
                         label: t[item] ?? item
                       }))}
