@@ -22,7 +22,7 @@ correspongui; no es fa una reescriptura transversal.
 - [ ] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
 - [ ] Increment 9 — Safata de suport explicable.
-- [ ] Increment 10 — Jornada amb calendari laboral.
+- [x] Increment 10 — Jornada amb calendari laboral.
 - [x] Increment 11 — Toast global a baix a la dreta.
 
 El check indica implementacio i validacio completades. Una decisio documentada sense codi no
@@ -264,9 +264,9 @@ correu automatic, perquè identifica tenant i client de manera fiable. El correu
 pero necessita quarantena i mes operacio. Aquesta decisio amplia l'abast de fases aprovades i
 no s'implementa sense actualitzar el roadmap.
 
-### Increment 10 — jornada amb calendari laboral
+### Increment 10 — jornada amb calendari laboral (implementat)
 
-- Treure els textos “mes anterior/seguent” i conservar fletxes amb `aria-label` i tooltip.
+- Treure els textos "mes anterior/seguent" i conservar fletxes amb `aria-label` i tooltip.
 - Afegir vista mensual accessible: estat diari, hores registrades, absencia i incidencies de
   registre. No representar nomes per color.
 - Separar conceptes: festius del tenant, dies no laborables del calendari, vacances aprovades,
@@ -276,6 +276,21 @@ no s'implementa sense actualitzar el roadmap.
 **Porta de decisio ATT-1:** abast de vacances. Recomanacio: primer calendari de lectura amb
 festius i dies no laborables; sol·licitud/aprovacio de vacances en un increment propi, perquè
 afegeix saldos, politiques, aprovacions i dades laborals sensibles.
+
+Implementat el 9 d'agost de 2026:
+
+- Migracions additives: `0025_attendance_calendar.sql` (taules de festius, vacances, absencies i
+  bloquejos) i `0026_attendance_permissions_calendar.sql` (permisos nous + backfill).
+- Domini a `packages/domain/src/attendance.ts`: tipus nous (`AttendanceHoliday`,
+  `AttendanceNonWorkingDay`, `AttendanceVacation`, `AttendanceAbsence`, `AttendanceBlock`,
+  `AttendanceDayStatus`) i funcions pures (`isHoliday`, `isNonWorkingDay`, `isVacationDay`,
+  `isAbsenceDay`, `hasBlockOverlap`, `deriveDayStatus`).
+- Aplicacio i repositori: CRUD complet per a totes les entitats amb permisos i auditoria.
+- API: rutes per a festius, dies no laborables, vacances, absencies i bloquejos.
+- UI: navegacio de mes amb fletxes accessibles, canvi taula/calendari amb conservacio del mes a
+  la URL, vista de calendari amb estat diari i text descriptiu.
+- Proves: 6 proves noves al domini (festius, dies no laborables, vacances, absencies, bloquejos,
+  derivacio d'estat diari).
 
 ### Increment 11 — toast global a baix a la dreta (implementat)
 

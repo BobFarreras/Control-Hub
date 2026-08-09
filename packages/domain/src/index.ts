@@ -20,6 +20,8 @@ export const permissionCodes = [
   "support:configure",
   "attendance:record",
   "attendance:manage",
+  "attendance:holidays",
+  "attendance:vacations",
   "infrastructure:read",
   "infrastructure:operate",
   "integrations:read",
@@ -54,6 +56,8 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "support:configure",
     "attendance:record",
     "attendance:manage",
+    "attendance:holidays",
+    "attendance:vacations",
     "infrastructure:read",
     "integrations:read",
     "usage:read"

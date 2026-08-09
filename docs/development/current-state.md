@@ -334,6 +334,61 @@ Implementat i committat:
 Verificat: **89 proves de domini, 82 d'aplicacio, 31 d'API, 11 d'integracio de l'esquema, 11 de
 l'adaptador i 4 E2E autenticades noves**, aquestes ultimes executades contra la pila de verificacio.
 
+### Increment 10 — Jornada amb calendari laboral (implementat, 9 d'agost de 2026)
+
+L'increment 10 afegeix gestio de festius, vacances, absencies i bloquejos personals, mes una
+vista de calendari accessible amb canvi taula/calendari.
+
+**Canvis al model de dades:**
+- `0025_attendance_calendar.sql`: taules `attendance_holidays`, `attendance_non_working_days`,
+  `attendance_vacations`, `attendance_absences` i `attendance_blocks` amb RLS i claus foranes.
+- `0026_attendance_permissions_calendar.sql`: permisos `attendance:holidays` i `attendance:vacations`
+  per Owner i Administrator, amb backfill.
+
+**Canvis al domini (`packages/domain/src/attendance.ts`):**
+- Tipus nous: `AttendanceHoliday`, `AttendanceNonWorkingDay`, `AttendanceVacation`,
+  `AttendanceAbsence`, `AttendanceBlock`, `AttendanceDayStatus`.
+- Funcions: `isHoliday`, `isNonWorkingDay`, `isVacationDay`, `isAbsenceDay`, `hasBlockOverlap`,
+  `deriveDayStatus`.
+
+**Canvis a l'aplicacio (`packages/application/src/attendance.ts`):**
+- Nous metodes al servei: `listHolidays`, `createHoliday`, `deleteHoliday`,
+  `listNonWorkingDays`, `createNonWorkingDay`, `deleteNonWorkingDay`, `listVacations`,
+  `listVacationsByMember`, `createVacation`, `updateVacationStatus`, `listAbsences`,
+  `listAbsencesByMember`, `createAbsence`, `listBlocks`, `listBlocksByMember`, `createBlock`,
+  `deleteBlock`.
+- Nous metodes al repositori amb les seves implementacions a PostgreSQL.
+
+**Canvis a l'API (`apps/api/src/routes/attendance.ts`):**
+- Rutes noves: CRUD per a festius, dies no laborables, vacances, absencies i bloquejos.
+- Auditoria per a totes les mutacions.
+
+**Canvis a la UI:**
+- `apps/web/src/app/[locale]/attendance/page.tsx`: navegacio de mes amb fletxes accessibles
+  (`aria-label` i tooltip), sense textos "mes anterior/seguent". Canvi taula/calendari amb
+  conservacio del mes a la URL.
+- `apps/web/src/components/attendance-record.tsx`: components `TableView` i `CalendarView`.
+  El calendari mostra estat diari, hores registrades i incidencies amb text descriptiu, sense
+  representar nomes per color.
+- `apps/web/src/app/styles.css`: estils per al calendari i el canvi taula/calendari.
+
+**Canvis a i18n:**
+- Nous textos per a festius, vacances, absencies, bloquejos i vista de calendari en ca, es i en.
+
+**Proves:**
+- 6 proves noves al domini (`packages/domain/src/attendance.test.ts`): festius, dies no
+  laborables, vacances, absencies, bloquejos i derivacio d'estat diari.
+- Mock del repositori actualitzat a `packages/application/src/attendance.test.ts`.
+
+**Punts pendents:**
+- La UI de gestio de festius, vacances, absencies i bloquejos encara no esta implementada
+  (nomes les API i el domini).
+- La vista de calendari no mostra encara festius, vacances ni absencies (nomes hores
+  treballades i sessions obertes). Cal connectar-la amb les dades noves.
+- La migracio 0025 i 0026 s'han de pujar a la base de dades de produccio.
+
+## El següent increment (previ a la 5C, ja superat)
+
 ### Que falta per tancar la fase, i el que ho bloqueja
 
 **CI esta en vermell a `develop` (`0881bee`), nomes al job `authenticated-end-to-end`.** Els

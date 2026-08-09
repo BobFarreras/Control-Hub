@@ -385,6 +385,7 @@ export type AttendanceSession = {
 };
 export type AttendanceMonth = {
   membershipId: string;
+  memberName: string;
   days: AttendanceDay[];
   sessions: AttendanceSession[];
   totalMinutes: number;
@@ -403,3 +404,55 @@ export type AttendanceTeamRow = {
   unbilledMinutes?: number;
 };
 export type AttendanceTeamResponse = { members: AttendanceTeamRow[] };
+
+export type AttendanceHoliday = {
+  id: string;
+  date: string;
+  name: string;
+};
+
+export type AttendanceNonWorkingDay = {
+  id: string;
+  dayOfWeek: number;
+};
+
+export type AttendanceVacationStatus = "pending" | "approved" | "rejected";
+
+export type AttendanceVacation = {
+  id: string;
+  membershipId: string;
+  startDate: string;
+  endDate: string;
+  status: AttendanceVacationStatus;
+  approvedByMembershipId: string | null;
+  approvedAt: string | null;
+  notes: string | null;
+};
+
+export type AttendanceAbsenceType = "sick_leave" | "personal_leave" | "other";
+
+export type AttendanceAbsence = {
+  id: string;
+  membershipId: string;
+  startDate: string;
+  endDate: string;
+  type: AttendanceAbsenceType;
+  documentUrl: string | null;
+  notes: string | null;
+  createdByMembershipId: string;
+};
+
+export type AttendanceBlock = {
+  id: string;
+  membershipId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+};
+
+export type AttendanceHolidaysResponse = { holidays: AttendanceHoliday[] };
+export type AttendanceNonWorkingDaysResponse = { nonWorkingDays: AttendanceNonWorkingDay[] };
+export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
+export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
+export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };

@@ -6,7 +6,15 @@ import {
   type AttendanceRepository
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import type { AttendancePolicy, TenantContext } from "@control-hub/domain";
+import type {
+  AttendanceAbsence,
+  AttendanceBlock,
+  AttendanceHoliday,
+  AttendanceNonWorkingDay,
+  AttendancePolicy,
+  AttendanceVacation,
+  TenantContext
+} from "@control-hub/domain";
 
 const eventColumns = `id, membership_id as "membershipId", kind, occurred_at as "occurredAt",
   recorded_at as "recordedAt", recorded_by_membership_id as "recordedByMembershipId", source,
@@ -154,6 +162,223 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
         from tenant_settings where tenant_id = ${context.tenantId}`
     );
     return settings ?? { pausesEnabled: false, timeZone: "UTC" };
+  }
+
+  // Calendar methods
+
+  async listHolidays(context: TenantContext, range: AttendanceRange): Promise<AttendanceHoliday[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceHoliday[]>`
+        select id, date::text, name
+        from attendance_holidays
+        where tenant_id = ${context.tenantId}
+          and date between ${range.from}::date and ${range.to}::date
+        order by date`
+    );
+  }
+
+  async createHoliday(context: TenantContext, input: { date: string; name: string }): Promise<AttendanceHoliday> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [holiday] = await tx<AttendanceHoliday[]>`
+        insert into attendance_holidays (id, tenant_id, date, name)
+        values (${id}, ${context.tenantId}, ${input.date}::date, ${input.name})
+        returning id, date::text, name`;
+      return holiday!;
+    }).catch(mapConstraint);
+  }
+
+  async deleteHoliday(context: TenantContext, holidayId: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from attendance_holidays where tenant_id = ${context.tenantId} and id = ${holidayId}`;
+    });
+  }
+
+  async listNonWorkingDays(context: TenantContext): Promise<AttendanceNonWorkingDay[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceNonWorkingDay[]>`
+        select id, day_of_week as "dayOfWeek"
+        from attendance_non_working_days
+        where tenant_id = ${context.tenantId}
+        order by day_of_week`
+    );
+  }
+
+  async createNonWorkingDay(context: TenantContext, input: { dayOfWeek: number }): Promise<AttendanceNonWorkingDay> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [day] = await tx<AttendanceNonWorkingDay[]>`
+        insert into attendance_non_working_days (id, tenant_id, day_of_week)
+        values (${id}, ${context.tenantId}, ${input.dayOfWeek})
+        returning id, day_of_week as "dayOfWeek"`;
+      return day!;
+    }).catch(mapConstraint);
+  }
+
+  async deleteNonWorkingDay(context: TenantContext, id: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from attendance_non_working_days where tenant_id = ${context.tenantId} and id = ${id}`;
+    });
+  }
+
+  async listVacations(context: TenantContext, range: AttendanceRange): Promise<AttendanceVacation[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceVacation[]>`
+        select id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", status,
+          approved_by_membership_id as "approvedByMembershipId",
+          approved_at as "approvedAt", notes
+        from attendance_vacations
+        where tenant_id = ${context.tenantId}
+          and (start_date, end_date) overlaps (${range.from}::date, ${range.to}::date)
+        order by start_date`
+    );
+  }
+
+  async listVacationsByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceVacation[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceVacation[]>`
+        select id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", status,
+          approved_by_membership_id as "approvedByMembershipId",
+          approved_at as "approvedAt", notes
+        from attendance_vacations
+        where tenant_id = ${context.tenantId} and membership_id = ${membershipId}
+          and (start_date, end_date) overlaps (${range.from}::date, ${range.to}::date)
+        order by start_date`
+    );
+  }
+
+  async createVacation(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; notes?: string }): Promise<AttendanceVacation> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [vacation] = await tx<AttendanceVacation[]>`
+        insert into attendance_vacations (id, tenant_id, membership_id, start_date, end_date, notes)
+        values (${id}, ${context.tenantId}, ${input.membershipId}, ${input.startDate}::date,
+          ${input.endDate}::date, ${input.notes ?? null})
+        returning id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", status,
+          approved_by_membership_id as "approvedByMembershipId",
+          approved_at as "approvedAt", notes`;
+      return vacation!;
+    }).catch(mapConstraint);
+  }
+
+  async updateVacationStatus(context: TenantContext, input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }): Promise<AttendanceVacation> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [vacation] = await tx<AttendanceVacation[]>`
+        update attendance_vacations
+        set status = ${input.status},
+            approved_by_membership_id = ${input.approvedByMembershipId},
+            approved_at = now()
+        where tenant_id = ${context.tenantId} and id = ${input.vacationId}
+        returning id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", status,
+          approved_by_membership_id as "approvedByMembershipId",
+          approved_at as "approvedAt", notes`;
+      if (!vacation) throw new AttendanceError("VACATION_NOT_FOUND");
+      return vacation;
+    }).catch(mapConstraint);
+  }
+
+  async listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceAbsence[]>`
+        select id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          created_by_membership_id as "createdByMembershipId"
+        from attendance_absences
+        where tenant_id = ${context.tenantId}
+          and (start_date, end_date) overlaps (${range.from}::date, ${range.to}::date)
+        order by start_date`
+    );
+  }
+
+  async listAbsencesByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceAbsence[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceAbsence[]>`
+        select id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          created_by_membership_id as "createdByMembershipId"
+        from attendance_absences
+        where tenant_id = ${context.tenantId} and membership_id = ${membershipId}
+          and (start_date, end_date) overlaps (${range.from}::date, ${range.to}::date)
+        order by start_date`
+    );
+  }
+
+  async createAbsence(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string; createdByMembershipId: string }): Promise<AttendanceAbsence> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [absence] = await tx<AttendanceAbsence[]>`
+        insert into attendance_absences (id, tenant_id, membership_id, start_date, end_date, type, document_url, notes, created_by_membership_id)
+        values (${id}, ${context.tenantId}, ${input.membershipId}, ${input.startDate}::date,
+          ${input.endDate}::date, ${input.type}, ${input.documentUrl ?? null},
+          ${input.notes ?? null}, ${input.createdByMembershipId})
+        returning id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          created_by_membership_id as "createdByMembershipId"`;
+      return absence!;
+    }).catch(mapConstraint);
+  }
+
+  async listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceBlock[]>`
+        select id, membership_id as "membershipId", date::text, start_time::text as "startTime",
+          end_time::text as "endTime", reason
+        from attendance_blocks
+        where tenant_id = ${context.tenantId}
+          and date between ${range.from}::date and ${range.to}::date
+        order by date, start_time`
+    );
+  }
+
+  async listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<AttendanceBlock[]>`
+        select id, membership_id as "membershipId", date::text, start_time::text as "startTime",
+          end_time::text as "endTime", reason
+        from attendance_blocks
+        where tenant_id = ${context.tenantId} and membership_id = ${membershipId}
+          and date between ${range.from}::date and ${range.to}::date
+        order by date, start_time`
+    );
+  }
+
+  async createBlock(context: TenantContext, input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }): Promise<AttendanceBlock> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [block] = await tx<AttendanceBlock[]>`
+        insert into attendance_blocks (id, tenant_id, membership_id, date, start_time, end_time, reason)
+        values (${id}, ${context.tenantId}, ${input.membershipId}, ${input.date}::date,
+          ${input.startTime}::time, ${input.endTime}::time, ${input.reason})
+        returning id, membership_id as "membershipId", date::text, start_time::text as "startTime",
+          end_time::text as "endTime", reason`;
+      return block!;
+    }).catch(mapConstraint);
+  }
+
+  async deleteBlock(context: TenantContext, blockId: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`delete from attendance_blocks where tenant_id = ${context.tenantId} and id = ${blockId}`;
+    });
   }
 }
 

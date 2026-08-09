@@ -4327,3 +4327,162 @@ main {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
+
+/* Increment 10: Calendar view and view toggle */
+
+.attendance-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.attendance-view-toggle .secondary-button.active {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.attendance-calendar-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.attendance-calendar-summary .member-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.attendance-calendar-summary .total-hours {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.attendance-calendar-summary .vacation-days-left {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.attendance-calendar-summary .request-buttons {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.attendance-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-day-name {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+  text-transform: capitalize;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 6px 3px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  min-height: 56px;
+  transition: background-color 0.15s ease;
+}
+
+.calendar-cell.empty {
+  border-color: transparent;
+  background: transparent;
+}
+
+.calendar-cell.worked {
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  border-color: var(--success);
+}
+
+.calendar-cell.open {
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border-color: var(--warning);
+}
+
+.calendar-cell.vacation {
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  border-color: var(--info);
+}
+
+.calendar-cell.absence {
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border-color: var(--muted);
+}
+
+.calendar-cell.holiday {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border-color: var(--primary);
+}
+
+.calendar-day-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.calendar-day-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.calendar-hours {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-session-range {
+  font-size: 0.55rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-status {
+  color: var(--warning);
+}
+
+.calendar-day-label {
+  font-size: 0.55rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-cell {
+    transition: none;
+  }
+}

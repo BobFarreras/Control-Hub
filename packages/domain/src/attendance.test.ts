@@ -2,14 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   canRecord,
   deriveSessions,
+  deriveDayStatus,
+  hasBlockOverlap,
+  isAbsenceDay,
   isAcceptableEntry,
+  isHoliday,
+  isNonWorkingDay,
+  isVacationDay,
   liveEvents,
   needsReason,
   reconcile,
   stateOf,
   summariseDays,
   totalMinutes,
-  type AttendanceEvent
+  type AttendanceAbsence,
+  type AttendanceBlock,
+  type AttendanceEvent,
+  type AttendanceHoliday,
+  type AttendanceNonWorkingDay,
+  type AttendanceVacation
 } from "./attendance.js";
 
 const zone = "Europe/Madrid";
@@ -282,5 +293,98 @@ describe("reconciliation against logged hours", () => {
    */
   it("does not hide more hours logged than worked", () => {
     expect(reconcile({ workedMinutes: 300, loggedMinutes: 420 }).unbilledMinutes).toBe(-120);
+  });
+});
+
+describe("calendar functions", () => {
+  const holidays = [
+    { id: "h1", date: "2026-08-15", name: "Assumpcio" },
+    { id: "h2", date: "2026-12-25", name: "Nadal" }
+  ];
+
+  const nonWorkingDays = [
+    { id: "nw1", dayOfWeek: 0 }, // Sunday
+    { id: "nw2", dayOfWeek: 6 }  // Saturday
+  ];
+
+  const vacations: AttendanceVacation[] = [
+    {
+      id: "v1",
+      membershipId: "m1",
+      startDate: "2026-08-01",
+      endDate: "2026-08-15",
+      status: "approved",
+      approvedByMembershipId: null,
+      approvedAt: null,
+      notes: null
+    }
+  ];
+
+  const absences: AttendanceAbsence[] = [
+    {
+      id: "a1",
+      membershipId: "m1",
+      startDate: "2026-08-20",
+      endDate: "2026-08-22",
+      type: "sick_leave",
+      documentUrl: null,
+      notes: null,
+      createdByMembershipId: "m1"
+    }
+  ];
+
+  it("identifies holidays", () => {
+    expect(isHoliday("2026-08-15", holidays)).toBe(true);
+    expect(isHoliday("2026-08-16", holidays)).toBe(false);
+  });
+
+  it("identifies non-working days", () => {
+    expect(isNonWorkingDay(0, nonWorkingDays)).toBe(true); // Sunday
+    expect(isNonWorkingDay(6, nonWorkingDays)).toBe(true); // Saturday
+    expect(isNonWorkingDay(1, nonWorkingDays)).toBe(false); // Monday
+  });
+
+  it("identifies vacation days", () => {
+    expect(isVacationDay("2026-08-10", vacations, "m1")).toBe(true);
+    expect(isVacationDay("2026-08-16", vacations, "m1")).toBe(false);
+    expect(isVacationDay("2026-08-10", vacations, "m2")).toBe(false);
+  });
+
+  it("identifies absence days", () => {
+    expect(isAbsenceDay("2026-08-20", absences, "m1")).toBe(true);
+    expect(isAbsenceDay("2026-08-23", absences, "m1")).toBe(false);
+    expect(isAbsenceDay("2026-08-20", absences, "m2")).toBe(false);
+  });
+
+  it("detects block overlaps", () => {
+    const blocks: AttendanceBlock[] = [
+      { id: "b1", membershipId: "m1", date: "2026-08-25", startTime: "10:00", endTime: "12:00", reason: "Meeting" }
+    ];
+    expect(hasBlockOverlap("2026-08-25", "09:00", "11:00", blocks, "m1")).toBe(true);
+    expect(hasBlockOverlap("2026-08-25", "12:00", "14:00", blocks, "m1")).toBe(false);
+    expect(hasBlockOverlap("2026-08-25", "09:00", "11:00", blocks, "m2")).toBe(false);
+  });
+
+  it("derives day status correctly", () => {
+    // Holiday
+    expect(deriveDayStatus("2026-08-15", 5, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("holiday");
+
+    // Non-working day (Saturday)
+    expect(deriveDayStatus("2026-08-16", 6, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("non_working");
+
+    // Vacation
+    expect(deriveDayStatus("2026-08-10", 1, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("vacation");
+
+    // Absence
+    expect(deriveDayStatus("2026-08-20", 3, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("absence");
+
+    // Worked
+    expect(deriveDayStatus("2026-08-17", 1, holidays, nonWorkingDays, vacations, absences, "m1", 480, false)).toBe("worked");
+
+    // Open session
+    expect(deriveDayStatus("2026-08-18", 2, holidays, nonWorkingDays, vacations, absences, "m1", 0, true)).toBe("open");
+
+    // Empty (no sessions at all, workedMinutes is null)
+    expect(deriveDayStatus("2026-08-19", 3, holidays, nonWorkingDays, vacations, absences, "m1", null, false)).toBe("empty");
   });
 });

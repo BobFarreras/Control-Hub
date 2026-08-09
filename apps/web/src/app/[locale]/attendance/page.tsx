@@ -12,7 +12,7 @@ import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
 import { monthName, monthRange, shiftMonth } from "./month-range";
 
-const emptyMonth: AttendanceMonth = { membershipId: "", days: [], sessions: [], totalMinutes: 0, events: [] };
+const emptyMonth: AttendanceMonth = { membershipId: "", memberName: "", days: [], sessions: [], totalMinutes: 0, events: [] };
 
 export default async function AttendancePage({
   params,
@@ -31,6 +31,7 @@ export default async function AttendancePage({
   const t = getDictionary(locale);
   const labels = getAttendanceDictionary(locale);
   const range = monthRange((await searchParams).month);
+  const view = ((await searchParams).view ?? "table") as "table" | "calendar";
 
   let month = emptyMonth;
   try {
@@ -62,22 +63,47 @@ export default async function AttendancePage({
           */
           actions={
             <nav className="month-nav" aria-label={labels.title}>
-              <Link className="secondary-button" href={`/${locale}/attendance?month=${shiftMonth(range.month, -1)}`}>
+              <Link
+                className="secondary-button"
+                href={`/${locale}/attendance?month=${shiftMonth(range.month, -1)}&view=${view}`}
+                aria-label={labels.monthPrevious}
+              >
                 <ChevronLeft size={16} aria-hidden="true" />
-                {labels.monthPrevious}
               </Link>
               <strong className="month-current">{monthName(range.month, locale)}</strong>
-              <Link className="secondary-button" href={`/${locale}/attendance?month=${shiftMonth(range.month, 1)}`}>
-                {labels.monthNext}
+              <Link
+                className="secondary-button"
+                href={`/${locale}/attendance?month=${shiftMonth(range.month, 1)}&view=${view}`}
+                aria-label={labels.monthNext}
+              >
                 <ChevronRight size={16} aria-hidden="true" />
               </Link>
+              {/* View toggle */}
+              <div className="attendance-view-toggle" role="group" aria-label={labels.calendarView}>
+                <Link
+                  className={`secondary-button ${view === "table" ? "active" : ""}`}
+                  href={`/${locale}/attendance?month=${range.month}&view=table`}
+                  aria-label={labels.tableView}
+                  aria-pressed={view === "table"}
+                >
+                  {labels.table}
+                </Link>
+                <Link
+                  className={`secondary-button ${view === "calendar" ? "active" : ""}`}
+                  href={`/${locale}/attendance?month=${range.month}&view=calendar`}
+                  aria-label={labels.calendarView}
+                  aria-pressed={view === "calendar"}
+                >
+                  {labels.calendar}
+                </Link>
+              </div>
               {/* Absent for anybody who may not read another person's record. */}
               <AttendanceTeamLink href={`/${locale}/attendance/team?month=${range.month}`} label={labels.team} />
             </nav>
           }
         />
         <main className="compact-main">
-          <AttendanceRecord month={month} labels={labels} locale={locale} />
+          <AttendanceRecord month={month} labels={labels} locale={locale} view={view} />
         </main>
       </div>
     </div>
