@@ -4434,6 +4434,18 @@ main {
   border-color: var(--info);
 }
 
+.calendar-cell.vacation-pending {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--info) 5%, transparent),
+    color-mix(in srgb, var(--info) 5%, transparent) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  border-color: var(--info);
+  border-style: dashed;
+}
+
 .calendar-cell.absence {
   background: color-mix(in srgb, var(--muted) 8%, transparent);
   border-color: var(--muted);
@@ -4531,6 +4543,20 @@ main {
 
 .secondary-button.danger:hover {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.pending-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.pending-actions .icon-button {
+  color: var(--muted);
+}
+
+.pending-actions .icon-button:hover {
+  color: var(--fg);
 }
 
 @media (prefers-reduced-motion: reduce) {

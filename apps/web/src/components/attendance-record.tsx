@@ -485,23 +485,24 @@ function CalendarView({
   );
 
   const holidayDates = new Set(holidays.map((h) => h.date));
-  const vacationMap = new Map<string, AttendanceVacation>();
+  const vacationMap = new Map<string, { vacation: AttendanceVacation; isPending: boolean }>();
   for (const v of vacations) {
-    if (v.status !== "approved") continue;
+    const isPending = v.status === "pending";
+    if (v.status !== "approved" && !isPending) continue;
     const start = new Date(v.startDate + "T12:00:00");
     const end = new Date(v.endDate + "T12:00:00");
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0, 10);
-      if (ds >= v.startDate && ds <= v.endDate) vacationMap.set(ds, v);
+      if (ds >= v.startDate && ds <= v.endDate) vacationMap.set(ds, { vacation: v, isPending });
     }
   }
-  const absenceMap = new Map<string, AttendanceAbsence>();
+  const absenceMap = new Map<string, { absence: AttendanceAbsence; isPending: boolean }>();
   for (const a of absences) {
     const start = new Date(a.startDate + "T12:00:00");
     const end = new Date(a.endDate + "T12:00:00");
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0, 10);
-      if (ds >= a.startDate && ds <= a.endDate) absenceMap.set(ds, a);
+      if (ds >= a.startDate && ds <= a.endDate) absenceMap.set(ds, { absence: a, isPending: false });
     }
   }
 
@@ -535,21 +536,24 @@ function CalendarView({
             const hasWorked = dayData && dayData.workedMinutes > 0;
             const hasOpenSession = dayData?.hasOpenSession ?? false;
             const isHoliday = holidayDates.has(dayStr);
-            const vacation = vacationMap.get(dayStr);
-            const absence = absenceMap.get(dayStr);
+            const vacationEntry = vacationMap.get(dayStr);
+            const absenceEntry = absenceMap.get(dayStr);
+            const vacation = vacationEntry?.vacation;
+            const absence = absenceEntry?.absence;
+            const isPendingVacation = vacationEntry?.isPending ?? false;
 
             const cellClass = [
               "calendar-cell",
               hasWorked ? "worked" : "",
               hasOpenSession ? "open" : "",
               isHoliday ? "holiday" : "",
-              vacation ? "vacation" : "",
+              vacation ? (isPendingVacation ? "vacation-pending" : "vacation") : "",
               absence ? "absence" : ""
             ].filter(Boolean).join(" ");
 
             const labelParts: string[] = [];
             if (isHoliday) labelParts.push(t.holiday!);
-            if (vacation) labelParts.push(t.vacation!);
+            if (vacation) labelParts.push(isPendingVacation ? t.vacationPending! : t.vacation!);
             if (absence) labelParts.push(t.absence!);
             if (hasWorked) labelParts.push(formatHours(dayData!.workedMinutes));
             if (hasOpenSession) labelParts.push(t.openSession!);
@@ -567,7 +571,7 @@ function CalendarView({
                 <span className="calendar-day-number">{dayNum}</span>
                 <div className="calendar-day-content">
                   {isHoliday && <span className="calendar-day-label">{t.holiday}</span>}
-                  {vacation && <span className="calendar-day-label">{t.vacation}</span>}
+                  {vacation && <span className="calendar-day-label">{isPendingVacation ? t.vacationPending : t.vacation}</span>}
                   {absence && <span className="calendar-day-label">{t.absence}</span>}
                   {hasWorked && (
                     <>
@@ -605,14 +609,19 @@ function CalendarView({
             </button>
           </div>
           {(() => {
-            const vacation = vacationMap.get(popover.dayStr);
-            const absence = absenceMap.get(popover.dayStr);
+            const vacationEntry = vacationMap.get(popover.dayStr);
+            const absenceEntry = absenceMap.get(popover.dayStr);
+            const vacation = vacationEntry?.vacation;
+            const absence = absenceEntry?.absence;
+            const isPendingVacation = vacationEntry?.isPending ?? false;
             const holiday = holidayDates.has(popover.dayStr);
 
             if (vacation) {
               return (
                 <div className="calendar-popover-content">
-                  <span className="calendar-popover-label">{t.vacation}</span>
+                  <span className="calendar-popover-label">
+                    {isPendingVacation ? t.vacationPending : t.vacation}
+                  </span>
                   <button className="secondary-button danger" onClick={() => { onCancelVacation(vacation.id); setPopover(null); }}>
                     {t.cancelVacation}
                   </button>
@@ -654,3 +663,4 @@ function CalendarView({
     </section>
   );
 }
+
