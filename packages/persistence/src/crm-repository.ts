@@ -274,14 +274,17 @@ export class PostgresCrmRepository implements CrmRepository {
           ActivityRecord[]
         >`select id, type, metadata, occurred_at as "occurredAt" from crm_activity where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by occurred_at desc limit 200`,
         tx<CustomerServiceRecord[]>`
-          select s.id, product.name as "productName", plan.name as "planName", s.status,
-            s.started_at as "startedAt", s.renewal_at as "renewalAt"
-          from subscriptions s
-          join plans plan on plan.tenant_id = s.tenant_id and plan.id = s.plan_id
+          select service.id, product.id as "productId", product.name as "productName", plan.name as "planName",
+            service.project_id as "projectId", project.name as "projectName", service.status,
+            service.starts_at as "startedAt", recurrence.renewal_at as "renewalAt"
+          from customer_services service
+          join plans plan on plan.tenant_id = service.tenant_id and plan.id = service.plan_id
           join product_versions version on version.tenant_id = plan.tenant_id and version.id = plan.product_version_id
           join products product on product.tenant_id = version.tenant_id and product.id = version.product_id
-          where s.tenant_id = ${context.tenantId} and s.customer_id = ${customerId}
-          order by (s.status = 'active') desc, s.started_at desc`,
+          left join customer_service_recurrence recurrence on recurrence.tenant_id = service.tenant_id and recurrence.customer_service_id = service.id
+          left join projects project on project.tenant_id = service.tenant_id and project.id = service.project_id
+          where service.tenant_id = ${context.tenantId} and service.customer_id = ${customerId}
+          order by (service.status = 'active') desc, service.starts_at desc`,
         tx<CustomerProjectRecord[]>`
           select id, code, name, status, started_at as "startedAt", due_at as "dueAt"
           from projects where tenant_id = ${context.tenantId} and customer_id = ${customerId}

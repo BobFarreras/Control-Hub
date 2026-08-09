@@ -2172,6 +2172,9 @@ main {
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 12px;
 }
+.service-dialog { width: min(760px, 100%); }
+.service-dialog > header > div span { color: var(--muted); font-size: 11px; }
+.service-dialog > header h2 { margin-top: 3px; }
 .subscription-table,
 .renewal-panel {
   border: 1px solid var(--border);

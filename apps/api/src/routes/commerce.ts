@@ -1,13 +1,141 @@
+import type { CustomerContractRecord } from "@control-hub/application";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { CommerceContext } from "./context.js";
 
+export function customerServiceResponse(service: CustomerContractRecord, canReadFinancials: boolean) {
+  const { amountMinor, costMinor, taxBasisPoints, ...publicService } = service;
+  return {
+    ...publicService,
+    ...(canReadFinancials ? { financials: { amountMinor, costMinor, taxBasisPoints } } : {})
+  };
+}
+
 /** Catalogue, plans, prices and customer subscriptions. */
-export function registerCommerceRoutes({ app, database, auth, commerce }: CommerceContext) {
+export function registerCommerceRoutes({ app, database, auth, commerce, customerServices }: CommerceContext) {
   app.get("/api/v1/commerce/catalog", async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "products:manage");
     return commerce.catalog(context);
   });
+  app.get<{
+    Querystring: {
+      customerId?: string;
+      productId?: string;
+      commercialModel?: "subscription" | "maintenance" | "one_time" | "project_service";
+      status?: "active" | "paused" | "completed" | "canceled";
+      ownerMembershipId?: string;
+      currency?: string;
+      renewalBefore?: string;
+    };
+  }>(
+    "/api/v1/commerce/customer-services",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            customerId: { type: "string", format: "uuid" },
+            productId: { type: "string", format: "uuid" },
+            commercialModel: {
+              type: "string",
+              enum: ["subscription", "maintenance", "one_time", "project_service"]
+            },
+            status: { type: "string", enum: ["active", "paused", "completed", "canceled"] },
+            ownerMembershipId: { type: "string", format: "uuid" },
+            currency: { type: "string", pattern: "^[A-Z]{3}$" },
+            renewalBefore: { type: "string", format: "date-time" }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "subscriptions:manage");
+      const { renewalBefore, ...filters } = request.query;
+      const services = await customerServices.list(context, {
+        ...filters,
+        ...(renewalBefore ? { renewalBefore: new Date(renewalBefore) } : {})
+      });
+      const canReadFinancials = context.permissions.includes("financials:read");
+      return {
+        services: services.map((service) => customerServiceResponse(service, canReadFinancials))
+      };
+    }
+  );
+  app.post<{
+    Body: {
+      customerId: string;
+      planId: string;
+      priceId: string;
+      quantity: number;
+      contractedAt?: string;
+      startsAt?: string;
+      endsAt?: string;
+      ownerMembershipId?: string;
+      projectId?: string;
+      currentPeriodStart?: string;
+      renewalAt?: string;
+      autoRenew?: boolean;
+      renewalAlertDays?: number;
+    };
+  }>(
+    "/api/v1/commerce/customer-services",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["customerId", "planId", "priceId", "quantity"],
+          properties: {
+            customerId: { type: "string", format: "uuid" },
+            planId: { type: "string", format: "uuid" },
+            priceId: { type: "string", format: "uuid" },
+            quantity: { type: "integer", minimum: 1, maximum: 1000000 },
+            contractedAt: { type: "string", format: "date-time" },
+            startsAt: { type: "string", format: "date-time" },
+            endsAt: { type: "string", format: "date-time" },
+            ownerMembershipId: { type: "string", format: "uuid" },
+            projectId: { type: "string", format: "uuid" },
+            currentPeriodStart: { type: "string", format: "date-time" },
+            renewalAt: { type: "string", format: "date-time" },
+            autoRenew: { type: "boolean" },
+            renewalAlertDays: { type: "integer", minimum: 0, maximum: 365 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "subscriptions:manage");
+      const now = new Date();
+      const service = await customerServices.create(context, {
+        customerId: request.body.customerId,
+        planId: request.body.planId,
+        priceId: request.body.priceId,
+        quantity: request.body.quantity,
+        contractedAt: request.body.contractedAt ? new Date(request.body.contractedAt) : now,
+        startsAt: request.body.startsAt ? new Date(request.body.startsAt) : now,
+        ...(request.body.endsAt ? { endsAt: new Date(request.body.endsAt) } : {}),
+        ...(request.body.ownerMembershipId ? { ownerMembershipId: request.body.ownerMembershipId } : {}),
+        ...(request.body.projectId ? { projectId: request.body.projectId } : {}),
+        ...(request.body.currentPeriodStart ? { currentPeriodStart: new Date(request.body.currentPeriodStart) } : {}),
+        ...(request.body.renewalAt ? { renewalAt: new Date(request.body.renewalAt) } : {}),
+        ...(request.body.autoRenew !== undefined ? { autoRenew: request.body.autoRenew } : {}),
+        ...(request.body.renewalAlertDays !== undefined ? { renewalAlertDays: request.body.renewalAlertDays } : {})
+      });
+      await writeAudit(database, context, request, {
+        action: "customer_service.created",
+        targetType: "customer_service",
+        targetId: service.id,
+        outcome: "success",
+        metadata: { commercialModel: service.commercialModel, planId: service.planId }
+      });
+      return reply.code(201).send({
+        service: customerServiceResponse(service, context.permissions.includes("financials:read"))
+      });
+    }
+  );
   app.get<{ Params: { productId: string } }>("/api/v1/commerce/products/:productId", async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "products:manage");

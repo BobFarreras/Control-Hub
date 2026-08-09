@@ -39,11 +39,66 @@ La fitxa dedicada del producte carrega nomes la seva jerarquia completa mitjanç
 tenant-scoped. Mostra versions, plans, modalitat i snapshots de preu; la portada continua sent el
 punt de gestio contextual per afegir versions, plans i preus.
 
-## Subscripcions
+## Serveis de clients
 
-Una subscripcio pertany a un client i referencia un pla i un preu concrets. Els estats son
-`active`, `paused` i `canceled`. Pausar, reprendre, cancel·lar o canviar de pla genera un
-event append-only amb els snapshots necessaris per justificar l'estat i les metriques.
+### Decisio COM-2: contracte comercial unificat
+
+S'aprova `customer_services` com a contracte comercial pare. Representa tot allo que un client
+te o ha tingut contractat: subscripcio, manteniment, compra unica o servei per projecte. Una
+compra unica no es modela com una subscripcio cancel·lada i la recurrencia es opcional.
+
+Cada servei referencia el client, el pla i el snapshot de preu contractat. La modalitat es copia
+del pla en el moment de l'alta perquè el contracte historic no canviï si el cataleg evoluciona.
+També conserva quantitat, data de contractacio, inici, fi opcional, responsable intern opcional i
+projecte opcional. El projecte ha de pertanyer al mateix tenant i client.
+
+Els estats comuns son:
+
+- `active`: contracte vigent o compra lliurada que continua formant part dels actius del client;
+- `paused`: servei recurrent suspes temporalment; nomes per subscripcio o manteniment;
+- `completed`: compra o servei per projecte finalitzat satisfactoriament;
+- `canceled`: contracte resolt o compra anul·lada, amb data efectiva obligatoria.
+
+Les transicions generen `customer_service_events` append-only. Cap canvi de pla, preu, estat,
+renovacio o vinculacio amb projecte reescriu l'historial.
+
+### Recurrencia opcional
+
+`customer_service_recurrence` existeix nomes per a `subscription` i `maintenance`. Conte el
+periode actual, propera renovacio, renovacio automatica i dies d'avis. `one_time` i
+`project_service` no poden tenir aquesta fila. PostgreSQL protegeix amb triggers aquesta
+coherencia, a mes de les validacions del domini.
+
+El preu contractat continua apuntant a `plan_prices`: es un snapshot immutable amb moneda,
+import net, cost, impost i periodicitat. La UI calcula total net, impost i brut amb enters; els
+imports financers nomes arriben a qui te `financials:read`.
+
+### Autoritat i permisos
+
+- `subscriptions:manage` permet llegir i gestionar serveis de clients durant aquest increment;
+- les mutacions exigeixen MFA i auditoria backend;
+- tota lectura i escriptura aplica `tenant_id` des del context autenticat;
+- responsable i projecte es validen per claus foranes compostes del mateix tenant;
+- la fitxa CRM pot mostrar relacions no financeres sense enviar imports al navegador.
+
+### Migracio des de `subscriptions`
+
+La migracio es additiva i gradual:
+
+1. Crear `customer_services`, `customer_service_recurrence` i `customer_service_events`, amb RLS,
+   claus, restriccions i indexos.
+2. Copiar cada `subscription` a un servei amb modalitat `subscription` o `maintenance` segons el
+   pla, preservant identificadors de client, pla, preu, quantitat i dates.
+3. Copiar la recurrencia i transformar `subscription_events` en events del servei, mantenint una
+   referencia unica a l'origen per fer el backfill idempotent.
+4. Canviar repositori, API i UI al model nou i verificar paritat de recompte, estat i metriques.
+5. Mantenir les taules antigues en nomes lectura durant una versio de desplegament. Eliminar-les
+   requereix una migracio posterior, backup i pla de rollback aprovats.
+
+No hi ha dual-write permanent: durant el desplegament gradual, les mutacions continuen al model
+antic fins que el backfill i el canvi de lectura estan preparats; el tall al model nou es fa en una
+migracio transaccional. Pressupostos i factures futurs podran referenciar `customer_service_id`,
+pero no formen part d'aquest increment.
 
 ## Metriques
 

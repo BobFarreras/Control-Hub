@@ -1,5 +1,6 @@
 export type { TenantContext } from "@control-hub/domain";
 export * from "./commerce.js";
+export * from "./customer-services.js";
 export * from "./company-subscriptions.js";
 export * from "./support.js";
 export * from "./projects.js";
@@ -107,8 +108,11 @@ export type TaskRecord = {
 export type ActivityRecord = { id: string; type: string; metadata: Record<string, unknown>; occurredAt: Date };
 export type CustomerServiceRecord = {
   id: string;
+  productId: string;
   productName: string;
   planName: string;
+  projectId: string | null;
+  projectName: string | null;
   status: string;
   startedAt: Date;
   renewalAt: Date | null;

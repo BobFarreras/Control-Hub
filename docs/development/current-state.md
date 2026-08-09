@@ -57,6 +57,23 @@
 > rebutjades tant al domini com a PostgreSQL. La fitxa dedicada del producte mostra la seva
 > jerarquia completa amb una lectura tenant-scoped. L'increment 5 queda tancat i el punt de
 > continuacio es l'increment 6, serveis, subscripcions i compres dels clients.
+> L'increment 6 ha començat amb la decisio COM-2 aprovada: `customer_services` sera el contracte
+> comercial unificat i la recurrencia una extensio opcional nomes per subscripcions i manteniments.
+> `commerce.md` fixa estats, invariants, permisos i un backfill idempotent des de `subscriptions`.
+> `0028_customer_services.sql` crea el contracte pare, la recurrencia opcional i l'historial
+> append-only amb RLS, claus tenant-scoped i indexos operatius. El backfill conserva els UUID de
+> les subscripcions i els seus events i es idempotent. L'adaptador nou llegeix producte, pla, preu,
+> responsable, projecte i recurrencia sense N+1, i crea servei, recurrencia i event en una sola
+> transaccio. La migracio local deixa zero subscripcions sense backfill i zero recurrències en
+> compres uniques o serveis per projecte. Els casos d'us validen dates, quantitat, oferta i
+> coherencia de recurrencia abans de la transaccio. `GET` i `POST /api/v1/commerce/customer-services`
+> ofereixen filtres tenant-scoped, MFA i auditoria; els imports nomes formen part de la resposta
+> amb `financials:read`. Les rutes antigues de subscripcions continuen disponibles durant el
+> desplegament gradual. La pantalla de Serveis de clients ja ofereix una taula responsive amb
+> filtres instantanis integrats a la taula generalitzada, imports protegits per permisos, alta
+> guiada i enllaços directes a client, producte i
+> projecte; la fitxa 360 consumeix el nou model unificat. El següent subpas son les accions de
+> cicle de vida, les vistes rapides, les alertes de renovacio i l'exportacio.
 
 ## Punt de projecte
 

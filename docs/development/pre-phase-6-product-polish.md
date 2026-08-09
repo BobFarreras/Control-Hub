@@ -178,6 +178,16 @@ traçabilitat, pero ocultar-les del flux habitual fins que es publiqui una nova 
 
 ### Increment 6 — serveis, subscripcions i compres dels clients
 
+Progres intern:
+
+- [x] Model unificat aprovat: `customer_services` com a contracte pare i recurrencia opcional.
+- [x] Estats, invariants, permisos i pla de migracio gradual documentats a `commerce.md`.
+- [x] Migracio additiva, backfill idempotent i adaptador de persistencia.
+- [x] API i casos d'us de serveis de clients.
+- [x] Taula professional, filtres, alta guiada i integracio amb la fitxa 360.
+- [ ] Accions de cicle de vida, vistes rapides, alertes de renovacio i exportacio.
+- [ ] Proves d'integracio, permisos financers i E2E.
+
 Canviar el nom visible de “Subscripcions de clients” a **Serveis de clients**. La taula ha de
 representar el que cada client te contractat, no nomes recurrencia:
 
@@ -191,10 +201,9 @@ representar el que cada client te contractat, no nomes recurrencia:
 Filtres: client, producte, modalitat, estat, renovacio propera, responsable i moneda. Vistes
 rapides: actius, vencen aviat, sense data de renovacio i cancel·lats.
 
-**Porta de decisio COM-2:** ampliar `subscriptions` o crear una entitat `customer_services`.
-Recomanacio: `customer_services` com a contracte comercial pare i una recurrencia opcional;
-una compra unica no ha de fingir ser una subscripcio cancel·lada. Requereix especificacio i
-pla de migracio abans de codi.
+**Decisio COM-2 aprovada:** `customer_services` es el contracte comercial pare i te una
+recurrencia opcional; una compra unica no fingeix ser una subscripcio cancel·lada. L'especificacio
+i el pla de migracio son a `commerce.md`.
 
 No s'implementen pressupostos ni factures dins aquest increment: es preparen identificadors i
 linies de contracte perquè el modul financer futur els pugui referenciar.

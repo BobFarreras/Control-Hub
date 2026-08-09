@@ -64,8 +64,11 @@ export type CustomerDetail = CustomerRow & {
   activity: { id: string; type: string; occurredAt: string }[];
   services: {
     id: string;
+    productId: string;
     productName: string;
     planName: string;
+    projectId: string | null;
+    projectName: string | null;
     status: string;
     startedAt: string;
     renewalAt: string | null;
@@ -317,6 +320,39 @@ export type CustomerSubscription = {
   quantity: number;
   renewalAt: string | null;
 };
+
+export type CustomerService = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  planId: string;
+  planName: string;
+  priceId: string;
+  commercialModel: CommercialModel;
+  status: "active" | "paused" | "completed" | "canceled";
+  quantity: number;
+  contractedAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  ownerMembershipId: string | null;
+  ownerName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  canceledAt: string | null;
+  currency: string;
+  interval: BillingInterval;
+  currentPeriodStart: string | null;
+  renewalAt: string | null;
+  autoRenew: boolean | null;
+  renewalAlertDays: number | null;
+  createdAt: string;
+  updatedAt: string;
+  financials?: { amountMinor: number; costMinor: number; taxBasisPoints: number };
+};
+
+export type CustomerServicesResponse = { services: CustomerService[] };
 
 export type FinancialMetric = {
   currency: string;

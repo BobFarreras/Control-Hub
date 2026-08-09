@@ -112,6 +112,8 @@ describe("route registration", () => {
     ["PATCH", "/api/v1/members/:membershipId/role"],
     ["GET", "/api/v1/audit"],
     ["GET", "/api/v1/commerce/catalog"],
+    ["GET", "/api/v1/commerce/customer-services"],
+    ["POST", "/api/v1/commerce/customer-services"],
     ["GET", "/api/v1/commerce/products/:productId"],
     ["POST", "/api/v1/commerce/products"],
     ["POST", "/api/v1/commerce/products/with-offer"],

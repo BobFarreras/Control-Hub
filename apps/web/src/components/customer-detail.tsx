@@ -526,8 +526,15 @@ export function CustomerDetail({
           {customer.services.map((service) => (
             <div className="detail-row" key={service.id}>
               <div>
-                <strong>{service.productName}</strong>
+                <Link href={`/${locale}/products/${service.productId}`}>
+                  <strong>{service.productName}</strong>
+                </Link>
                 <small>{service.planName}</small>
+                {service.projectId && (
+                  <Link href={`/${locale}/projects/${service.projectId}`}>
+                    <small>{service.projectName}</small>
+                  </Link>
+                )}
               </div>
               <span className={`state state-${service.status}`}>{labels[service.status] ?? service.status}</span>
             </div>

@@ -4,6 +4,7 @@ import { createDatabaseClient, withTenant, type DatabaseClient } from "@control-
 import type { TenantContext } from "@control-hub/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
+import { PostgresCustomerServicesRepository } from "./customer-services-repository.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const adminUrl = process.env.TEST_DATABASE_ADMIN_URL;
@@ -17,6 +18,7 @@ suite("PostgresCommerceRepository", () => {
   let admin: DatabaseClient;
   let repository: PostgresCommerceRepository;
   let service: CommerceService;
+  let customerServices: PostgresCustomerServicesRepository;
   const tenantA = randomUUID();
   const tenantB = randomUUID();
   const userId = randomUUID();
@@ -34,6 +36,7 @@ suite("PostgresCommerceRepository", () => {
     database = createDatabaseClient(databaseUrl!);
     admin = createDatabaseClient(adminUrl!);
     repository = new PostgresCommerceRepository(database);
+    customerServices = new PostgresCustomerServicesRepository(database);
     service = new CommerceService(repository);
     await admin`insert into "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values (${userId}, 'Commerce Test', ${`${userId}@test.local`}, true, now(), now())`;
     await admin`insert into tenants (id, slug, name) values (${tenantA}, ${`commerce-${tenantA}`}, 'Commerce A'), (${tenantB}, ${`commerce-${tenantB}`}, 'Commerce B')`;
@@ -42,9 +45,13 @@ suite("PostgresCommerceRepository", () => {
 
   afterAll(async () => {
     await admin`alter table subscription_events disable trigger subscription_events_append_only`;
+    await admin`alter table customer_service_events disable trigger customer_service_events_append_only`;
     await admin`alter table plan_prices disable trigger plan_prices_append_only`;
     try {
       await admin`delete from subscription_events where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_service_events where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_service_recurrence where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_services where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from subscriptions where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from plan_prices where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from plans where tenant_id in (${tenantA}, ${tenantB})`;
@@ -52,6 +59,7 @@ suite("PostgresCommerceRepository", () => {
       await admin`delete from products where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
       await admin`alter table subscription_events enable trigger subscription_events_append_only`;
+      await admin`alter table customer_service_events enable trigger customer_service_events_append_only`;
       await admin`alter table plan_prices enable trigger plan_prices_append_only`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
@@ -149,5 +157,33 @@ suite("PostgresCommerceRepository", () => {
         tx`select type from subscription_events where tenant_id = ${tenantA} and subscription_id = ${subscription.id}`
     );
     expect(history).toHaveLength(5);
+  });
+
+  it("persists recurring customer services and isolates their commercial data by tenant", async () => {
+    const catalog = await service.catalog(context(tenantA));
+    const plan = catalog.plans[0]!;
+    const price = catalog.prices[0]!;
+    const now = new Date();
+    const created = await customerServices.create(context(tenantA), {
+      customerId: customerA,
+      planId: plan.id,
+      priceId: price.id,
+      quantity: 1,
+      contractedAt: now,
+      startsAt: now,
+      currentPeriodStart: now,
+      autoRenew: true,
+      renewalAt: new Date(now.getTime() + 30 * 86400_000),
+      renewalAlertDays: 14
+    });
+
+    expect(created).toMatchObject({
+      customerId: customerA,
+      commercialModel: "subscription",
+      autoRenew: true,
+      currency: "EUR"
+    });
+    await expect(customerServices.list(context(tenantA), {})).resolves.toContainEqual(created);
+    await expect(customerServices.list(context(tenantB), {})).resolves.toEqual([]);
   });
 });
