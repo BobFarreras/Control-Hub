@@ -38,6 +38,9 @@ suite("PostgresCrmRepository", () => {
     await admin`alter table crm_activity disable trigger crm_activity_append_only`;
     await admin`delete from crm_activity where tenant_id in (${tenantA}, ${tenantB})`;
     await admin`alter table crm_activity enable trigger crm_activity_append_only`;
+    await admin`alter table customer_product_interest_events disable trigger customer_product_interest_events_append_only`;
+    await admin`delete from customer_product_interest_events where tenant_id in (${tenantA}, ${tenantB})`;
+    await admin`alter table customer_product_interest_events enable trigger customer_product_interest_events_append_only`;
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });
@@ -96,6 +99,111 @@ suite("PostgresCrmRepository", () => {
     const created = (await repository.getCustomer(context(tenantA), customer.id)).contacts[0]!;
     expect(created).toMatchObject({ name: "Maria Bosch", isPrimary: true, sourceLeadId: lead.id });
     expect((await repository.createContactFromSourceLead(context(tenantA), customer.id)).id).toBe(created.id);
+  });
+
+  it("updates customers only in their tenant and rejects stale versions", async () => {
+    const lead = await repository.createLead(context(tenantA), {
+      name: "Editable customer",
+      source: "manual",
+      priority: "normal",
+      normalizedName: "editable customer",
+      normalizedEmail: null,
+      normalizedPhone: null
+    });
+    const customer = await repository.convertLead(context(tenantA), lead.id);
+    const input = {
+      displayName: "Updated customer",
+      legalName: "Updated Customer, SL",
+      billingEmail: "billing@updated.example",
+      phone: "+34 600 100 200",
+      website: "https://updated.example",
+      taxId: "B12345678",
+      preferredLocale: "ca" as const,
+      timezone: "Europe/Madrid",
+      status: "inactive" as const,
+      expectedUpdatedAt: new Date(customer.updatedAt)
+    };
+
+    const updated = await repository.updateCustomer(context(tenantA), customer.id, input);
+    expect(updated).toMatchObject({ displayName: "Updated customer", status: "inactive", taxId: "B12345678" });
+    await expect(repository.updateCustomer(context(tenantA), customer.id, input)).rejects.toEqual(
+      expect.objectContaining({ code: "CUSTOMER_VERSION_CONFLICT" } satisfies Partial<CrmError>)
+    );
+    await expect(repository.updateCustomer(context(tenantB), customer.id, input)).rejects.toEqual(
+      expect.objectContaining({ code: "CUSTOMER_NOT_FOUND" } satisfies Partial<CrmError>)
+    );
+  });
+
+  it("creates and removes customer addresses without crossing tenants", async () => {
+    const lead = await repository.createLead(context(tenantA), {
+      name: "Address customer",
+      source: "manual",
+      priority: "normal",
+      normalizedName: "address customer",
+      normalizedEmail: null,
+      normalizedPhone: null
+    });
+    const customer = await repository.convertLead(context(tenantA), lead.id);
+    const address = await repository.createCustomerAddress(context(tenantA), customer.id, {
+      type: "billing",
+      line1: "Carrer Major 1",
+      city: "Barcelona",
+      countryCode: "ES",
+      isPrimary: true
+    });
+    expect((await repository.getCustomer(context(tenantA), customer.id)).addresses[0]).toMatchObject({
+      id: address.id,
+      type: "billing",
+      isPrimary: true
+    });
+    await expect(repository.deleteCustomerAddress(context(tenantB), customer.id, address.id)).rejects.toEqual(
+      expect.objectContaining({ code: "ADDRESS_NOT_FOUND" } satisfies Partial<CrmError>)
+    );
+    await repository.deleteCustomerAddress(context(tenantA), customer.id, address.id);
+    expect((await repository.getCustomer(context(tenantA), customer.id)).addresses).toEqual([]);
+  });
+
+  it("keeps product opportunities tenant-scoped, unique while open and financially redacted", async () => {
+    const productId = randomUUID();
+    await admin`insert into products (id, tenant_id, code, name) values (${productId}, ${tenantA}, 'crm-interest', 'CRM Interest')`;
+    const lead = await repository.createLead(context(tenantA), {
+      name: "Opportunity customer",
+      source: "manual",
+      priority: "normal",
+      normalizedName: "opportunity customer",
+      normalizedEmail: null,
+      normalizedPhone: null
+    });
+    const customer = await repository.convertLead(context(tenantA), lead.id);
+    const baseContext = context(tenantA);
+    const financialContext: TenantContext = {
+      ...baseContext,
+      permissions: [...baseContext.permissions, "financials:read"]
+    };
+    const interest = await repository.createCustomerInterest(financialContext, customer.id, {
+      productId,
+      probability: 35,
+      estimatedAmountMinor: 125_000,
+      currency: "EUR",
+      nextStep: "Prepare discovery"
+    });
+    expect(interest).toMatchObject({ stage: "detected", estimatedAmountMinor: 125_000 });
+    await expect(repository.createCustomerInterest(financialContext, customer.id, { productId })).rejects.toEqual(
+      expect.objectContaining({ code: "DUPLICATE_INTEREST" } satisfies Partial<CrmError>)
+    );
+    expect(Object.hasOwn((await repository.getCustomer(context(tenantA), customer.id)).interests[0]!, "currency")).toBe(
+      false
+    );
+    expect((await repository.getCustomer(financialContext, customer.id)).interests[0]).toMatchObject({
+      estimatedAmountMinor: 125_000,
+      currency: "EUR"
+    });
+    await expect(repository.getCustomerInterest(context(tenantB), interest.id)).rejects.toEqual(
+      expect.objectContaining({ code: "INTEREST_NOT_FOUND" } satisfies Partial<CrmError>)
+    );
+    expect((await repository.transitionCustomerInterest(financialContext, interest.id, "qualified")).stage).toBe(
+      "qualified"
+    );
   });
 
   it("imports the same batch row exactly once within each tenant", async () => {

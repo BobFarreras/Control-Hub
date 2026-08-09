@@ -28,6 +28,26 @@
 > Les conversions noves amb empresa i persona diferenciades creen el contacte principal dins
 > la mateixa transaccio. Un client antic sense contactes pot recuperar-lo explicitament del
 > lead original; `source_lead_id` evita duplicats en reintents i conserva la traçabilitat.
+> La fitxa agrega serveis contractats, projectes i tickets amb consultes acotades al tenant i
+> enllaços directes. No envia imports ni costos: la capa financera continua separada per
+> permisos. Encara falten els interessos comercials i les dades ampliades del client.
+> Les dades existents del client es poden editar amb validacio backend, auditoria dels camps
+> afectats i control optimista per `updatedAt`; una sessio antiga no sobreescriu canvis nous.
+> L'edicio queda integrada camp a camp a la targeta empresarial, amb desament o cancel·lacio
+> explicits, sense un formulari separat que trenqui la composicio de la fitxa. La capçalera
+> separa les dades mestres de quatre metriques compactes i els panells buits ja no imposen
+> alçades artificials.
+> Els opcionals buits no es trameten com emails o URLs invalides, els errors d'esquema retornen
+> `INVALID_INPUT`, i la concurrencia compara `updated_at` a la precisio de mil·lisegons que
+> conserva el navegador.
+> El lloc web accepta `domini.tld` i `www.domini.tld` sense protocol i els desa normalitzats
+> amb `https://`; els protocols diferents d'HTTP(S) continuen rebutjats.
+> La fitxa incorpora oportunitats vinculades al cataleg amb pipeline complet, historial
+> append-only, unicitat mentre son obertes i imports estimats protegits per `financials:read`.
+> L'increment 4 queda tancat: identificacio fiscal, idioma i zona horaria son editables inline,
+> i les adreces d'oficina, facturacio, enviament o altres es gestionen separadament amb una
+> principal per tipus, RLS i auditoria sense PII. El punt de continuacio es l'increment 5,
+> simplificar el cataleg comercial.
 
 ## Punt de projecte
 
@@ -442,6 +462,11 @@ La CSP a `next.config.ts` ha d'incloure `https://o4510557342400512.ingest.de.sen
 En desenvolupament Sentry esta desactivat; els errors van a la consola.
 
 ## Validacio abans de continuar
+
+La fitxa 360 tanca l'increment 4 amb selectors tematitzats reutilitzables (trigger, opcions,
+seleccio i focus coherents en light/dark, teclat i lector de pantalla) i un control compacte de
+probabilitat d'oportunitat en passos de 10%, amb indicador visual semantic baix/mitja/alt. El punt
+de continuacio es l'increment 5, simplificacio del cataleg comercial.
 
 ```powershell
 pnpm infra:up

@@ -9,6 +9,9 @@ const customer: CustomerDetail = {
   billingEmail: "hello@example.test",
   phone: "+34 600 123 123",
   website: "https://example.test",
+  taxId: null,
+  preferredLocale: null,
+  timezone: null,
   status: "active",
   ownerMembershipId: null,
   createdFromLeadId: null,
@@ -32,7 +35,13 @@ const customer: CustomerDetail = {
     { id: "done", title: "Done", dueAt: "2026-01-01T00:00:00.000Z", completedAt: "2026-01-01T01:00:00.000Z" },
     { id: "next", title: "Next", dueAt: "2026-03-01T00:00:00.000Z", completedAt: null }
   ],
-  activity: [{ id: "latest", type: "note.created", occurredAt: "2026-02-01T00:00:00.000Z" }]
+  activity: [{ id: "latest", type: "note.created", occurredAt: "2026-02-01T00:00:00.000Z" }],
+  services: [],
+  projects: [],
+  tickets: [],
+  interests: [],
+  availableProducts: [],
+  addresses: []
 };
 
 describe("customerOverview", () => {

@@ -1,4 +1,10 @@
-import { CrmError, type CreateLeadInput, type CrmListQuery } from "@control-hub/application";
+import {
+  CrmError,
+  customerInterestStages,
+  type CreateLeadInput,
+  type CrmListQuery,
+  type CustomerInterestStage
+} from "@control-hub/application";
 import { parseCsv } from "@control-hub/contracts";
 import {
   leadPriorities,
@@ -189,6 +195,230 @@ export function registerCrmRoutes({ app, database, auth, crm }: CrmContext) {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "customers:read");
       return { customer: await crm.getCustomer(context, request.params.customerId) };
+    }
+  );
+  app.patch<{
+    Params: { customerId: string };
+    Body: {
+      displayName: string;
+      legalName?: string;
+      billingEmail?: string;
+      phone?: string;
+      website?: string;
+      taxId?: string;
+      preferredLocale?: "ca" | "es" | "en";
+      timezone?: string;
+      status: "active" | "inactive";
+      expectedUpdatedAt: string;
+    };
+  }>(
+    "/api/v1/crm/customers/:customerId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId"],
+          properties: { customerId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["displayName", "status", "expectedUpdatedAt"],
+          properties: {
+            displayName: { type: "string", minLength: 2, maxLength: 160 },
+            legalName: { type: "string", maxLength: 200 },
+            billingEmail: { type: "string", format: "email", maxLength: 254 },
+            phone: { type: "string", maxLength: 40 },
+            website: { type: "string", maxLength: 500 },
+            taxId: { type: "string", maxLength: 40 },
+            preferredLocale: { type: "string", enum: ["ca", "es", "en"] },
+            timezone: { type: "string", maxLength: 100 },
+            status: { type: "string", enum: ["active", "inactive"] },
+            expectedUpdatedAt: { type: "string", format: "date-time" }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const customer = await crm.updateCustomer(context, request.params.customerId, {
+        ...request.body,
+        expectedUpdatedAt: new Date(request.body.expectedUpdatedAt)
+      });
+      await writeAudit(database, context, request, {
+        action: "customer.updated",
+        targetType: "customer",
+        targetId: customer.id,
+        outcome: "success",
+        metadata: {
+          fields: "displayName,legalName,billingEmail,phone,website,taxId,preferredLocale,timezone,status"
+        }
+      });
+      return { customer };
+    }
+  );
+  app.post<{
+    Params: { customerId: string };
+    Body: {
+      productId: string;
+      probability?: number;
+      estimatedAmountMinor?: number;
+      currency?: string;
+      nextStep?: string;
+    };
+  }>(
+    "/api/v1/crm/customers/:customerId/interests",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId"],
+          properties: { customerId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["productId"],
+          properties: {
+            productId: { type: "string", format: "uuid" },
+            probability: { type: "integer", minimum: 0, maximum: 100 },
+            estimatedAmountMinor: { type: "integer", minimum: 0, maximum: 9007199254740991 },
+            currency: { type: "string", pattern: "^[A-Z]{3}$" },
+            nextStep: { type: "string", maxLength: 500 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      if (request.body.estimatedAmountMinor !== undefined) requirePermission(context, "financials:read");
+      const interest = await crm.createCustomerInterest(context, request.params.customerId, request.body);
+      await writeAudit(database, context, request, {
+        action: "customer.interest.created",
+        targetType: "customer_product_interest",
+        targetId: interest.id,
+        outcome: "success",
+        metadata: { customerId: request.params.customerId, productId: request.body.productId }
+      });
+      return reply.code(201).send({ interest });
+    }
+  );
+  app.patch<{ Params: { interestId: string }; Body: { stage: CustomerInterestStage } }>(
+    "/api/v1/crm/interests/:interestId/stage",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["interestId"],
+          properties: { interestId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["stage"],
+          properties: { stage: { type: "string", enum: [...customerInterestStages] } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const interest = await crm.transitionCustomerInterest(context, request.params.interestId, request.body.stage);
+      await writeAudit(database, context, request, {
+        action: "customer.interest.stage_changed",
+        targetType: "customer_product_interest",
+        targetId: interest.id,
+        outcome: "success",
+        metadata: { stage: interest.stage }
+      });
+      return { interest };
+    }
+  );
+  app.post<{
+    Params: { customerId: string };
+    Body: {
+      type: "billing" | "shipping" | "office" | "other";
+      label?: string;
+      line1: string;
+      line2?: string;
+      postalCode?: string;
+      city: string;
+      region?: string;
+      countryCode: string;
+      isPrimary?: boolean;
+    };
+  }>(
+    "/api/v1/crm/customers/:customerId/addresses",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId"],
+          properties: { customerId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "line1", "city", "countryCode"],
+          properties: {
+            type: { type: "string", enum: ["billing", "shipping", "office", "other"] },
+            label: { type: "string", maxLength: 120 },
+            line1: { type: "string", minLength: 1, maxLength: 200 },
+            line2: { type: "string", maxLength: 200 },
+            postalCode: { type: "string", maxLength: 32 },
+            city: { type: "string", minLength: 1, maxLength: 120 },
+            region: { type: "string", maxLength: 120 },
+            countryCode: { type: "string", pattern: "^[A-Za-z]{2}$" },
+            isPrimary: { type: "boolean", default: false }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      const address = await crm.createCustomerAddress(context, request.params.customerId, {
+        ...request.body,
+        isPrimary: request.body.isPrimary ?? false
+      });
+      await writeAudit(database, context, request, {
+        action: "customer.address.created",
+        targetType: "customer_address",
+        targetId: address.id,
+        outcome: "success",
+        metadata: { customerId: request.params.customerId, type: address.type }
+      });
+      return reply.code(201).send({ address });
+    }
+  );
+  app.delete<{ Params: { customerId: string; addressId: string } }>(
+    "/api/v1/crm/customers/:customerId/addresses/:addressId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["customerId", "addressId"],
+          properties: {
+            customerId: { type: "string", format: "uuid" },
+            addressId: { type: "string", format: "uuid" }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "customers:manage");
+      await crm.deleteCustomerAddress(context, request.params.customerId, request.params.addressId);
+      await writeAudit(database, context, request, {
+        action: "customer.address.deleted",
+        targetType: "customer_address",
+        targetId: request.params.addressId,
+        outcome: "success",
+        metadata: { customerId: request.params.customerId }
+      });
+      return reply.code(204).send();
     }
   );
   app.post<{

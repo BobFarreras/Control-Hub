@@ -44,6 +44,9 @@ export type CustomerRow = {
 export type CustomerDetail = CustomerRow & {
   legalName: string | null;
   website: string | null;
+  taxId: string | null;
+  preferredLocale: "ca" | "es" | "en" | null;
+  timezone: string | null;
   ownerMembershipId: string | null;
   createdFromLeadId: string | null;
   updatedAt: string;
@@ -59,6 +62,47 @@ export type CustomerDetail = CustomerRow & {
   notes: { id: string; body: string; createdAt: string }[];
   tasks: { id: string; title: string; dueAt: string | null; completedAt: string | null }[];
   activity: { id: string; type: string; occurredAt: string }[];
+  services: {
+    id: string;
+    productName: string;
+    planName: string;
+    status: string;
+    startedAt: string;
+    renewalAt: string | null;
+  }[];
+  projects: {
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+    startedAt: string | null;
+    dueAt: string | null;
+  }[];
+  tickets: { id: string; ticketNumber: number; subject: string; status: string; priority: string; openedAt: string }[];
+  interests: {
+    id: string;
+    productId: string;
+    productName: string;
+    stage: "detected" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
+    probability: number | null;
+    estimatedAmountMinor?: number | null;
+    currency?: string | null;
+    nextStep: string | null;
+    updatedAt: string;
+  }[];
+  availableProducts: { id: string; name: string }[];
+  addresses: {
+    id: string;
+    type: "billing" | "shipping" | "office" | "other";
+    label: string | null;
+    line1: string;
+    line2: string | null;
+    postalCode: string | null;
+    city: string;
+    region: string | null;
+    countryCode: string;
+    isPrimary: boolean;
+  }[];
 };
 
 export type CrmSummary = {

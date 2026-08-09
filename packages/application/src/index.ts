@@ -35,11 +35,26 @@ export type CustomerRecord = {
   billingEmail: string | null;
   phone: string | null;
   website: string | null;
+  taxId: string | null;
+  preferredLocale: "ca" | "es" | "en" | null;
+  timezone: string | null;
   status: "active" | "inactive";
   ownerMembershipId: string | null;
   createdFromLeadId: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+export type UpdateCustomerInput = {
+  displayName: string;
+  legalName?: string | undefined;
+  billingEmail?: string | undefined;
+  phone?: string | undefined;
+  website?: string | undefined;
+  taxId?: string | undefined;
+  preferredLocale?: "ca" | "es" | "en" | undefined;
+  timezone?: string | undefined;
+  status: "active" | "inactive";
+  expectedUpdatedAt: Date;
 };
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
 export type CrmListSort =
@@ -90,11 +105,89 @@ export type TaskRecord = {
   createdAt: Date;
 };
 export type ActivityRecord = { id: string; type: string; metadata: Record<string, unknown>; occurredAt: Date };
+export type CustomerServiceRecord = {
+  id: string;
+  productName: string;
+  planName: string;
+  status: string;
+  startedAt: Date;
+  renewalAt: Date | null;
+};
+export type CustomerProjectRecord = {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  startedAt: Date | null;
+  dueAt: Date | null;
+};
+export type CustomerTicketRecord = {
+  id: string;
+  ticketNumber: number;
+  subject: string;
+  status: string;
+  priority: string;
+  openedAt: Date;
+};
+export const customerInterestStages = ["detected", "qualified", "proposal", "negotiation", "won", "lost"] as const;
+export type CustomerInterestStage = (typeof customerInterestStages)[number];
+export type CustomerProductInterestRecord = {
+  id: string;
+  productId: string;
+  productName: string;
+  stage: CustomerInterestStage;
+  probability: number | null;
+  estimatedAmountMinor?: number | null;
+  currency?: string | null;
+  nextStep: string | null;
+  ownerMembershipId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+export type CustomerProductOption = { id: string; name: string };
+export type CustomerAddressRecord = {
+  id: string;
+  type: "billing" | "shipping" | "office" | "other";
+  label: string | null;
+  line1: string;
+  line2: string | null;
+  postalCode: string | null;
+  city: string;
+  region: string | null;
+  countryCode: string;
+  isPrimary: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+export type CreateCustomerAddressInput = {
+  type: CustomerAddressRecord["type"];
+  label?: string | undefined;
+  line1: string;
+  line2?: string | undefined;
+  postalCode?: string | undefined;
+  city: string;
+  region?: string | undefined;
+  countryCode: string;
+  isPrimary: boolean;
+};
+export type CreateCustomerInterestInput = {
+  productId: string;
+  probability?: number | undefined;
+  estimatedAmountMinor?: number | undefined;
+  currency?: string | undefined;
+  nextStep?: string | undefined;
+};
 export type CustomerDetail = CustomerRecord & {
   contacts: ContactRecord[];
   notes: NoteRecord[];
   tasks: TaskRecord[];
   activity: ActivityRecord[];
+  services: CustomerServiceRecord[];
+  projects: CustomerProjectRecord[];
+  tickets: CustomerTicketRecord[];
+  interests: CustomerProductInterestRecord[];
+  availableProducts: CustomerProductOption[];
+  addresses: CustomerAddressRecord[];
 };
 export type CommercialSummary = {
   leadsByStatus: Record<LeadStatus, number>;
@@ -113,6 +206,11 @@ export class CrmError extends Error {
       | "CUSTOMER_NOT_FOUND"
       | "SOURCE_LEAD_NOT_AVAILABLE"
       | "CUSTOMER_ALREADY_HAS_CONTACTS"
+      | "CUSTOMER_VERSION_CONFLICT"
+      | "PRODUCT_NOT_FOUND"
+      | "INTEREST_NOT_FOUND"
+      | "DUPLICATE_INTEREST"
+      | "ADDRESS_NOT_FOUND"
       | "INVALID_INPUT"
   ) {
     super(code);
@@ -141,6 +239,24 @@ export interface CrmRepository {
     input: { name: string; role?: string; email?: string; phone?: string; isPrimary: boolean }
   ): Promise<ContactRecord>;
   createContactFromSourceLead(context: TenantContext, customerId: string): Promise<ContactRecord>;
+  updateCustomer(context: TenantContext, customerId: string, input: UpdateCustomerInput): Promise<CustomerRecord>;
+  createCustomerInterest(
+    context: TenantContext,
+    customerId: string,
+    input: CreateCustomerInterestInput
+  ): Promise<CustomerProductInterestRecord>;
+  getCustomerInterest(context: TenantContext, interestId: string): Promise<CustomerProductInterestRecord>;
+  transitionCustomerInterest(
+    context: TenantContext,
+    interestId: string,
+    stage: CustomerInterestStage
+  ): Promise<CustomerProductInterestRecord>;
+  createCustomerAddress(
+    context: TenantContext,
+    customerId: string,
+    input: CreateCustomerAddressInput
+  ): Promise<CustomerAddressRecord>;
+  deleteCustomerAddress(context: TenantContext, customerId: string, addressId: string): Promise<void>;
   addNote(context: TenantContext, customerId: string, body: string): Promise<NoteRecord>;
   addTask(
     context: TenantContext,
@@ -230,6 +346,91 @@ export class CrmService {
   }
   createContactFromSourceLead(context: TenantContext, customerId: string) {
     return this.repository.createContactFromSourceLead(context, customerId);
+  }
+  updateCustomer(context: TenantContext, customerId: string, input: UpdateCustomerInput) {
+    const displayName = input.displayName.trim();
+    if (displayName.length < 2 || displayName.length > 160 || Number.isNaN(input.expectedUpdatedAt.getTime()))
+      throw new CrmError("INVALID_INPUT");
+    let website: string | undefined;
+    if (input.website?.trim()) {
+      try {
+        const rawWebsite = input.website.trim();
+        if (/^[a-z][a-z\d+.-]*:/i.test(rawWebsite) && !/^https?:\/\//i.test(rawWebsite)) throw new Error();
+        const parsedWebsite = new URL(/^https?:\/\//i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`);
+        if (!["http:", "https:"].includes(parsedWebsite.protocol) || !parsedWebsite.hostname) throw new Error();
+        website = parsedWebsite.toString();
+      } catch {
+        throw new CrmError("INVALID_INPUT");
+      }
+    }
+    const timezone = input.timezone?.trim() || undefined;
+    if (timezone) {
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+      } catch {
+        throw new CrmError("INVALID_INPUT");
+      }
+    }
+    return this.repository.updateCustomer(context, customerId, {
+      ...input,
+      displayName,
+      legalName: input.legalName?.trim() || undefined,
+      billingEmail: input.billingEmail?.trim() || undefined,
+      phone: input.phone?.trim() || undefined,
+      website,
+      taxId: input.taxId?.trim() || undefined,
+      timezone
+    });
+  }
+  createCustomerAddress(context: TenantContext, customerId: string, input: CreateCustomerAddressInput) {
+    const line1 = input.line1.trim();
+    const city = input.city.trim();
+    const countryCode = input.countryCode.trim().toUpperCase();
+    if (!line1 || line1.length > 200 || !city || city.length > 120 || !/^[A-Z]{2}$/.test(countryCode))
+      throw new CrmError("INVALID_INPUT");
+    return this.repository.createCustomerAddress(context, customerId, {
+      ...input,
+      line1,
+      city,
+      countryCode,
+      label: input.label?.trim() || undefined,
+      line2: input.line2?.trim() || undefined,
+      postalCode: input.postalCode?.trim() || undefined,
+      region: input.region?.trim() || undefined
+    });
+  }
+  deleteCustomerAddress(context: TenantContext, customerId: string, addressId: string) {
+    return this.repository.deleteCustomerAddress(context, customerId, addressId);
+  }
+  createCustomerInterest(context: TenantContext, customerId: string, input: CreateCustomerInterestInput) {
+    const probability = input.probability;
+    const hasAmount = input.estimatedAmountMinor !== undefined;
+    const currency = input.currency?.trim().toUpperCase();
+    if (
+      !input.productId ||
+      (probability !== undefined && (!Number.isInteger(probability) || probability < 0 || probability > 100)) ||
+      (hasAmount && (!Number.isSafeInteger(input.estimatedAmountMinor) || input.estimatedAmountMinor! < 0)) ||
+      hasAmount !== Boolean(currency) ||
+      (currency !== undefined && !/^[A-Z]{3}$/.test(currency))
+    )
+      throw new CrmError("INVALID_INPUT");
+    const nextStep = input.nextStep?.trim() || undefined;
+    if (nextStep && nextStep.length > 500) throw new CrmError("INVALID_INPUT");
+    return this.repository.createCustomerInterest(context, customerId, { ...input, currency, nextStep });
+  }
+  async transitionCustomerInterest(context: TenantContext, interestId: string, stage: CustomerInterestStage) {
+    const current = await this.repository.getCustomerInterest(context, interestId);
+    const allowed: Record<CustomerInterestStage, CustomerInterestStage[]> = {
+      detected: ["qualified", "lost"],
+      qualified: ["proposal", "lost"],
+      proposal: ["negotiation", "lost"],
+      negotiation: ["won", "lost"],
+      won: [],
+      lost: []
+    };
+    if (!customerInterestStages.includes(stage) || !allowed[current.stage].includes(stage))
+      throw new CrmError("INVALID_TRANSITION");
+    return this.repository.transitionCustomerInterest(context, interestId, stage);
   }
   addNote(context: TenantContext, customerId: string, body: string) {
     const normalized = body.trim();

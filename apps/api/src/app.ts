@@ -124,6 +124,8 @@ export function buildApp(options: BuildAppOptions) {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (typeof error === "object" && error !== null && "validation" in error)
+      return reply.code(400).send({ code: "INVALID_INPUT", requestId: request.id });
     if (error instanceof ApiSecurityError)
       return reply.code(error.statusCode).send({ code: error.code, requestId: request.id });
     if (error instanceof IdentityInvariantError)
@@ -140,7 +142,8 @@ export function buildApp(options: BuildAppOptions) {
         : error.code.startsWith("DUPLICATE") ||
             error.code === "INVALID_TRANSITION" ||
             error.code === "SOURCE_LEAD_NOT_AVAILABLE" ||
-            error.code === "CUSTOMER_ALREADY_HAS_CONTACTS"
+            error.code === "CUSTOMER_ALREADY_HAS_CONTACTS" ||
+            error.code === "CUSTOMER_VERSION_CONFLICT"
           ? 409
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });

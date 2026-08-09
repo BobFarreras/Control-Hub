@@ -1311,7 +1311,7 @@ main {
 .customer-overview-panel {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(300px, 1.1fr) minmax(420px, 1.9fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .customer-company-card,
@@ -1323,8 +1323,8 @@ main {
 .customer-company-card {
   display: grid;
   grid-template-columns: 40px 1fr;
-  gap: 12px;
-  padding: 20px;
+  gap: 16px;
+  padding: 18px 20px 20px;
 }
 .overview-icon {
   width: 40px;
@@ -1336,14 +1336,14 @@ main {
   background: var(--brand-subtle);
 }
 .customer-company-card h2 {
-  margin: 4px 0 16px;
-  font-size: 19px;
+  margin: 5px 0 18px;
+  font-size: 21px;
 }
 .customer-facts {
   margin: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 20px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 14px 18px;
 }
 .customer-facts div {
   min-width: 0;
@@ -1351,21 +1351,281 @@ main {
 .customer-facts dt,
 .customer-overview-metrics span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 550;
 }
 .customer-facts dd {
-  margin: 3px 0 0;
+  margin: 5px 0 0;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 14px;
+}
+.customer-company-card .inline-field-value {
+  width: 100%;
+  min-height: 32px;
+  margin: -6px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text);
+  font-weight: 620;
+  text-align: left;
+  appearance: none;
+  background: none;
+  cursor: pointer;
+}
+.customer-company-card .inline-field-value svg {
+  flex: none;
+  color: var(--muted);
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+.customer-company-card .inline-field-value:hover,
+.customer-company-card .inline-field-value:focus-visible {
+  border-color: var(--border);
+  background: var(--surface-subtle);
+}
+.customer-company-card .inline-field-value:hover svg,
+.customer-company-card .inline-field-value:focus-visible svg {
+  opacity: 1;
+}
+.inline-field-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px;
+  gap: 6px;
+}
+.inline-field-editor .select-shell {
+  min-width: 0;
+}
+.inline-field-editor input,
+.inline-field-editor .select-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  outline: 2px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  outline-offset: 1px;
+}
+.inline-field-action {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+.inline-field-action.save {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--success-subtle);
+}
+.inline-field-action:not(.save):hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+}
+.inline-field-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 .customer-overview-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+.customer-relations {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.customer-interests {
+  grid-column: 1 / -1;
+}
+.customer-addresses {
+  grid-column: 1 / -1;
+}
+.address-create {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.address-create .select-shell {
+  min-width: 0;
+}
+.address-create input,
+.address-create .select-trigger {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+.address-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.address-list article {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto 36px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+.address-list span,
+.address-list small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.customer-interests .section-heading p {
+  margin: -10px 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.interest-create {
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(190px, 0.8fr) minmax(180px, 1fr) 140px 90px auto;
+  gap: 8px;
+}
+.interest-create input,
+.interest-create .select-trigger,
+.interest-row .select-trigger {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+.interest-create .select-shell,
+.interest-row .select-shell {
+  min-width: 0;
+}
+.probability-control {
+  --probability-color: var(--warning);
+  height: 38px;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.probability-low {
+  --probability-color: var(--danger);
+}
+.probability-medium {
+  --probability-color: var(--warning);
+}
+.probability-high {
+  --probability-color: var(--success);
+}
+.probability-adjustment {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.probability-adjustment output,
+.probability-summary strong {
+  color: var(--probability-color);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.probability-adjustment button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+.probability-adjustment button:hover:not(:disabled),
+.probability-adjustment button:focus-visible {
+  border-color: var(--probability-color);
+  color: var(--probability-color);
+}
+.probability-adjustment button:focus-visible {
+  outline: 2px solid var(--probability-color);
+  outline-offset: 1px;
+}
+.probability-adjustment button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.probability-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--probability-color) 18%, var(--surface-raised));
+}
+.probability-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--probability-color);
+  transition: width 160ms ease-out;
+}
+.probability-summary {
+  --probability-color: var(--warning);
+  min-width: 72px;
+  display: grid;
+  gap: 5px;
+}
+.probability-summary .probability-track {
+  height: 4px;
+}
+.interest-row {
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 86px 130px auto 150px;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--border);
+}
+.interest-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.compact-panel {
+  min-height: 0;
+  padding: 16px;
 }
 .customer-overview-metrics article {
   min-width: 0;
-  padding: 16px;
+  min-height: 90px;
+  padding: 16px 18px;
   display: grid;
   grid-template-columns: 24px 1fr;
   align-items: center;
@@ -1379,7 +1639,7 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 15px;
 }
 .detail-column {
   display: grid;
@@ -1387,7 +1647,7 @@ main {
   gap: 12px;
 }
 .detail-panel {
-  min-height: 240px;
+  min-height: 0;
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1428,7 +1688,7 @@ main {
   min-height: auto;
 }
 .detail-empty {
-  padding: 22px 12px;
+  padding: 18px 12px;
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: 6px;
@@ -1497,7 +1757,7 @@ main {
   color: var(--muted);
   font-size: 11px;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
   .crm-summary {
     grid-template-columns: repeat(3, 105px) 390px auto;
   }
@@ -1509,6 +1769,21 @@ main {
   }
   .customer-overview-panel {
     grid-template-columns: 1fr;
+  }
+  .customer-facts,
+  .customer-overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .customer-relations {
+    grid-template-columns: 1fr;
+  }
+  .interest-create,
+  .interest-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .address-create,
+  .address-list {
+    grid-template-columns: 1fr 1fr;
   }
 }
 @media (max-width: 600px) {
@@ -1523,6 +1798,13 @@ main {
   }
   .customer-overview-metrics,
   .customer-facts {
+    grid-template-columns: 1fr;
+  }
+  .customer-company-card {
+    grid-template-columns: 1fr;
+  }
+  .address-create,
+  .address-list {
     grid-template-columns: 1fr;
   }
   .inline-create input,
@@ -2508,7 +2790,7 @@ main {
   line-height: 18px;
 }
 .field input,
-.field select,
+.field .select-trigger,
 .field textarea {
   min-width: 0;
   width: 100%;
@@ -2527,18 +2809,18 @@ main {
   resize: vertical;
 }
 .field input:hover,
-.field select:hover,
+.field .select-trigger:hover,
 .field textarea:hover {
   border-color: var(--brand);
 }
 .field input:focus-visible,
-.field select:focus-visible,
+.field .select-trigger:focus-visible,
 .field textarea:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
 .field input[aria-invalid="true"],
-.field select[aria-invalid="true"] {
+.field .select-trigger[aria-invalid="true"] {
   border-color: var(--danger);
 }
 /* A mono value where what is typed is data: a duration, a date, an amount. */
@@ -2549,19 +2831,109 @@ main {
 .select-shell {
   position: relative;
   display: grid;
+  align-self: start;
 }
-.select-shell select {
-  appearance: none;
-  padding-right: 38px;
+.select-native-proxy {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.select-trigger {
+  min-width: 0;
+  width: 100%;
+  height: 44px;
+  padding: 0 11px 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out;
+}
+.select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-trigger .is-placeholder {
+  color: var(--muted);
+}
+.select-trigger > svg {
+  flex: none;
+  color: var(--muted);
+  transition: rotate 160ms ease-out, color 140ms ease-out;
+}
+.select-trigger:hover,
+.select-trigger:focus-visible,
+.select-shell.is-open .select-trigger {
+  border-color: var(--brand);
+}
+.select-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  outline-offset: 1px;
+}
+.select-shell.is-open .select-trigger > svg {
+  rotate: 180deg;
+  color: var(--brand);
+}
+.select-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.select-dropdown {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 180px);
+  max-height: 248px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow), 0 8px 24px color-mix(in srgb, var(--canvas) 40%, transparent);
+}
+.select-dropdown button {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
-.select-shell > svg {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  translate: 0 -50%;
-  pointer-events: none;
-  color: var(--muted);
+.select-dropdown button:hover,
+.select-dropdown button:focus-visible {
+  outline: none;
+  background: var(--surface-raised);
+}
+.select-dropdown button[aria-selected="true"] {
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font-weight: 650;
+}
+.select-dropdown button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .toggle-field {
   grid-template-columns: auto 1fr;
@@ -3583,7 +3955,7 @@ main {
 }
 @media (prefers-reduced-motion: reduce) {
   .field input,
-  .field select,
+  .field .select-trigger,
   .field textarea,
   .toggle-field input[type="checkbox"],
   .toggle-field input[type="checkbox"]::after {

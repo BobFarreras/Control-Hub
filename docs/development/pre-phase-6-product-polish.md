@@ -16,7 +16,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 1 — Leads perduts recuperables i filtre de perduts.
 - [x] Increment 2 — Exportacio Excel professional del CRM.
 - [x] Increment 3 — Importacio guiada de leads.
-- [ ] Increment 4 — Fitxa de client com a vista 360.
+- [x] Increment 4 — Fitxa de client com a vista 360.
 - [ ] Increment 5 — Simplificar el cataleg comercial.
 - [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
 - [ ] Increment 7 — Subscripcions contractades per l'empresa.
@@ -113,8 +113,11 @@ Progres intern:
 - [x] Resum operatiu amb dades CRM existents, contacte principal, propera tasca i activitat.
 - [x] Dades empresarials visibles, formulari de contacte complet i estats buits accionables.
 - [x] Conversio amb contacte principal i recuperacio idempotent des del lead original.
-- [ ] Relacions amb interessos, serveis, projectes i suport, amb permisos financers separats.
-- [ ] Ampliacio opcional de dades fiscals, idioma, zona horaria i adreces.
+- [x] Edicio inline auditada, amb desament explicit i control de concurrencia.
+- [x] Relacions no financeres amb serveis, projectes i suport, agregades sense N+1.
+- [x] Interessos comercials de producte i oportunitats amb pipeline complet, selector accessible i
+  probabilitat guiada en passos de 10% amb barra semantica.
+- [x] Ampliacio opcional de dades fiscals, idioma, zona horaria i adreces.
 
 Primer s'omple la fitxa actual amb dades i relacions existents; despres s'amplia el model.
 
