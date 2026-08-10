@@ -119,8 +119,8 @@ suite("PostgresCommerceRepository", () => {
 
   it("calculates metrics, renewal alerts and immutable state changes", async () => {
     const catalog = await service.catalog(context(tenantA));
-    const plan = catalog.plans[0]!;
-    const price = catalog.prices[0]!;
+    const price = catalog.prices.find((candidate) => candidate.amountMinor === 2500)!;
+    const plan = catalog.plans.find((candidate) => candidate.id === price.planId)!;
     const renewalAt = new Date(Date.now() + 3 * 86400_000);
     const subscription = await service.createSubscription(context(tenantA), {
       customerId: customerA,
@@ -161,8 +161,8 @@ suite("PostgresCommerceRepository", () => {
 
   it("persists recurring customer services and isolates their commercial data by tenant", async () => {
     const catalog = await service.catalog(context(tenantA));
-    const plan = catalog.plans[0]!;
-    const price = catalog.prices[0]!;
+    const price = catalog.prices.find((candidate) => candidate.amountMinor === 2500)!;
+    const plan = catalog.plans.find((candidate) => candidate.id === price.planId)!;
     const now = new Date();
     const created = await customerServices.create(context(tenantA), {
       customerId: customerA,

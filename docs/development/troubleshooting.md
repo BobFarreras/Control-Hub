@@ -461,3 +461,16 @@ aplicava una expressio regular de correu. Les tres capes contradeien COM-3 i el 
 **Solucio.** Tractar-lo com un identificador opac: retallar espais exteriors, conservar majuscules i
 limitar-lo a 320 caracters, sense exigir sintaxi de correu. L'E2E ha d'editar-lo amb un usuari que no
 sigui email i comprovar el valor renderitzat; provar nomes el nom del servei no cobreix el contracte.
+
+### Una prova de metriques canvia de resultat entre Windows i CI
+
+**Simptoma.** `financialSummary` retorna imports diferents dels esperats nomes al runner Linux,
+tot i que cada fila i el calcul son correctes.
+
+**Causa.** La prova triava `catalog.plans[0]` i `catalog.prices[0]` despres d'haver creat mes d'una
+oferta. La consulta no promet ordre i PostgreSQL pot retornar qualsevol fila primer; el resultat
+depenia del pla d'execucio, no del sistema operatiu.
+
+**Solucio.** Les proves seleccionen la dada que han creat mitjancant una identitat o propietat
+estable i relacionen el pla pel seu `planId`. Mai s'utilitza la primera fila d'una consulta sense
+`ORDER BY` com si fos part del contracte.
