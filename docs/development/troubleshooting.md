@@ -131,6 +131,10 @@ publicada. Va passar amb el vector de prova de la RFC 6238 a `tests/e2e/totp.spe
 es un secret. **Mai** un allowlist a `.gitleaks.toml` que tot el repositori heretaria: aixo
 canvia el que el scanner deixa de mirar per sempre.
 
+Quan una release compara contra una branca antiga, Gitleaks tambe recorre el commit anterior al
+comentari. En aquest cas s'afegeix nomes el fingerprint historic exacte a `.gitleaksignore`; no
+s'exclou el fitxer ni la regla, i qualsevol deteccio nova continua bloquejant CI.
+
 ### Una accio de GitHub avisa que Node 20 esta obsolet
 
 **Causa.** GitHub retira Node 20 dels runners. El 16 de setembre de 2026 desapareix del tot i

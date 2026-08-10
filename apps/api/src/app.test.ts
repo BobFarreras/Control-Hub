@@ -321,6 +321,14 @@ describe("rate limiting", () => {
     expect(Number(response.headers["x-ratelimit-limit"])).toBe(300);
   });
 
+  it("protects readiness dependency probes with their own budget", async () => {
+    const app = buildApp(unreachable);
+    apps.push(app);
+    await app.ready();
+    const response = await app.inject({ method: "GET", url: "/health/ready" });
+    expect(Number(response.headers["x-ratelimit-limit"])).toBe(60);
+  });
+
   it("governs a credential route with the strict budget", async () => {
     const app = buildApp({ ...unreachable, auth: stubAuth, appOrigin: "http://localhost" });
     apps.push(app);
