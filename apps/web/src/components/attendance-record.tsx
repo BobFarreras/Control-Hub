@@ -16,6 +16,9 @@ import { formValue } from "@/lib/form";
 import { formatHours } from "@/lib/format";
 
 type Labels = Record<string, string>;
+type HolidaysResponse = { holidays: AttendanceHoliday[] };
+type VacationsResponse = { vacations: AttendanceVacation[] };
+type AbsencesResponse = { absences: AttendanceAbsence[] };
 
 function supersededIds(events: AttendanceEvent[]): Set<string> {
   return new Set(events.map((event) => event.correctsEventId).filter((id): id is string => Boolean(id)));
@@ -66,9 +69,15 @@ export function AttendanceRecord({
     const params = `from=${from}&to=${to}&membershipId=${month.membershipId}`;
 
     void Promise.all([
-      fetch(`/api/v1/attendance/holidays?${params}`).then((r) => (r.ok ? r.json() : { holidays: [] })),
-      fetch(`/api/v1/attendance/vacations?${params}`).then((r) => (r.ok ? r.json() : { vacations: [] })),
-      fetch(`/api/v1/attendance/absences?${params}`).then((r) => (r.ok ? r.json() : { absences: [] }))
+      fetch(`/api/v1/attendance/holidays?${params}`).then(async (response): Promise<HolidaysResponse> =>
+        response.ok ? ((await response.json()) as HolidaysResponse) : { holidays: [] }
+      ),
+      fetch(`/api/v1/attendance/vacations?${params}`).then(async (response): Promise<VacationsResponse> =>
+        response.ok ? ((await response.json()) as VacationsResponse) : { vacations: [] }
+      ),
+      fetch(`/api/v1/attendance/absences?${params}`).then(async (response): Promise<AbsencesResponse> =>
+        response.ok ? ((await response.json()) as AbsencesResponse) : { absences: [] }
+      )
     ]).then(([h, v, a]) => {
       setHolidays(h.holidays ?? []);
       setVacations(v.vacations ?? []);
@@ -145,7 +154,7 @@ export function AttendanceRecord({
   }
 
   async function cancelVacation(vacationId: string) {
-    if (!confirm(t.confirmCancel!)) return;
+    if (!confirm(t.confirmCancel)) return;
     setBusy(true);
     const response = await fetch(`/api/v1/attendance/vacations/${vacationId}`, { method: "DELETE" });
     setBusy(false);
@@ -155,7 +164,7 @@ export function AttendanceRecord({
   }
 
   async function cancelAbsence(absenceId: string) {
-    if (!confirm(t.confirmCancel!)) return;
+    if (!confirm(t.confirmCancel)) return;
     setBusy(true);
     const response = await fetch(`/api/v1/attendance/absences/${absenceId}`, { method: "DELETE" });
     setBusy(false);
@@ -174,10 +183,8 @@ export function AttendanceRecord({
         <CalendarView
           month={month}
           labels={t}
-          locale={locale}
           time={time}
           date={date}
-          superseded={superseded}
           holidays={holidays}
           vacations={vacations}
           absences={absences}
@@ -189,11 +196,11 @@ export function AttendanceRecord({
             setAbsenceFormDate(d);
             setShowAbsenceForm(true);
           }}
-          onCancelVacation={cancelVacation}
-          onCancelAbsence={cancelAbsence}
+          onCancelVacation={(id) => void cancelVacation(id)}
+          onCancelAbsence={(id) => void cancelAbsence(id)}
         />
       ) : (
-        <TableView month={month} labels={t} locale={locale} time={time} date={date} superseded={superseded} />
+        <TableView month={month} labels={t} time={time} date={date} />
       )}
 
       <section className="project-panel" aria-label={t.history}>
@@ -375,17 +382,13 @@ function kindKey(kind: AttendanceEvent["kind"]): string {
 function TableView({
   month,
   labels: t,
-  locale,
   time,
-  date,
-  superseded
+  date
 }: {
   month: AttendanceMonth;
   labels: Labels;
-  locale: string;
   time: Intl.DateTimeFormat;
   date: Intl.DateTimeFormat;
-  superseded: Set<string>;
 }) {
   return (
     <section className="project-panel" aria-label={t.title}>
@@ -440,10 +443,8 @@ function TableView({
 function CalendarView({
   month,
   labels: t,
-  locale,
   time,
   date,
-  superseded,
   holidays,
   vacations,
   absences,
@@ -454,10 +455,8 @@ function CalendarView({
 }: {
   month: AttendanceMonth;
   labels: Labels;
-  locale: string;
   time: Intl.DateTimeFormat;
   date: Intl.DateTimeFormat;
-  superseded: Set<string>;
   holidays: AttendanceHoliday[];
   vacations: AttendanceVacation[];
   absences: AttendanceAbsence[];
@@ -580,7 +579,7 @@ function CalendarView({
             if (isHoliday) labelParts.push(t.holiday!);
             if (vacation) labelParts.push(isPendingVacation ? t.vacationPending! : t.vacation!);
             if (absence) labelParts.push(t.absence!);
-            if (hasWorked) labelParts.push(formatHours(dayData!.workedMinutes));
+            if (hasWorked) labelParts.push(formatHours(dayData.workedMinutes));
             if (hasOpenSession) labelParts.push(t.openSession!);
             const ariaParts = labelParts.length > 0 ? labelParts.join(", ") : t.empty!;
 
@@ -602,11 +601,11 @@ function CalendarView({
                   {absence && <span className="calendar-day-label">{t.absence}</span>}
                   {hasWorked && (
                     <>
-                      <span className="calendar-hours">{formatHours(dayData!.workedMinutes)}</span>
-                      {dayData!.sessions.length > 0 && (
+                      <span className="calendar-hours">{formatHours(dayData.workedMinutes)}</span>
+                      {dayData.sessions.length > 0 && (
                         <span className="calendar-session-range">
-                          {time.format(new Date(dayData!.sessions[0]!.startedAt))}
-                          {dayData!.sessions[0]!.endedAt && `–${time.format(new Date(dayData!.sessions[0]!.endedAt))}`}
+                          {time.format(new Date(dayData.sessions[0]!.startedAt))}
+                          {dayData.sessions[0]!.endedAt && `–${time.format(new Date(dayData.sessions[0]!.endedAt))}`}
                         </span>
                       )}
                     </>

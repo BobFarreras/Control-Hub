@@ -46,7 +46,7 @@ async function startClockedOut(page: Page) {
    * test here waits two minutes for an element that cannot exist, three times over. That is
    * exactly how it failed in CI, and the log said nothing about a flag.
    */
-  const status = await page.request.get("/api/v1/attendance/me");
+  const status = await page.request.get("/api/v1/attendance/me", { timeout: 30_000 });
   expect(
     status.status(),
     "the attendance routes are not there: set CONTROL_HUB_FLAGS=attendance for the API and the web"

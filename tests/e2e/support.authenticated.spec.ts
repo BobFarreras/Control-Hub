@@ -1,15 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { readFixture, waitForHydration } from "./support/fixture";
+import { readFixture, selectFieldOption, selectFieldValue, waitForHydration } from "./support/fixture";
 
 const fixture = readFixture();
 
 /** The Catalan support labels the screens render. Kept together so a wording change is one edit. */
 const t = {
   inboxTitle: "Safata de tickets",
-  due: "Compromis",
+  due: "Objectiu",
   breached: "Incomplert",
-  remaining: "Queden",
   notMeasured: "Sense horari configurat",
   status: "Estat",
   assignee: "Responsable",
@@ -70,7 +69,7 @@ async function createTicket(page: Page): Promise<{ id: string; subject: string }
    */
   const dialog = page.getByRole("dialog");
   // Whichever customer the seed created first; the point is that a ticket needs one.
-  await dialog.getByRole("combobox", { name: t.customer, exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(dialog.getByRole("combobox", { name: t.customer, exact: true }), { index: 0 });
   await dialog.getByRole("textbox", { name: t.subject, exact: true }).fill(subject);
   await dialog.getByRole("textbox", { name: t.ticketDescription, exact: true }).fill("Obert per la prova end-to-end.");
 
@@ -109,7 +108,7 @@ test.describe("support inbox", () => {
     await expect(row(page, fixture.subjects.breached)).toContainText(t.breached);
 
     await page.goto(inboxSearch(fixture.subjects.within), { waitUntil: "domcontentloaded" });
-    await expect(row(page, fixture.subjects.within)).toContainText(t.remaining);
+    await expect(row(page, fixture.subjects.within)).toContainText(t.slaStatusOnTime);
   });
 
   test("shows the new columns: creation date and SLA status badge", async ({ page }) => {
@@ -131,7 +130,9 @@ test.describe("support inbox", () => {
 
   test("opens the SLA detail dialog when clicking the badge", async ({ page }) => {
     await page.goto(inboxSearch(fixture.subjects.breached), { waitUntil: "domcontentloaded" });
-    await row(page, fixture.subjects.breached).locator(".sla-badge").click();
+    const badge = row(page, fixture.subjects.breached).locator(".sla-badge");
+    await waitForHydration(badge);
+    await badge.click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -193,15 +194,15 @@ test.describe("ticket detail", () => {
     const ticket = await createTicket(page);
     await page.goto(`/ca/support/${ticket.id}`, { waitUntil: "domcontentloaded" });
 
-    const status = page.getByLabel(t.status);
+    const status = page.getByRole("combobox", { name: t.status });
     await waitForHydration(status);
     // A ticket is born new, which is the state this test means to move it out of.
-    await expect(status).toHaveValue("new");
+    await expect(selectFieldValue(status)).toHaveValue("new");
 
     const saved = page.waitForResponse(
       (response) => response.url().includes(`/${ticket.id}/status`) && response.request().method() === "PATCH"
     );
-    await status.selectOption("open");
+    await selectFieldOption(status, "open");
     expect((await saved).status()).toBe(200);
 
     /**
@@ -210,11 +211,11 @@ test.describe("ticket detail", () => {
      * render from the server says the transition actually happened.
      */
     await page.reload({ waitUntil: "domcontentloaded" });
-    const reloaded = page.getByLabel(t.status);
+    const reloaded = page.getByRole("combobox", { name: t.status });
     // Waited for, not asserted straight away: a reload re-renders on the server and rehydrates,
     // and the five seconds an assertion waits by itself are not always enough for both.
     await waitForHydration(reloaded);
-    await expect(reloaded).toHaveValue("open");
+    await expect(selectFieldValue(reloaded)).toHaveValue("open");
 
     await page.goto(inboxSearch(ticket.subject), { waitUntil: "domcontentloaded" });
     await expect(row(page, ticket.subject)).toContainText(t.open, { timeout: 15_000 });
@@ -224,20 +225,20 @@ test.describe("ticket detail", () => {
     const ticket = await createTicket(page);
     await page.goto(`/ca/support/${ticket.id}`, { waitUntil: "domcontentloaded" });
 
-    const assignee = page.getByLabel(t.assignee);
+    const assignee = page.getByRole("combobox", { name: t.assignee });
     await waitForHydration(assignee);
-    await expect(assignee).toHaveValue("");
+    await expect(selectFieldValue(assignee)).toHaveValue("");
 
     const saved = page.waitForResponse(
       (response) => response.url().includes(`/${ticket.id}/assignment`) && response.request().method() === "PATCH"
     );
-    await assignee.selectOption({ label: fixture.ownerName });
+    await selectFieldOption(assignee, { label: fixture.ownerName });
     expect((await saved).status()).toBe(200);
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    const reloaded = page.getByLabel(t.assignee);
+    const reloaded = page.getByRole("combobox", { name: t.assignee });
     await waitForHydration(reloaded);
-    await expect(reloaded).toHaveValue(fixture.membershipId);
+    await expect(selectFieldValue(reloaded)).toHaveValue(fixture.membershipId);
 
     // And the inbox agrees, which is the column an administrator distributes work by.
     await page.goto(inboxSearch(ticket.subject), { waitUntil: "domcontentloaded" });

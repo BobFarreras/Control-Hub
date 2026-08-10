@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Clock, Info, Pause, Plus, X } from "lucide-react";
+import { AlertTriangle, Clock, Pause, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
@@ -69,7 +69,7 @@ const slaStatusClasses: Record<string, string> = {
 
 function SlaStatusBadge({ sla, labels: t, onClick }: { sla: InboxSlaDetail; labels: Labels; onClick: () => void }) {
   const className = slaStatusClasses[sla.status] ?? "sla-unknown";
-  const statusKey = `slaStatus_${sla.status}` as string;
+  const statusKey = `slaStatus_${sla.status}`;
   const label = t[statusKey] ?? sla.status;
   const icon =
     sla.status === "breached" ? (
@@ -146,7 +146,7 @@ function SlaTargetSection({
   stageLabel: string;
   labels: Labels;
 }) {
-  const statusKey = `slaStatus_${target.status}` as string;
+  const statusKey = `slaStatus_${target.status}`;
   const statusLabel = t[statusKey] ?? target.status;
 
   return (
@@ -283,7 +283,11 @@ export function SupportInbox({
       id: "createdAt",
       label: t.columnCreated!,
       render: (ticket) => (
-        <time dateTime={ticket.openedAt} title={new Date(ticket.openedAt).toLocaleString(locale)}>
+        <time
+          dateTime={ticket.openedAt}
+          title={new Date(ticket.openedAt).toLocaleString(locale)}
+          suppressHydrationWarning
+        >
           {formatRelative(ticket.openedAt, locale)}
         </time>
       )
@@ -304,7 +308,11 @@ export function SupportInbox({
       id: "updatedAt",
       label: t.columnLastUpdate!,
       render: (ticket) => (
-        <time dateTime={ticket.updatedAt} title={new Date(ticket.updatedAt).toLocaleString(locale)}>
+        <time
+          dateTime={ticket.updatedAt}
+          title={new Date(ticket.updatedAt).toLocaleString(locale)}
+          suppressHydrationWarning
+        >
           {formatRelative(ticket.updatedAt, locale)}
         </time>
       )

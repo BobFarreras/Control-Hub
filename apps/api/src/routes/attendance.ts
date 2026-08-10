@@ -381,7 +381,7 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
   app.put<{ Body: { vacationId: string; status: "approved" | "rejected" } }>(
     "/api/v1/attendance/vacations",
     { schema: vacationStatusSchema },
-    async (request, reply) => {
+    async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "attendance:vacations");
       const vacation = await attendance.updateVacationStatus(context, request.body);

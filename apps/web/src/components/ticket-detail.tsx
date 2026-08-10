@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  CalendarClock,
-  Clock,
-  FolderOpen,
-  Lock,
-  Send,
-  Tag,
-  UserCheck
-} from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, FolderOpen, Lock, Send, Tag, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -113,6 +104,7 @@ export function TicketDetail({
             <dd>
               <select
                 className="ticket-meta-select"
+                aria-label={t.status}
                 value={ticket.status}
                 disabled={busy}
                 onChange={actionHandler(
@@ -156,15 +148,12 @@ export function TicketDetail({
                 defaultValue={ticket.category}
                 maxLength={60}
                 disabled={busy}
-                onBlur={actionHandler(
-                  async (event: React.FocusEvent<HTMLInputElement>) => {
-                    const value = event.target.value.trim();
-                    if (value && value !== ticket.category) {
-                      await send(`/api/v1/support/tickets/${ticket.id}/category`, { category: value }, "PATCH");
-                    }
-                  },
-                  fail
-                )}
+                onBlur={actionHandler(async (event: React.FocusEvent<HTMLInputElement>) => {
+                  const value = event.target.value.trim();
+                  if (value && value !== ticket.category) {
+                    await send(`/api/v1/support/tickets/${ticket.id}/category`, { category: value }, "PATCH");
+                  }
+                }, fail)}
               />
             </dd>
           </div>
@@ -178,6 +167,7 @@ export function TicketDetail({
             <dd>
               <select
                 className="ticket-meta-select"
+                aria-label={t.assignee}
                 value={ticket.assigneeMembershipId ?? ""}
                 disabled={busy}
                 onChange={actionHandler(
@@ -207,7 +197,9 @@ export function TicketDetail({
               {t.firstResponsePending}
             </dt>
             <dd>
-              <span className={fr.breached ? "ticket-sla-breached" : fr.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}>
+              <span
+                className={fr.breached ? "ticket-sla-breached" : fr.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}
+              >
                 {fr.breached ? <AlertTriangle size={13} aria-hidden="true" /> : <Clock size={13} aria-hidden="true" />}
                 {!fr.measurable
                   ? t.notMeasured
@@ -225,7 +217,9 @@ export function TicketDetail({
               {t.resolutionPending}
             </dt>
             <dd>
-              <span className={rs.breached ? "ticket-sla-breached" : rs.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}>
+              <span
+                className={rs.breached ? "ticket-sla-breached" : rs.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}
+              >
                 {rs.breached ? <AlertTriangle size={13} aria-hidden="true" /> : <Clock size={13} aria-hidden="true" />}
                 {!rs.measurable
                   ? t.notMeasured

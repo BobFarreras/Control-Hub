@@ -84,7 +84,7 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
   listMessages: vi.fn<SupportRepository["listMessages"]>().mockResolvedValue([]),
   getTicketWithNames: vi
     .fn<SupportRepository["getTicketWithNames"]>()
-    .mockResolvedValue({ ...ticket(), customerName: "Client A", assigneeName: null }),
+    .mockResolvedValue({ ...ticket(), customerName: "Client A", assigneeName: null, projectName: null }),
   listAssignableMembers: vi
     .fn<SupportRepository["listAssignableMembers"]>()
     .mockResolvedValue([{ membershipId: "member", name: "Boby" }]),
@@ -456,9 +456,9 @@ describe("updateCategory", () => {
   });
 
   it("rejects an empty category", async () => {
-    await expect(
-      new SupportService(repository()).updateCategory(context, "ticket-1", "  ")
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(new SupportService(repository()).updateCategory(context, "ticket-1", "  ")).rejects.toMatchObject({
+      code: "INVALID_INPUT"
+    });
   });
 
   it("rejects a category longer than 60 characters", async () => {

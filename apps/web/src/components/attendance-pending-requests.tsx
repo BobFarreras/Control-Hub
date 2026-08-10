@@ -54,7 +54,7 @@ export function AttendancePendingRequests({
   }
 
   async function deleteAbsence(id: string) {
-    if (!confirm(t.confirmCancel!)) return;
+    if (!confirm(t.confirmCancel)) return;
     setBusy(true);
     const res = await fetch(`/api/v1/attendance/absences/${id}`, { method: "DELETE" });
     setBusy(false);

@@ -276,7 +276,12 @@ export class SupportService {
     return this.repository.assign(context, ticketId, membershipId, now);
   }
 
-  async updateCategory(context: TenantContext, ticketId: string, category: string, now = new Date()): Promise<TicketRecord> {
+  async updateCategory(
+    context: TenantContext,
+    ticketId: string,
+    category: string,
+    now = new Date()
+  ): Promise<TicketRecord> {
     const trimmed = category.trim();
     if (trimmed.length === 0 || trimmed.length > 60) throw new SupportError("INVALID_INPUT");
     const ticket = await this.repository.getTicket(context, ticketId);

@@ -1,7 +1,9 @@
 # Estat actual i continuacio
 
-> La implementacio continua a `feature/catalog-simplification`, amb el pla
-> incremental de consolidacio previ a la Fase 6 a
+> Els increments 0-11 de consolidacio previs a la Fase 6 estan implementats i validats. La
+> implementacio queda integrada a `develop`; el punt de continuacio es la revisio funcional
+> final i l'obertura de la Fase 6.
+> El detall i els checks de cada increment son a
 > `docs/development/pre-phase-6-product-polish.md`.
 >
 > Primer increment implementat en aquesta branca: el toast global ara apareix a baix a la
@@ -672,10 +674,12 @@ metadades completes i el projecte vinculat visible.
 
 ## Validacio abans de continuar
 
-La fitxa 360 tanca l'increment 4 amb selectors tematitzats reutilitzables (trigger, opcions,
-seleccio i focus coherents en light/dark, teclat i lector de pantalla) i un control compacte de
-probabilitat d'oportunitat en passos de 10%, amb indicador visual semantic baix/mitja/alt. El punt
-de continuacio es l'increment 5, simplificacio del cataleg comercial.
+La consolidacio previa a la Fase 6 queda tancada amb els increments 0-11 implementats. El gate
+local complet passa (`pnpm check`) i la suite autenticada passa amb 24/24 proves, dos workers,
+base neta i sense reintents (`pnpm check:e2e`). Les proves E2E comparteixen un helper per conduir
+tant els selectors tematitzats com els natius, i el detall de ticket exposa noms accessibles per
+als controls d'estat i responsable. Sentry inclou la captura de transicions del router i la
+configuracio vigent per eliminar debug logging.
 
 ```powershell
 pnpm infra:up

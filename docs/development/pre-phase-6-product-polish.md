@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
-**Estat:** implementacio incremental en curs.
-**Branca activa:** `feature/catalog-simplification`.
+**Estat:** increments 0-11 implementats i validats.
+**Branca activa:** `develop` (increments integrats).
 
 ## Objectiu
 

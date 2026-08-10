@@ -18,8 +18,6 @@ import {
   type AttendanceAbsence,
   type AttendanceBlock,
   type AttendanceEvent,
-  type AttendanceHoliday,
-  type AttendanceNonWorkingDay,
   type AttendanceVacation
 } from "./attendance.js";
 
