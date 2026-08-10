@@ -304,7 +304,7 @@ describe("calendar functions", () => {
 
   const nonWorkingDays = [
     { id: "nw1", dayOfWeek: 0 }, // Sunday
-    { id: "nw2", dayOfWeek: 6 }  // Saturday
+    { id: "nw2", dayOfWeek: 6 } // Saturday
   ];
 
   const vacations: AttendanceVacation[] = [
@@ -367,24 +367,36 @@ describe("calendar functions", () => {
 
   it("derives day status correctly", () => {
     // Holiday
-    expect(deriveDayStatus("2026-08-15", 5, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("holiday");
+    expect(deriveDayStatus("2026-08-15", 5, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe(
+      "holiday"
+    );
 
     // Non-working day (Saturday)
-    expect(deriveDayStatus("2026-08-16", 6, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("non_working");
+    expect(deriveDayStatus("2026-08-16", 6, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe(
+      "non_working"
+    );
 
     // Vacation
-    expect(deriveDayStatus("2026-08-10", 1, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("vacation");
+    expect(deriveDayStatus("2026-08-10", 1, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe(
+      "vacation"
+    );
 
     // Absence
-    expect(deriveDayStatus("2026-08-20", 3, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe("absence");
+    expect(deriveDayStatus("2026-08-20", 3, holidays, nonWorkingDays, vacations, absences, "m1", 0, false)).toBe(
+      "absence"
+    );
 
     // Worked
-    expect(deriveDayStatus("2026-08-17", 1, holidays, nonWorkingDays, vacations, absences, "m1", 480, false)).toBe("worked");
+    expect(deriveDayStatus("2026-08-17", 1, holidays, nonWorkingDays, vacations, absences, "m1", 480, false)).toBe(
+      "worked"
+    );
 
     // Open session
     expect(deriveDayStatus("2026-08-18", 2, holidays, nonWorkingDays, vacations, absences, "m1", 0, true)).toBe("open");
 
     // Empty (no sessions at all, workedMinutes is null)
-    expect(deriveDayStatus("2026-08-19", 3, holidays, nonWorkingDays, vacations, absences, "m1", null, false)).toBe("empty");
+    expect(deriveDayStatus("2026-08-19", 3, holidays, nonWorkingDays, vacations, absences, "m1", null, false)).toBe(
+      "empty"
+    );
   });
 });

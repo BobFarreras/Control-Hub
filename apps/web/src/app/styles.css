@@ -2049,29 +2049,91 @@ main {
   justify-content: space-between;
   gap: 20px;
 }
-.product-detail-hero h2 { margin: 5px 0 8px; font-size: 24px; }
-.product-detail-hero p { margin: 0; color: var(--muted); }
-.catalog-code { color: var(--muted); font: 500 11px/1 "JetBrains Mono"; }
-.product-detail-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.product-detail-summary article { padding: 14px 16px; display: grid; gap: 4px; }
-.product-detail-summary strong { font: 700 20px/1 "JetBrains Mono"; }
-.product-detail-summary span { color: var(--muted); font-size: 12px; }
-.product-offer-tree { padding: 18px; }
-.product-offer-tree > h2 { margin: 0 0 14px; font-size: 17px; }
-.product-detail-version { padding: 14px; margin-top: 10px; background: var(--surface-subtle); }
+.product-detail-hero h2 {
+  margin: 5px 0 8px;
+  font-size: 24px;
+}
+.product-detail-hero p {
+  margin: 0;
+  color: var(--muted);
+}
+.catalog-code {
+  color: var(--muted);
+  font: 500 11px/1 "JetBrains Mono";
+}
+.product-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.product-detail-summary article {
+  padding: 14px 16px;
+  display: grid;
+  gap: 4px;
+}
+.product-detail-summary strong {
+  font: 700 20px/1 "JetBrains Mono";
+}
+.product-detail-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.product-offer-tree {
+  padding: 18px;
+}
+.product-offer-tree > h2 {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+.product-detail-version {
+  padding: 14px;
+  margin-top: 10px;
+  background: var(--surface-subtle);
+}
 .product-detail-version > header,
-.product-detail-plan > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.product-detail-plan > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .product-detail-version > header div,
-.product-detail-plan > header div { display: grid; gap: 4px; }
+.product-detail-plan > header div {
+  display: grid;
+  gap: 4px;
+}
 .product-detail-version > header div span,
-.product-detail-plan small { color: var(--muted); font-size: 11px; }
-.product-detail-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 12px; }
-.product-detail-plan { padding: 14px; }
-.product-detail-plan p { margin: 12px 0; color: var(--muted); font-size: 13px; }
-.product-detail-prices { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-detail-plan small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.product-detail-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.product-detail-plan {
+  padding: 14px;
+}
+.product-detail-plan p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.product-detail-prices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 @media (max-width: 680px) {
-  .product-detail-summary { grid-template-columns: 1fr; }
-  .product-detail-hero { align-items: stretch; flex-direction: column; }
+  .product-detail-summary {
+    grid-template-columns: 1fr;
+  }
+  .product-detail-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 .catalog-offer-details {
   border-top: 1px solid var(--border);
@@ -2172,19 +2234,37 @@ main {
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 12px;
 }
-.service-dialog { width: min(760px, 100%); }
-.service-dialog > header > div span { color: var(--muted); font-size: 11px; }
-.service-dialog > header h2 { margin-top: 3px; }
-.renewal-date { display: grid; gap: 3px; }
-.renewal-date.due-soon { color: var(--warning); font-weight: 700; }
-.renewal-date.due-soon small { color: var(--warning); font-weight: 600; }
+.service-dialog {
+  width: min(760px, 100%);
+}
+.service-dialog > header > div span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.service-dialog > header h2 {
+  margin-top: 3px;
+}
+.renewal-date {
+  display: grid;
+  gap: 3px;
+}
+.renewal-date.due-soon {
+  color: var(--warning);
+  font-weight: 700;
+}
+.renewal-date.due-soon small {
+  color: var(--warning);
+  font-weight: 600;
+}
 .service-row-actions {
   width: 100%;
   min-width: 72px;
   justify-content: center;
   flex-wrap: nowrap;
 }
-.service-row-actions button { flex: 0 0 32px; }
+.service-row-actions button {
+  flex: 0 0 32px;
+}
 .subscription-table,
 .renewal-panel {
   border: 1px solid var(--border);
@@ -2927,32 +3007,241 @@ main {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* SLA status badge — clickable button that opens the detail dialog */
+.sla-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  color: inherit;
+  line-height: 1.4;
+}
+.sla-badge:hover {
+  opacity: 0.85;
+}
+.sla-badge:focus-visible {
+  outline: 2px solid var(--focus-ring, #4f46e5);
+  outline-offset: 2px;
+}
+.sla-on-time {
+  background: var(--success-bg, rgba(22, 163, 74, 0.1));
+  color: var(--success-strong, #15803d);
+  border-color: var(--success-border, rgba(22, 163, 74, 0.25));
+}
+.sla-near {
+  background: var(--warning-bg, rgba(234, 179, 8, 0.1));
+  color: var(--warning-strong, #a16207);
+  border-color: var(--warning-border, rgba(234, 179, 8, 0.25));
+}
+.sla-paused {
+  background: var(--info-bg, rgba(59, 130, 246, 0.1));
+  color: var(--info-strong, #1d4ed8);
+  border-color: var(--info-border, rgba(59, 130, 246, 0.25));
+}
+
+/* SLA detail dialog */
+.sla-detail-dialog {
+  max-width: 480px;
+}
+.sla-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.sla-detail-section h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.sla-detail-section dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+.sla-detail-section dt {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.sla-detail-section dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
 .priority-urgent,
 .priority-high {
   font-weight: 600;
 }
 
-/* Ticket detail
+/* Ticket detail — two-column layout
    The internal marker is never colour alone: the padlock, the wording and the aria-label all
    say the same thing, so a note the customer must not see cannot be mistaken for one they can. */
-.ticket-summary {
+.ticket-detail {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 1.5rem;
 }
-.ticket-controls {
+
+/* Identity strip: number, subject, customer, project link */
+.ticket-identity {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  align-items: flex-end;
+  align-items: flex-start;
+}
+.ticket-identity-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.ticket-reference {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.ticket-identity-customer {
+  color: var(--text-muted);
+}
+.ticket-project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent-strong, #4f46e5);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.ticket-project-link:hover,
+.ticket-project-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Two-column body: sidebar + conversation */
+.ticket-body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* Metadata sidebar */
+.ticket-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border-radius: 0.6rem;
+  background: var(--surface-subtle, rgba(128, 128, 128, 0.04));
+}
+.ticket-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.ticket-meta-field dt {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ticket-meta-field dd {
+  margin: 0;
+}
+.ticket-meta-select,
+.ticket-meta-input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.3));
+  border-radius: 0.35rem;
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text, #111827);
+}
+.ticket-meta-select:focus,
+.ticket-meta-input:focus {
+  outline: 2px solid var(--focus-ring, #4f46e5);
+  outline-offset: 1px;
+}
+
+/* Priority badge */
+.ticket-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ticket-priority-badge.priority-urgent {
+  background: var(--danger-bg, rgba(220, 38, 38, 0.1));
+  color: var(--danger-strong, #b91c1c);
+  border: 1px solid var(--danger-border, rgba(220, 38, 38, 0.25));
+}
+.ticket-priority-badge.priority-high {
+  background: rgba(234, 88, 12, 0.1);
+  color: #c2410c;
+  border: 1px solid rgba(234, 88, 12, 0.25);
+}
+.ticket-priority-badge.priority-normal {
+  background: var(--info-bg, rgba(59, 130, 246, 0.1));
+  color: var(--info-strong, #1d4ed8);
+  border: 1px solid var(--info-border, rgba(59, 130, 246, 0.25));
+}
+.ticket-priority-badge.priority-low {
+  background: var(--surface-muted, rgba(128, 128, 128, 0.08));
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
+}
+
+/* SLA indicators in the sidebar */
+.ticket-sla-breached,
+.ticket-sla-ok,
+.ticket-sla-unknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ticket-sla-breached {
+  color: var(--danger-strong, #b42318);
+  font-weight: 600;
+}
+.ticket-sla-ok {
+  color: var(--success-strong, #15803d);
+}
+.ticket-sla-unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Conversation column */
+.ticket-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 .ticket-thread {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  margin-top: 1.5rem;
 }
 .ticket-message {
   border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
@@ -2963,6 +3252,9 @@ main {
   border-left-width: 4px;
   border-left-color: var(--warning-strong, #b54708);
   background: var(--surface-muted, rgba(128, 128, 128, 0.06));
+}
+.ticket-message-description {
+  background: var(--surface-subtle, rgba(128, 128, 128, 0.03));
 }
 .ticket-message header {
   display: flex;
@@ -2991,11 +3283,21 @@ main {
 .visibility.customer {
   color: var(--text-muted);
 }
+
+/* Reply form */
 .ticket-reply {
-  margin-top: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border-radius: 0.6rem;
+  background: var(--surface-subtle, rgba(128, 128, 128, 0.03));
+}
+.ticket-reply-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 .ticket-reply-actions {
   display: flex;
@@ -3003,6 +3305,16 @@ main {
   gap: 1rem;
   align-items: flex-end;
   justify-content: space-between;
+}
+
+/* ── Mobile: single column ──────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .ticket-body {
+    grid-template-columns: 1fr;
+  }
+  .ticket-meta {
+    order: -1;
+  }
 }
 
 /* Shared form primitives (components/form-field.tsx)
@@ -3142,7 +3454,9 @@ main {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 140ms ease-out, background-color 140ms ease-out;
+  transition:
+    border-color 140ms ease-out,
+    background-color 140ms ease-out;
 }
 .select-trigger > span {
   min-width: 0;
@@ -3156,7 +3470,9 @@ main {
 .select-trigger > svg {
   flex: none;
   color: var(--muted);
-  transition: rotate 160ms ease-out, color 140ms ease-out;
+  transition:
+    rotate 160ms ease-out,
+    color 140ms ease-out;
 }
 .select-trigger:hover,
 .select-trigger:focus-visible,
@@ -3187,7 +3503,9 @@ main {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--surface);
-  box-shadow: var(--shadow), 0 8px 24px color-mix(in srgb, var(--canvas) 40%, transparent);
+  box-shadow:
+    var(--shadow),
+    0 8px 24px color-mix(in srgb, var(--canvas) 40%, transparent);
 }
 .select-dropdown button {
   width: 100%;

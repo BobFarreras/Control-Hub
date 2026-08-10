@@ -87,10 +87,20 @@ export function AttendancePendingRequests({
                 <td>{dateFmt.format(new Date(v.startDate + "T12:00:00"))}</td>
                 <td>{dateFmt.format(new Date(v.endDate + "T12:00:00"))}</td>
                 <td className="pending-actions">
-                  <button className="icon-button" disabled={busy} onClick={() => void approveVacation(v.id)} aria-label={t.approve}>
+                  <button
+                    className="icon-button"
+                    disabled={busy}
+                    onClick={() => void approveVacation(v.id)}
+                    aria-label={t.approve}
+                  >
                     <Check size={16} />
                   </button>
-                  <button className="icon-button" disabled={busy} onClick={() => void rejectVacation(v.id)} aria-label={t.reject}>
+                  <button
+                    className="icon-button"
+                    disabled={busy}
+                    onClick={() => void rejectVacation(v.id)}
+                    aria-label={t.reject}
+                  >
                     <X size={16} />
                   </button>
                 </td>
@@ -103,7 +113,12 @@ export function AttendancePendingRequests({
                 <td>{dateFmt.format(new Date(a.startDate + "T12:00:00"))}</td>
                 <td>{dateFmt.format(new Date(a.endDate + "T12:00:00"))}</td>
                 <td className="pending-actions">
-                  <button className="icon-button" disabled={busy} onClick={() => void deleteAbsence(a.id)} aria-label={t.cancel}>
+                  <button
+                    className="icon-button"
+                    disabled={busy}
+                    onClick={() => void deleteAbsence(a.id)}
+                    aria-label={t.cancel}
+                  >
                     <X size={16} />
                   </button>
                 </td>

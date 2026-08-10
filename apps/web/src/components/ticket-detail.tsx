@@ -1,6 +1,16 @@
 "use client";
 
-import { AlertTriangle, Clock, Lock, Send, UserCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Clock,
+  FolderOpen,
+  Lock,
+  Send,
+  Tag,
+  UserCheck
+} from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import type { TicketDetail as TicketDetailData } from "@/lib/api-types";
@@ -10,6 +20,13 @@ import { actionHandler, eventHandler } from "@/lib/handlers";
 type Labels = Record<string, string>;
 
 const workableStatuses = ["open", "waiting_customer", "waiting_third_party", "resolved", "closed"] as const;
+
+const priorityTone: Record<string, string> = {
+  urgent: "priority-urgent",
+  high: "priority-high",
+  normal: "priority-normal",
+  low: "priority-low"
+};
 
 function formatMinutes(minutes: number): string {
   const whole = Math.max(0, Math.round(minutes));
@@ -34,8 +51,8 @@ export function TicketDetail({
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
 
   const { ticket, messages, sla, assignableMembers } = detail;
-  const target = ticket.firstResponseAt ? sla.resolution : sla.firstResponse;
-  const stage = ticket.firstResponseAt ? t.resolutionPending : t.firstResponsePending;
+  const fr = sla.firstResponse;
+  const rs = sla.resolution;
 
   async function send(path: string, body: unknown, method: "PATCH" | "POST") {
     setBusy(true);
@@ -63,128 +80,234 @@ export function TicketDetail({
   }
 
   return (
-    <>
+    <div className="ticket-detail">
       {error && (
-        <p className="crm-error">
-          <AlertTriangle size={17} />
+        <p className="crm-error" role="alert">
+          <AlertTriangle size={17} aria-hidden="true" />
           {error}
         </p>
       )}
 
-      <section className="ticket-summary">
-        <div>
+      {/* ── Identity strip ──────────────────────────────────────────────── */}
+      <section className="ticket-identity">
+        <div className="ticket-identity-main">
           <span className="ticket-reference">#{ticket.ticketNumber}</span>
           <h2>{ticket.subject}</h2>
-          <p className="muted">{ticket.customerName}</p>
+          <p className="ticket-identity-customer">{ticket.customerName}</p>
+          {ticket.projectName && (
+            <Link className="ticket-project-link" href={`/projects/${ticket.projectId}`}>
+              <FolderOpen size={14} aria-hidden="true" />
+              {ticket.projectName}
+            </Link>
+          )}
         </div>
-        <div className="ticket-controls">
-          <label>
-            {t.status}
-            <select
-              value={ticket.status}
-              disabled={busy}
-              onChange={actionHandler(
-                (event: React.ChangeEvent<HTMLSelectElement>) =>
-                  send(`/api/v1/support/tickets/${ticket.id}/status`, { status: event.target.value }, "PATCH"),
-                fail
-              )}
-            >
-              <option value={ticket.status}>{t[ticket.status]}</option>
-              {workableStatuses
-                .filter((status) => status !== ticket.status)
-                .map((status) => (
-                  <option value={status} key={status}>
-                    {t[status]}
+      </section>
+
+      {/* ── Two-column body ────────────────────────────────────────────── */}
+      <div className="ticket-body">
+        {/* ── Metadata sidebar ─────────────────────────────────────────── */}
+        <aside className="ticket-meta" aria-label={t.status}>
+          {/* Status */}
+          <div className="ticket-meta-field">
+            <dt>{t.status}</dt>
+            <dd>
+              <select
+                className="ticket-meta-select"
+                value={ticket.status}
+                disabled={busy}
+                onChange={actionHandler(
+                  (event: React.ChangeEvent<HTMLSelectElement>) =>
+                    send(`/api/v1/support/tickets/${ticket.id}/status`, { status: event.target.value }, "PATCH"),
+                  fail
+                )}
+              >
+                <option value={ticket.status}>{t[ticket.status]}</option>
+                {workableStatuses
+                  .filter((status) => status !== ticket.status)
+                  .map((status) => (
+                    <option value={status} key={status}>
+                      {t[status]}
+                    </option>
+                  ))}
+              </select>
+            </dd>
+          </div>
+
+          {/* Priority */}
+          <div className="ticket-meta-field">
+            <dt>{t.priority}</dt>
+            <dd>
+              <span className={`ticket-priority-badge ${priorityTone[ticket.priority] ?? ""}`}>
+                {t[ticket.priority]}
+              </span>
+            </dd>
+          </div>
+
+          {/* Category */}
+          <div className="ticket-meta-field">
+            <dt>
+              <Tag size={13} aria-hidden="true" />
+              {t.category}
+            </dt>
+            <dd>
+              <input
+                className="ticket-meta-input"
+                type="text"
+                defaultValue={ticket.category}
+                maxLength={60}
+                disabled={busy}
+                onBlur={actionHandler(
+                  async (event: React.FocusEvent<HTMLInputElement>) => {
+                    const value = event.target.value.trim();
+                    if (value && value !== ticket.category) {
+                      await send(`/api/v1/support/tickets/${ticket.id}/category`, { category: value }, "PATCH");
+                    }
+                  },
+                  fail
+                )}
+              />
+            </dd>
+          </div>
+
+          {/* Assignee */}
+          <div className="ticket-meta-field">
+            <dt>
+              <UserCheck size={13} aria-hidden="true" />
+              {t.assignee}
+            </dt>
+            <dd>
+              <select
+                className="ticket-meta-select"
+                value={ticket.assigneeMembershipId ?? ""}
+                disabled={busy}
+                onChange={actionHandler(
+                  (event: React.ChangeEvent<HTMLSelectElement>) =>
+                    send(
+                      `/api/v1/support/tickets/${ticket.id}/assignment`,
+                      { assigneeMembershipId: event.target.value || null },
+                      "PATCH"
+                    ),
+                  fail
+                )}
+              >
+                <option value="">{t.unassigned}</option>
+                {assignableMembers.map((member) => (
+                  <option value={member.membershipId} key={member.membershipId}>
+                    {member.name}
                   </option>
                 ))}
-            </select>
-          </label>
-          <label>
-            <UserCheck size={15} aria-hidden="true" />
-            {t.assignee}
-            <select
-              value={ticket.assigneeMembershipId ?? ""}
-              disabled={busy}
-              onChange={actionHandler(
-                (event: React.ChangeEvent<HTMLSelectElement>) =>
-                  send(
-                    `/api/v1/support/tickets/${ticket.id}/assignment`,
-                    { assigneeMembershipId: event.target.value || null },
-                    "PATCH"
-                  ),
-                fail
-              )}
-            >
-              <option value="">{t.unassigned}</option>
-              {assignableMembers.map((member) => (
-                <option value={member.membershipId} key={member.membershipId}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className={target.breached ? "sla-breached" : "sla-remaining"} title={stage}>
-            {target.breached ? <AlertTriangle size={15} aria-hidden="true" /> : <Clock size={15} aria-hidden="true" />}
-            {!target.measurable
-              ? t.notMeasured
-              : target.breached
-                ? t.breached
-                : `${t.remaining} ${formatMinutes(target.targetMinutes - target.consumedMinutes)}`}
-          </p>
-        </div>
-      </section>
+              </select>
+            </dd>
+          </div>
 
-      <section className="ticket-thread">
-        <article className="ticket-message">
-          <header>
-            <strong>{t.ticketDescription}</strong>
-            <time dateTime={ticket.openedAt}>{new Date(ticket.openedAt).toLocaleString(locale)}</time>
-          </header>
-          <p>{ticket.description}</p>
-        </article>
-
-        {messages.map((message) => (
-          <article
-            className={message.visibility === "internal" ? "ticket-message internal" : "ticket-message"}
-            key={message.id}
-            // The distinction cannot be visual only: an internal note read aloud or seen in
-            // high contrast must still announce that the customer cannot see it.
-            aria-label={message.visibility === "internal" ? t.internalNote : t.customerReply}
-          >
-            <header>
-              <strong>{message.authorName ?? t.fromCustomer}</strong>
-              <span className={message.visibility === "internal" ? "visibility internal" : "visibility customer"}>
-                {message.visibility === "internal" && <Lock size={13} aria-hidden="true" />}
-                {message.visibility === "internal" ? t.internalNote : t.customerReply}
+          {/* SLA — first response */}
+          <div className="ticket-meta-field">
+            <dt>
+              <Clock size={13} aria-hidden="true" />
+              {t.firstResponsePending}
+            </dt>
+            <dd>
+              <span className={fr.breached ? "ticket-sla-breached" : fr.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}>
+                {fr.breached ? <AlertTriangle size={13} aria-hidden="true" /> : <Clock size={13} aria-hidden="true" />}
+                {!fr.measurable
+                  ? t.notMeasured
+                  : fr.breached
+                    ? t.breached
+                    : `${t.remaining} ${formatMinutes(fr.targetMinutes - fr.consumedMinutes)}`}
               </span>
-              <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString(locale)}</time>
-            </header>
-            <p>{message.body}</p>
-          </article>
-        ))}
-      </section>
+            </dd>
+          </div>
 
-      <form className="ticket-reply" onSubmit={eventHandler(reply, fail)}>
-        <label>
-          {t.reply}
-          <textarea name="body" required maxLength={20000} rows={4} disabled={busy} />
-        </label>
-        <div className="ticket-reply-actions">
-          <label>
-            {t.replyVisibility}
-            {/* Internal is the default: making the customer-visible option deliberate means a
-                note never reaches a client because somebody did not change a dropdown. */}
-            <select name="visibility" defaultValue="internal" disabled={busy}>
-              <option value="internal">{t.internalNote}</option>
-              <option value="customer">{t.customerReply}</option>
-            </select>
-          </label>
-          <button className="primary-button" disabled={busy}>
-            <Send size={16} />
-            {t.send}
-          </button>
+          {/* SLA — resolution */}
+          <div className="ticket-meta-field">
+            <dt>
+              <Clock size={13} aria-hidden="true" />
+              {t.resolutionPending}
+            </dt>
+            <dd>
+              <span className={rs.breached ? "ticket-sla-breached" : rs.measurable ? "ticket-sla-ok" : "ticket-sla-unknown"}>
+                {rs.breached ? <AlertTriangle size={13} aria-hidden="true" /> : <Clock size={13} aria-hidden="true" />}
+                {!rs.measurable
+                  ? t.notMeasured
+                  : rs.breached
+                    ? t.breached
+                    : `${t.remaining} ${formatMinutes(rs.targetMinutes - rs.consumedMinutes)}`}
+              </span>
+            </dd>
+          </div>
+
+          {/* Dates */}
+          <div className="ticket-meta-field">
+            <dt>
+              <CalendarClock size={13} aria-hidden="true" />
+              {t.openedAt}
+            </dt>
+            <dd>
+              <time dateTime={ticket.openedAt}>{new Date(ticket.openedAt).toLocaleDateString(locale)}</time>
+            </dd>
+          </div>
+          <div className="ticket-meta-field">
+            <dt>{t.lastUpdate}</dt>
+            <dd>
+              <time dateTime={ticket.updatedAt}>{new Date(ticket.updatedAt).toLocaleString(locale)}</time>
+            </dd>
+          </div>
+        </aside>
+
+        {/* ── Conversation ──────────────────────────────────────────────── */}
+        <div className="ticket-conversation">
+          <section className="ticket-thread" aria-label={t.ticketDescription}>
+            {/* Original description */}
+            <article className="ticket-message ticket-message-description">
+              <header>
+                <strong>{t.ticketDescription}</strong>
+                <time dateTime={ticket.openedAt}>{new Date(ticket.openedAt).toLocaleString(locale)}</time>
+              </header>
+              <p>{ticket.description}</p>
+            </article>
+
+            {/* Messages */}
+            {messages.map((message) => (
+              <article
+                className={message.visibility === "internal" ? "ticket-message internal" : "ticket-message"}
+                key={message.id}
+                aria-label={message.visibility === "internal" ? t.internalNote : t.customerReply}
+              >
+                <header>
+                  <strong>{message.authorName ?? t.fromCustomer}</strong>
+                  <span className={message.visibility === "internal" ? "visibility internal" : "visibility customer"}>
+                    {message.visibility === "internal" && <Lock size={13} aria-hidden="true" />}
+                    {message.visibility === "internal" ? t.internalNote : t.customerReply}
+                  </span>
+                  <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString(locale)}</time>
+                </header>
+                <p>{message.body}</p>
+              </article>
+            ))}
+          </section>
+
+          {/* Reply form */}
+          <form className="ticket-reply" onSubmit={eventHandler(reply, fail)}>
+            <label className="ticket-reply-label">
+              {t.reply}
+              <textarea name="body" required maxLength={20000} rows={4} disabled={busy} />
+            </label>
+            <div className="ticket-reply-actions">
+              <label>
+                {t.replyVisibility}
+                <select name="visibility" defaultValue="internal" disabled={busy}>
+                  <option value="internal">{t.internalNote}</option>
+                  <option value="customer">{t.customerReply}</option>
+                </select>
+              </label>
+              <button className="primary-button" disabled={busy}>
+                <Send size={16} />
+                {t.send}
+              </button>
+            </div>
+          </form>
         </div>
-      </form>
-    </>
+      </div>
+    </div>
   );
 }

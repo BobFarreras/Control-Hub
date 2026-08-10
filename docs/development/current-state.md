@@ -586,6 +586,90 @@ Variables d'entorn necessaries (a `apps/web/.env.local`):
 La CSP a `next.config.ts` ha d'incloure `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`.
 En desenvolupament Sentry esta desactivat; els errors van a la consola.
 
+### Increment 9 — Safata de suport explicable (implementat, 10 d'agost de 2026)
+
+L'increment 9 millora la safata de tickets amb informacio SLA explicable i columnes noves.
+
+**Canvis al domini (`packages/domain/src/support.ts`):**
+- Nous tipus: `InboxSlaStatus` (5 estats: `on_time`, `near`, `breached`, `paused`,
+  `not_configured`), `InboxSlaDetail`, `InboxSlaInfo`, `InboxActiveTarget`.
+- Funcions: `deriveInboxSlaStatus` (deriva l'estat visual), `estimateDeadline` (estima la data
+  limit basant-se en la taxa actual de consum), `inboxSlaInfo` (construeix la info completa
+  per a cada fila de la safata).
+- L'estat `near` s'activa al 80% del target; `paused` detecta rellotges aturats
+  (`waiting_customer` / `waiting_third_party`).
+
+**Canvis a l'aplicacio (`packages/application/src/support.ts`):**
+- `TicketListRow` i `InboxTicket` inclouen `updatedAt` i `inboxSla: InboxSlaInfo`.
+- `TicketDetail` inclou `inboxSla`.
+- El metode `listInbox` calcula `inboxSla` per cada ticket en una sola passada.
+
+**Canvis a la persistencia (`packages/persistence/src/support-repository.ts`):**
+- `listColumns` inclou `t.updated_at as "updatedAt"` al SELECT.
+
+**Canvis a la UI (`apps/web/src/components/support-inbox.tsx`):**
+- Columnes noves: data de creacio, objectiu aplicat (primera resposta / resolucio), estat SLA
+  (badge clicable), ultima actualitzacio.
+- Nou component `SlaStatusBadge` amb 5 estats visuals: a temps (verd), proper (groc),
+  incomplert (vermell), pausat (blau), sense configurar (gris).
+- Nou component `SlaDetailDialog` que obre al clicar la badge i mostra: objectiu, consumit,
+  restant, data limit estimada i pauses.
+
+**Canvis a i18n (`packages/i18n/src/index.ts`):**
+- Nous textos per als 5 estats SLA, columnes i dialeg de detall en ca, es i en.
+
+**Proves:**
+- 7 proves noves al domini: deriveInboxSlaStatus (7 cases) i estimateDeadline (4 cases),
+  inboxSlaInfo (3 casos). Total domini: 28 proves.
+- Mock de l'aplicacio actualitzat amb `updatedAt`. Total aplicacio: 26 proves.
+
+**Canvis CSS (`apps/web/src/app/styles.css`):**
+- nous estils per a `sla-badge` (on_time, near, paused) i `sla-detail-dialog`.**
+
+### Increment 10 — Detall del ticket redissenyat (implementat, 10 d'agost de 2026)
+
+L'increment 10 millora la pàgina de detall del ticket amb un disseny a dues columnes,
+metadades completes i el projecte vinculat visible.
+
+**Canvis a la persistència (`packages/persistence/src/support-repository.ts`):**
+- LEFT JOIN a `projects` per obtenir `p.name as "projectName"` al `listColumns`.
+- Nou mètode `updateCategory` que actualitza el camp `category` amb validació i auditoria.
+
+**Canvis a l'aplicació (`packages/application/src/support.ts`):**
+- `TicketListRow` inclou `projectName: string | null`.
+- `TicketDetail.ticket` inclou `projectName: string | null`.
+- Nou mètode `updateCategory` amb validació (longitud, no buit, ticket no tancat).
+
+**Canvis a l'API (`apps/api/src/routes/support.ts`):**
+- Nou endpoint: `PATCH /api/v1/support/tickets/:ticketId/category`
+  - Body: `{ category: string }` (min 1, max 60)
+  - Permis: `tickets:manage`
+  - Auditoria: `ticket.category.changed`
+
+**Canvis als tipus API (`apps/web/src/lib/api-types.ts`):**
+- `InboxTicket` inclou `projectName: string | null`.
+
+**Canvis a i18n (`packages/i18n/src/index.ts`):**
+- Nous textos: `project`, `noProject`, `openedAt`, `lastUpdate` en ca, es i en.
+
+**Canvis a la UI (`apps/web/src/components/ticket-detail.tsx`):**
+- Redisseny complet amb layout a dues columnes (inspirat en project-detail.tsx):
+  - Secció d'identitat: número + assumpte + client + projecte (link clicable)
+  - Panell lateral de metadades: estat (select), prioritat (badge de color), categoria
+    (input editable), responsable (select), objectius SLA (badges), dates
+  - Fil de conversa amb missatges i formulari de resposta
+
+**Canvis a CSS (`apps/web/src/app/styles.css`):**
+- Nous estils: `.ticket-detail`, `.ticket-identity`, `.ticket-body`, `.ticket-meta`,
+  `.ticket-priority-badge`, `.ticket-sla-*`, `.ticket-conversation`, `.ticket-reply`
+- Media query `@media (max-width: 760px)`: layout en columna única per a mòbil
+
+**Proves:**
+- 5 proves noves per a `updateCategory` (èxit, buit, llarg, tancat, trim).
+- Mock de l'aplicació actualitzat amb `projectName` i `updateCategory`.
+- Total aplicació: 107 proves (5 noves).
+- Typecheck del web app passa.
+
 ## Validacio abans de continuar
 
 La fitxa 360 tanca l'increment 4 amb selectors tematitzats reutilitzables (trigger, opcions,

@@ -12,7 +12,14 @@ import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
 import { monthName, monthRange, shiftMonth } from "./month-range";
 
-const emptyMonth: AttendanceMonth = { membershipId: "", memberName: "", days: [], sessions: [], totalMinutes: 0, events: [] };
+const emptyMonth: AttendanceMonth = {
+  membershipId: "",
+  memberName: "",
+  days: [],
+  sessions: [],
+  totalMinutes: 0,
+  events: []
+};
 
 export default async function AttendancePage({
   params,

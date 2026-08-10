@@ -49,33 +49,60 @@ const repository = (overrides: Partial<AttendanceRepository> = {}): AttendanceRe
     .fn<AttendanceRepository["policy"]>()
     .mockResolvedValue({ pausesEnabled: false, timeZone: "Europe/Madrid" }),
   listHolidays: vi.fn<AttendanceRepository["listHolidays"]>().mockResolvedValue([]),
-  createHoliday: vi.fn<AttendanceRepository["createHoliday"]>().mockResolvedValue({ id: "h1", date: "2026-08-15", name: "Holiday" }),
+  createHoliday: vi
+    .fn<AttendanceRepository["createHoliday"]>()
+    .mockResolvedValue({ id: "h1", date: "2026-08-15", name: "Holiday" }),
   deleteHoliday: vi.fn<AttendanceRepository["deleteHoliday"]>().mockResolvedValue(undefined),
   listNonWorkingDays: vi.fn<AttendanceRepository["listNonWorkingDays"]>().mockResolvedValue([]),
-  createNonWorkingDay: vi.fn<AttendanceRepository["createNonWorkingDay"]>().mockResolvedValue({ id: "nw1", dayOfWeek: 0 }),
+  createNonWorkingDay: vi
+    .fn<AttendanceRepository["createNonWorkingDay"]>()
+    .mockResolvedValue({ id: "nw1", dayOfWeek: 0 }),
   deleteNonWorkingDay: vi.fn<AttendanceRepository["deleteNonWorkingDay"]>().mockResolvedValue(undefined),
   listVacations: vi.fn<AttendanceRepository["listVacations"]>().mockResolvedValue([]),
   listVacationsByMember: vi.fn<AttendanceRepository["listVacationsByMember"]>().mockResolvedValue([]),
   createVacation: vi.fn<AttendanceRepository["createVacation"]>().mockResolvedValue({
-    id: "v1", membershipId: "member-a", startDate: "2026-08-01", endDate: "2026-08-15",
-    status: "pending", approvedByMembershipId: null, approvedAt: null, notes: null
+    id: "v1",
+    membershipId: "member-a",
+    startDate: "2026-08-01",
+    endDate: "2026-08-15",
+    status: "pending",
+    approvedByMembershipId: null,
+    approvedAt: null,
+    notes: null
   }),
   updateVacationStatus: vi.fn<AttendanceRepository["updateVacationStatus"]>().mockResolvedValue({
-    id: "v1", membershipId: "member-a", startDate: "2026-08-01", endDate: "2026-08-15",
-    status: "approved", approvedByMembershipId: "member-manager", approvedAt: new Date(), notes: null
+    id: "v1",
+    membershipId: "member-a",
+    startDate: "2026-08-01",
+    endDate: "2026-08-15",
+    status: "approved",
+    approvedByMembershipId: "member-manager",
+    approvedAt: new Date(),
+    notes: null
   }),
   deleteVacation: vi.fn<AttendanceRepository["deleteVacation"]>().mockResolvedValue(undefined),
   listAbsences: vi.fn<AttendanceRepository["listAbsences"]>().mockResolvedValue([]),
   listAbsencesByMember: vi.fn<AttendanceRepository["listAbsencesByMember"]>().mockResolvedValue([]),
   createAbsence: vi.fn<AttendanceRepository["createAbsence"]>().mockResolvedValue({
-    id: "a1", membershipId: "member-a", startDate: "2026-08-20", endDate: "2026-08-22",
-    type: "sick_leave", documentUrl: null, notes: null, createdByMembershipId: "member-a"
+    id: "a1",
+    membershipId: "member-a",
+    startDate: "2026-08-20",
+    endDate: "2026-08-22",
+    type: "sick_leave",
+    documentUrl: null,
+    notes: null,
+    createdByMembershipId: "member-a"
   }),
   deleteAbsence: vi.fn<AttendanceRepository["deleteAbsence"]>().mockResolvedValue(undefined),
   listBlocks: vi.fn<AttendanceRepository["listBlocks"]>().mockResolvedValue([]),
   listBlocksByMember: vi.fn<AttendanceRepository["listBlocksByMember"]>().mockResolvedValue([]),
   createBlock: vi.fn<AttendanceRepository["createBlock"]>().mockResolvedValue({
-    id: "b1", membershipId: "member-a", date: "2026-08-25", startTime: "10:00", endTime: "12:00", reason: "Meeting"
+    id: "b1",
+    membershipId: "member-a",
+    date: "2026-08-25",
+    startTime: "10:00",
+    endTime: "12:00",
+    reason: "Meeting"
   }),
   deleteBlock: vi.fn<AttendanceRepository["deleteBlock"]>().mockResolvedValue(undefined),
   ...overrides

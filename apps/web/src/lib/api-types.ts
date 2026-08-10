@@ -125,12 +125,22 @@ export type SlaTargetState = {
   measurable: boolean;
 };
 
+export type InboxSlaDetail = {
+  status: string;
+  targetMinutes: number;
+  consumedMinutes: number;
+  remainingMinutes: number;
+  estimatedDeadline: string | null;
+  activeTarget: string;
+};
+
 export type InboxTicket = {
   id: string;
   ticketNumber: number;
   customerId: string;
   customerName: string;
   projectId: string | null;
+  projectName: string | null;
   subject: string;
   status: string;
   priority: string;
@@ -138,10 +148,12 @@ export type InboxTicket = {
   assigneeMembershipId: string | null;
   assigneeName: string | null;
   openedAt: string;
+  updatedAt: string;
   firstResponseAt: string | null;
   resolvedAt: string | null;
   closedAt: string | null;
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+  inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
 };
 
 export type TicketMessage = {
@@ -160,6 +172,7 @@ export type TicketDetail = {
   ticket: InboxTicket & { description: string };
   messages: TicketMessage[];
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+  inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
   assignableMembers: AssignableMember[];
 };
 

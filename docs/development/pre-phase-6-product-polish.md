@@ -21,7 +21,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 6 — Serveis, subscripcions i compres dels clients.
 - [x] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
-- [ ] Increment 9 — Safata de suport explicable.
+- [x] Increment 9 — Safata de suport explicable.
 - [x] Increment 10 — Jornada amb calendari laboral.
 - [x] Increment 11 — Toast global a baix a la dreta.
 
@@ -268,7 +268,7 @@ Millora immediata de la taula:
 - estat de mesura: a temps, proper, incomplert, pausat o sense configuracio;
 - prioritat, client, responsable i ultima actualitzacio.
 
-El text “incomplert” ha d'obrir un detall que expliqui l'objectiu copiat al ticket, calendari,
+El text "incomplert" ha d'obrir un detall que expliqui l'objectiu copiat al ticket, calendari,
 pauses i instant d'incompliment. No s'ha de recalcular contra una politica nova.
 
 Canals d'entrada, per fases:
@@ -285,6 +285,18 @@ Canals d'entrada, per fases:
 correu automatic, perquè identifica tenant i client de manera fiable. El correu es mes flexible
 pero necessita quarantena i mes operacio. Aquesta decisio amplia l'abast de fases aprovades i
 no s'implementa sense actualitzar el roadmap.
+
+Implementat el 10 d'agost de 2026:
+
+- Domini: tipus `InboxSlaStatus` (5 estats), `InboxSlaDetail`, `InboxSlaInfo`, funcions
+  `deriveInboxSlaStatus`, `estimateDeadline` i `inboxSlaInfo`.
+- Persistencia: `updatedAt` al SELECT de listTickets.
+- Servei: `TicketListRow` i `InboxTicket` amb `updatedAt` i `inboxSla`. `TicketDetail` amb
+  `inboxSla`. `listInbox` calcula l'estat per cada ticket en una sola passada.
+- UI: columnes noves (creat, objectiu, estat SLA, ultima actualitzacio), badge clickable amb
+  5 estats visuals i dialeg de detall amb objectiu, consumit, restant, data limit i pauses.
+- i18n: nous textos en ca, es i en per als 5 estats, columnes i dialeg.
+- Proves: 7 noves al domini (deriveInboxSlaStatus, estimateDeadline, inboxSlaInfo).
 
 ### Increment 10 — jornada amb calendari laboral (implementat)
 

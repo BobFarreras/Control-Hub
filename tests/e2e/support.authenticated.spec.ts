@@ -22,7 +22,12 @@ const t = {
   customer: "Client",
   subject: "Assumpte",
   ticketDescription: "Descripcio del ticket",
-  create: "Crear"
+  create: "Crear",
+  columnCreated: "Creat",
+  columnSlaStatus: "Estat SLA",
+  slaStatusOnTime: "A temps",
+  slaStatusBreached: "Incomplert",
+  slaDetailTitle: "Detall d'objectiu SLA"
 } as const;
 
 const row = (page: Page, subject: string) => page.getByRole("row").filter({ hasText: subject });
@@ -105,6 +110,35 @@ test.describe("support inbox", () => {
 
     await page.goto(inboxSearch(fixture.subjects.within), { waitUntil: "domcontentloaded" });
     await expect(row(page, fixture.subjects.within)).toContainText(t.remaining);
+  });
+
+  test("shows the new columns: creation date and SLA status badge", async ({ page }) => {
+    await page.goto("/ca/support", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: t.inboxTitle })).toBeVisible();
+
+    // New column headers are present.
+    await expect(page.getByRole("columnheader", { name: t.columnCreated })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: t.columnSlaStatus })).toBeVisible();
+
+    // The breached ticket shows the "Incomplert" SLA badge.
+    await page.goto(inboxSearch(fixture.subjects.breached), { waitUntil: "domcontentloaded" });
+    await expect(row(page, fixture.subjects.breached).locator(".sla-badge")).toContainText(t.slaStatusBreached);
+
+    // The within-target ticket shows the "A temps" SLA badge.
+    await page.goto(inboxSearch(fixture.subjects.within), { waitUntil: "domcontentloaded" });
+    await expect(row(page, fixture.subjects.within).locator(".sla-badge")).toContainText(t.slaStatusOnTime);
+  });
+
+  test("opens the SLA detail dialog when clicking the badge", async ({ page }) => {
+    await page.goto(inboxSearch(fixture.subjects.breached), { waitUntil: "domcontentloaded" });
+    await row(page, fixture.subjects.breached).locator(".sla-badge").click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // The dialog explains the target and the breach.
+    await expect(dialog).toContainText(t.slaStatusBreached);
+    await expect(dialog).toContainText(/objectiu/i);
   });
 
   test("opens a ticket from the inbox", async ({ page }) => {

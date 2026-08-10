@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { MetricTile } from "@/components/metric-tile";
 import { useToast } from "@/components/toast";
-import type { AttendanceEvent, AttendanceMonth, AttendanceHoliday, AttendanceVacation, AttendanceAbsence } from "@/lib/api-types";
+import type {
+  AttendanceEvent,
+  AttendanceMonth,
+  AttendanceHoliday,
+  AttendanceVacation,
+  AttendanceAbsence
+} from "@/lib/api-types";
 import { formValue } from "@/lib/form";
 import { formatHours } from "@/lib/format";
 
@@ -175,8 +181,14 @@ export function AttendanceRecord({
           holidays={holidays}
           vacations={vacations}
           absences={absences}
-          onVacationClick={(d) => { setVacationFormDate(d); setShowVacationForm(true); }}
-          onAbsenceClick={(d) => { setAbsenceFormDate(d); setShowAbsenceForm(true); }}
+          onVacationClick={(d) => {
+            setVacationFormDate(d);
+            setShowVacationForm(true);
+          }}
+          onAbsenceClick={(d) => {
+            setAbsenceFormDate(d);
+            setShowAbsenceForm(true);
+          }}
           onCancelVacation={cancelVacation}
           onCancelAbsence={cancelAbsence}
         />
@@ -284,7 +296,12 @@ export function AttendanceRecord({
                 <input name="notes" maxLength={1000} disabled={busy} />
               </label>
               <div className="dialog-actions">
-                <button type="button" className="secondary-button" disabled={busy} onClick={() => setShowVacationForm(false)}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => setShowVacationForm(false)}
+                >
                   {t.cancel}
                 </button>
                 <button className="primary-button" disabled={busy}>
@@ -325,7 +342,12 @@ export function AttendanceRecord({
                 <input name="notes" maxLength={1000} disabled={busy} />
               </label>
               <div className="dialog-actions">
-                <button type="button" className="secondary-button" disabled={busy} onClick={() => setShowAbsenceForm(false)}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => setShowAbsenceForm(false)}
+                >
                   {t.cancel}
                 </button>
                 <button className="primary-button" disabled={busy}>
@@ -550,7 +572,9 @@ function CalendarView({
               isHoliday ? "holiday" : "",
               vacation ? (isPendingVacation ? "vacation-pending" : "vacation") : "",
               absence ? "absence" : ""
-            ].filter(Boolean).join(" ");
+            ]
+              .filter(Boolean)
+              .join(" ");
 
             const labelParts: string[] = [];
             if (isHoliday) labelParts.push(t.holiday!);
@@ -572,7 +596,9 @@ function CalendarView({
                 <span className="calendar-day-number">{dayNum}</span>
                 <div className="calendar-day-content">
                   {isHoliday && <span className="calendar-day-label">{t.holiday}</span>}
-                  {vacation && <span className="calendar-day-label">{isPendingVacation ? t.vacationPending : t.vacation}</span>}
+                  {vacation && (
+                    <span className="calendar-day-label">{isPendingVacation ? t.vacationPending : t.vacation}</span>
+                  )}
                   {absence && <span className="calendar-day-label">{t.absence}</span>}
                   {hasWorked && (
                     <>
@@ -620,10 +646,14 @@ function CalendarView({
             if (vacation) {
               return (
                 <div className="calendar-popover-content">
-                  <span className="calendar-popover-label">
-                    {isPendingVacation ? t.vacationPending : t.vacation}
-                  </span>
-                  <button className="secondary-button danger" onClick={() => { onCancelVacation(vacation.id); setPopover(null); }}>
+                  <span className="calendar-popover-label">{isPendingVacation ? t.vacationPending : t.vacation}</span>
+                  <button
+                    className="secondary-button danger"
+                    onClick={() => {
+                      onCancelVacation(vacation.id);
+                      setPopover(null);
+                    }}
+                  >
                     {t.cancelVacation}
                   </button>
                 </div>
@@ -633,7 +663,13 @@ function CalendarView({
               return (
                 <div className="calendar-popover-content">
                   <span className="calendar-popover-label">{t.absence}</span>
-                  <button className="secondary-button danger" onClick={() => { onCancelAbsence(absence.id); setPopover(null); }}>
+                  <button
+                    className="secondary-button danger"
+                    onClick={() => {
+                      onCancelAbsence(absence.id);
+                      setPopover(null);
+                    }}
+                  >
                     {t.cancelAbsence}
                   </button>
                 </div>
@@ -648,11 +684,23 @@ function CalendarView({
             }
             return (
               <div className="calendar-popover-actions">
-                <button className="secondary-button" onClick={() => { onVacationClick(popover.dayStr); setPopover(null); }}>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    onVacationClick(popover.dayStr);
+                    setPopover(null);
+                  }}
+                >
                   <Plane size={14} aria-hidden="true" />
                   {t.vacation}
                 </button>
-                <button className="secondary-button" onClick={() => { onAbsenceClick(popover.dayStr); setPopover(null); }}>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    onAbsenceClick(popover.dayStr);
+                    setPopover(null);
+                  }}
+                >
                   <FileText size={14} aria-hidden="true" />
                   {t.absence}
                 </button>
@@ -664,4 +712,3 @@ function CalendarView({
     </section>
   );
 }
-

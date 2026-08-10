@@ -241,7 +241,11 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async listVacationsByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceVacation[]> {
+  async listVacationsByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceVacation[]> {
     return withTenant(
       this.database,
       context.tenantId,
@@ -257,7 +261,10 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async createVacation(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; notes?: string }): Promise<AttendanceVacation> {
+  async createVacation(
+    context: TenantContext,
+    input: { membershipId: string; startDate: string; endDate: string; notes?: string }
+  ): Promise<AttendanceVacation> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const id = randomUUID();
       const [vacation] = await tx<AttendanceVacation[]>`
@@ -272,7 +279,10 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     }).catch(mapConstraint);
   }
 
-  async updateVacationStatus(context: TenantContext, input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }): Promise<AttendanceVacation> {
+  async updateVacationStatus(
+    context: TenantContext,
+    input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }
+  ): Promise<AttendanceVacation> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const [vacation] = await tx<AttendanceVacation[]>`
         update attendance_vacations
@@ -310,7 +320,11 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async listAbsencesByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceAbsence[]> {
+  async listAbsencesByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceAbsence[]> {
     return withTenant(
       this.database,
       context.tenantId,
@@ -325,7 +339,18 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async createAbsence(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string; createdByMembershipId: string }): Promise<AttendanceAbsence> {
+  async createAbsence(
+    context: TenantContext,
+    input: {
+      membershipId: string;
+      startDate: string;
+      endDate: string;
+      type: AttendanceAbsence["type"];
+      documentUrl?: string;
+      notes?: string;
+      createdByMembershipId: string;
+    }
+  ): Promise<AttendanceAbsence> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const id = randomUUID();
       const [absence] = await tx<AttendanceAbsence[]>`
@@ -360,7 +385,11 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]> {
+  async listBlocksByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceBlock[]> {
     return withTenant(
       this.database,
       context.tenantId,
@@ -374,7 +403,10 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     );
   }
 
-  async createBlock(context: TenantContext, input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }): Promise<AttendanceBlock> {
+  async createBlock(
+    context: TenantContext,
+    input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }
+  ): Promise<AttendanceBlock> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const id = randomUUID();
       const [block] = await tx<AttendanceBlock[]>`

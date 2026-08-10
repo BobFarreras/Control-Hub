@@ -1,9 +1,11 @@
 import {
   canTransitionTicket,
+  inboxSlaInfo,
   overlappingWindows,
   pausedTicketStatuses,
   slaState,
   ticketPriorities,
+  type InboxSlaInfo,
   type SlaPause,
   type SlaState,
   type SupportCalendar,
@@ -77,9 +79,10 @@ export type AssignableMember = { membershipId: string; name: string };
  * the session again.
  */
 export type TicketDetail = {
-  ticket: TicketRecord & { customerName: string; assigneeName: string | null };
+  ticket: TicketRecord & { customerName: string; assigneeName: string | null; projectName: string | null };
   messages: TicketMessageRecord[];
   sla: SlaState;
+  inboxSla: InboxSlaInfo;
   assignableMembers: AssignableMember[];
 };
 
@@ -111,11 +114,16 @@ export type TicketListQuery = {
 };
 
 /** A row of the listing: the record plus the names a person needs instead of identifiers. */
-export type TicketListRow = TicketRecord & { customerName: string; assigneeName: string | null };
+export type TicketListRow = TicketRecord & {
+  customerName: string;
+  assigneeName: string | null;
+  updatedAt: Date;
+  projectName: string | null;
+};
 export type TicketPage = { items: TicketListRow[]; total: number; page: number; pageSize: number };
 
-/** A ticket with the state of its targets, which is what an inbox row has to show. */
-export type InboxTicket = TicketListRow & { sla: SlaState };
+/** A ticket with the state of its targets and the derived inbox SLA status. */
+export type InboxTicket = TicketListRow & { sla: SlaState; inboxSla: InboxSlaInfo };
 export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: number };
 
 export type SupportRepository = {
@@ -124,6 +132,7 @@ export type SupportRepository = {
   getTicket(context: TenantContext, ticketId: string): Promise<TicketRecord | null>;
   updateStatus(context: TenantContext, ticketId: string, status: TicketStatus, at: Date): Promise<TicketRecord>;
   assign(context: TenantContext, ticketId: string, membershipId: string | null, at: Date): Promise<TicketRecord>;
+  updateCategory(context: TenantContext, ticketId: string, category: string, at: Date): Promise<TicketRecord>;
   addMessage(context: TenantContext, ticketId: string, input: AddMessageInput): Promise<TicketMessageRecord>;
   findMessageByExternalReference(context: TenantContext, reference: string): Promise<TicketMessageRecord | null>;
   listMessages(context: TenantContext, ticketId: string): Promise<TicketMessageRecord[]>;
@@ -204,19 +213,32 @@ export class SupportService {
 
     return {
       ...page,
-      items: page.items.map((ticket) => ({
-        ...ticket,
-        sla: slaState({
+      items: page.items.map((ticket) => {
+        const pauses = pausesByTicket[ticket.id] ?? [];
+        const sla = slaState({
           calendar,
           openedAt: ticket.openedAt,
           now,
-          pauses: pausesByTicket[ticket.id] ?? [],
+          pauses,
           firstResponseTargetMinutes: ticket.firstResponseTargetMinutes,
           resolutionTargetMinutes: ticket.resolutionTargetMinutes,
           ...(ticket.firstResponseAt ? { firstResponseAt: ticket.firstResponseAt } : {}),
           ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
-        })
-      }))
+        });
+        return {
+          ...ticket,
+          sla,
+          inboxSla: inboxSlaInfo(
+            sla.firstResponse,
+            sla.resolution,
+            ticket.firstResponseAt ?? undefined,
+            ticket.resolvedAt ?? undefined,
+            ticket.openedAt,
+            now,
+            pauses
+          )
+        };
+      })
     };
   }
 
@@ -252,6 +274,15 @@ export class SupportService {
     if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
     if (ticket.status === "closed") throw new SupportError("TICKET_CLOSED");
     return this.repository.assign(context, ticketId, membershipId, now);
+  }
+
+  async updateCategory(context: TenantContext, ticketId: string, category: string, now = new Date()): Promise<TicketRecord> {
+    const trimmed = category.trim();
+    if (trimmed.length === 0 || trimmed.length > 60) throw new SupportError("INVALID_INPUT");
+    const ticket = await this.repository.getTicket(context, ticketId);
+    if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
+    if (ticket.status === "closed") throw new SupportError("TICKET_CLOSED");
+    return this.repository.updateCategory(context, ticketId, trimmed, now);
   }
 
   /**
@@ -341,20 +372,31 @@ export class SupportService {
       this.repository.listAssignableMembers(context)
     ]);
 
+    const sla = slaState({
+      calendar,
+      openedAt: ticket.openedAt,
+      now,
+      pauses,
+      firstResponseTargetMinutes: ticket.firstResponseTargetMinutes,
+      resolutionTargetMinutes: ticket.resolutionTargetMinutes,
+      ...(ticket.firstResponseAt ? { firstResponseAt: ticket.firstResponseAt } : {}),
+      ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
+    });
+
     return {
       ticket,
       messages,
       assignableMembers,
-      sla: slaState({
-        calendar,
-        openedAt: ticket.openedAt,
+      sla,
+      inboxSla: inboxSlaInfo(
+        sla.firstResponse,
+        sla.resolution,
+        ticket.firstResponseAt ?? undefined,
+        ticket.resolvedAt ?? undefined,
+        ticket.openedAt,
         now,
-        pauses,
-        firstResponseTargetMinutes: ticket.firstResponseTargetMinutes,
-        resolutionTargetMinutes: ticket.resolutionTargetMinutes,
-        ...(ticket.firstResponseAt ? { firstResponseAt: ticket.firstResponseAt } : {}),
-        ...(ticket.resolvedAt ? { resolvedAt: ticket.resolvedAt } : {})
-      })
+        pauses
+      )
     };
   }
 

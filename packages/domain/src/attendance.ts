@@ -326,31 +326,17 @@ export function dayOfWeek(date: string): number {
 /**
  * Check if a date is a vacation day for a member.
  */
-export function isVacationDay(
-  date: string,
-  vacations: readonly AttendanceVacation[],
-  membershipId: string
-): boolean {
+export function isVacationDay(date: string, vacations: readonly AttendanceVacation[], membershipId: string): boolean {
   return vacations.some(
-    (v) =>
-      v.membershipId === membershipId &&
-      v.status === "approved" &&
-      date >= v.startDate &&
-      date <= v.endDate
+    (v) => v.membershipId === membershipId && v.status === "approved" && date >= v.startDate && date <= v.endDate
   );
 }
 
 /**
  * Check if a date is an absence day for a member.
  */
-export function isAbsenceDay(
-  date: string,
-  absences: readonly AttendanceAbsence[],
-  membershipId: string
-): boolean {
-  return absences.some(
-    (a) => a.membershipId === membershipId && date >= a.startDate && date <= a.endDate
-  );
+export function isAbsenceDay(date: string, absences: readonly AttendanceAbsence[], membershipId: string): boolean {
+  return absences.some((a) => a.membershipId === membershipId && date >= a.startDate && date <= a.endDate);
 }
 
 /**
@@ -364,11 +350,7 @@ export function hasBlockOverlap(
   membershipId: string
 ): boolean {
   return blocks.some(
-    (b) =>
-      b.membershipId === membershipId &&
-      b.date === date &&
-      b.startTime < endTime &&
-      b.endTime > startTime
+    (b) => b.membershipId === membershipId && b.date === date && b.startTime < endTime && b.endTime > startTime
   );
 }
 
@@ -376,14 +358,7 @@ export function hasBlockOverlap(
  * The status of a day for a member, used for the calendar view.
  */
 export type AttendanceDayStatus =
-  | "worked"
-  | "partial"
-  | "open"
-  | "holiday"
-  | "non_working"
-  | "vacation"
-  | "absence"
-  | "empty";
+  "worked" | "partial" | "open" | "holiday" | "non_working" | "vacation" | "absence" | "empty";
 
 /**
  * Derive the status of a day for calendar rendering.

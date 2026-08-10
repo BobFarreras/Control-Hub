@@ -305,21 +305,18 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     }
   );
 
-  app.delete<{ Params: { id: string } }>(
-    "/api/v1/attendance/holidays/:id",
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:holidays");
-      await attendance.deleteHoliday(context, request.params.id);
-      await writeAudit(database, context, request, {
-        action: "attendance.holiday_deleted",
-        targetType: "attendance_holiday",
-        targetId: request.params.id,
-        outcome: "success"
-      });
-      return reply.code(204).send();
-    }
-  );
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/holidays/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:holidays");
+    await attendance.deleteHoliday(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.holiday_deleted",
+      targetType: "attendance_holiday",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
 
   // Non-working days
 
@@ -340,15 +337,12 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     }
   );
 
-  app.delete<{ Params: { id: string } }>(
-    "/api/v1/attendance/non-working-days/:id",
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:holidays");
-      await attendance.deleteNonWorkingDay(context, request.params.id);
-      return reply.code(204).send();
-    }
-  );
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/non-working-days/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:holidays");
+    await attendance.deleteNonWorkingDay(context, request.params.id);
+    return reply.code(204).send();
+  });
 
   // Vacations
 
@@ -401,21 +395,18 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     }
   );
 
-  app.delete<{ Params: { id: string } }>(
-    "/api/v1/attendance/vacations/:id",
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:vacations");
-      await attendance.deleteVacation(context, request.params.id);
-      await writeAudit(database, context, request, {
-        action: "attendance.vacation_deleted",
-        targetType: "attendance_vacation",
-        targetId: request.params.id,
-        outcome: "success"
-      });
-      return reply.code(204).send();
-    }
-  );
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/vacations/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:vacations");
+    await attendance.deleteVacation(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.vacation_deleted",
+      targetType: "attendance_vacation",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
 
   // Absences
 
@@ -433,39 +424,41 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     }
   );
 
-  app.post<{ Body: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string } }>(
-    "/api/v1/attendance/absences",
-    { schema: absenceSchema },
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:record");
-      const absence = await attendance.createAbsence(context, request.body);
-      await writeAudit(database, context, request, {
-        action: "attendance.absence_created",
-        targetType: "attendance_absence",
-        targetId: absence.id,
-        outcome: "success",
-        metadata: { type: absence.type }
-      });
-      return reply.code(201).send({ absence });
-    }
-  );
+  app.post<{
+    Body: {
+      membershipId: string;
+      startDate: string;
+      endDate: string;
+      type: AttendanceAbsence["type"];
+      documentUrl?: string;
+      notes?: string;
+    };
+  }>("/api/v1/attendance/absences", { schema: absenceSchema }, async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:record");
+    const absence = await attendance.createAbsence(context, request.body);
+    await writeAudit(database, context, request, {
+      action: "attendance.absence_created",
+      targetType: "attendance_absence",
+      targetId: absence.id,
+      outcome: "success",
+      metadata: { type: absence.type }
+    });
+    return reply.code(201).send({ absence });
+  });
 
-  app.delete<{ Params: { id: string } }>(
-    "/api/v1/attendance/absences/:id",
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:manage");
-      await attendance.deleteAbsence(context, request.params.id);
-      await writeAudit(database, context, request, {
-        action: "attendance.absence_deleted",
-        targetType: "attendance_absence",
-        targetId: request.params.id,
-        outcome: "success"
-      });
-      return reply.code(204).send();
-    }
-  );
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/absences/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:manage");
+    await attendance.deleteAbsence(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.absence_deleted",
+      targetType: "attendance_absence",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
 
   // Blocks
 
@@ -501,19 +494,16 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     }
   );
 
-  app.delete<{ Params: { id: string } }>(
-    "/api/v1/attendance/blocks/:id",
-    async (request, reply) => {
-      const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:manage");
-      await attendance.deleteBlock(context, request.params.id);
-      await writeAudit(database, context, request, {
-        action: "attendance.block_deleted",
-        targetType: "attendance_block",
-        targetId: request.params.id,
-        outcome: "success"
-      });
-      return reply.code(204).send();
-    }
-  );
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/blocks/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:manage");
+    await attendance.deleteBlock(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.block_deleted",
+      targetType: "attendance_block",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
 }

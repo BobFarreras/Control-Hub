@@ -124,19 +124,47 @@ export type AttendanceRepository = {
   deleteNonWorkingDay(context: TenantContext, id: string): Promise<void>;
 
   listVacations(context: TenantContext, range: AttendanceRange): Promise<AttendanceVacation[]>;
-  listVacationsByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceVacation[]>;
-  createVacation(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; notes?: string }): Promise<AttendanceVacation>;
-  updateVacationStatus(context: TenantContext, input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }): Promise<AttendanceVacation>;
+  listVacationsByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceVacation[]>;
+  createVacation(
+    context: TenantContext,
+    input: { membershipId: string; startDate: string; endDate: string; notes?: string }
+  ): Promise<AttendanceVacation>;
+  updateVacationStatus(
+    context: TenantContext,
+    input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }
+  ): Promise<AttendanceVacation>;
   deleteVacation(context: TenantContext, vacationId: string): Promise<void>;
 
   listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]>;
-  listAbsencesByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceAbsence[]>;
-  createAbsence(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string; createdByMembershipId: string }): Promise<AttendanceAbsence>;
+  listAbsencesByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceAbsence[]>;
+  createAbsence(
+    context: TenantContext,
+    input: {
+      membershipId: string;
+      startDate: string;
+      endDate: string;
+      type: AttendanceAbsence["type"];
+      documentUrl?: string;
+      notes?: string;
+      createdByMembershipId: string;
+    }
+  ): Promise<AttendanceAbsence>;
   deleteAbsence(context: TenantContext, absenceId: string): Promise<void>;
 
   listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]>;
   listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]>;
-  createBlock(context: TenantContext, input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }): Promise<AttendanceBlock>;
+  createBlock(
+    context: TenantContext,
+    input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }
+  ): Promise<AttendanceBlock>;
   deleteBlock(context: TenantContext, blockId: string): Promise<void>;
 };
 
@@ -253,7 +281,14 @@ export class AttendanceService {
     const member = members.find((m) => m.membershipId === membershipId);
     const sessions = deriveSessions(events, timeZone);
     const days = summariseDays(sessions);
-    return { membershipId, memberName: member?.memberName ?? membershipId, days, sessions, totalMinutes: totalMinutes(days), events };
+    return {
+      membershipId,
+      memberName: member?.memberName ?? membershipId,
+      days,
+      sessions,
+      totalMinutes: totalMinutes(days),
+      events
+    };
   }
 
   /** Everybody's, for the export the accountancy reads. */
@@ -356,19 +391,29 @@ export class AttendanceService {
     return this.repository.listVacations(context, range);
   }
 
-  async listVacationsByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceVacation[]> {
+  async listVacationsByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceVacation[]> {
     const own = membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listVacationsByMember(context, membershipId, range);
   }
 
-  async createVacation(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; notes?: string }): Promise<AttendanceVacation> {
+  async createVacation(
+    context: TenantContext,
+    input: { membershipId: string; startDate: string; endDate: string; notes?: string }
+  ): Promise<AttendanceVacation> {
     const own = input.membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.createVacation(context, input);
   }
 
-  async updateVacationStatus(context: TenantContext, input: { vacationId: string; status: "approved" | "rejected" }): Promise<AttendanceVacation> {
+  async updateVacationStatus(
+    context: TenantContext,
+    input: { vacationId: string; status: "approved" | "rejected" }
+  ): Promise<AttendanceVacation> {
     if (!hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.updateVacationStatus(context, { ...input, approvedByMembershipId: context.membershipId });
   }
@@ -383,16 +428,34 @@ export class AttendanceService {
     return this.repository.listAbsences(context, range);
   }
 
-  async listAbsencesByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceAbsence[]> {
+  async listAbsencesByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceAbsence[]> {
     const own = membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listAbsencesByMember(context, membershipId, range);
   }
 
-  async createAbsence(context: TenantContext, input: { membershipId: string; startDate: string; endDate: string; type: AttendanceAbsence["type"]; documentUrl?: string; notes?: string; createdByMembershipId?: string }): Promise<AttendanceAbsence> {
+  async createAbsence(
+    context: TenantContext,
+    input: {
+      membershipId: string;
+      startDate: string;
+      endDate: string;
+      type: AttendanceAbsence["type"];
+      documentUrl?: string;
+      notes?: string;
+      createdByMembershipId?: string;
+    }
+  ): Promise<AttendanceAbsence> {
     const own = input.membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
-    return this.repository.createAbsence(context, { ...input, createdByMembershipId: input.createdByMembershipId ?? context.membershipId });
+    return this.repository.createAbsence(context, {
+      ...input,
+      createdByMembershipId: input.createdByMembershipId ?? context.membershipId
+    });
   }
 
   async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
@@ -405,13 +468,20 @@ export class AttendanceService {
     return this.repository.listBlocks(context, range);
   }
 
-  async listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]> {
+  async listBlocksByMember(
+    context: TenantContext,
+    membershipId: string,
+    range: AttendanceRange
+  ): Promise<AttendanceBlock[]> {
     const own = membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listBlocksByMember(context, membershipId, range);
   }
 
-  async createBlock(context: TenantContext, input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }): Promise<AttendanceBlock> {
+  async createBlock(
+    context: TenantContext,
+    input: { membershipId: string; date: string; startTime: string; endTime: string; reason: string }
+  ): Promise<AttendanceBlock> {
     const own = input.membershipId === context.membershipId;
     if (!own && !hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.createBlock(context, input);

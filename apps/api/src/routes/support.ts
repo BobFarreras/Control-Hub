@@ -167,6 +167,38 @@ export function registerSupportRoutes({ app, database, auth, support }: SupportC
     }
   );
 
+  app.patch<{ Params: { ticketId: string }; Body: { category: string } }>(
+    "/api/v1/support/tickets/:ticketId/category",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["ticketId"],
+          properties: { ticketId: { type: "string", format: "uuid" } }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["category"],
+          properties: { category: { type: "string", minLength: 1, maxLength: 60 } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "tickets:manage");
+      const ticket = await support.updateCategory(context, request.params.ticketId, request.body.category);
+      await writeAudit(database, context, request, {
+        action: "ticket.category.changed",
+        targetType: "ticket",
+        targetId: ticket.id,
+        outcome: "success",
+        metadata: { category: ticket.category }
+      });
+      return { ticket };
+    }
+  );
+
   app.post<{
     Params: { ticketId: string };
     Body: { body: string; visibility: "internal" | "customer"; externalReference?: string };
