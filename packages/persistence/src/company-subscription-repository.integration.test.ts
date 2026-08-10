@@ -74,11 +74,54 @@ suite("PostgresCompanySubscriptionRepository", () => {
       paymentMethodLabel: "Visa ···· 4242",
       secretManagerUrl: "https://vault.example.test/items/openai"
     });
+    expect(typeof created.amountMinor).toBe("number");
 
     expect(await repository.list(context(tenantA), { renewalState: "due_soon" })).toMatchObject([
       { id: created.id, ownerName: "Subscription Owner", quantity: 2, costCenter: "OPS" }
     ]);
     expect(await repository.list(context(tenantB))).toEqual([]);
+    const edited = await repository.update(context(tenantA), {
+      subscriptionId: created.id,
+      expectedUpdatedAt: created.updatedAt,
+      provider: created.provider,
+      serviceName: "API Platform Business",
+      category: created.category,
+      currency: created.currency,
+      amountMinor: created.amountMinor,
+      interval: created.interval,
+      renewalAt: created.renewalAt,
+      renewalAlertDays: created.renewalAlertDays,
+      autoRenew: created.autoRenew,
+      websiteUrl: created.websiteUrl,
+      notes: created.notes,
+      accountEmail: created.accountEmail,
+      ownerMembershipId: created.ownerMembershipId,
+      quantity: created.quantity,
+      startedAt: created.startedAt,
+      trialEndsAt: created.trialEndsAt,
+      cancelBeforeAt: created.cancelBeforeAt,
+      costCenter: created.costCenter,
+      paymentMethodLabel: created.paymentMethodLabel,
+      secretManagerUrl: created.secretManagerUrl
+    });
+    expect(edited.serviceName).toBe("API Platform Business");
+    await expect(
+      repository.update(context(tenantA), {
+        subscriptionId: created.id,
+        expectedUpdatedAt: created.updatedAt,
+        provider: created.provider,
+        serviceName: "Stale edit",
+        category: created.category,
+        currency: created.currency,
+        amountMinor: created.amountMinor,
+        interval: created.interval,
+        renewalAt: created.renewalAt,
+        renewalAlertDays: created.renewalAlertDays,
+        autoRenew: created.autoRenew,
+        websiteUrl: created.websiteUrl,
+        notes: created.notes
+      })
+    ).rejects.toMatchObject({ code: "COMPANY_SUBSCRIPTION_CONFLICT" });
     await expect(
       repository.transition(context(tenantA), {
         subscriptionId: created.id,
@@ -117,6 +160,6 @@ suite("PostgresCompanySubscriptionRepository", () => {
           { type: string }[]
         >`select type from company_subscription_events where company_subscription_id = ${created.id} order by effective_at, created_at`
     );
-    expect(events.map((event) => event.type)).toEqual(["created", "paused", "resumed"]);
+    expect(events.map((event) => event.type)).toEqual(["created", "updated", "paused", "resumed"]);
   });
 });

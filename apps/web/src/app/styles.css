@@ -2552,6 +2552,50 @@ main {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
+.expense-service-cell {
+  min-width: 0;
+}
+.expense-service-cell strong,
+.expense-service-cell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-service-cell small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.expense-money {
+  white-space: nowrap;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+.renewal-due {
+  color: var(--warning);
+  font-weight: 650;
+}
+.table-action-group {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.table-action-group .icon-button {
+  flex: 0 0 32px;
+}
+.table-action-group .icon-button.danger {
+  color: var(--danger);
+}
+.expense-dialog {
+  width: min(860px, calc(100vw - 32px));
+}
+.expense-dialog .commerce-form {
+  max-height: min(68vh, 720px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .checkbox-label {
   grid-template-columns: auto 1fr;
   align-items: center;

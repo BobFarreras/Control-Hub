@@ -142,7 +142,8 @@ La migracio mantindra els identificadors i les files existents; no es reutilitza
 El registre ampliat conte:
 
 - proveidor, servei o pla, categoria i estat;
-- correu o usuari del compte, tractat com a dada sensible;
+- correu o usuari del compte, tractat com a dada sensible; l'identificador no pressuposa format
+  d'email ni es transforma a minuscules, perquè els usuaris de cada proveidor poden ser case-sensitive;
 - responsable intern amb clau forana composta `(tenant_id, owner_membership_id)`;
 - import en unitats menors, moneda, periodicitat i quantitat de llicencies;
 - inici, fi de trial, proper cobrament o renovacio, data limit de cancel·lacio i cancel·lacio;
@@ -208,3 +209,10 @@ Indexos previstos:
   (`activate`, `pause`, `resume` o `cancel`), data efectiva opcional i motiu obligatori per
   cancel·lar. El cas d'us resol la transicio i la persistencia compara l'estat esperat abans
   d'escriure l'event.
+- `PATCH /api/v1/company-subscriptions/:subscriptionId` accepta camps parcials i exigeix
+  `expectedUpdatedAt`. El cas d'us combina el canvi amb l'estat vigent, revalida el contracte
+  complet i la persistencia rebutja versions obsoletes abans de crear l'event `updated`.
+- `GET /api/v1/company-subscriptions/export` aplica els mateixos filtres i permisos que la
+  taula. Genera un Excel amb capçalera congelada, autofiltres, formats de data i full de
+  metadades; neutralitza formules i elimina totes les columnes financeres sense
+  `financials:read`. No exporta notes ni l'enllaç al gestor de secrets.

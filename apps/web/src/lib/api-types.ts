@@ -378,14 +378,30 @@ export type CompanySubscription = {
   provider: string;
   serviceName: string;
   category: string;
-  status: "active" | "trial" | "canceled";
-  currency: string;
-  amountMinor: number;
-  interval: "monthly" | "quarterly" | "semiannual" | "annual";
+  status: "active" | "trial" | "paused" | "canceled";
   renewalAt: string | null;
   renewalAlertDays: number;
   autoRenew: boolean;
   websiteUrl: string | null;
+  notes: string | null;
+  accountEmail: string | null;
+  ownerMembershipId: string | null;
+  ownerName: string | null;
+  quantity: number;
+  startedAt: string | null;
+  trialEndsAt: string | null;
+  cancelBeforeAt: string | null;
+  canceledAt: string | null;
+  costCenter: string | null;
+  paymentMethodLabel: string | null;
+  secretManagerUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  financials?: {
+    currency: string;
+    amountMinor: number;
+    interval: "monthly" | "quarterly" | "semiannual" | "annual";
+  };
 };
 
 /** Response envelopes, named after the route that returns them. */

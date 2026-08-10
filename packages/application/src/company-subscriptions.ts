@@ -75,6 +75,14 @@ export type TransitionCompanySubscriptionInput = {
   effectiveAt: Date;
   reason?: string;
 };
+export type UpdateCompanySubscriptionInput = Partial<Omit<CreateCompanySubscription, "status">> & {
+  subscriptionId: string;
+  expectedUpdatedAt: Date;
+};
+export type PersistCompanySubscriptionUpdate = Omit<CreateCompanySubscription, "status"> & {
+  subscriptionId: string;
+  expectedUpdatedAt: Date;
+};
 
 export class CompanySubscriptionError extends Error {
   constructor(
@@ -92,6 +100,7 @@ export class CompanySubscriptionError extends Error {
 export interface CompanySubscriptionRepository {
   list(context: TenantContext, filters?: CompanySubscriptionFilters): Promise<CompanySubscriptionRecord[]>;
   create(context: TenantContext, input: CreateCompanySubscription): Promise<CompanySubscriptionRecord>;
+  update(context: TenantContext, input: PersistCompanySubscriptionUpdate): Promise<CompanySubscriptionRecord>;
   getById(context: TenantContext, id: string): Promise<CompanySubscriptionRecord | null>;
   transition(
     context: TenantContext,
@@ -107,6 +116,63 @@ function validDate(value: Date | null | undefined): value is Date {
   return value instanceof Date && !Number.isNaN(value.getTime());
 }
 
+function normalize(input: CreateCompanySubscription): CreateCompanySubscription {
+  const provider = input.provider.trim();
+  const serviceName = input.serviceName.trim();
+  const currency = input.currency.trim().toUpperCase();
+  const websiteUrl = input.websiteUrl?.trim() || null;
+  const notes = input.notes?.trim() || null;
+  const accountEmail = input.accountEmail?.trim() || null;
+  const costCenter = input.costCenter?.trim() || null;
+  const paymentMethodLabel = input.paymentMethodLabel?.trim() || null;
+  const secretManagerUrl = input.secretManagerUrl?.trim() || null;
+  const quantity = input.quantity ?? 1;
+  if (
+    !provider ||
+    provider.length > 160 ||
+    !serviceName ||
+    serviceName.length > 160 ||
+    !companySubscriptionCategories.includes(input.category) ||
+    !companySubscriptionStatuses.includes(input.status) ||
+    !/^[A-Z]{3}$/.test(currency) ||
+    !Number.isSafeInteger(input.amountMinor) ||
+    input.amountMinor < 0 ||
+    !["monthly", "quarterly", "semiannual", "annual"].includes(input.interval) ||
+    !Number.isInteger(input.renewalAlertDays) ||
+    input.renewalAlertDays < 0 ||
+    input.renewalAlertDays > 365 ||
+    (websiteUrl && (!/^https:\/\//i.test(websiteUrl) || websiteUrl.length > 2048)) ||
+    (notes && notes.length > 4000) ||
+    (accountEmail && accountEmail.length > 320) ||
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    quantity > 1_000_000 ||
+    (costCenter && costCenter.length > 120) ||
+    (paymentMethodLabel && paymentMethodLabel.length > 120) ||
+    (secretManagerUrl && (!/^https:\/\//i.test(secretManagerUrl) || secretManagerUrl.length > 2048)) ||
+    (input.startedAt !== undefined && input.startedAt !== null && !validDate(input.startedAt)) ||
+    (input.trialEndsAt !== undefined && input.trialEndsAt !== null && !validDate(input.trialEndsAt)) ||
+    (input.cancelBeforeAt !== undefined && input.cancelBeforeAt !== null && !validDate(input.cancelBeforeAt)) ||
+    (input.renewalAt !== null && !validDate(input.renewalAt)) ||
+    (validDate(input.startedAt) && validDate(input.trialEndsAt) && input.trialEndsAt < input.startedAt) ||
+    (validDate(input.startedAt) && validDate(input.renewalAt) && input.renewalAt < input.startedAt)
+  )
+    throw new CompanySubscriptionError("INVALID_INPUT");
+  return {
+    ...input,
+    provider,
+    serviceName,
+    currency,
+    websiteUrl,
+    notes,
+    accountEmail,
+    quantity,
+    costCenter,
+    paymentMethodLabel,
+    secretManagerUrl
+  };
+}
+
 export class CompanySubscriptionService {
   constructor(private readonly repository: CompanySubscriptionRepository) {}
   list(context: TenantContext, filters: CompanySubscriptionFilters = {}) {
@@ -120,59 +186,43 @@ export class CompanySubscriptionService {
     return this.repository.list(context, filters);
   }
   create(context: TenantContext, input: CreateCompanySubscription) {
-    const provider = input.provider.trim();
-    const serviceName = input.serviceName.trim();
-    const currency = input.currency.trim().toUpperCase();
-    const websiteUrl = input.websiteUrl?.trim() || null;
-    const notes = input.notes?.trim() || null;
-    const accountEmail = input.accountEmail?.trim().toLowerCase() || null;
-    const costCenter = input.costCenter?.trim() || null;
-    const paymentMethodLabel = input.paymentMethodLabel?.trim() || null;
-    const secretManagerUrl = input.secretManagerUrl?.trim() || null;
-    const quantity = input.quantity ?? 1;
-    if (
-      !provider ||
-      provider.length > 160 ||
-      !serviceName ||
-      serviceName.length > 160 ||
-      !companySubscriptionCategories.includes(input.category) ||
-      !["active", "trial"].includes(input.status) ||
-      !/^[A-Z]{3}$/.test(currency) ||
-      !Number.isSafeInteger(input.amountMinor) ||
-      input.amountMinor < 0 ||
-      !["monthly", "quarterly", "semiannual", "annual"].includes(input.interval) ||
-      !Number.isInteger(input.renewalAlertDays) ||
-      input.renewalAlertDays < 0 ||
-      input.renewalAlertDays > 365 ||
-      (websiteUrl && (!/^https:\/\//i.test(websiteUrl) || websiteUrl.length > 2048)) ||
-      (notes && notes.length > 4000) ||
-      (accountEmail && (!/^\S+@\S+\.\S+$/.test(accountEmail) || accountEmail.length > 320)) ||
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 1_000_000 ||
-      (costCenter && costCenter.length > 120) ||
-      (paymentMethodLabel && paymentMethodLabel.length > 120) ||
-      (secretManagerUrl && (!/^https:\/\//i.test(secretManagerUrl) || secretManagerUrl.length > 2048)) ||
-      (input.startedAt !== undefined && input.startedAt !== null && !validDate(input.startedAt)) ||
-      (input.trialEndsAt !== undefined && input.trialEndsAt !== null && !validDate(input.trialEndsAt)) ||
-      (input.cancelBeforeAt !== undefined && input.cancelBeforeAt !== null && !validDate(input.cancelBeforeAt)) ||
-      (input.renewalAt !== null && !validDate(input.renewalAt)) ||
-      (validDate(input.startedAt) && validDate(input.trialEndsAt) && input.trialEndsAt < input.startedAt) ||
-      (validDate(input.startedAt) && validDate(input.renewalAt) && input.renewalAt < input.startedAt)
-    )
-      throw new CompanySubscriptionError("INVALID_INPUT");
-    return this.repository.create(context, {
-      ...input,
-      provider,
-      serviceName,
-      currency,
-      websiteUrl,
-      notes,
-      accountEmail,
-      quantity,
-      costCenter,
-      paymentMethodLabel,
-      secretManagerUrl
+    if (!["active", "trial"].includes(input.status)) throw new CompanySubscriptionError("INVALID_INPUT");
+    return this.repository.create(context, normalize(input));
+  }
+
+  async update(context: TenantContext, input: UpdateCompanySubscriptionInput) {
+    if (!validDate(input.expectedUpdatedAt)) throw new CompanySubscriptionError("INVALID_INPUT");
+    const current = await this.repository.getById(context, input.subscriptionId);
+    if (!current) throw new CompanySubscriptionError("COMPANY_SUBSCRIPTION_NOT_FOUND");
+    const normalized = normalize({
+      provider: input.provider ?? current.provider,
+      serviceName: input.serviceName ?? current.serviceName,
+      category: input.category ?? current.category,
+      status: current.status,
+      currency: input.currency ?? current.currency,
+      amountMinor: input.amountMinor ?? current.amountMinor,
+      interval: input.interval ?? current.interval,
+      renewalAt: input.renewalAt !== undefined ? input.renewalAt : current.renewalAt,
+      renewalAlertDays: input.renewalAlertDays ?? current.renewalAlertDays,
+      autoRenew: input.autoRenew ?? current.autoRenew,
+      websiteUrl: input.websiteUrl !== undefined ? input.websiteUrl : current.websiteUrl,
+      notes: input.notes !== undefined ? input.notes : current.notes,
+      accountEmail: input.accountEmail !== undefined ? input.accountEmail : current.accountEmail,
+      ownerMembershipId: input.ownerMembershipId !== undefined ? input.ownerMembershipId : current.ownerMembershipId,
+      quantity: input.quantity ?? current.quantity,
+      startedAt: input.startedAt !== undefined ? input.startedAt : current.startedAt,
+      trialEndsAt: input.trialEndsAt !== undefined ? input.trialEndsAt : current.trialEndsAt,
+      cancelBeforeAt: input.cancelBeforeAt !== undefined ? input.cancelBeforeAt : current.cancelBeforeAt,
+      costCenter: input.costCenter !== undefined ? input.costCenter : current.costCenter,
+      paymentMethodLabel:
+        input.paymentMethodLabel !== undefined ? input.paymentMethodLabel : current.paymentMethodLabel,
+      secretManagerUrl: input.secretManagerUrl !== undefined ? input.secretManagerUrl : current.secretManagerUrl
+    });
+    const { status: _status, ...fields } = normalized;
+    return this.repository.update(context, {
+      ...fields,
+      subscriptionId: input.subscriptionId,
+      expectedUpdatedAt: input.expectedUpdatedAt
     });
   }
 

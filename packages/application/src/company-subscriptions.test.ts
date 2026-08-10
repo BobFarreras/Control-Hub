@@ -120,4 +120,45 @@ describe("CompanySubscriptionService", () => {
       })
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
+  it("normalizes edits and preserves the expected version", async () => {
+    const current = {
+      id: "subscription",
+      ...valid,
+      currency: "EUR",
+      accountEmail: null,
+      ownerMembershipId: null,
+      ownerName: null,
+      quantity: 1,
+      startedAt: null,
+      trialEndsAt: null,
+      cancelBeforeAt: null,
+      canceledAt: null,
+      costCenter: null,
+      paymentMethodLabel: null,
+      secretManagerUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const update = vi
+      .fn<CompanySubscriptionRepository["update"]>()
+      .mockResolvedValue({ ...current, provider: "OpenAI" });
+    const service = new CompanySubscriptionService({
+      getById: vi.fn().mockResolvedValue(current),
+      update
+    } as unknown as CompanySubscriptionRepository);
+    await service.update(context, {
+      subscriptionId: current.id,
+      expectedUpdatedAt: current.updatedAt,
+      provider: " OpenAI ",
+      accountEmail: " Workspace-Admin "
+    });
+    expect(update).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        provider: "OpenAI",
+        accountEmail: "Workspace-Admin",
+        expectedUpdatedAt: current.updatedAt
+      })
+    );
+  });
 });

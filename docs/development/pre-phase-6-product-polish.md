@@ -19,7 +19,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 4 — Fitxa de client com a vista 360.
 - [x] Increment 5 — Simplificar el cataleg comercial.
 - [x] Increment 6 — Serveis, subscripcions i compres dels clients.
-- [ ] Increment 7 — Subscripcions contractades per l'empresa.
+- [x] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
 - [ ] Increment 9 — Safata de suport explicable.
 - [x] Increment 10 — Jornada amb calendari laboral.
@@ -218,8 +218,10 @@ Progres intern:
 - [x] Camps, invariants, permisos i pla de migracio additiva documentats.
 - [x] Migracio, backfill idempotent i persistencia.
 - [x] API i casos d'us.
-- [ ] Taula generalitzada, filtres, edicio i cicle de vida.
-- [ ] Alertes, exportacio i proves E2E.
+- [x] Taula generalitzada, filtres, edicio i cicle de vida.
+  - [x] Taula generalitzada, filtres integrats, alta completa i cicle de vida.
+  - [x] Edicio segura amb control de concurrencia i event `updated`.
+- [x] Alertes, exportacio i proves E2E.
 
 Canviar el nom visible a **Eines i despeses recurrents** per evitar confondre-les amb clients.
 Taula recomanada:

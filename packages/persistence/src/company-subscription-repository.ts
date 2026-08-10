@@ -5,13 +5,14 @@ import {
   type CompanySubscriptionRecord,
   type CompanySubscriptionRepository,
   type CreateCompanySubscription,
-  type TransitionCompanySubscriptionInput
+  type TransitionCompanySubscriptionInput,
+  type PersistCompanySubscriptionUpdate
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext } from "@control-hub/domain";
 
 const select = `select cs.id, cs.provider, cs.service_name as "serviceName", cs.category, cs.status,
-  cs.currency, cs.amount_minor as "amountMinor", cs.billing_interval as interval,
+  cs.currency, cs.amount_minor::float8 as "amountMinor", cs.billing_interval as interval,
   cs.renewal_at as "renewalAt", cs.renewal_alert_days as "renewalAlertDays",
   cs.auto_renew as "autoRenew", cs.website_url as "websiteUrl", cs.notes,
   cs.account_email as "accountEmail", cs.owner_membership_id as "ownerMembershipId",
@@ -69,7 +70,7 @@ export class PostgresCompanySubscriptionRepository implements CompanySubscriptio
           cancel_before_at, cost_center, payment_method_label, secret_manager_url
         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
         returning id, provider, service_name as "serviceName", category, status, currency,
-          amount_minor as "amountMinor", billing_interval as interval, renewal_at as "renewalAt",
+          amount_minor::float8 as "amountMinor", billing_interval as interval, renewal_at as "renewalAt",
           renewal_alert_days as "renewalAlertDays", auto_renew as "autoRenew",
           website_url as "websiteUrl", notes, account_email as "accountEmail",
           owner_membership_id as "ownerMembershipId", null::text as "ownerName", quantity,
@@ -124,6 +125,45 @@ export class PostgresCompanySubscriptionRepository implements CompanySubscriptio
     return rows[0] ?? null;
   }
 
+  async update(context: TenantContext, input: PersistCompanySubscriptionUpdate) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const updated = await tx<{ id: string }[]>`
+          update company_subscriptions set
+            provider = ${input.provider}, service_name = ${input.serviceName}, category = ${input.category},
+            currency = ${input.currency}, amount_minor = ${input.amountMinor}, billing_interval = ${input.interval},
+            renewal_at = ${input.renewalAt}, renewal_alert_days = ${input.renewalAlertDays},
+            auto_renew = ${input.autoRenew}, website_url = ${input.websiteUrl}, notes = ${input.notes},
+            account_email = ${input.accountEmail ?? null}, owner_membership_id = ${input.ownerMembershipId ?? null},
+            quantity = ${input.quantity ?? 1}, started_at = ${input.startedAt ?? null},
+            trial_ends_at = ${input.trialEndsAt ?? null}, cancel_before_at = ${input.cancelBeforeAt ?? null},
+            cost_center = ${input.costCenter ?? null}, payment_method_label = ${input.paymentMethodLabel ?? null},
+            secret_manager_url = ${input.secretManagerUrl ?? null},
+            updated_at = greatest(clock_timestamp(), updated_at + interval '1 millisecond')
+          where tenant_id = ${context.tenantId} and id = ${input.subscriptionId}
+            and date_trunc('milliseconds', updated_at) = ${input.expectedUpdatedAt}
+          returning id
+        `;
+        if (!updated[0]) throw new CompanySubscriptionError("COMPANY_SUBSCRIPTION_CONFLICT");
+        await tx`
+          insert into company_subscription_events
+            (id, tenant_id, company_subscription_id, actor_user_id, type, effective_at)
+          values (${randomUUID()}, ${context.tenantId}, ${input.subscriptionId}, ${context.userId}, 'updated', now())
+        `;
+        const rows = await tx.unsafe<CompanySubscriptionRecord[]>(`${select} where cs.tenant_id = $1 and cs.id = $2`, [
+          context.tenantId,
+          input.subscriptionId
+        ]);
+        return rows[0]!;
+      });
+    } catch (error) {
+      if (error instanceof CompanySubscriptionError) throw error;
+      if (typeof error === "object" && error && "code" in error && error.code === "23503")
+        throw new CompanySubscriptionError("COMPANY_SUBSCRIPTION_REFERENCE_INVALID");
+      throw error;
+    }
+  }
+
   transition(
     context: TenantContext,
     input: TransitionCompanySubscriptionInput & {
@@ -138,7 +178,7 @@ export class PostgresCompanySubscriptionRepository implements CompanySubscriptio
          set status = $4, canceled_at = case when $4 = 'canceled' then $5 else null end, updated_at = now()
          where cs.tenant_id = $1 and cs.id = $2 and cs.status = $3
          returning cs.id, cs.provider, cs.service_name as "serviceName", cs.category, cs.status,
-           cs.currency, cs.amount_minor as "amountMinor", cs.billing_interval as interval,
+           cs.currency, cs.amount_minor::float8 as "amountMinor", cs.billing_interval as interval,
            cs.renewal_at as "renewalAt", cs.renewal_alert_days as "renewalAlertDays",
            cs.auto_renew as "autoRenew", cs.website_url as "websiteUrl", cs.notes,
            cs.account_email as "accountEmail", cs.owner_membership_id as "ownerMembershipId",

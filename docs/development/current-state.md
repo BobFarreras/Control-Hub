@@ -82,8 +82,7 @@
 > actius, neutralitza formules, inclou metadades i omet totes les columnes monetaries sense
 > `financials:read`. L'E2E autenticat crea un servei propi, el pausa, el repren, el cancel·la
 > amb motiu, el filtra des de la capçalera i descarrega l'Excel real; pot repetir-se sense
-> dependre de l'estat del seed. L'increment 6 queda tancat i el punt de continuacio es
-> l'increment 7, subscripcions contractades per l'empresa.
+> dependre de l'estat del seed. L'increment 6 queda tancat.
 > L'increment 7 ha començat amb la decisio COM-3 aprovada: `company_subscriptions` evoluciona
 > de manera additiva i conserva IDs i dades existents. El model ampliat separa inventari
 > operatiu i imports financers, incorpora compte, responsable, llicencies, centre de cost,
@@ -98,8 +97,25 @@
 > `activate`, `pause`, `resume` i `cancel`; la cancel·lacio exigeix motiu, les escriptures comparen
 > l'estat esperat i totes les mutacions queden auditades sense copiar dades sensibles. La lectura
 > requereix `subscriptions:manage` i nomes exposa import, moneda i periodicitat sota `financials`
-> quan també hi ha `financials:read`. El següent subpas es la taula generalitzada, els filtres,
-> l'edicio i el cicle de vida a la UI.
+> quan també hi ha `financials:read`. La pantalla ja es diu **Eines i despeses recurrents** i
+> reutilitza `SmartDataTable`: filtres d'estat, categoria i renovacio dins les capçaleres,
+> ordenacio, paginacio i preferencies de columnes. Mostra compte, responsable, llicencies,
+> renovacio, cost condicionat al permis i accessos directes a la plataforma i al gestor de
+> secrets. L'alta recull el contracte operatiu complet i la taula permet activar, pausar,
+> reprendre i cancel·lar amb motiu. L'edicio envia nomes els camps modificables amb
+> `expectedUpdatedAt`; el cas d'us recompon i revalida el contracte complet, la persistencia
+> rebutja versions obsoletes i registra l'event append-only `updated`. Les renovacions dins la
+> finestra propia de cada contracte es destaquen i es poden filtrar, igual que els registres
+> actius sense data de renovacio. L'exportacio Excel conserva aquests filtres, neutralitza
+> formules, inclou metadades i omet imports, moneda i periodicitat sense `financials:read`; tampoc
+> exporta notes ni l'enllaç al gestor de secrets. L'E2E autenticat cobreix alta, edicio, pausa,
+> represa, cancel·lacio motivada, filtre i descarrega. L'adaptador converteix explicitament
+> `amount_minor` (PostgreSQL `bigint`) a un nombre segur abans d'entrar al cas d'us, de manera que
+> l'edicio revalida el mateix contracte numeric que l'alta. El camp de compte accepta tant correu
+> com usuari de plataforma, tal com fixa COM-3, i les altes, edicions i transicions informen amb
+> el sistema global de toasts en lloc de banners locals. L'increment 7 queda tancat i el punt de
+> continuacio es l'increment 9, la safata de suport explicable, ja que l'increment 8 consta com
+> implementat.
 
 ## Punt de projecte
 
