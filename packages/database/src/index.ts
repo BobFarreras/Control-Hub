@@ -12,7 +12,11 @@ export async function checkDatabase(client: ReturnType<typeof createDatabaseClie
 
 export type DatabaseClient = ReturnType<typeof createDatabaseClient>;
 
-export async function withTenant<T>(client: DatabaseClient, tenantId: string, operation: (transaction: postgres.TransactionSql) => Promise<T>): Promise<T> {
+export async function withTenant<T>(
+  client: DatabaseClient,
+  tenantId: string,
+  operation: (transaction: postgres.TransactionSql) => Promise<T>
+): Promise<T> {
   const result = await client.begin(async (transaction) => {
     await transaction`select set_config('app.tenant_id', ${tenantId}, true)`;
     return operation(transaction);

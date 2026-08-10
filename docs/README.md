@@ -14,7 +14,8 @@
 - `specifications/`: contractes implementables.
 - `security/`: amenaces i controls.
 - `runbooks/`: operacio i resposta.
-- `templates/`: formats obligatoris.
+- `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
+  (`templates/session-prompt-template.md`).
 
 La documentacio canvia en la mateixa PR que el comportament afectat.
 
@@ -22,6 +23,15 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 
 - `specifications/crm.md`: leads, clients i activitat comercial.
 - `specifications/commerce.md`: productes, plans, preus, subscripcions i metriques.
+- `specifications/support.md`: tickets, SLA amb horari laboral i incidencies. Aprovada,
+  correspon a la Fase 5.
+- `specifications/attendance.md`: registre de jornada, correccions i conciliacio contra hores
+  imputades. Aprovada, Fase 5C. Requereix confirmacio de la gestoria.
+- `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i
+  marge. Aprovada, implementada com a Fase 5B darrere la flag `projects_and_time`.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
-- `development/current-state.md`: handoff, estat implementat i punt de continuacio.
+- `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El
+  primer document a llegir en obrir una sessio.**
+- `development/troubleshooting.md`: fallades reals ja diagnosticades, amb simptoma, causa i
+  solucio. Consulta-l'ho abans de dedicar temps a un simptoma estrany.

@@ -1,0 +1,9 @@
+{
+  "//": "A project of its own for the Playwright suite. Before this the specs were linted through typescript-eslint's `allowDefaultProject`, which accepts at most eight files: adding the ninth spec broke lint for the whole repository with an error that says nothing about the cause. A real tsconfig also means the suite is type-checked with the same strictness as the rest.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

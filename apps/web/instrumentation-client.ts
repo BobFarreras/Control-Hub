@@ -1,0 +1,18 @@
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+  enabled: process.env.NODE_ENV === "production",
+
+  tracesSampleRate: 0.1,
+
+  /**
+   * Set this to the Vercel or production URL if deploying outside Vercel.
+   * For local development, this is not used.
+   */
+  replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 1.0
+});
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

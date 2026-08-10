@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      args: { APP: web }
+      target: web
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      args: { APP: api }
+      target: api
     environment:
       NODE_ENV: production
       API_HOST: 0.0.0.0
@@ -64,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      args: { APP: worker }
+      target: worker
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
@@ -86,8 +86,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      args: { APP: database }
-    command: ["pnpm", "--filter", "@control-hub/database", "migrate"]
+      target: migrate
     environment:
       DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}@postgres:5432/control_hub
     depends_on:

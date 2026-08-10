@@ -16,9 +16,15 @@ for (const locale of ["ca", "es", "en"] as const) {
       await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
       await expect(page.getByRole("heading", { name: headings[locale] })).toBeVisible();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
+      const dimensions = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth
+      }));
       expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
-      await expect(page.locator("main")).toHaveScreenshot(`login-${locale}-${theme}.png`, { animations: "disabled", caret: "initial" });
+      await expect(page.locator("main")).toHaveScreenshot(`login-${locale}-${theme}.png`, {
+        animations: "disabled",
+        caret: "initial"
+      });
     });
   }
 }

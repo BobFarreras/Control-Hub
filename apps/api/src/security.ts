@@ -1,19 +1,48 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyRequest } from "fastify";
-import type { ControlHubAuth } from "./auth.js";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import { hasPermission, type Permission, type RoleCode, type TenantContext } from "@control-hub/domain";
+import type { FastifyRequest } from "fastify";
+import type { ControlHubAuth } from "./auth.js";
 
 export class ApiSecurityError extends Error {
-  constructor(public readonly statusCode: 401 | 403, public readonly code: string) { super(code); }
+  constructor(
+    public readonly statusCode: 401 | 403,
+    public readonly code: string
+  ) {
+    super(code);
+  }
 }
 
-export async function resolveTenantContext(auth: ControlHubAuth, database: DatabaseClient, request: FastifyRequest): Promise<TenantContext> {
+/**
+ * Every account in Control Hub is a staff account, so the second factor is required for all
+ * of them rather than for a privileged subset.
+ *
+ * The check lives here, not in `requirePermission`, because every authenticated route calls
+ * this function while only most of them guard a permission. Enforcing it at the permission
+ * check left a route that resolved a context but guarded nothing with no second-factor gate
+ * at all, and nothing would have reported that.
+ *
+ * `allowWithoutSecondFactor` exists for the handful of routes a user must reach in order to
+ * enrol: refusing those would leave a new member unable to ever set up the factor being
+ * demanded of them. Pass it deliberately, never to make a failing test pass.
+ */
+export type TenantContextOptions = { allowWithoutSecondFactor?: boolean };
+
+export async function resolveTenantContext(
+  auth: ControlHubAuth,
+  database: DatabaseClient,
+  request: FastifyRequest,
+  options: TenantContextOptions = {}
+): Promise<TenantContext> {
   const session = await auth.api.getSession({ headers: new Headers(request.headers as HeadersInit) });
   if (!session) throw new ApiSecurityError(401, "AUTHENTICATION_REQUIRED");
-  const selected = typeof request.headers["x-control-hub-tenant"] === "string" ? request.headers["x-control-hub-tenant"] : null;
-  if (selected && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selected)) throw new ApiSecurityError(403, "TENANT_ACCESS_DENIED");
-  const rows = await database<{ tenant_id: string; membership_id: string; role: RoleCode | null; permission: Permission | null }[]>`
+  const selected =
+    typeof request.headers["x-control-hub-tenant"] === "string" ? request.headers["x-control-hub-tenant"] : null;
+  if (selected && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selected))
+    throw new ApiSecurityError(403, "TENANT_ACCESS_DENIED");
+  const rows = await database<
+    { tenant_id: string; membership_id: string; role: RoleCode | null; permission: Permission | null }[]
+  >`
     select m.tenant_id, m.id as membership_id, r.code as role, rp.permission_code as permission
     from memberships m
     left join membership_roles mr on mr.membership_id = m.id
@@ -24,23 +53,37 @@ export async function resolveTenantContext(auth: ControlHubAuth, database: Datab
     order by m.created_at asc
   `;
   if (rows.length === 0) throw new ApiSecurityError(403, "TENANT_ACCESS_DENIED");
-  if (new Set(rows.map((row) => row.tenant_id)).size > 1 && !selected) throw new ApiSecurityError(403, "TENANT_SELECTION_REQUIRED");
-  return {
-    tenantId: rows[0]!.tenant_id, membershipId: rows[0]!.membership_id, userId: session.user.id,
-    roles: [...new Set(rows.flatMap((row) => row.role ? [row.role] : []))],
-    permissions: [...new Set(rows.flatMap((row) => row.permission ? [row.permission] : []))],
+  if (new Set(rows.map((row) => row.tenant_id)).size > 1 && !selected)
+    throw new ApiSecurityError(403, "TENANT_SELECTION_REQUIRED");
+  const context: TenantContext = {
+    tenantId: rows[0]!.tenant_id,
+    membershipId: rows[0]!.membership_id,
+    userId: session.user.id,
+    roles: [...new Set(rows.flatMap((row) => (row.role ? [row.role] : [])))],
+    permissions: [...new Set(rows.flatMap((row) => (row.permission ? [row.permission] : [])))],
     mfaEnabled: Boolean("twoFactorEnabled" in session.user && session.user.twoFactorEnabled)
   };
+  if (!options.allowWithoutSecondFactor && !context.mfaEnabled) throw new ApiSecurityError(403, "MFA_REQUIRED");
+  return context;
 }
 
 export function requirePermission(context: TenantContext, permission: Permission) {
-  if (!context.mfaEnabled) throw new ApiSecurityError(403, "MFA_REQUIRED");
+  // The second factor is already settled by resolveTenantContext; this only decides authority.
   if (!hasPermission(context, permission)) throw new ApiSecurityError(403, "PERMISSION_DENIED");
 }
 
-export async function writeAudit(database: DatabaseClient, context: TenantContext, request: FastifyRequest, event: {
-  action: string; targetType: string; targetId?: string; outcome: "success" | "denied" | "failure"; metadata?: Record<string, string | number | boolean | null>;
-}) {
+export async function writeAudit(
+  database: DatabaseClient,
+  context: TenantContext,
+  request: FastifyRequest,
+  event: {
+    action: string;
+    targetType: string;
+    targetId?: string;
+    outcome: "success" | "denied" | "failure";
+    metadata?: Record<string, string | number | boolean | null>;
+  }
+) {
   await withTenant(database, context.tenantId, async (transaction) => {
     await transaction`insert into audit_log (id, tenant_id, actor_user_id, action, target_type, target_id, outcome, ip_address, user_agent, metadata)
       values (${randomUUID()}, ${context.tenantId}, ${context.userId}, ${event.action}, ${event.targetType}, ${event.targetId ?? null}, ${event.outcome},

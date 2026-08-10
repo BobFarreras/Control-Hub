@@ -1,5 +1,9 @@
 name: CI
 
+# Actions are pinned by commit SHA, not by tag. A tag is mutable: whoever controls the action
+# repository can move v7 to different code, and that code runs with this workflow's token.
+# Dependabot updates the SHAs and records the version in the trailing comment.
+
 on:
   pull_request:
     branches: [main, develop]
@@ -13,6 +17,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "22.16.0"
+
 jobs:
   repository-standards:
     name: Repository standards
@@ -20,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate required documentation
         shell: bash
@@ -30,6 +37,7 @@ jobs:
             AGENTS.md
             ARCHITECTURE.md
             BRANCHING.md
+            CLAUDE.md
             DESIGN_SYSTEM.md
             DEVELOPMENT.md
             IMPLEMENTATION_PLAN.md
@@ -39,6 +47,8 @@ jobs:
             SECURITY.md
             SECURITY_ARCHITECTURE.md
             docs/README.md
+            docs/development/current-state.md
+            docs/development/troubleshooting.md
             docs/security/container-checklist.md
             docs/security/threat-model.md
             docs/specifications/connector-security.md
@@ -75,25 +85,298 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: control_hub
+          POSTGRES_USER: control_hub_admin
+          POSTGRES_PASSWORD: ci_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U control_hub_admin -d control_hub"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The integration suites skip themselves when these are absent, so CI would go green
+      # without ever proving tenant isolation. They are required, not optional.
+      TEST_DATABASE_URL: postgres://control_hub_app:ci_app_only@127.0.0.1:5432/control_hub
+      TEST_DATABASE_ADMIN_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run checks when the workspace exists
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Create the unprivileged runtime role
         shell: bash
+        env:
+          PGPASSWORD: ci_admin_only
         run: |
           set -euo pipefail
-          if [[ ! -f package.json ]]; then
-            echo "Application workspace not initialized; documentation checks only."
-            exit 0
-          fi
-          corepack enable
-          pnpm install --frozen-lockfile
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm test:integration
-          pnpm build
+          psql -h 127.0.0.1 -U control_hub_admin -d control_hub -v ON_ERROR_STOP=1 \
+            -c "create role control_hub_app login nosuperuser nocreatedb nocreaterole noinherit password 'ci_app_only';"
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        shell: bash
+        # Before any suite: several tests under `pnpm test` also need the schema.
+        run: pnpm --filter @control-hub/database migrate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Build
+        run: pnpm build
+
+  end-to-end:
+    name: End to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser Playwright drives
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the end to end suite
+        # @visual is excluded on purpose. Its baselines are committed with a -win32 suffix
+        # because they were produced on a developer machine, and a Linux runner renders text
+        # differently, so they would fail on rendering rather than on a real regression.
+        # Bringing them here means generating Linux baselines in a container first.
+        run: pnpm exec playwright test --grep-invert "@visual"
+
+      - name: Keep the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  authenticated-end-to-end:
+    name: Authenticated end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: control_hub_e2e
+          POSTGRES_USER: control_hub_admin
+          POSTGRES_PASSWORD: ci_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U control_hub_admin -d control_hub_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      # Better Auth sends a verification message when the fixture account is created, and the
+      # mail sender is awaited, so a run without somewhere to deliver it fails at the seed.
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: "1"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    env:
+      DATABASE_URL: postgres://control_hub_app:ci_app_only@127.0.0.1:5432/control_hub_e2e
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub_e2e
+      REDIS_URL: redis://127.0.0.1:6379
+      API_HOST: 127.0.0.1
+      API_PORT: "4000"
+      API_INTERNAL_URL: http://127.0.0.1:4000
+      LOG_LEVEL: warn
+      NEXT_PUBLIC_DEFAULT_LOCALE: ca
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+      SMTP_SECURE: "false"
+      SMTP_FROM: control-hub@localhost.test
+      # The browser origin and the origin the API trusts have to be the same string. They are
+      # checked against each other on every mutating request, so 127.0.0.1 against localhost
+      # fails every PATCH in the suite with ORIGIN_DENIED.
+      APP_ORIGIN: http://127.0.0.1:3001
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
+      WEBAUTHN_RP_ID: 127.0.0.1
+      WEBAUTHN_ORIGIN: http://127.0.0.1:3001
+      E2E_OWNER_EMAIL: e2e-owner@controlhub.test
+      E2E_TENANT_NAME: Control Hub E2E
+      E2E_TENANT_SLUG: control-hub-e2e
+      # Both the API and the web read this. Without it the projects routes are never declared,
+      # and projects.authenticated.spec.ts would be testing a 404.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Create the unprivileged runtime role
+        shell: bash
+        env:
+          PGPASSWORD: ci_admin_only
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U control_hub_admin -d control_hub_e2e -v ON_ERROR_STOP=1 \
+            -c "create role control_hub_app login nosuperuser nocreatedb nocreaterole noinherit password 'ci_app_only';"
+
+      - name: Enable the pinned package manager
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser Playwright drives
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Mint this run's secrets
+        shell: bash
+        # Generated per run, never committed and never printed. The account they belong to
+        # exists only in this job's throwaway database, which goes away with the runner.
+        run: |
+          set -euo pipefail
+          auth_secret="$(openssl rand -hex 32)"
+          owner_password="$(openssl rand -hex 20)"
+          echo "::add-mask::$auth_secret"
+          echo "::add-mask::$owner_password"
+          {
+            echo "BETTER_AUTH_SECRET=$auth_secret"
+            echo "E2E_OWNER_PASSWORD=$owner_password"
+            echo "E2E_CREDENTIALS_FILE=$GITHUB_WORKSPACE/.e2e/credentials.json"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: pnpm --filter @control-hub/database migrate
+
+      - name: Seed the end to end fixture
+        # Enrols the second factor through Better Auth's own enable and verify pair, and
+        # refuses to write credentials unless the account ends up with MFA switched on.
+        run: pnpm db:seed:e2e
+
+      - name: Run the authenticated end to end suite
+        run: pnpm test:e2e:authenticated
+
+      - name: Keep the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-authenticated
+          # `.e2e/` is deliberately not uploaded: it holds the account's TOTP secret, and an
+          # artifact is readable by anyone who can see the run. The traces under test-results
+          # can carry this run's session cookie, which is spent the moment the job's database
+          # disappears with the runner.
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  container-image:
+    name: Container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Job wide, not on the step that starts the stack. `compose.yaml` declares these with the
+    # `:?` form, so Compose refuses to interpolate the file at all without them, and that
+    # happens on every command that reads it: `build`, `logs` and `down` too. Scoping them to
+    # one step left the other three failing on a missing value instead of on anything real.
+    env:
+      POSTGRES_ADMIN_PASSWORD: ci_admin_only
+      POSTGRES_APP_PASSWORD: ci_app_only
+      BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build every service image
+        # Nothing built these before, so two faults shipped unnoticed: the runtime went through
+        # a package manager that tried to fetch itself onto a read-only filesystem, and the
+        # bundled server crashed on boot. `pnpm build` passing says nothing about either.
+        run: docker compose build
+
+      - name: Start the stack and wait for it to be healthy
+        run: docker compose up -d --wait
+
+      - name: Check the running services answer
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:4000/health/ready | tee /dev/stderr | grep -q '"status":"ready"'
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/ca/login | grep -q 200
+
+      - name: Show what failed
+        if: failure()
+        run: docker compose ps -a && docker compose logs --tail 60
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 
   secret-scan:
     name: Secret scan
@@ -104,10 +387,56 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Scan repository
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  vulnerable-dependencies:
+    name: Vulnerable dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit the dependency tree
+        shell: bash
+        # Gitleaks finds committed secrets; nothing until now looked at known vulnerabilities
+        # in what we install. High and critical fail the build, lower severities are reported.
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm audit --audit-level moderate || true
+          pnpm audit --audit-level high
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          category: "/language:javascript-typescript"

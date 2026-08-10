@@ -20,11 +20,17 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 | `audit:read` | X | X | X |
 | `customers:manage` | X | X |  |
 | `leads:manage` | X | X |  |
+| `projects:read` | X | X | X |
 | `projects:manage` | X | X | X |
+| `time:log` | X | X | X |
+| `time:manage` | X | X |  |
+| `rates:manage` | X |  |  |
 | `products:manage` | X | X |  |
 | `subscriptions:manage` | X | X |  |
 | `financials:read` | X | X |  |
+| `tickets:read` | X | X | X |
 | `tickets:manage` | X | X | X |
+| `support:configure` | X | X |  |
 | `infrastructure:read` | X | X | X |
 | `infrastructure:operate` | X |  | X |
 | `integrations:read` | X | X | X |
@@ -41,3 +47,7 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 - Service accounts tenen scopes explicits, no rols humans.
 - Canvis de rol, secrets i operacions d'infraestructura generen auditoria.
 - L'Owner no pot eliminar accidentalment l'ultima membership Owner activa.
+- `time:log` permet crear i editar **les propies** imputacions; per tocar les d'una altra
+  persona cal `time:manage`. La comprovacio de propietat viu al servei, no a la ruta: es una
+  regla de negoci i no depen del transport que pregunti.
+- El cost per hora i el marge van sota `financials:read`. `rates:manage` nomes els publica.

@@ -80,7 +80,7 @@ Docker rootless es preferible quan sigui compatible amb el perfil de desplegamen
 ## Identitat i sessions
 
 - Better Auth sota `/api/auth/*` amb PostgreSQL.
-- Correu verificat, contrasenya i MFA TOTP obligatori per rols privilegiats.
+- Correu verificat, contrasenya i MFA TOTP obligatori per a tots els rols.
 - Passkeys WebAuthn amb RP ID i origins allowlisted.
 - Hash i parametres versionats segons recomanacio vigent de la llibreria.
 - Rate limiting per IP, identitat i tenant amb proteccio anti-enumeracio.
@@ -163,3 +163,14 @@ Cap release entra a produccio sense:
 - OWASP Cheat Sheet Series: SSRF, CSRF, authentication, sessions, web services i uploads.
 - NIST SP 800-218 Secure Software Development Framework.
 - Docker Engine security, rootless mode i Compose secrets.
+
+## Punt d'aplicacio del segon factor
+
+El segon factor s'exigeix a `resolveTenantContext`, que totes les rutes autenticades criden,
+i no a la comprovacio de permisos. Aplicar-lo al permis deixava sense porta qualsevol ruta
+que resolgues un context sense guardar cap permis, i res no ho hauria detectat.
+
+L'unica excepcio es `allowWithoutSecondFactor`, reservada a les rutes que un membre ha de
+poder abastar per donar-se d'alta del factor que se li exigeix: `GET /api/v1/me` i
+`GET /api/v1/sessions`. Sense aquesta excepcio, un membre nou no podria activar mai l'MFA.
+Qualsevol altre us d'aquesta opcio s'ha de justificar en la revisio.

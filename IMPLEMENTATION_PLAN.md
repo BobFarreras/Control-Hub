@@ -122,7 +122,7 @@ Qualsevol desenvolupador pot clonar, configurar i executar el projecte seguint e
 
 - Usuaris, tenants, memberships, rols i permisos.
 - Login, logout, expiracio i revocacio de sessions.
-- MFA per comptes privilegiats.
+- MFA obligatoria per a tots els comptes; tots els rols de Control Hub son de personal intern.
 - Tenant context derivat de la sessio.
 - Middleware d'autenticacio i autoritzacio.
 - RLS i repositoris tenant-scoped.
@@ -244,6 +244,8 @@ MRR, renovacions i marges es poden justificar a partir de dades auditables.
 - Incidencies vinculades a serveis, clients o tickets.
 - Notificacions i historial.
 - Preparacio de canals entrants sense acoblar-los al domini.
+- `tickets.project_id` nullable des de la primera migracio. La Fase 5B hi penja, i afegir la
+  columna despres obligaria a migrar dades ja escrites.
 
 ### Entregables
 
@@ -268,6 +270,94 @@ MRR, renovacions i marges es poden justificar a partir de dades auditables.
 ### Criteri de sortida
 
 Una incidencia es pot registrar, assignar, resoldre i auditar de principi a fi.
+
+## Fase 5B - Projectes i temps
+
+**Objectiu:** saber quina feina hi ha en curs i quant costa fer-la.
+
+Especificacio aprovada a `docs/specifications/projects-and-time.md`. Va despres dels tickets
+perque les imputacions han de poder penjar tant d'un projecte com d'un ticket; l'unica cosa
+que la Fase 5 li deu es la columna `tickets.project_id`.
+
+Es numera 5B i no 6 per no renumerar les fases posteriors, que ja tenen dependencies
+documentades entre elles.
+
+### Implementacio
+
+- Projectes per client, amb estat, responsable, dates i historial append-only.
+- Imputacio de temps a un projecte o a un ticket, amb marca de facturable.
+- Barem de cost per persona i de venda per client o projecte, versionats per data d'efecte.
+- Rendibilitat per projecte i per client, per moneda.
+- Permisos `projects:read`, `time:log`, `time:manage` i `rates:manage`.
+
+### Entregables
+
+- Safata de projectes i fitxa amb activitat.
+- Formulari d'imputacio rapid.
+- Informe de marge per projecte i per client.
+- Pantalla de barems restringida a `Owner`.
+
+### Proves minimes
+
+- Publicar un barem nou no altera el cost d'una imputacio anterior.
+- Una imputacio sense projecte ni ticket, o amb tots dos, es rebutjada per la base de dades.
+- Un `Technical` rep `403` a cost i a marge.
+- Un tenant no veu projectes, imputacions ni barems d'un altre.
+
+### Revisio del propietari
+
+- Comparar el marge calculat d'un projecte real amb un calcul manual conegut.
+- Validar que la imputacio diaria es prou rapida per fer-se de veritat.
+- Confirmar qui pot veure els costos per hora.
+
+### Criteri de sortida
+
+El marge per client es pot justificar a partir d'hores i barems auditables.
+
+## Fase 5C - Registre de jornada
+
+**Objectiu:** complir l'obligacio de registre horari i saber les hores reals de cada mes.
+
+Especificacio a `docs/specifications/attendance.md`. Va despres de la Fase 5B perque la
+conciliacio contra hores imputades necessita que les imputacions existeixin.
+
+**No s'activa en produccio sense confirmacio de la gestoria.** L'obligacio de l'article 34.9
+de l'Estatut dels Treballadors depen de la relacio laboral existent, i hi ha hagut iniciativa
+de reforma cap a un registre digital amb acces remot de la Inspeccio.
+
+### Implementacio
+
+- Log append-only d'events de fitxatge amb hora de servidor.
+- Correccions amb autor i motiu, sense esborrar l'original.
+- Resum mensual i exportacio per a la gestoria.
+- Acces de cada persona al seu propi registre, sense permis addicional.
+- Conciliacio entre hores registrades i hores imputades.
+- Permisos `attendance:record` i `attendance:manage`.
+
+### Entregables
+
+- Fitxatge d'un sol clic amb estat visible.
+- Resum mensual imprimible.
+- Exportacio per interval de dates.
+- Informe de conciliacio.
+
+### Proves minimes
+
+- Cap event es pot modificar ni esborrar.
+- Una sortida sense entrada previa es rebutjada.
+- Una sessio que travessa mitjanit s'atribueix al dia d'inici.
+- Un membre no pot llegir el registre d'un altre, i fer-ho amb permis queda auditat.
+
+### Revisio del propietari
+
+- Confirmar amb la gestoria que la forma del registre es acceptable.
+- Comprovar que fitxar es prou rapid per fer-se cada dia.
+- Validar l'exportacio amb un mes real.
+
+### Criteri de sortida
+
+Un requeriment d'inspeccio es pot atendre amb una exportacio del sistema, i les hores no
+imputables del mes son visibles.
 
 ## Fase 6 - Plataforma de connectors
 

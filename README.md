@@ -4,7 +4,9 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda.
+La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`.
+
+L'estat detallat i el punt de continuacio son a [`docs/development/current-state.md`](docs/development/current-state.md), que es el primer document a llegir en obrir una sessio.
 
 Control Hub es construeix des del primer increment com a producte professional instal·lable. El roadmap es incremental, pero no utilitza prototips descartables ni una implementacio reduida que requereixi reconstruir el nucli.
 
@@ -18,6 +20,7 @@ Control Hub es construeix des del primer increment com a producte professional i
 - Redis i BullMQ per cues.
 - Docker Compose portable per desplegar en VPS Linux.
 - Single-tenant per instal·lacio, amb model intern tenant-aware.
+- Sentry per observabilitat d'errors a producció.
 - Connectors opcionals per n8n, VPS, correu, IA, monitoratge i altres APIs.
 
 n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, webhooks i metriques, i pot obrir la seva URL. No l'incrusta ni en depen per funcionar.
@@ -37,7 +40,9 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md): baseline d'aplicacio, xarxa, contenidors, dades i supply chain.
 - [`PRODUCT_REQUIREMENTS.md`](PRODUCT_REQUIREMENTS.md): visio, Release 1.0, usuaris, moduls i connectors.
 - [`docs/README.md`](docs/README.md): index d'ADR, especificacions, seguretat, runbooks i plantilles.
-- [`DEVELOPMENT.md`](DEVELOPMENT.md): requisits, ordres, URLs i troubleshooting local.
+- [`DEVELOPMENT.md`](DEVELOPMENT.md): requisits, ordres, URLs i arrencada local.
+- [`docs/development/current-state.md`](docs/development/current-state.md): estat implementat i punt de continuacio.
+- [`docs/development/troubleshooting.md`](docs/development/troubleshooting.md): fallades ja diagnosticades, amb causa i solucio.
 
 ## Arrencada local
 
@@ -55,12 +60,12 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Fase 5:** suport, tickets i SLA.
-2. **Fase 6:** inventari i salut d'infraestructura.
-3. **Fase 7:** connectors sobre contractes estables.
+1. **Fase 5B:** projectes i temps. Implementada, pendent de revisio del propietari.
+2. **Fase 5C:** registre de jornada. Especificacio aprovada; no s'activa en produccio sense confirmacio de la gestoria.
+3. **Fase 6:** plataforma de connectors, amb contracte, vault de credencials i webhooks signats.
+4. **Fase 7:** infraestructura i connector n8n.
 
-L'estat tecnic i el punt de continuacio per a desenvolupadors i agents es documenten a
-[`docs/development/current-state.md`](docs/development/current-state.md).
+Les fases i les seves portes d'aprovacio son a [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), que mana sobre aquest resum.
 
 ## Seguretat
 

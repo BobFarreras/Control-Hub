@@ -1,2 +1,5 @@
 import { redirect } from "next/navigation";
-export default async function LegacyCommercePage({ params }: { params: Promise<{ locale: string }> }) { const { locale } = await params; redirect(`/${locale}/products`); }
+export default async function LegacyCommercePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  redirect(`/${locale}/products`);
+}

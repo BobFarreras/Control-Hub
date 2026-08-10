@@ -12,7 +12,9 @@ const baseSchema = z.object({
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_FROM: z.email().default("control-hub@localhost.test"),
   WEBAUTHN_RP_ID: z.string().min(1).default("localhost"),
-  WEBAUTHN_ORIGIN: z.url().default("http://localhost:3001")
+  WEBAUTHN_ORIGIN: z.url().default("http://localhost:3001"),
+  // Comma-separated names from the registry in ./flags.ts. Empty means every flag is off.
+  CONTROL_HUB_FLAGS: z.string().default("")
 });
 
 export const apiEnvironmentSchema = baseSchema.extend({
@@ -31,3 +33,5 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
 export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnvironment {
   return workerEnvironmentSchema.parse(source);
 }
+
+export * from "./flags.js";
