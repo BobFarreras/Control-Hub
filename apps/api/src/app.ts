@@ -326,6 +326,10 @@ export function buildApp(options: BuildAppOptions) {
     if (options.invitationAuth) await options.invitationAuth.close();
   }
 
+  // Fastify invokes this lifecycle hook only while shutting the process down. It is not an HTTP
+  // handler and therefore has no request stream to rate-limit; CodeQL otherwise models the
+  // second argument of addHook as if every hook were an externally reachable route.
+  // codeql[js/missing-rate-limiting]
   app.addHook("onClose", closeDependencies);
   return app;
 }
