@@ -47,6 +47,7 @@ export function AttendanceRecord({
   const [holidays, setHolidays] = useState<AttendanceHoliday[]>([]);
   const [vacations, setVacations] = useState<AttendanceVacation[]>([]);
   const [absences, setAbsences] = useState<AttendanceAbsence[]>([]);
+  const [calendarVersion, setCalendarVersion] = useState(0);
 
   const superseded = supersededIds(month.events);
   const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
@@ -67,7 +68,7 @@ export function AttendanceRecord({
       setVacations(v.vacations ?? []);
       setAbsences(a.absences ?? []);
     });
-  }, [view, month.days, month.membershipId]);
+  }, [view, month.days, month.membershipId, calendarVersion]);
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +112,7 @@ export function AttendanceRecord({
     if (!response.ok) return toast("error", t.failed!);
     setShowVacationForm(false);
     toast("success", t.vacationRequested!);
-    router.refresh();
+    setCalendarVersion((v) => v + 1);
   }
 
   async function submitAbsence(event: FormEvent<HTMLFormElement>) {
@@ -134,7 +135,7 @@ export function AttendanceRecord({
     if (!response.ok) return toast("error", t.failed!);
     setShowAbsenceForm(false);
     toast("success", t.absenceRequested!);
-    router.refresh();
+    setCalendarVersion((v) => v + 1);
   }
 
   async function cancelVacation(vacationId: string) {
@@ -144,7 +145,7 @@ export function AttendanceRecord({
     setBusy(false);
     if (!response.ok) return toast("error", t.failed!);
     toast("success", t.vacationCancelled!);
-    router.refresh();
+    setCalendarVersion((v) => v + 1);
   }
 
   async function cancelAbsence(absenceId: string) {
@@ -154,7 +155,7 @@ export function AttendanceRecord({
     setBusy(false);
     if (!response.ok) return toast("error", t.failed!);
     toast("success", t.absenceCancelled!);
-    router.refresh();
+    setCalendarVersion((v) => v + 1);
   }
 
   return (
