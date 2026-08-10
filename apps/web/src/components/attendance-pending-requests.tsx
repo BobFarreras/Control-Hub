@@ -11,11 +11,13 @@ type Labels = Record<string, string>;
 export function AttendancePendingRequests({
   vacations,
   absences,
+  memberNames,
   labels: t,
   locale
 }: {
   vacations: AttendanceVacation[];
   absences: AttendanceAbsence[];
+  memberNames: Map<string, string>;
   labels: Labels;
   locale: string;
 }) {
@@ -80,7 +82,7 @@ export function AttendancePendingRequests({
           <tbody>
             {vacations.map((v) => (
               <tr key={v.id}>
-                <td>{v.membershipId}</td>
+                <td>{memberNames.get(v.membershipId) ?? v.membershipId}</td>
                 <td>{t.vacation}</td>
                 <td>{dateFmt.format(new Date(v.startDate + "T12:00:00"))}</td>
                 <td>{dateFmt.format(new Date(v.endDate + "T12:00:00"))}</td>
@@ -96,7 +98,7 @@ export function AttendancePendingRequests({
             ))}
             {absences.map((a) => (
               <tr key={a.id}>
-                <td>{a.membershipId}</td>
+                <td>{memberNames.get(a.membershipId) ?? a.membershipId}</td>
                 <td>{t.absence}</td>
                 <td>{dateFmt.format(new Date(a.startDate + "T12:00:00"))}</td>
                 <td>{dateFmt.format(new Date(a.endDate + "T12:00:00"))}</td>

@@ -80,6 +80,8 @@ export default async function AttendanceTeamPage({
     // Non-critical: pending requests are a convenience, not a requirement.
   }
 
+  const memberNames = new Map(rows.map((r) => [r.membershipId, r.memberName]));
+
   return (
     <div className="app-shell">
       <AppSidebar locale={locale} labels={t.navigation} />
@@ -100,6 +102,7 @@ export default async function AttendanceTeamPage({
           <AttendancePendingRequests
             vacations={pendingVacations}
             absences={pendingAbsences}
+            memberNames={memberNames}
             labels={labels}
             locale={locale}
           />
