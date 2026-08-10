@@ -51,6 +51,16 @@ describe("api documentation exposure", () => {
   });
 });
 
+describe("request validation", () => {
+  it("returns a stable public code instead of exposing a framework validation error", async () => {
+    const app = buildApp(unreachable);
+    apps.push(app);
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/invitations?token=short" });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "INVALID_INPUT" });
+  });
+});
+
 describe("rate limit keys", () => {
   it("treats credential endpoints as sensitive", () => {
     expect(isSensitiveAuthRequest(fakeRequest("/api/auth/sign-in/email"))).toBe(true);
@@ -102,7 +112,13 @@ describe("route registration", () => {
     ["PATCH", "/api/v1/members/:membershipId/role"],
     ["GET", "/api/v1/audit"],
     ["GET", "/api/v1/commerce/catalog"],
+    ["GET", "/api/v1/commerce/customer-services"],
+    ["POST", "/api/v1/commerce/customer-services"],
+    ["GET", "/api/v1/commerce/customer-services/export"],
+    ["PATCH", "/api/v1/commerce/customer-services/:serviceId/status"],
+    ["GET", "/api/v1/commerce/products/:productId"],
     ["POST", "/api/v1/commerce/products"],
+    ["POST", "/api/v1/commerce/products/with-offer"],
     ["POST", "/api/v1/commerce/products/:productId/versions"],
     ["POST", "/api/v1/commerce/versions/:versionId/plans"],
     ["POST", "/api/v1/commerce/plans/:planId/prices"],
@@ -114,7 +130,9 @@ describe("route registration", () => {
     ["GET", "/api/v1/commerce/financial-summary"],
     ["GET", "/api/v1/commerce/renewal-alerts"],
     ["GET", "/api/v1/company-subscriptions"],
+    ["GET", "/api/v1/company-subscriptions/export"],
     ["POST", "/api/v1/company-subscriptions"],
+    ["PATCH", "/api/v1/company-subscriptions/:subscriptionId"],
     ["PATCH", "/api/v1/company-subscriptions/:subscriptionId/status"],
     ["GET", "/api/v1/invitations"],
     ["POST", "/api/v1/invitations"],
@@ -126,7 +144,13 @@ describe("route registration", () => {
     ["POST", "/api/v1/crm/leads/:leadId/convert"],
     ["GET", "/api/v1/crm/customers"],
     ["GET", "/api/v1/crm/customers/:customerId"],
+    ["PATCH", "/api/v1/crm/customers/:customerId"],
+    ["POST", "/api/v1/crm/customers/:customerId/interests"],
+    ["PATCH", "/api/v1/crm/interests/:interestId/stage"],
+    ["POST", "/api/v1/crm/customers/:customerId/addresses"],
+    ["DELETE", "/api/v1/crm/customers/:customerId/addresses/:addressId"],
     ["POST", "/api/v1/crm/customers/:customerId/contacts"],
+    ["POST", "/api/v1/crm/customers/:customerId/contacts/from-source-lead"],
     ["POST", "/api/v1/crm/customers/:customerId/notes"],
     ["POST", "/api/v1/crm/customers/:customerId/tasks"],
     ["POST", "/api/v1/crm/tasks/:taskId/complete"],

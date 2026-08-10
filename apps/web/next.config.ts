@@ -1,5 +1,5 @@
-import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import type { NextConfig } from "next";
 
 const apiUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:4000";
 const isProduction = process.env.NODE_ENV === "production";
@@ -75,6 +75,6 @@ export default withSentryConfig(nextConfig, {
    */
   widenClientFileUpload: true,
   hideSourceMaps: true,
-  disableLogger: true,
+  webpack: { treeshake: { removeDebugLogging: true } },
   autolinkingIntegrationsEnabled: false
 });

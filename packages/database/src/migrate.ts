@@ -33,7 +33,12 @@ try {
       // endings differ, so the row is repaired instead of blocking the deployment. A genuine
       // edit matches neither hash and still stops here.
       const legacyChecksum = createHash("sha256").update(migration).digest("hex");
-      if (existing.checksum === legacyChecksum) {
+      // An early local run of 0021 included one extra blank line at EOF. This compatibility
+      // hash accepts only the current normalized migration plus that newline, never changed SQL.
+      const trailingBlankChecksum = createHash("sha256")
+        .update(`${migrationFingerprint(migration)}\n`)
+        .digest("hex");
+      if (existing.checksum === legacyChecksum || existing.checksum === trailingBlankChecksum) {
         await sql`update schema_migrations set checksum = ${checksum} where name = ${name}`;
         continue;
       }

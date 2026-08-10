@@ -239,6 +239,52 @@ export function totalMinutes(days: readonly AttendanceDay[]): number {
   return days.reduce((total, day) => total + day.workedMinutes, 0);
 }
 
+export type AttendanceHoliday = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+};
+
+export type AttendanceNonWorkingDay = {
+  id: string;
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+};
+
+export type AttendanceVacationStatus = "pending" | "approved" | "rejected";
+
+export type AttendanceVacation = {
+  id: string;
+  membershipId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: AttendanceVacationStatus;
+  approvedByMembershipId?: string | null;
+  approvedAt?: Date | null;
+  notes?: string | null;
+};
+
+export type AttendanceAbsenceType = "sick_leave" | "personal_leave" | "other";
+
+export type AttendanceAbsence = {
+  id: string;
+  membershipId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  type: AttendanceAbsenceType;
+  documentUrl?: string | null;
+  notes?: string | null;
+  createdByMembershipId: string;
+};
+
+export type AttendanceBlock = {
+  id: string;
+  membershipId: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  reason: string;
+};
+
 export type ReconciliationLine = { workedMinutes: number; loggedMinutes: number; unbilledMinutes: number };
 
 /**
@@ -254,4 +300,86 @@ export function reconcile(input: { workedMinutes: number; loggedMinutes: number 
     loggedMinutes: input.loggedMinutes,
     unbilledMinutes: input.workedMinutes - input.loggedMinutes
   };
+}
+
+/**
+ * Check if a date is a holiday for the tenant.
+ */
+export function isHoliday(date: string, holidays: readonly AttendanceHoliday[]): boolean {
+  return holidays.some((h) => h.date === date);
+}
+
+/**
+ * Check if a day of week is a non-working day for the tenant.
+ */
+export function isNonWorkingDay(dayOfWeek: number, nonWorkingDays: readonly AttendanceNonWorkingDay[]): boolean {
+  return nonWorkingDays.some((n) => n.dayOfWeek === dayOfWeek);
+}
+
+/**
+ * Get the day of week for a date string (0 = Sunday, 6 = Saturday).
+ */
+export function dayOfWeek(date: string): number {
+  return new Date(`${date}T12:00:00`).getDay();
+}
+
+/**
+ * Check if a date is a vacation day for a member.
+ */
+export function isVacationDay(date: string, vacations: readonly AttendanceVacation[], membershipId: string): boolean {
+  return vacations.some(
+    (v) => v.membershipId === membershipId && v.status === "approved" && date >= v.startDate && date <= v.endDate
+  );
+}
+
+/**
+ * Check if a date is an absence day for a member.
+ */
+export function isAbsenceDay(date: string, absences: readonly AttendanceAbsence[], membershipId: string): boolean {
+  return absences.some((a) => a.membershipId === membershipId && date >= a.startDate && date <= a.endDate);
+}
+
+/**
+ * Check if a time slot overlaps with any block for a member on a given date.
+ */
+export function hasBlockOverlap(
+  date: string,
+  startTime: string,
+  endTime: string,
+  blocks: readonly AttendanceBlock[],
+  membershipId: string
+): boolean {
+  return blocks.some(
+    (b) => b.membershipId === membershipId && b.date === date && b.startTime < endTime && b.endTime > startTime
+  );
+}
+
+/**
+ * The status of a day for a member, used for the calendar view.
+ */
+export type AttendanceDayStatus =
+  "worked" | "partial" | "open" | "holiday" | "non_working" | "vacation" | "absence" | "empty";
+
+/**
+ * Derive the status of a day for calendar rendering.
+ */
+export function deriveDayStatus(
+  date: string,
+  dayOfWeek: number,
+  holidays: readonly AttendanceHoliday[],
+  nonWorkingDays: readonly AttendanceNonWorkingDay[],
+  vacations: readonly AttendanceVacation[],
+  absences: readonly AttendanceAbsence[],
+  membershipId: string,
+  workedMinutes: number | null,
+  hasOpenSession: boolean
+): AttendanceDayStatus {
+  if (isHoliday(date, holidays)) return "holiday";
+  if (isNonWorkingDay(dayOfWeek, nonWorkingDays)) return "non_working";
+  if (isVacationDay(date, vacations, membershipId)) return "vacation";
+  if (isAbsenceDay(date, absences, membershipId)) return "absence";
+  if (hasOpenSession) return "open";
+  if (workedMinutes !== null && workedMinutes > 0) return "worked";
+  if (workedMinutes !== null && workedMinutes === 0) return "partial";
+  return "empty";
 }

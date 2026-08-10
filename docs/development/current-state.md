@@ -1,7 +1,9 @@
 # Estat actual i continuacio
 
-> La implementacio continua a `develop`, amb el pla
-> incremental de consolidacio previ a la Fase 6 a
+> Els increments 0-11 de consolidacio previs a la Fase 6 estan implementats i validats. La
+> implementacio queda integrada a `develop`; el punt de continuacio es la revisio funcional
+> final i l'obertura de la Fase 6.
+> El detall i els checks de cada increment son a
 > `docs/development/pre-phase-6-product-polish.md`.
 >
 > Primer increment implementat en aquesta branca: el toast global ara apareix a baix a la
@@ -21,6 +23,101 @@
 > descarregar com a CSV. El punt de continuacio es l'increment 4, la fitxa 360 del client.
 > La plantilla inclou una pestanya d'exemple separada que no s'importa. La previsualitzacio
 > identifica per fila el camp incorrecte i explica per que la confirmacio encara no es pot fer.
+> L'increment 4 ha començat per la fitxa de client: mostra les dades empresarials que ja
+> existeixen, contacte principal, tasques obertes, propera tasca i ultima activitat. Contactes,
+> notes, tasques i timeline tenen estats buits accionables; encara falten les relacions amb
+> interessos, serveis, projectes i suport abans de marcar la vista 360 com a completa.
+> Les conversions noves amb empresa i persona diferenciades creen el contacte principal dins
+> la mateixa transaccio. Un client antic sense contactes pot recuperar-lo explicitament del
+> lead original; `source_lead_id` evita duplicats en reintents i conserva la traçabilitat.
+> La fitxa agrega serveis contractats, projectes i tickets amb consultes acotades al tenant i
+> enllaços directes. No envia imports ni costos: la capa financera continua separada per
+> permisos. Encara falten els interessos comercials i les dades ampliades del client.
+> Les dades existents del client es poden editar amb validacio backend, auditoria dels camps
+> afectats i control optimista per `updatedAt`; una sessio antiga no sobreescriu canvis nous.
+> L'edicio queda integrada camp a camp a la targeta empresarial, amb desament o cancel·lacio
+> explicits, sense un formulari separat que trenqui la composicio de la fitxa. La capçalera
+> separa les dades mestres de quatre metriques compactes i els panells buits ja no imposen
+> alçades artificials.
+> Els opcionals buits no es trameten com emails o URLs invalides, els errors d'esquema retornen
+> `INVALID_INPUT`, i la concurrencia compara `updated_at` a la precisio de mil·lisegons que
+> conserva el navegador.
+> El lloc web accepta `domini.tld` i `www.domini.tld` sense protocol i els desa normalitzats
+> amb `https://`; els protocols diferents d'HTTP(S) continuen rebutjats.
+> La fitxa incorpora oportunitats vinculades al cataleg amb pipeline complet, historial
+> append-only, unicitat mentre son obertes i imports estimats protegits per `financials:read`.
+> L'increment 4 queda tancat: identificacio fiscal, idioma i zona horaria son editables inline,
+> i les adreces d'oficina, facturacio, enviament o altres es gestionen separadament amb una
+> principal per tipus, RLS i auditoria sense PII. El punt de continuacio es l'increment 5,
+> simplificar el cataleg comercial.
+> L'increment 5 ha començat per la jerarquia de la portada: ara resumeix productes, plans i
+> ofertes publicades, deixa una sola alta principal i mou versions, plans i preus al producte
+> corresponent. L'assistent crea producte, versio activa, pla i preu en una unica transaccio tenant-scoped;
+> valida tots els camps abans d'escriure, genera codis editables des del nom i audita una sola
+> operacio. Un conflicte tardà desfà les quatre files. Les modalitats comercials viuen al pla:
+> subscripcio, manteniment, compra unica o servei per projecte, amb periodicitats incompatibles
+> rebutjades tant al domini com a PostgreSQL. La fitxa dedicada del producte mostra la seva
+> jerarquia completa amb una lectura tenant-scoped. L'increment 5 queda tancat i el punt de
+> continuacio es l'increment 6, serveis, subscripcions i compres dels clients.
+> L'increment 6 ha començat amb la decisio COM-2 aprovada: `customer_services` sera el contracte
+> comercial unificat i la recurrencia una extensio opcional nomes per subscripcions i manteniments.
+> `commerce.md` fixa estats, invariants, permisos i un backfill idempotent des de `subscriptions`.
+> `0028_customer_services.sql` crea el contracte pare, la recurrencia opcional i l'historial
+> append-only amb RLS, claus tenant-scoped i indexos operatius. El backfill conserva els UUID de
+> les subscripcions i els seus events i es idempotent. L'adaptador nou llegeix producte, pla, preu,
+> responsable, projecte i recurrencia sense N+1, i crea servei, recurrencia i event en una sola
+> transaccio. La migracio local deixa zero subscripcions sense backfill i zero recurrències en
+> compres uniques o serveis per projecte. Els casos d'us validen dates, quantitat, oferta i
+> coherencia de recurrencia abans de la transaccio. `GET` i `POST /api/v1/commerce/customer-services`
+> ofereixen filtres tenant-scoped, MFA i auditoria; els imports nomes formen part de la resposta
+> amb `financials:read`. Les rutes antigues de subscripcions continuen disponibles durant el
+> desplegament gradual. La pantalla de Serveis de clients ja ofereix una taula responsive amb
+> filtres instantanis integrats a la taula generalitzada, imports protegits per permisos, alta
+> guiada i enllaços directes a client, producte i
+> projecte; la fitxa 360 consumeix el nou model unificat. Les accions de cicle de vida permeten
+> pausar i reprendre serveis recurrents, completar compres i serveis de projecte, i cancel·lar
+> contractes actius o pausats amb motiu obligatori. Cada transicio es atomica, tenant-scoped,
+> controlada contra concurrencia i registrada a l'historial append-only i a l'auditoria. La
+> taula integra a les capçaleres els filtres d'estat, renovacions properes i recurrents sense
+> renovacio, sense una barra paral·lela. Els avisos no usen una finestra global: comparen cada renovacio amb els seus
+> `renewal_alert_days` i la destaquen visualment. L'exportacio Excel respecta els filtres
+> actius, neutralitza formules, inclou metadades i omet totes les columnes monetaries sense
+> `financials:read`. L'E2E autenticat crea un servei propi, el pausa, el repren, el cancel·la
+> amb motiu, el filtra des de la capçalera i descarrega l'Excel real; pot repetir-se sense
+> dependre de l'estat del seed. L'increment 6 queda tancat.
+> L'increment 7 ha començat amb la decisio COM-3 aprovada: `company_subscriptions` evoluciona
+> de manera additiva i conserva IDs i dades existents. El model ampliat separa inventari
+> operatiu i imports financers, incorpora compte, responsable, llicencies, centre de cost,
+> etiqueta de pagament, dates contractuals i enllaç al gestor de secrets sense desar secrets.
+> La migracio additiva `0029_company_subscriptions_polish.sql` ja esta aplicada localment: amplia
+> el registre sense perdre IDs, completa `canceled_at` a les files antigues, crea l'event inicial
+> idempotent i incorpora RLS, claus tenant-scoped, indexos i triggers de transicio i historial
+> append-only. L'adaptador persisteix els camps operatius i l'event `created` en una sola
+> transaccio, resol el responsable sense N+1 i admet filtres parametritzats. La prova d'integracio
+> real confirma persistencia, historial i aillament entre tenants. Els casos d'us i l'API
+> versionada ja cobreixen filtres, alta amb tots els camps operatius i les accions explicites
+> `activate`, `pause`, `resume` i `cancel`; la cancel·lacio exigeix motiu, les escriptures comparen
+> l'estat esperat i totes les mutacions queden auditades sense copiar dades sensibles. La lectura
+> requereix `subscriptions:manage` i nomes exposa import, moneda i periodicitat sota `financials`
+> quan també hi ha `financials:read`. La pantalla ja es diu **Eines i despeses recurrents** i
+> reutilitza `SmartDataTable`: filtres d'estat, categoria i renovacio dins les capçaleres,
+> ordenacio, paginacio i preferencies de columnes. Mostra compte, responsable, llicencies,
+> renovacio, cost condicionat al permis i accessos directes a la plataforma i al gestor de
+> secrets. L'alta recull el contracte operatiu complet i la taula permet activar, pausar,
+> reprendre i cancel·lar amb motiu. L'edicio envia nomes els camps modificables amb
+> `expectedUpdatedAt`; el cas d'us recompon i revalida el contracte complet, la persistencia
+> rebutja versions obsoletes i registra l'event append-only `updated`. Les renovacions dins la
+> finestra propia de cada contracte es destaquen i es poden filtrar, igual que els registres
+> actius sense data de renovacio. L'exportacio Excel conserva aquests filtres, neutralitza
+> formules, inclou metadades i omet imports, moneda i periodicitat sense `financials:read`; tampoc
+> exporta notes ni l'enllaç al gestor de secrets. L'E2E autenticat cobreix alta, edicio, pausa,
+> represa, cancel·lacio motivada, filtre i descarrega. L'adaptador converteix explicitament
+> `amount_minor` (PostgreSQL `bigint`) a un nombre segur abans d'entrar al cas d'us, de manera que
+> l'edicio revalida el mateix contracte numeric que l'alta. El camp de compte accepta tant correu
+> com usuari de plataforma, tal com fixa COM-3, i les altes, edicions i transicions informen amb
+> el sistema global de toasts en lloc de banners locals. L'increment 7 queda tancat i el punt de
+> continuacio es l'increment 9, la safata de suport explicable, ja que l'increment 8 consta com
+> implementat.
 
 ## Punt de projecte
 
@@ -66,9 +163,9 @@ marge d'un projecte real s'ha comparat amb un calcul manual i quadra, i esta esc
   `apps/web/src/lib/money.ts`, **mai per coma flotant**, i es refusa un tercer decimal en comptes
   d'arrodonir-lo. 17 tests.
 - Primitives compartides a `apps/web/src/components/`: `form-field.tsx` (Field, SelectField,
-  TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg), `status-pill.tsx` i
-  `metric-tile.tsx`. El desplegable es un `<select>` natiu estilitzat i no un popover propi, a
-  proposit: el comportament es de la plataforma i la icona es nostra.
+  SelectControl, TextField, ToggleField), `help.tsx` (`?` amb tooltip i `?` amb dialeg),
+  `status-pill.tsx` i `metric-tile.tsx`. El desplegable visible es un listbox tematitzat light/dark
+  amb teclat i lector de pantalla; un `<select>` intern conserva el contracte dels formularis.
 - **Proves E2E autenticades: 13.** Les de projectes creen un projecte pel dialeg real i hi imputen
   hores; les de barems publiquen un cost i un preu i comproven el marge contra l'aritmetica escrita
   a l'assercio, i que **un barem publicat avui no canvia el valor d'una hora de fa un mes**. El job
@@ -298,6 +395,61 @@ Implementat i committat:
 Verificat: **89 proves de domini, 82 d'aplicacio, 31 d'API, 11 d'integracio de l'esquema, 11 de
 l'adaptador i 4 E2E autenticades noves**, aquestes ultimes executades contra la pila de verificacio.
 
+### Increment 10 — Jornada amb calendari laboral (implementat, 9 d'agost de 2026)
+
+L'increment 10 afegeix gestio de festius, vacances, absencies i bloquejos personals, mes una
+vista de calendari accessible amb canvi taula/calendari.
+
+**Canvis al model de dades:**
+- `0025_attendance_calendar.sql`: taules `attendance_holidays`, `attendance_non_working_days`,
+  `attendance_vacations`, `attendance_absences` i `attendance_blocks` amb RLS i claus foranes.
+- `0026_attendance_permissions_calendar.sql`: permisos `attendance:holidays` i `attendance:vacations`
+  per Owner i Administrator, amb backfill.
+
+**Canvis al domini (`packages/domain/src/attendance.ts`):**
+- Tipus nous: `AttendanceHoliday`, `AttendanceNonWorkingDay`, `AttendanceVacation`,
+  `AttendanceAbsence`, `AttendanceBlock`, `AttendanceDayStatus`.
+- Funcions: `isHoliday`, `isNonWorkingDay`, `isVacationDay`, `isAbsenceDay`, `hasBlockOverlap`,
+  `deriveDayStatus`.
+
+**Canvis a l'aplicacio (`packages/application/src/attendance.ts`):**
+- Nous metodes al servei: `listHolidays`, `createHoliday`, `deleteHoliday`,
+  `listNonWorkingDays`, `createNonWorkingDay`, `deleteNonWorkingDay`, `listVacations`,
+  `listVacationsByMember`, `createVacation`, `updateVacationStatus`, `listAbsences`,
+  `listAbsencesByMember`, `createAbsence`, `listBlocks`, `listBlocksByMember`, `createBlock`,
+  `deleteBlock`.
+- Nous metodes al repositori amb les seves implementacions a PostgreSQL.
+
+**Canvis a l'API (`apps/api/src/routes/attendance.ts`):**
+- Rutes noves: CRUD per a festius, dies no laborables, vacances, absencies i bloquejos.
+- Auditoria per a totes les mutacions.
+
+**Canvis a la UI:**
+- `apps/web/src/app/[locale]/attendance/page.tsx`: navegacio de mes amb fletxes accessibles
+  (`aria-label` i tooltip), sense textos "mes anterior/seguent". Canvi taula/calendari amb
+  conservacio del mes a la URL.
+- `apps/web/src/components/attendance-record.tsx`: components `TableView` i `CalendarView`.
+  El calendari mostra estat diari, hores registrades i incidencies amb text descriptiu, sense
+  representar nomes per color.
+- `apps/web/src/app/styles.css`: estils per al calendari i el canvi taula/calendari.
+
+**Canvis a i18n:**
+- Nous textos per a festius, vacances, absencies, bloquejos i vista de calendari en ca, es i en.
+
+**Proves:**
+- 6 proves noves al domini (`packages/domain/src/attendance.test.ts`): festius, dies no
+  laborables, vacances, absencies, bloquejos i derivacio d'estat diari.
+- Mock del repositori actualitzat a `packages/application/src/attendance.test.ts`.
+
+**Punts pendents:**
+- La UI de gestio de festius, vacances, absencies i bloquejos encara no esta implementada
+  (nomes les API i el domini).
+- La vista de calendari no mostra encara festius, vacances ni absencies (nomes hores
+  treballades i sessions obertes). Cal connectar-la amb les dades noves.
+- La migracio 0025 i 0026 s'han de pujar a la base de dades de produccio.
+
+## El següent increment (previ a la 5C, ja superat)
+
 ### Que falta per tancar la fase, i el que ho bloqueja
 
 **CI esta en vermell a `develop` (`0881bee`), nomes al job `authenticated-end-to-end`.** Els
@@ -388,6 +540,8 @@ L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 
 - `0012_company_subscriptions.sql`: despeses recurrents de l'empresa amb RLS.
 - `0013_user_table_preferences.sql`: preferencies de taula per tenant i usuari amb RLS.
+- `0029_company_subscriptions_polish.sql`: evolucio additiva de les despeses recurrents,
+  responsable tenant-scoped, dates contractuals, historial append-only i backfill idempotent.
 - `0016_projects_and_time.sql`: projectes, historial, barems i imputacions. Tres garanties que
   no viuen al domini: el xor de la imputacio (`num_nonnulls(project_id, ticket_id) = 1`), el
   trigger que rebutja hores sobre un projecte tancat (SQLSTATE propi `CH001`), i la clau forana
@@ -434,7 +588,98 @@ Variables d'entorn necessaries (a `apps/web/.env.local`):
 La CSP a `next.config.ts` ha d'incloure `https://o4510557342400512.ingest.de.sentry.io` al `connect-src`.
 En desenvolupament Sentry esta desactivat; els errors van a la consola.
 
+### Increment 9 — Safata de suport explicable (implementat, 10 d'agost de 2026)
+
+L'increment 9 millora la safata de tickets amb informacio SLA explicable i columnes noves.
+
+**Canvis al domini (`packages/domain/src/support.ts`):**
+- Nous tipus: `InboxSlaStatus` (5 estats: `on_time`, `near`, `breached`, `paused`,
+  `not_configured`), `InboxSlaDetail`, `InboxSlaInfo`, `InboxActiveTarget`.
+- Funcions: `deriveInboxSlaStatus` (deriva l'estat visual), `estimateDeadline` (estima la data
+  limit basant-se en la taxa actual de consum), `inboxSlaInfo` (construeix la info completa
+  per a cada fila de la safata).
+- L'estat `near` s'activa al 80% del target; `paused` detecta rellotges aturats
+  (`waiting_customer` / `waiting_third_party`).
+
+**Canvis a l'aplicacio (`packages/application/src/support.ts`):**
+- `TicketListRow` i `InboxTicket` inclouen `updatedAt` i `inboxSla: InboxSlaInfo`.
+- `TicketDetail` inclou `inboxSla`.
+- El metode `listInbox` calcula `inboxSla` per cada ticket en una sola passada.
+
+**Canvis a la persistencia (`packages/persistence/src/support-repository.ts`):**
+- `listColumns` inclou `t.updated_at as "updatedAt"` al SELECT.
+
+**Canvis a la UI (`apps/web/src/components/support-inbox.tsx`):**
+- Columnes noves: data de creacio, objectiu aplicat (primera resposta / resolucio), estat SLA
+  (badge clicable), ultima actualitzacio.
+- Nou component `SlaStatusBadge` amb 5 estats visuals: a temps (verd), proper (groc),
+  incomplert (vermell), pausat (blau), sense configurar (gris).
+- Nou component `SlaDetailDialog` que obre al clicar la badge i mostra: objectiu, consumit,
+  restant, data limit estimada i pauses.
+
+**Canvis a i18n (`packages/i18n/src/index.ts`):**
+- Nous textos per als 5 estats SLA, columnes i dialeg de detall en ca, es i en.
+
+**Proves:**
+- 7 proves noves al domini: deriveInboxSlaStatus (7 cases) i estimateDeadline (4 cases),
+  inboxSlaInfo (3 casos). Total domini: 28 proves.
+- Mock de l'aplicacio actualitzat amb `updatedAt`. Total aplicacio: 26 proves.
+
+**Canvis CSS (`apps/web/src/app/styles.css`):**
+- nous estils per a `sla-badge` (on_time, near, paused) i `sla-detail-dialog`.**
+
+### Increment 10 — Detall del ticket redissenyat (implementat, 10 d'agost de 2026)
+
+L'increment 10 millora la pàgina de detall del ticket amb un disseny a dues columnes,
+metadades completes i el projecte vinculat visible.
+
+**Canvis a la persistència (`packages/persistence/src/support-repository.ts`):**
+- LEFT JOIN a `projects` per obtenir `p.name as "projectName"` al `listColumns`.
+- Nou mètode `updateCategory` que actualitza el camp `category` amb validació i auditoria.
+
+**Canvis a l'aplicació (`packages/application/src/support.ts`):**
+- `TicketListRow` inclou `projectName: string | null`.
+- `TicketDetail.ticket` inclou `projectName: string | null`.
+- Nou mètode `updateCategory` amb validació (longitud, no buit, ticket no tancat).
+
+**Canvis a l'API (`apps/api/src/routes/support.ts`):**
+- Nou endpoint: `PATCH /api/v1/support/tickets/:ticketId/category`
+  - Body: `{ category: string }` (min 1, max 60)
+  - Permis: `tickets:manage`
+  - Auditoria: `ticket.category.changed`
+
+**Canvis als tipus API (`apps/web/src/lib/api-types.ts`):**
+- `InboxTicket` inclou `projectName: string | null`.
+
+**Canvis a i18n (`packages/i18n/src/index.ts`):**
+- Nous textos: `project`, `noProject`, `openedAt`, `lastUpdate` en ca, es i en.
+
+**Canvis a la UI (`apps/web/src/components/ticket-detail.tsx`):**
+- Redisseny complet amb layout a dues columnes (inspirat en project-detail.tsx):
+  - Secció d'identitat: número + assumpte + client + projecte (link clicable)
+  - Panell lateral de metadades: estat (select), prioritat (badge de color), categoria
+    (input editable), responsable (select), objectius SLA (badges), dates
+  - Fil de conversa amb missatges i formulari de resposta
+
+**Canvis a CSS (`apps/web/src/app/styles.css`):**
+- Nous estils: `.ticket-detail`, `.ticket-identity`, `.ticket-body`, `.ticket-meta`,
+  `.ticket-priority-badge`, `.ticket-sla-*`, `.ticket-conversation`, `.ticket-reply`
+- Media query `@media (max-width: 760px)`: layout en columna única per a mòbil
+
+**Proves:**
+- 5 proves noves per a `updateCategory` (èxit, buit, llarg, tancat, trim).
+- Mock de l'aplicació actualitzat amb `projectName` i `updateCategory`.
+- Total aplicació: 107 proves (5 noves).
+- Typecheck del web app passa.
+
 ## Validacio abans de continuar
+
+La consolidacio previa a la Fase 6 queda tancada amb els increments 0-11 implementats. El gate
+local complet passa (`pnpm check`) i la suite autenticada passa amb 24/24 proves, dos workers,
+base neta i sense reintents (`pnpm check:e2e`). Les proves E2E comparteixen un helper per conduir
+tant els selectors tematitzats com els natius, i el detall de ticket exposa noms accessibles per
+als controls d'estat i responsable. Sentry inclou la captura de transicions del router i la
+configuracio vigent per eliminar debug logging.
 
 ```powershell
 pnpm infra:up

@@ -45,12 +45,14 @@ const listColumns = `t.id, t.ticket_number::int as "ticketNumber", t.customer_id
   t.first_response_at as "firstResponseAt", t.resolved_at as "resolvedAt", t.closed_at as "closedAt",
   t.first_response_target_minutes as "firstResponseTargetMinutes",
   t.resolution_target_minutes as "resolutionTargetMinutes",
-  c.display_name as "customerName", u.name as "assigneeName"`;
+  c.display_name as "customerName", u.name as "assigneeName",
+  t.updated_at as "updatedAt", p.name as "projectName"`;
 
 const listFrom = `from tickets t
   join customers c on c.tenant_id = t.tenant_id and c.id = t.customer_id
   left join memberships m on m.tenant_id = t.tenant_id and m.id = t.assignee_membership_id
-  left join "user" u on u.id = m.user_id`;
+  left join "user" u on u.id = m.user_id
+  left join projects p on p.tenant_id = t.tenant_id and p.id = t.project_id`;
 
 export class PostgresSupportRepository implements SupportRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -160,6 +162,22 @@ export class PostgresSupportRepository implements SupportRepository {
       await this.writeEvent(tx, context, ticketId, "assigned", current.assignee_membership_id, membershipId);
       return ticket!;
     }).catch(mapConstraint);
+  }
+
+  async updateCategory(context: TenantContext, ticketId: string, category: string, at: Date) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [current] = await tx<{ category: string }[]>`
+        select category from tickets where tenant_id = ${context.tenantId} and id = ${ticketId} for update`;
+      if (!current) throw new SupportError("TICKET_NOT_FOUND");
+
+      const [ticket] = await tx<TicketRecord[]>`
+        update tickets set category = ${category.trim()}, updated_at = ${at}
+        where tenant_id = ${context.tenantId} and id = ${ticketId}
+        returning ${tx.unsafe(ticketColumns)}`;
+
+      await this.writeEvent(tx, context, ticketId, "category_changed", current.category, category.trim());
+      return ticket!;
+    });
   }
 
   async addMessage(context: TenantContext, ticketId: string, input: AddMessageInput) {

@@ -54,11 +54,16 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
   ha estat molt restrictiva. Una sessio autenticada i una marca de temps de servidor son
   suficients i molt menys problematiques.
 - **Geolocalitzacio.** Mateixa rao: proporcionalitat. No es recull.
-- **Vacances, permisos i baixes.** Modul adjacent i habitual, pero diferent; barrejar-lo
-  converteix un registre legal en una eina de planificacio.
 - **Nomina i calcul d'hores extraordinaries.** Depen del conveni i no es feina d'aquesta
   plataforma.
 - **Planificacio de torns.**
+
+## Funcionalitats afegides (Increment 10)
+
+- **Calendari laboral:** festius del tenant, dies no laborables, vacances aprovades, absències i bloquejos personals.
+- **Vista de calendari accessible:** mostra estat diari, hores registrades, absències i incidències de registre.
+- **Canvi taula/calendari:** l'usuari pot alternar entre vista de taula i vista de calendari, conservant el mes seleccionat a la URL.
+- **Navegació de mes amb fletxes accessibles:** sense textos "mes anterior/seguent", amb `aria-label` i tooltip.
 
 ## Decisions
 
@@ -116,6 +121,22 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
     en silenci un numero que ja sap que probablement es fals. El mateix criteri val per a una
     sessio que ningu ha tancat: surt com a oberta, mai com a zero.
 
+### Decisions afegides l'agost de 2026 (Increment 10)
+
+13. **Festius del tenant i dies no laborables son conceptes separats.** Els festius de suport
+    (dies que l'oficina tanca) no son automaticament els de jornada. Cada tenant configura els
+    seus festius i dies no laborables per als seus treballadors.
+
+14. **Vacances, absències i bloquejos personals son registres separats.** Les vacances
+    aprovades, les absències (baixes mèdiques, permisos) i els bloquejos personals (hores
+    no disponibles) es modelen com a taules independents amb els seus estats i fluxos.
+
+15. **La vista de calendari és accessible.** No es representa només per color: cada dia té text
+    descriptiu del seu estat (laborable, festiu, vacances, absència, etc.).
+
+16. **Navegació de mes amb fletxes accessibles.** Els textos "mes anterior/seguent" s'eliminen;
+    les fletxes conserveixen `aria-label` i tooltip per accessibilitat.
+
 ## Fluxos
 
 **Fitxar.** Un boto a l'aplicacio, amb sessio iniciada, escriu un event amb l'hora del
@@ -155,6 +176,12 @@ pot donar aquest modul: es el cost real d'estructura.
 - L'informe de conciliacio no confon hores registrades amb hores imputades.
 - Llegir el registre d'una altra persona genera auditoria.
 - Un tenant no veu registres d'un altre.
+- **(Increment 10)** La vista de calendari mostra estat diari, hores registrades, absències i incidències.
+- **(Increment 10)** No es representa només per color: cada dia té text descriptiu del seu estat.
+- **(Increment 10)** El canvi taula/calendari conserva el mes seleccionat a la URL.
+- **(Increment 10)** Les fletxes de navegació de mes tenen `aria-label` i tooltip.
+- **(Increment 10)** Festius del tenant i dies no laborables es configuren per tenant.
+- **(Increment 10)** Vacances, absències i bloquejos personals es modelen com a taules separades.
 
 ## Permisos i tenancy
 
@@ -162,14 +189,18 @@ pot donar aquest modul: es el cost real d'estructura.
 |---|:---:|:---:|:---:|
 | `attendance:record` | X | X | X |
 | `attendance:manage` | X | X |  |
+| `attendance:holidays` | X | X |  |
+| `attendance:vacations` | X | X |  |
 
 - `attendance:record` permet fitxar, llegir **el propi** registre i **corregir-lo**. Ni la
   lectura ni la correccio del propi registre depenen de cap permis addicional, a proposit: son
   el document que la llei reconeix a la persona, i fer-los dependre de la disponibilitat d'algu
-  altre perjudica precisament qui la norma protegeix. Tota correccio exigeix motiu, conserva
+  perjudica precisament qui la norma protegeix. Tota correccio exigeix motiu, conserva
   l'original i queda auditada.
 - `attendance:manage` permet llegir el registre de tothom, corregir-lo i exportar-lo. Fins i
   tot amb aquest permis, corregir es append-only i auditat.
+- `attendance:holidays` permet gestionar festius del tenant i dies no laborables.
+- `attendance:vacations` permet gestionar sol·licituds de vacances (aprovar/rebutjar).
 - La conciliacio contra hores imputades exigeix a mes `financials:read`, perque revela cost.
 - RLS i `force row level security`, com la resta.
 
@@ -184,6 +215,20 @@ Un unic log d'events, i les sessions i els totals es deriven:
 Un log d'events es la forma natural d'un registre que no es pot modificar. Modelar-ho com una
 fila per sessio amb `ended_at` obligaria a actualitzar files, que es exactament el que no ha
 de poder passar.
+
+### Taules addicionals (Increment 10)
+
+- `attendance_holidays`: festius del tenant. `tenant_id`, `date`, `name`, `created_at`.
+- `attendance_non_working_days`: dies no laborables (caps de setmana, etc.). `tenant_id`,
+  `day_of_week` (0-6), `created_at`.
+- `attendance_vacations`: vacances aprovades. `tenant_id`, `membership_id`, `start_date`,
+  `end_date`, `status` (`pending`, `approved`, `rejected`), `approved_by` nullable,
+  `approved_at` nullable, `notes` nullable, `created_at`.
+- `attendance_absences`: absències (baixes mèdiques, permisos). `tenant_id`, `membership_id`,
+  `start_date`, `end_date`, `type` (`sick_leave`, `personal_leave`, `other`), `document_url`
+  nullable, `notes` nullable, `created_by`, `created_at`.
+- `attendance_blocks`: bloquejos personals (hores no disponibles). `tenant_id`, `membership_id`,
+  `date`, `start_time`, `end_time`, `reason`, `created_at`.
 
 Restriccions a la base de dades:
 
@@ -221,6 +266,17 @@ GET    /api/v1/attendance                 (attendance:manage)
 POST   /api/v1/attendance/corrections     (el propi; el d'altri, attendance:manage)
 GET    /api/v1/attendance/export          (attendance:manage)
 GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
+POST   /api/v1/attendance/holidays        (attendance:holidays)
+GET    /api/v1/attendance/holidays        (attendance:holidays)
+DELETE /api/v1/attendance/holidays/:id    (attendance:holidays)
+POST   /api/v1/attendance/vacations       (attendance:vacations)
+GET    /api/v1/attendance/vacations       (attendance:vacations)
+PUT    /api/v1/attendance/vacations/:id   (attendance:vacations)
+POST   /api/v1/attendance/absences        (attendance:record)
+GET    /api/v1/attendance/absences        (attendance:record)
+POST   /api/v1/attendance/blocks          (attendance:record)
+GET    /api/v1/attendance/blocks          (attendance:record)
+DELETE /api/v1/attendance/blocks/:id      (attendance:record)
 ```
 
 - El cos de `POST /events` no accepta hora: nomes el tipus. L'hora la posa el servidor.
@@ -259,7 +315,9 @@ GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
 ## Observabilitat i auditoria
 
 - Auditoria: `attendance.recorded`, `attendance.corrected`, `attendance.exported`,
-  `attendance.read_other`.
+  `attendance.read_other`, `attendance.holiday_created`, `attendance.holiday_deleted`,
+  `attendance.vacation_requested`, `attendance.vacation_approved`, `attendance.vacation_rejected`,
+  `attendance.absence_created`, `attendance.block_created`, `attendance.block_deleted`.
 - `attendance.read_other` es deliberat: consultar quan entra i surt una persona ha de deixar
   rastre encara que qui ho fa hi tingui dret.
 - Metriques: hores registrades per setmana. Cap dada individual a les metriques.
@@ -272,6 +330,12 @@ GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
   hora futura rebutjada.
 - **Permisos:** un membre no pot llegir el registre d'un altre; `Technical` no pot exportar.
 - **Conciliacio:** hores registrades i hores imputades no es barregen mai en un sol total.
+- **(Increment 10) Festius i dies no laborables:** CRUD complet, validació de dates, tenant scope.
+- **(Increment 10) Vacances:** fluxe de sol·licitud/aprovació, estats, permisos.
+- **(Increment 10) Absències:** creació, validació de dates, adjunts.
+- **(Increment 10) Bloquejos:** creació, validació d'hores, overlap.
+- **(Increment 10) Vista de calendari:** representació correcta d'estats, accessibilitat.
+- **(Increment 10) Navegació de mes:** fletxes accessibles, conservació de paràmetres.
 
 ## Rollout, feature flag i rollback
 

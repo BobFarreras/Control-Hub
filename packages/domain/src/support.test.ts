@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canTransitionTicket, slaState, ticketStatuses, type SupportCalendar } from "./index.js";
+import {
+  canTransitionTicket,
+  deriveInboxSlaStatus,
+  estimateDeadline,
+  inboxSlaInfo,
+  slaState,
+  ticketStatuses,
+  type SupportCalendar
+} from "./index.js";
 
 const officeHours: SupportCalendar = {
   timeZone: "Europe/Madrid",
@@ -110,5 +118,113 @@ describe("sla state", () => {
     // Not zero: an absent schedule and an instant reply must not look the same.
     expect(unconfigured.firstResponse.measurable).toBe(false);
     expect(unconfigured.firstResponse.breached).toBe(false);
+  });
+});
+
+describe("deriveInboxSlaStatus", () => {
+  it("returns not_configured when not measurable", () => {
+    expect(deriveInboxSlaStatus(0, 60, false, false, false)).toBe("not_configured");
+  });
+
+  it("returns paused when the clock is stopped", () => {
+    expect(deriveInboxSlaStatus(30, 60, true, false, true)).toBe("paused");
+  });
+
+  it("returns breached when the target is exceeded", () => {
+    expect(deriveInboxSlaStatus(70, 60, true, true, false)).toBe("breached");
+  });
+
+  it("returns near when consumed is >= 80% of target", () => {
+    expect(deriveInboxSlaStatus(48, 60, true, false, false)).toBe("near");
+    expect(deriveInboxSlaStatus(60, 60, true, false, false)).toBe("near");
+  });
+
+  it("returns on_time when consumed is < 80% of target", () => {
+    expect(deriveInboxSlaStatus(30, 60, true, false, false)).toBe("on_time");
+  });
+
+  it("breached takes priority over near", () => {
+    expect(deriveInboxSlaStatus(70, 60, true, true, false)).toBe("breached");
+  });
+
+  it("paused takes priority over breached", () => {
+    expect(deriveInboxSlaStatus(70, 60, true, true, true)).toBe("paused");
+  });
+});
+
+describe("estimateDeadline", () => {
+  it("returns null when not measurable", () => {
+    expect(estimateDeadline(30, 60, false, false, openedAt, at("2026-08-04T08:00:00Z"), [])).toBeNull();
+  });
+
+  it("returns null when already breached", () => {
+    expect(estimateDeadline(70, 60, true, true, openedAt, at("2026-08-04T08:00:00Z"), [])).toBeNull();
+  });
+
+  it("returns null when consumed is zero (no rate to extrapolate)", () => {
+    expect(estimateDeadline(0, 60, true, false, openedAt, at("2026-08-04T08:00:00Z"), [])).toBeNull();
+  });
+
+  it("estimates a deadline based on the current consumption rate", () => {
+    // Opened at 07:00 UTC (09:00 Madrid), now 08:00 UTC (10:00 Madrid).
+    // 60 working minutes consumed, target is 120 → need 60 more.
+    // Rate is 60 min per 60 wall-clock min → deadline at now + 60 min = 09:00 UTC.
+    const deadline = estimateDeadline(60, 120, true, false, at("2026-08-04T07:00:00Z"), at("2026-08-04T08:00:00Z"), []);
+    expect(deadline).toBe(at("2026-08-04T09:00:00Z").toISOString());
+  });
+
+  it("accounts for open pauses when estimating", () => {
+    // Same as above but with a 30-min open pause: effective wall = 30 min.
+    // Rate = 60 / 30 = 2 min/min → 60 remaining at 2 min/min → 30 min.
+    const deadline = estimateDeadline(60, 120, true, false, at("2026-08-04T07:00:00Z"), at("2026-08-04T08:00:00Z"), [
+      { from: at("2026-08-04T07:30:00Z"), to: null }
+    ]);
+    expect(deadline).toBe(at("2026-08-04T08:30:00Z").toISOString());
+  });
+});
+
+describe("inboxSlaInfo", () => {
+  const base = { calendar: officeHours, openedAt, now: at("2026-08-04T08:00:00Z"), pauses: [] as const };
+  const measurable = { measurable: true, breached: false };
+
+  it("derives the correct active target when first response is pending", () => {
+    const info = inboxSlaInfo(
+      { ...measurable, consumedMinutes: 30, targetMinutes: 60 },
+      { ...measurable, consumedMinutes: 60, targetMinutes: 240 },
+      undefined,
+      undefined,
+      base.openedAt,
+      base.now,
+      base.pauses
+    );
+    expect(info.firstResponse.activeTarget).toBe("first_response");
+    expect(info.resolution.activeTarget).toBe("resolution");
+  });
+
+  it("returns null estimatedDeadline when first response is already given", () => {
+    const info = inboxSlaInfo(
+      { ...measurable, consumedMinutes: 30, targetMinutes: 60 },
+      { ...measurable, consumedMinutes: 60, targetMinutes: 240 },
+      at("2026-08-04T07:30:00Z"),
+      undefined,
+      base.openedAt,
+      base.now,
+      base.pauses
+    );
+    expect(info.firstResponse.estimatedDeadline).toBeNull();
+  });
+
+  it("detects paused state from an open pause", () => {
+    const info = inboxSlaInfo(
+      { ...measurable, consumedMinutes: 30, targetMinutes: 60 },
+      { ...measurable, consumedMinutes: 60, targetMinutes: 240 },
+      undefined,
+      undefined,
+      base.openedAt,
+      base.now,
+      [{ from: at("2026-08-04T07:30:00Z"), to: null }]
+    );
+    expect(info.firstResponse.status).toBe("paused");
+    expect(info.resolution.status).toBe("paused");
   });
 });

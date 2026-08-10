@@ -31,11 +31,25 @@ const valid = {
 
 describe("CompanySubscriptionService", () => {
   it("normalizes provider and currency before persistence", async () => {
-    const create = vi
-      .fn<CompanySubscriptionRepository["create"]>()
-      .mockImplementation((_context, input) =>
-        Promise.resolve({ id: "id", ...input, createdAt: new Date(), updatedAt: new Date() })
-      );
+    const create = vi.fn<CompanySubscriptionRepository["create"]>().mockImplementation((_context, input) =>
+      Promise.resolve({
+        id: "id",
+        ...input,
+        accountEmail: input.accountEmail ?? null,
+        ownerMembershipId: input.ownerMembershipId ?? null,
+        ownerName: null,
+        quantity: input.quantity ?? 1,
+        startedAt: input.startedAt ?? null,
+        trialEndsAt: input.trialEndsAt ?? null,
+        cancelBeforeAt: input.cancelBeforeAt ?? null,
+        canceledAt: null,
+        costCenter: input.costCenter ?? null,
+        paymentMethodLabel: input.paymentMethodLabel ?? null,
+        secretManagerUrl: input.secretManagerUrl ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+    );
     const service = new CompanySubscriptionService({ create } as unknown as CompanySubscriptionRepository);
     await service.create(context, { ...valid, provider: " OpenAI " });
     expect(create).toHaveBeenCalledWith(context, expect.objectContaining({ provider: "OpenAI", currency: "EUR" }));
@@ -50,6 +64,101 @@ describe("CompanySubscriptionService", () => {
     const service = new CompanySubscriptionService({} as CompanySubscriptionRepository);
     expect(() => service.create(context, { ...valid, amountMinor: Number.MAX_SAFE_INTEGER + 1 })).toThrow(
       CompanySubscriptionError
+    );
+  });
+  it("does not allow creating an already canceled or paused expense", () => {
+    const service = new CompanySubscriptionService({} as CompanySubscriptionRepository);
+    expect(() => service.create(context, { ...valid, status: "canceled" })).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" } satisfies Partial<CompanySubscriptionError>)
+    );
+  });
+  it("maps a pause action to a guarded repository transition", async () => {
+    const subscription = {
+      id: "subscription",
+      ...valid,
+      currency: "EUR",
+      accountEmail: null,
+      ownerMembershipId: null,
+      ownerName: null,
+      quantity: 1,
+      startedAt: null,
+      trialEndsAt: null,
+      cancelBeforeAt: null,
+      canceledAt: null,
+      costCenter: null,
+      paymentMethodLabel: null,
+      secretManagerUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const transition = vi.fn<CompanySubscriptionRepository["transition"]>().mockResolvedValue({
+      ...subscription,
+      status: "paused"
+    });
+    const service = new CompanySubscriptionService({
+      getById: vi.fn().mockResolvedValue(subscription),
+      transition
+    } as unknown as CompanySubscriptionRepository);
+    const effectiveAt = new Date();
+    await service.transition(context, { subscriptionId: subscription.id, action: "pause", effectiveAt });
+    expect(transition).toHaveBeenCalledWith(context, {
+      subscriptionId: subscription.id,
+      action: "pause",
+      effectiveAt,
+      expectedStatus: "active",
+      targetStatus: "paused",
+      eventType: "paused"
+    });
+  });
+  it("requires a reason to cancel and rejects terminal transitions", async () => {
+    const service = new CompanySubscriptionService({} as CompanySubscriptionRepository);
+    await expect(
+      service.transition(context, {
+        subscriptionId: "subscription",
+        action: "cancel",
+        effectiveAt: new Date()
+      })
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+  it("normalizes edits and preserves the expected version", async () => {
+    const current = {
+      id: "subscription",
+      ...valid,
+      currency: "EUR",
+      accountEmail: null,
+      ownerMembershipId: null,
+      ownerName: null,
+      quantity: 1,
+      startedAt: null,
+      trialEndsAt: null,
+      cancelBeforeAt: null,
+      canceledAt: null,
+      costCenter: null,
+      paymentMethodLabel: null,
+      secretManagerUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const update = vi
+      .fn<CompanySubscriptionRepository["update"]>()
+      .mockResolvedValue({ ...current, provider: "OpenAI" });
+    const service = new CompanySubscriptionService({
+      getById: vi.fn().mockResolvedValue(current),
+      update
+    } as unknown as CompanySubscriptionRepository);
+    await service.update(context, {
+      subscriptionId: current.id,
+      expectedUpdatedAt: current.updatedAt,
+      provider: " OpenAI ",
+      accountEmail: " Workspace-Admin "
+    });
+    expect(update).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        provider: "OpenAI",
+        accountEmail: "Workspace-Admin",
+        expectedUpdatedAt: current.updatedAt
+      })
     );
   });
 });

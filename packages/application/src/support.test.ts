@@ -51,6 +51,8 @@ const listRow = (overrides: Partial<TicketListRow> = {}): TicketListRow => ({
   ...ticket(),
   customerName: "Client A",
   assigneeName: null,
+  updatedAt: new Date("2026-08-04T08:00:00Z"),
+  projectName: null,
   ...overrides
 });
 
@@ -69,6 +71,7 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
   getTicket: vi.fn<SupportRepository["getTicket"]>().mockResolvedValue(ticket()),
   updateStatus: vi.fn<SupportRepository["updateStatus"]>().mockResolvedValue(ticket({ status: "resolved" })),
   assign: vi.fn<SupportRepository["assign"]>().mockResolvedValue(ticket({ assigneeMembershipId: "member" })),
+  updateCategory: vi.fn<SupportRepository["updateCategory"]>().mockResolvedValue(ticket({ category: "bug" })),
   addMessage: vi.fn<SupportRepository["addMessage"]>().mockResolvedValue({
     id: "message-1",
     ticketId: "ticket-1",
@@ -81,7 +84,7 @@ const repository = (overrides: Partial<SupportRepository> = {}): SupportReposito
   listMessages: vi.fn<SupportRepository["listMessages"]>().mockResolvedValue([]),
   getTicketWithNames: vi
     .fn<SupportRepository["getTicketWithNames"]>()
-    .mockResolvedValue({ ...ticket(), customerName: "Client A", assigneeName: null }),
+    .mockResolvedValue({ ...ticket(), customerName: "Client A", assigneeName: null, projectName: null }),
   listAssignableMembers: vi
     .fn<SupportRepository["listAssignableMembers"]>()
     .mockResolvedValue([{ membershipId: "member", name: "Boby" }]),
@@ -441,5 +444,39 @@ describe("ticket detail", () => {
     await expect(
       new SupportService(repository({ getTicketWithNames })).ticketDetail(context, "missing")
     ).rejects.toMatchObject({ code: "TICKET_NOT_FOUND" });
+  });
+});
+
+describe("updateCategory", () => {
+  it("updates the category of an open ticket", async () => {
+    const updateCategory = vi.fn<SupportRepository["updateCategory"]>().mockResolvedValue(ticket({ category: "bug" }));
+    const result = await new SupportService(repository({ updateCategory })).updateCategory(context, "ticket-1", "bug");
+    expect(result.category).toBe("bug");
+    expect(updateCategory).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an empty category", async () => {
+    await expect(new SupportService(repository()).updateCategory(context, "ticket-1", "  ")).rejects.toMatchObject({
+      code: "INVALID_INPUT"
+    });
+  });
+
+  it("rejects a category longer than 60 characters", async () => {
+    await expect(
+      new SupportService(repository()).updateCategory(context, "ticket-1", "a".repeat(61))
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects updating a closed ticket", async () => {
+    const getTicket = vi.fn<SupportRepository["getTicket"]>().mockResolvedValue(ticket({ status: "closed" }));
+    await expect(
+      new SupportService(repository({ getTicket })).updateCategory(context, "ticket-1", "bug")
+    ).rejects.toMatchObject({ code: "TICKET_CLOSED" });
+  });
+
+  it("trims whitespace from the category", async () => {
+    const updateCategory = vi.fn<SupportRepository["updateCategory"]>().mockResolvedValue(ticket({ category: "bug" }));
+    await new SupportService(repository({ updateCategory })).updateCategory(context, "ticket-1", "  bug  ");
+    expect(updateCategory).toHaveBeenCalledWith(context, "ticket-1", "bug", expect.any(Date));
   });
 });

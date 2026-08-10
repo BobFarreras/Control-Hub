@@ -3,10 +3,11 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AttendancePendingRequests } from "@/components/attendance-pending-requests";
 import { AttendanceTeam } from "@/components/attendance-team";
 import { PageTopbar } from "@/components/page-topbar";
 import { apiFetch, readJson } from "@/lib/api";
-import type { AttendanceTeamResponse, AttendanceTeamRow } from "@/lib/api-types";
+import type { AttendanceTeamResponse, AttendanceTeamRow, AttendanceVacation, AttendanceAbsence } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
 import { requireSession } from "@/lib/require-session";
 import { monthRange } from "../month-range";
@@ -42,6 +43,9 @@ export default async function AttendanceTeamPage({
    */
   let rows: AttendanceTeamRow[] = [];
   let reconciled = false;
+  let pendingVacations: AttendanceVacation[] = [];
+  let pendingAbsences: AttendanceAbsence[] = [];
+
   try {
     const withCost = await apiFetch(`/api/v1/attendance/reconciliation?${query}`);
     if (withCost.ok) {
@@ -57,6 +61,26 @@ export default async function AttendanceTeamPage({
   } catch {
     // Left empty rather than failing the page, as everywhere else in the product.
   }
+
+  // Fetch pending requests for admins
+  try {
+    const [vacRes, absRes] = await Promise.all([
+      apiFetch(`/api/v1/attendance/vacations?${query}`),
+      apiFetch(`/api/v1/attendance/absences?${query}`)
+    ]);
+    if (vacRes.ok) {
+      const data = await readJson<{ vacations: AttendanceVacation[] }>(vacRes);
+      pendingVacations = data.vacations.filter((v) => v.status === "pending");
+    }
+    if (absRes.ok) {
+      const data = await readJson<{ absences: AttendanceAbsence[] }>(absRes);
+      pendingAbsences = data.absences;
+    }
+  } catch {
+    // Non-critical: pending requests are a convenience, not a requirement.
+  }
+
+  const memberNames = new Map(rows.map((r) => [r.membershipId, r.memberName]));
 
   return (
     <div className="app-shell">
@@ -75,6 +99,13 @@ export default async function AttendanceTeamPage({
           }
         />
         <main className="compact-main">
+          <AttendancePendingRequests
+            vacations={pendingVacations}
+            absences={pendingAbsences}
+            memberNames={memberNames}
+            labels={labels}
+            locale={locale}
+          />
           <AttendanceTeam rows={rows} range={range} reconciled={reconciled} labels={labels} locale={locale} />
         </main>
       </div>

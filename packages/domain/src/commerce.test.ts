@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { annualizeMinor, monthlyFromAnnualMinor, nextRenewalAt, recurringMetrics, taxMinor } from "./index.js";
+import {
+  annualizeMinor,
+  isCommercialIntervalAllowed,
+  monthlyFromAnnualMinor,
+  nextRenewalAt,
+  recurringMetrics,
+  taxMinor
+} from "./index.js";
 
 describe("commerce money", () => {
   it("normalizes supported periods without floating point", () => {
@@ -8,6 +15,14 @@ describe("commerce money", () => {
     expect(annualizeMinor(6000, "semiannual")).toBe(12000);
     expect(annualizeMinor(12000, "annual")).toBe(12000);
     expect(annualizeMinor(1000, "free")).toBe(0);
+    expect(annualizeMinor(1000, "one_time")).toBe(0);
+  });
+
+  it("keeps recurring and one-time commercial models coherent", () => {
+    expect(isCommercialIntervalAllowed("subscription", "monthly")).toBe(true);
+    expect(isCommercialIntervalAllowed("maintenance", "annual")).toBe(true);
+    expect(isCommercialIntervalAllowed("one_time", "one_time")).toBe(true);
+    expect(isCommercialIntervalAllowed("project_service", "monthly")).toBe(false);
   });
 
   it("uses deterministic half-up integer rounding", () => {

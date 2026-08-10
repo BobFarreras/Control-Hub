@@ -19,6 +19,7 @@ export type Fixture = {
   subjects: Record<"breached" | "within" | "conversation", string>;
   internalNote: string;
   customerReply: string;
+  commerce: { customer: string; product: string; plan: string };
 };
 
 export const credentialsPath = process.env.E2E_CREDENTIALS_FILE
@@ -100,6 +101,41 @@ export async function waitForHydration(locator: Locator): Promise<void> {
       { timeout: 30_000, message: "the control never hydrated, so no handler would have run" }
     )
     .toBe(true);
+}
+
+type SelectChoice = string | { label: string } | { index: number };
+
+/** Drives both the themed SelectField and any native select left in older screens. */
+export async function selectFieldOption(control: Locator, choice: SelectChoice): Promise<void> {
+  await waitForHydration(control);
+  if ((await control.evaluate((node) => node.tagName)) === "SELECT") {
+    await control.selectOption(typeof choice === "string" ? choice : choice);
+    return;
+  }
+
+  const shell = control.locator("..");
+  const native = shell.locator("select");
+  const resolveLabel = () =>
+    native.locator("option").evaluateAll((options, requested) => {
+      const option =
+        typeof requested === "string"
+          ? options.find((candidate) => (candidate as HTMLOptionElement).value === requested)
+          : "label" in requested
+            ? options.find((candidate) => candidate.textContent?.trim() === requested.label)
+            : options[requested.index];
+      return option?.textContent?.trim() ?? null;
+    }, choice);
+  await expect.poll(resolveLabel, { timeout: 30_000 }).not.toBeNull();
+  const label = await resolveLabel();
+  if (!label) throw new Error(`No option matches ${JSON.stringify(choice)}`);
+
+  await control.click();
+  await shell.getByRole("option", { name: label, exact: true }).click();
+}
+
+/** Returns the form value carrier behind a themed SelectField. */
+export function selectFieldValue(control: Locator): Locator {
+  return control.locator("xpath=self::select | ../select");
 }
 
 /**
