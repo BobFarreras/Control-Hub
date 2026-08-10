@@ -36,6 +36,7 @@ export type CustomerServiceSearch = {
   servicePage?: string;
   servicePageSize?: string;
   serviceSort?: string;
+  renewalState?: "due_soon" | "missing";
 };
 
 const defaultPreference: TablePreference = {
@@ -67,7 +68,7 @@ export async function getCustomerServicesData(filters: CustomerServiceSearch): P
   } satisfies CustomerServicesData;
   try {
     const query = new URLSearchParams();
-    for (const key of ["customerId", "productId", "commercialModel", "status", "currency"] as const) {
+    for (const key of ["customerId", "productId", "commercialModel", "status", "currency", "renewalState"] as const) {
       const value = filters[key];
       if (value) query.set(key, value);
     }

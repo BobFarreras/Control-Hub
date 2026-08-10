@@ -19,6 +19,7 @@ export type Fixture = {
   subjects: Record<"breached" | "within" | "conversation", string>;
   internalNote: string;
   customerReply: string;
+  commerce: { customer: string; product: string; plan: string };
 };
 
 export const credentialsPath = process.env.E2E_CREDENTIALS_FILE

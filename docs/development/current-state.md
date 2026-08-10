@@ -72,8 +72,34 @@
 > desplegament gradual. La pantalla de Serveis de clients ja ofereix una taula responsive amb
 > filtres instantanis integrats a la taula generalitzada, imports protegits per permisos, alta
 > guiada i enllaços directes a client, producte i
-> projecte; la fitxa 360 consumeix el nou model unificat. El següent subpas son les accions de
-> cicle de vida, les vistes rapides, les alertes de renovacio i l'exportacio.
+> projecte; la fitxa 360 consumeix el nou model unificat. Les accions de cicle de vida permeten
+> pausar i reprendre serveis recurrents, completar compres i serveis de projecte, i cancel·lar
+> contractes actius o pausats amb motiu obligatori. Cada transicio es atomica, tenant-scoped,
+> controlada contra concurrencia i registrada a l'historial append-only i a l'auditoria. La
+> taula integra a les capçaleres els filtres d'estat, renovacions properes i recurrents sense
+> renovacio, sense una barra paral·lela. Els avisos no usen una finestra global: comparen cada renovacio amb els seus
+> `renewal_alert_days` i la destaquen visualment. L'exportacio Excel respecta els filtres
+> actius, neutralitza formules, inclou metadades i omet totes les columnes monetaries sense
+> `financials:read`. L'E2E autenticat crea un servei propi, el pausa, el repren, el cancel·la
+> amb motiu, el filtra des de la capçalera i descarrega l'Excel real; pot repetir-se sense
+> dependre de l'estat del seed. L'increment 6 queda tancat i el punt de continuacio es
+> l'increment 7, subscripcions contractades per l'empresa.
+> L'increment 7 ha començat amb la decisio COM-3 aprovada: `company_subscriptions` evoluciona
+> de manera additiva i conserva IDs i dades existents. El model ampliat separa inventari
+> operatiu i imports financers, incorpora compte, responsable, llicencies, centre de cost,
+> etiqueta de pagament, dates contractuals i enllaç al gestor de secrets sense desar secrets.
+> La migracio additiva `0029_company_subscriptions_polish.sql` ja esta aplicada localment: amplia
+> el registre sense perdre IDs, completa `canceled_at` a les files antigues, crea l'event inicial
+> idempotent i incorpora RLS, claus tenant-scoped, indexos i triggers de transicio i historial
+> append-only. L'adaptador persisteix els camps operatius i l'event `created` en una sola
+> transaccio, resol el responsable sense N+1 i admet filtres parametritzats. La prova d'integracio
+> real confirma persistencia, historial i aillament entre tenants. Els casos d'us i l'API
+> versionada ja cobreixen filtres, alta amb tots els camps operatius i les accions explicites
+> `activate`, `pause`, `resume` i `cancel`; la cancel·lacio exigeix motiu, les escriptures comparen
+> l'estat esperat i totes les mutacions queden auditades sense copiar dades sensibles. La lectura
+> requereix `subscriptions:manage` i nomes exposa import, moneda i periodicitat sota `financials`
+> quan també hi ha `financials:read`. El següent subpas es la taula generalitzada, els filtres,
+> l'edicio i el cicle de vida a la UI.
 
 ## Punt de projecte
 
@@ -496,6 +522,8 @@ L'auditoria previa a la Fase 5 i les correccions aplicades estan a
 
 - `0012_company_subscriptions.sql`: despeses recurrents de l'empresa amb RLS.
 - `0013_user_table_preferences.sql`: preferencies de taula per tenant i usuari amb RLS.
+- `0029_company_subscriptions_polish.sql`: evolucio additiva de les despeses recurrents,
+  responsable tenant-scoped, dates contractuals, historial append-only i backfill idempotent.
 - `0016_projects_and_time.sql`: projectes, historial, barems i imputacions. Tres garanties que
   no viuen al domini: el xor de la imputacio (`num_nonnulls(project_id, ticket_id) = 1`), el
   trigger que rebutja hores sobre un projecte tancat (SQLSTATE propi `CH001`), i la clau forana

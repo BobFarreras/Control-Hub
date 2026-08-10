@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, Download, Pause, Play, Plus, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import { SelectControl } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
+import { useToast } from "@/components/toast";
 import type { Catalog, CustomerOption, CustomerService, Member, ProjectRow, TablePreference } from "@/lib/api-types";
 
 type Props = {
@@ -42,10 +43,15 @@ export function CustomerServicesWorkspace({
   renderedAt
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [priceId, setPriceId] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [error, setError] = useState("");
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
+  const [cancelService, setCancelService] = useState<CustomerService | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const offers = useMemo(
     () =>
       catalog.prices.map((price) => {
@@ -105,6 +111,25 @@ export function CustomerServicesWorkspace({
     });
     if (!response.ok) return setError(t.formError ?? "OPERATION_FAILED");
     setOpen(false);
+    router.refresh();
+  }
+
+  async function transition(
+    service: CustomerService,
+    action: "pause" | "resume" | "complete" | "cancel",
+    reason?: string
+  ) {
+    setPendingServiceId(service.id);
+    const response = await fetch(`/api/v1/commerce/customer-services/${service.id}/status`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ...(reason ? { reason } : {}) })
+    });
+    setPendingServiceId(null);
+    if (!response.ok) return toast("error", l("lifecycleError"));
+    setCancelService(null);
+    setCancelReason("");
+    toast("success", l("lifecycleSuccess"));
     router.refresh();
   }
 
@@ -174,7 +199,27 @@ export function CustomerServicesWorkspace({
       id: "renewal",
       label: l("nextRenewalOrEnd"),
       width: 145,
-      render: (service) => date(service.renewalAt ?? service.endsAt)
+      filter: {
+        parameter: "renewalState",
+        options: [
+          { value: "due_soon", label: l("dueSoon") },
+          { value: "missing", label: l("missingRenewal") }
+        ]
+      },
+      render: (service) => {
+        const renewalAt = service.renewalAt ? new Date(service.renewalAt).getTime() : null;
+        const dueSoon =
+          service.status === "active" &&
+          renewalAt !== null &&
+          renewalAt >= renderedAt &&
+          renewalAt <= renderedAt + (service.renewalAlertDays ?? 0) * 86_400_000;
+        return (
+          <span className={dueSoon ? "renewal-date due-soon" : "renewal-date"}>
+            {date(service.renewalAt ?? service.endsAt)}
+            {dueSoon && <small>{l("dueSoon")}</small>}
+          </span>
+        );
+      }
     },
     {
       id: "price",
@@ -197,6 +242,60 @@ export function CustomerServicesWorkspace({
       width: 170,
       render: (service) =>
         service.projectId ? <Link href={`/${locale}/projects/${service.projectId}`}>{service.projectName}</Link> : "—"
+    },
+    {
+      id: "actions",
+      label: l("actions"),
+      locked: true,
+      width: 104,
+      render: (service) => {
+        const isRecurring = service.commercialModel === "subscription" || service.commercialModel === "maintenance";
+        const pending = pendingServiceId === service.id;
+        return (
+          <div className="row-actions service-row-actions">
+            {isRecurring && service.status === "active" && (
+              <button
+                disabled={pending}
+                title={l("pause")}
+                aria-label={l("pause")}
+                onClick={() => void transition(service, "pause")}
+              >
+                <Pause size={16} />
+              </button>
+            )}
+            {isRecurring && service.status === "paused" && (
+              <button
+                disabled={pending}
+                title={l("resume")}
+                aria-label={l("resume")}
+                onClick={() => void transition(service, "resume")}
+              >
+                <Play size={16} />
+              </button>
+            )}
+            {!isRecurring && service.status === "active" && (
+              <button
+                disabled={pending}
+                title={l("complete")}
+                aria-label={l("complete")}
+                onClick={() => void transition(service, "complete")}
+              >
+                <Check size={16} />
+              </button>
+            )}
+            {(service.status === "active" || service.status === "paused") && (
+              <button
+                disabled={pending}
+                title={l("cancel")}
+                aria-label={l("cancel")}
+                onClick={() => setCancelService(service)}
+              >
+                <Ban size={16} />
+              </button>
+            )}
+          </div>
+        );
+      }
     }
   ];
   const tableLabels = {
@@ -214,6 +313,9 @@ export function CustomerServicesWorkspace({
     previous: l("previous"),
     nextPage: l("nextPage")
   };
+  const exportQuery = new URLSearchParams({ locale });
+  for (const key of ["customerId", "productId", "commercialModel", "status", "currency", "renewalState"])
+    if (searchParams.get(key)) exportQuery.set(key, searchParams.get(key)!);
 
   return (
     <>
@@ -244,12 +346,65 @@ export function CustomerServicesWorkspace({
         empty={l("emptyServices")}
         labels={tableLabels}
         primaryControls={
-          <button className="primary-command" onClick={() => setOpen(true)}>
-            <Plus size={17} />
-            {t.addCustomerService}
-          </button>
+          <>
+            <a className="secondary-button" href={`/api/v1/commerce/customer-services/export?${exportQuery}`}>
+              <Download size={16} />
+              {l("exportExcel")}
+            </a>
+            <button className="primary-command" onClick={() => setOpen(true)}>
+              <Plus size={17} />
+              {t.addCustomerService}
+            </button>
+          </>
         }
       />
+      {cancelService && (
+        <div className="dialog-backdrop" role="presentation">
+          <section
+            className="crm-dialog service-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-service-title"
+          >
+            <header>
+              <div>
+                <span>{cancelService.customerName}</span>
+                <h2 id="cancel-service-title">{l("cancelService")}</h2>
+              </div>
+              <button className="icon-button" onClick={() => setCancelService(null)} aria-label={l("close")}>
+                <X size={18} />
+              </button>
+            </header>
+            <form
+              className="commerce-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void transition(cancelService, "cancel", cancelReason);
+              }}
+            >
+              <label>
+                {l("cancelReason")}
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.currentTarget.value)}
+                  autoFocus
+                />
+              </label>
+              <div className="dialog-actions">
+                <button type="button" className="secondary-button" onClick={() => setCancelService(null)}>
+                  {l("close")}
+                </button>
+                <button className="primary-command" disabled={pendingServiceId === cancelService.id}>
+                  {l("confirmCancel")}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
       {open && (
         <div className="dialog-backdrop" role="presentation">
           <section

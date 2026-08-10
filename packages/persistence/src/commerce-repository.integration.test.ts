@@ -185,5 +185,35 @@ suite("PostgresCommerceRepository", () => {
     });
     await expect(customerServices.list(context(tenantA), {})).resolves.toContainEqual(created);
     await expect(customerServices.list(context(tenantB), {})).resolves.toEqual([]);
+
+    const pausedAt = new Date(now.getTime() + 1_000);
+    const paused = await customerServices.transition(context(tenantA), {
+      serviceId: created.id,
+      action: "pause",
+      effectiveAt: pausedAt,
+      expectedStatus: "active",
+      targetStatus: "paused",
+      eventType: "paused"
+    });
+    expect(paused.status).toBe("paused");
+    await expect(
+      customerServices.transition(context(tenantA), {
+        serviceId: created.id,
+        action: "pause",
+        effectiveAt: pausedAt,
+        expectedStatus: "active",
+        targetStatus: "paused",
+        eventType: "paused"
+      })
+    ).rejects.toMatchObject({ code: "CUSTOMER_SERVICE_CONFLICT" });
+    const events = await withTenant(
+      database,
+      tenantA,
+      (tx) =>
+        tx<
+          { type: string }[]
+        >`select type from customer_service_events where customer_service_id = ${created.id} order by effective_at`
+    );
+    expect(events.map((event) => event.type)).toEqual(["created", "paused"]);
   });
 });

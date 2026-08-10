@@ -59,6 +59,7 @@ export type CustomerServiceFilters = {
   ownerMembershipId?: string;
   currency?: string;
   renewalBefore?: Date;
+  renewalState?: "due_soon" | "missing";
 };
 
 export type CustomerServiceOffering = {
@@ -66,9 +67,23 @@ export type CustomerServiceOffering = {
   interval: BillingInterval;
 };
 
+export type CustomerServiceLifecycleAction = "pause" | "resume" | "complete" | "cancel";
+export type TransitionCustomerServiceInput = {
+  serviceId: string;
+  action: CustomerServiceLifecycleAction;
+  effectiveAt: Date;
+  reason?: string;
+};
+
 export class CustomerServicesError extends Error {
   constructor(
-    public readonly code: "INVALID_INPUT" | "CUSTOMER_SERVICE_OFFERING_NOT_FOUND" | "CUSTOMER_SERVICE_REFERENCE_INVALID"
+    public readonly code:
+      | "INVALID_INPUT"
+      | "CUSTOMER_SERVICE_OFFERING_NOT_FOUND"
+      | "CUSTOMER_SERVICE_REFERENCE_INVALID"
+      | "CUSTOMER_SERVICE_NOT_FOUND"
+      | "CUSTOMER_SERVICE_INVALID_TRANSITION"
+      | "CUSTOMER_SERVICE_CONFLICT"
   ) {
     super(code);
   }
@@ -78,6 +93,15 @@ export interface CustomerServicesRepository {
   list(context: TenantContext, filters: CustomerServiceFilters): Promise<CustomerContractRecord[]>;
   resolveOffering(context: TenantContext, planId: string, priceId: string): Promise<CustomerServiceOffering | null>;
   create(context: TenantContext, input: CreateCustomerServiceInput): Promise<CustomerContractRecord>;
+  getById(context: TenantContext, serviceId: string): Promise<CustomerContractRecord | null>;
+  transition(
+    context: TenantContext,
+    input: TransitionCustomerServiceInput & {
+      expectedStatus: CustomerServiceStatus;
+      targetStatus: CustomerServiceStatus;
+      eventType: "paused" | "resumed" | "completed" | "canceled";
+    }
+  ): Promise<CustomerContractRecord>;
 }
 
 const serviceStatuses: readonly CustomerServiceStatus[] = ["active", "paused", "completed", "canceled"];
@@ -95,6 +119,7 @@ export class CustomerServicesService {
       (filters.commercialModel !== undefined && !serviceModels.includes(filters.commercialModel)) ||
       (filters.status !== undefined && !serviceStatuses.includes(filters.status)) ||
       (filters.currency !== undefined && !/^[A-Z]{3}$/.test(filters.currency)) ||
+      (filters.renewalState !== undefined && !["due_soon", "missing"].includes(filters.renewalState)) ||
       (filters.renewalBefore !== undefined && !validDate(filters.renewalBefore))
     )
       throw new CustomerServicesError("INVALID_INPUT");
@@ -139,6 +164,36 @@ export class CustomerServicesService {
             renewalAlertDays: input.renewalAlertDays ?? 14
           }
         : {})
+    });
+  }
+
+  async transition(context: TenantContext, input: TransitionCustomerServiceInput) {
+    const reason = input.reason?.trim();
+    if (
+      !validDate(input.effectiveAt) ||
+      (reason !== undefined && (reason.length < 3 || reason.length > 500)) ||
+      (input.action === "cancel" && reason === undefined)
+    )
+      throw new CustomerServicesError("INVALID_INPUT");
+    const service = await this.repository.getById(context, input.serviceId);
+    if (!service) throw new CustomerServicesError("CUSTOMER_SERVICE_NOT_FOUND");
+    const recurring = service.commercialModel === "subscription" || service.commercialModel === "maintenance";
+    const transition =
+      input.action === "pause" && recurring && service.status === "active"
+        ? { targetStatus: "paused" as const, eventType: "paused" as const }
+        : input.action === "resume" && recurring && service.status === "paused"
+          ? { targetStatus: "active" as const, eventType: "resumed" as const }
+          : input.action === "complete" && !recurring && service.status === "active"
+            ? { targetStatus: "completed" as const, eventType: "completed" as const }
+            : input.action === "cancel" && (service.status === "active" || service.status === "paused")
+              ? { targetStatus: "canceled" as const, eventType: "canceled" as const }
+              : null;
+    if (!transition) throw new CustomerServicesError("CUSTOMER_SERVICE_INVALID_TRANSITION");
+    return this.repository.transition(context, {
+      ...input,
+      ...(reason ? { reason } : {}),
+      expectedStatus: service.status,
+      ...transition
     });
   }
 }

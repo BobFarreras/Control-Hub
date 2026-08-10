@@ -114,6 +114,8 @@ describe("route registration", () => {
     ["GET", "/api/v1/commerce/catalog"],
     ["GET", "/api/v1/commerce/customer-services"],
     ["POST", "/api/v1/commerce/customer-services"],
+    ["GET", "/api/v1/commerce/customer-services/export"],
+    ["PATCH", "/api/v1/commerce/customer-services/:serviceId/status"],
     ["GET", "/api/v1/commerce/products/:productId"],
     ["POST", "/api/v1/commerce/products"],
     ["POST", "/api/v1/commerce/products/with-offer"],

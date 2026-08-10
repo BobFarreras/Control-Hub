@@ -5,7 +5,9 @@ import {
   type CustomerContractRecord,
   type CustomerServiceFilters,
   type CustomerServiceOffering,
-  type CustomerServicesRepository
+  type CustomerServicesRepository,
+  type TransitionCustomerServiceInput,
+  type CustomerServiceStatus
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext } from "@control-hub/domain";
@@ -39,11 +41,64 @@ export class PostgresCustomerServicesRepository implements CustomerServicesRepos
       if (filters.ownerMembershipId) add("cs.owner_membership_id", filters.ownerMembershipId);
       if (filters.currency) add("pp.currency", filters.currency);
       if (filters.renewalBefore) add("recurrence.renewal_at", filters.renewalBefore, "<=");
+      if (filters.renewalState === "due_soon") {
+        clauses.push("cs.status = 'active'");
+        clauses.push("recurrence.renewal_at >= now()");
+        clauses.push("recurrence.renewal_at <= now() + make_interval(days => recurrence.renewal_alert_days)");
+      }
+      if (filters.renewalState === "missing") {
+        clauses.push("cs.status = 'active'");
+        clauses.push("recurrence.customer_service_id is not null");
+        clauses.push("recurrence.renewal_at is null");
+      }
       const rows = await tx.unsafe<CustomerServiceRow[]>(
         `${selectCustomerServices} where ${clauses.join(" and ")} order by cs.updated_at desc`,
         values
       );
       return rows.map(record);
+    });
+  }
+
+  getById(context: TenantContext, serviceId: string) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx.unsafe<CustomerServiceRow[]>(
+        `${selectCustomerServices} where cs.tenant_id = $1 and cs.id = $2`,
+        [context.tenantId, serviceId]
+      );
+      return rows[0] ? record(rows[0]) : null;
+    });
+  }
+
+  transition(
+    context: TenantContext,
+    input: TransitionCustomerServiceInput & {
+      expectedStatus: CustomerServiceStatus;
+      targetStatus: CustomerServiceStatus;
+      eventType: "paused" | "resumed" | "completed" | "canceled";
+    }
+  ) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const updated = await tx<{ id: string }[]>`
+        update customer_services
+        set status = ${input.targetStatus},
+            canceled_at = ${input.targetStatus === "canceled" ? input.effectiveAt : null},
+            updated_at = now()
+        where tenant_id = ${context.tenantId}
+          and id = ${input.serviceId}
+          and status = ${input.expectedStatus}
+        returning id`;
+      if (!updated[0]) throw new CustomerServicesError("CUSTOMER_SERVICE_CONFLICT");
+      await tx`
+        insert into customer_service_events
+          (id, tenant_id, customer_service_id, actor_user_id, type, effective_at, metadata)
+        values
+          (${randomUUID()}, ${context.tenantId}, ${input.serviceId}, ${context.userId}, ${input.eventType},
+           ${input.effectiveAt}, ${tx.json(input.reason ? { reason: input.reason } : {})})`;
+      const rows = await tx.unsafe<CustomerServiceRow[]>(
+        `${selectCustomerServices} where cs.tenant_id = $1 and cs.id = $2`,
+        [context.tenantId, input.serviceId]
+      );
+      return record(rows[0]!);
     });
   }
 

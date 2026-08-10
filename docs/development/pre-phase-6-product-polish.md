@@ -18,7 +18,7 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 3 — Importacio guiada de leads.
 - [x] Increment 4 — Fitxa de client com a vista 360.
 - [x] Increment 5 — Simplificar el cataleg comercial.
-- [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
+- [x] Increment 6 — Serveis, subscripcions i compres dels clients.
 - [ ] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
 - [ ] Increment 9 — Safata de suport explicable.
@@ -185,8 +185,10 @@ Progres intern:
 - [x] Migracio additiva, backfill idempotent i adaptador de persistencia.
 - [x] API i casos d'us de serveis de clients.
 - [x] Taula professional, filtres, alta guiada i integracio amb la fitxa 360.
-- [ ] Accions de cicle de vida, vistes rapides, alertes de renovacio i exportacio.
-- [ ] Proves d'integracio, permisos financers i E2E.
+- [x] Accions de cicle de vida amb historial append-only i cancel·lacio motivada.
+- [x] Filtres integrats a la taula i alertes segons la finestra de renovacio de cada contracte.
+- [x] Exportacio Excel professional amb filtres, auditoria i permisos financers.
+- [x] Proves d'integracio, permisos financers i E2E.
 
 Canviar el nom visible de “Subscripcions de clients” a **Serveis de clients**. La taula ha de
 representar el que cada client te contractat, no nomes recurrencia:
@@ -209,6 +211,15 @@ No s'implementen pressupostos ni factures dins aquest increment: es preparen ide
 linies de contracte perquè el modul financer futur els pugui referenciar.
 
 ### Increment 7 — subscripcions contractades per l'empresa
+
+Progres intern:
+
+- [x] Revisio del model actual i decisio COM-3 aprovada.
+- [x] Camps, invariants, permisos i pla de migracio additiva documentats.
+- [x] Migracio, backfill idempotent i persistencia.
+- [x] API i casos d'us.
+- [ ] Taula generalitzada, filtres, edicio i cicle de vida.
+- [ ] Alertes, exportacio i proves E2E.
 
 Canviar el nom visible a **Eines i despeses recurrents** per evitar confondre-les amb clients.
 Taula recomanada:

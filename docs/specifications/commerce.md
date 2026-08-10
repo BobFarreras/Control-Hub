@@ -62,6 +62,16 @@ Els estats comuns son:
 Les transicions generen `customer_service_events` append-only. Cap canvi de pla, preu, estat,
 renovacio o vinculacio amb projecte reescriu l'historial.
 
+Transicions admeses:
+
+- subscripcio o manteniment: `active -> paused -> active`; des d'`active` o `paused` es pot
+  cancel·lar;
+- compra unica o servei per projecte: `active -> completed`; mentre es `active` es pot
+  cancel·lar;
+- `completed` i `canceled` son terminals;
+- cancel·lar exigeix un motiu de 3 a 500 caracters. El motiu queda a l'event, pero no als logs
+  ni a l'auditoria general.
+
 ### Recurrencia opcional
 
 `customer_service_recurrence` existeix nomes per a `subscription` i `maintenance`. Conte el
@@ -120,3 +130,81 @@ i la UI les presenta amb el locale de l'usuari.
 - `Owner` i `Administrator`: poden consultar metriques financeres.
 - `Technical`: sense acces financer per defecte.
 - Totes les mutacions exigeixen MFA, tenant scope i auditoria backend.
+
+## Eines i despeses recurrents de l'empresa
+
+### Decisio COM-3: evolucio additiva de `company_subscriptions`
+
+S'aprova conservar `company_subscriptions` com a contracte de despesa recurrent de l'empresa.
+La migracio mantindra els identificadors i les files existents; no es reutilitza
+`customer_services`, perquè una eina que compra l'empresa no es un servei prestat a un client.
+
+El registre ampliat conte:
+
+- proveidor, servei o pla, categoria i estat;
+- correu o usuari del compte, tractat com a dada sensible;
+- responsable intern amb clau forana composta `(tenant_id, owner_membership_id)`;
+- import en unitats menors, moneda, periodicitat i quantitat de llicencies;
+- inici, fi de trial, proper cobrament o renovacio, data limit de cancel·lacio i cancel·lacio;
+- renovacio automatica i dies d'avis;
+- centre de cost i etiqueta no secreta del metode de pagament;
+- URL oficial i URL del gestor de secrets. Cap contrasenya, token, clau ni dada completa de
+  targeta es desa en aquesta taula, notes, events o auditoria.
+
+`website_url` i `secret_manager_url` nomes accepten HTTPS i es validen amb el contracte de
+seguretat de connectors. Obrir-les des de la UI no converteix el backend en proxy ni provoca
+cap peticio server-side.
+
+### Estats i historial
+
+Els estats son `trial`, `active`, `paused` i `canceled`. Les transicions admeses son:
+
+- `trial -> active`, `trial -> canceled`;
+- `active -> paused`, `active -> canceled`;
+- `paused -> active`, `paused -> canceled`;
+- `canceled` es terminal.
+
+Cancel·lar exigeix motiu i data efectiva. Cada alta, edicio material i canvi d'estat crea un
+event a `company_subscription_events`; els events son append-only i tenant-scoped. Les
+actualitzacions utilitzen l'estat o `updated_at` esperat per rebutjar sobreescriptures
+concurrents.
+
+### Identitat, duplicats i dades existents
+
+La unicitat antiga `(tenant_id, provider, service_name)` es relaxa perquè una empresa pot tenir
+diversos comptes o workspaces del mateix servei. No s'infereix identitat des del correu: els
+duplicats es mostren com una vista operativa i l'usuari decideix si son intencionats.
+
+El desplegament es additiu:
+
+1. Afegir camps opcionals compatibles amb les files actuals, `quantity` amb valor `1`, estat
+   `paused`, claus tenant-scoped, indexos operatius i la taula d'events.
+2. Crear un event inicial idempotent per cada fila existent sense reescriure el seu historial.
+3. Canviar persistencia, API i UI al contracte ampliat.
+4. Eliminar la restriccio d'unicitat antiga nomes dins la nova migracio; no s'edita `0012`.
+
+### Permisos i privacitat
+
+La lectura de l'inventari operatiu requereix `subscriptions:manage`; `amount_minor`, moneda,
+periodicitat de facturacio i metriques agregades nomes es retornen amb `financials:read`.
+`account_email`, notes i enllaç al gestor de secrets no apareixen en logs ni metadades
+d'auditoria. Totes les mutacions continuen exigint MFA i autoritzacio backend.
+
+Indexos previstos:
+
+- renovacions actives per `(tenant_id, renewal_at)` amb index parcial;
+- responsable i estat per `(tenant_id, owner_membership_id, status)`;
+- deteccio visual de possibles duplicats per `(tenant_id, lower(provider), lower(service_name))`;
+- events per `(tenant_id, company_subscription_id, effective_at desc, created_at desc)`.
+
+### Contracte API
+
+- `GET /api/v1/company-subscriptions` requereix `subscriptions:manage` i accepta filtres
+  d'estat, categoria, responsable, moneda i renovacio. Sense `financials:read` no retorna import,
+  moneda ni periodicitat; amb el permis els agrupa sota `financials`.
+- `POST /api/v1/company-subscriptions` crea nomes en `trial` o `active`, valida dates, URLs i
+  referencies tenant-scoped, i registra alta i auditoria sense copiar dades sensibles.
+- `PATCH /api/v1/company-subscriptions/:subscriptionId/status` rep una accio explicita
+  (`activate`, `pause`, `resume` o `cancel`), data efectiva opcional i motiu obligatori per
+  cancel·lar. El cas d'us resol la transicio i la persistencia compara l'estat esperat abans
+  d'escriure l'event.

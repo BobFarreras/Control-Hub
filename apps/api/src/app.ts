@@ -161,7 +161,13 @@ export function buildApp(options: BuildAppOptions) {
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     if (error instanceof CustomerServicesError) {
-      const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code.endsWith("REFERENCE_INVALID") ? 409 : 400;
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code.endsWith("REFERENCE_INVALID") ||
+            error.code.endsWith("INVALID_TRANSITION") ||
+            error.code.endsWith("CONFLICT")
+          ? 409
+          : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     if (error instanceof SupportError) {
@@ -209,7 +215,13 @@ export function buildApp(options: BuildAppOptions) {
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     if (error instanceof CompanySubscriptionError) {
-      const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code.endsWith("REFERENCE_INVALID") ||
+            error.code.endsWith("INVALID_TRANSITION") ||
+            error.code.endsWith("CONFLICT")
+          ? 409
+          : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     request.log.error({ err: error }, "request failed");

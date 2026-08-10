@@ -2175,6 +2175,16 @@ main {
 .service-dialog { width: min(760px, 100%); }
 .service-dialog > header > div span { color: var(--muted); font-size: 11px; }
 .service-dialog > header h2 { margin-top: 3px; }
+.renewal-date { display: grid; gap: 3px; }
+.renewal-date.due-soon { color: var(--warning); font-weight: 700; }
+.renewal-date.due-soon small { color: var(--warning); font-weight: 600; }
+.service-row-actions {
+  width: 100%;
+  min-width: 72px;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+.service-row-actions button { flex: 0 0 32px; }
 .subscription-table,
 .renewal-panel {
   border: 1px solid var(--border);
