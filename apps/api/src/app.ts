@@ -289,30 +289,34 @@ export function buildApp(options: BuildAppOptions) {
       service: "api",
       version: options.version ?? "0.1.0"
     }));
-    app.get<{ Reply: ReadyHealth }>("/health/ready", { schema: { tags: ["health"] } }, async (_request, reply) => {
-      const dependencies: ReadyHealth["dependencies"] = {};
-      let ready = true;
-      try {
-        dependencies.postgres = { status: "up", latencyMs: await checkDatabase(database) };
-      } catch {
-        dependencies.postgres = { status: "down", latencyMs: 0 };
-        ready = false;
+    app.get<{ Reply: ReadyHealth }>(
+      "/health/ready",
+      { config: { rateLimit: { max: 60, timeWindow: "1 minute" } }, schema: { tags: ["health"] } },
+      async (_request, reply) => {
+        const dependencies: ReadyHealth["dependencies"] = {};
+        let ready = true;
+        try {
+          dependencies.postgres = { status: "up", latencyMs: await checkDatabase(database) };
+        } catch {
+          dependencies.postgres = { status: "down", latencyMs: 0 };
+          ready = false;
+        }
+        try {
+          const startedAt = performance.now();
+          if (redis.status === "wait") await redis.connect();
+          await redis.ping();
+          dependencies.queue = { status: "up", latencyMs: Math.round(performance.now() - startedAt) };
+        } catch {
+          dependencies.queue = { status: "down", latencyMs: 0 };
+          ready = false;
+        }
+        if (!ready) reply.code(503);
+        return { status: ready ? "ready" : "not_ready", service: "api", dependencies };
       }
-      try {
-        const startedAt = performance.now();
-        if (redis.status === "wait") await redis.connect();
-        await redis.ping();
-        dependencies.queue = { status: "up", latencyMs: Math.round(performance.now() - startedAt) };
-      } catch {
-        dependencies.queue = { status: "down", latencyMs: 0 };
-        ready = false;
-      }
-      if (!ready) reply.code(503);
-      return { status: ready ? "ready" : "not_ready", service: "api", dependencies };
-    });
+    );
   }
 
-  app.addHook("onClose", async () => {
+  async function closeDependencies() {
     for (const connection of [redis, rateLimitStore]) {
       if (connection.status === "ready") await connection.quit();
       else connection.disconnect();
@@ -320,6 +324,8 @@ export function buildApp(options: BuildAppOptions) {
     await database.end({ timeout: 5 });
     if (options.auth) await options.auth.close();
     if (options.invitationAuth) await options.invitationAuth.close();
-  });
+  }
+
+  app.addHook("onClose", closeDependencies);
   return app;
 }

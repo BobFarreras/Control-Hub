@@ -680,6 +680,9 @@ base neta i sense reintents (`pnpm check:e2e`). Les proves E2E comparteixen un h
 tant els selectors tematitzats com els natius, i el detall de ticket exposa noms accessibles per
 als controls d'estat i responsable. Sentry inclou la captura de transicions del router i la
 configuracio vigent per eliminar debug logging.
+La readiness comprova PostgreSQL i Redis amb un pressupost explicit de 60 peticions per minut;
+el limit global continua protegint la resta de rutes i el hook de tancament no queda exposat com
+un handler HTTP.
 
 ```powershell
 pnpm infra:up
