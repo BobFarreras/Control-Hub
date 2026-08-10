@@ -20,6 +20,8 @@ export const permissionCodes = [
   "support:configure",
   "attendance:record",
   "attendance:manage",
+  "attendance:holidays",
+  "attendance:vacations",
   "infrastructure:read",
   "infrastructure:operate",
   "integrations:read",
@@ -54,6 +56,8 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "support:configure",
     "attendance:record",
     "attendance:manage",
+    "attendance:holidays",
+    "attendance:vacations",
     "infrastructure:read",
     "integrations:read",
     "usage:read"
@@ -137,8 +141,14 @@ export function hasPermission(context: TenantContext, permission: Permission): b
   return context.permissions.includes(permission);
 }
 
-export const billingIntervals = ["free", "monthly", "quarterly", "semiannual", "annual"] as const;
+export const billingIntervals = ["free", "one_time", "monthly", "quarterly", "semiannual", "annual"] as const;
 export type BillingInterval = (typeof billingIntervals)[number];
+export const commercialModels = ["subscription", "maintenance", "one_time", "project_service"] as const;
+export type CommercialModel = (typeof commercialModels)[number];
+export function isCommercialIntervalAllowed(model: CommercialModel, interval: BillingInterval): boolean {
+  const oneTime = model === "one_time" || model === "project_service";
+  return oneTime ? interval === "one_time" : interval !== "one_time";
+}
 export const subscriptionStatuses = ["active", "paused", "canceled"] as const;
 export type SubscriptionStatus = (typeof subscriptionStatuses)[number];
 
@@ -151,7 +161,14 @@ function assertSafeMoney(value: number, name: string) {
 export function annualizeMinor(amountMinor: number, interval: BillingInterval, quantity = 1): number {
   assertSafeMoney(amountMinor, "amount");
   assertSafeMoney(quantity, "quantity");
-  const multiplier: Record<BillingInterval, number> = { free: 0, monthly: 12, quarterly: 4, semiannual: 2, annual: 1 };
+  const multiplier: Record<BillingInterval, number> = {
+    free: 0,
+    one_time: 0,
+    monthly: 12,
+    quarterly: 4,
+    semiannual: 2,
+    annual: 1
+  };
   const result = BigInt(amountMinor) * BigInt(quantity) * BigInt(multiplier[interval]);
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("MONEY_OVERFLOW");
   return Number(result);
@@ -184,8 +201,15 @@ export function taxMinor(netMinor: number, taxBasisPoints: number): number {
 
 export function nextRenewalAt(current: Date, interval: BillingInterval): Date | null {
   if (Number.isNaN(current.getTime())) throw new Error("INVALID_RENEWAL_DATE");
-  const months: Record<BillingInterval, number> = { free: 0, monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
-  if (interval === "free") return null;
+  const months: Record<BillingInterval, number> = {
+    free: 0,
+    one_time: 0,
+    monthly: 1,
+    quarterly: 3,
+    semiannual: 6,
+    annual: 12
+  };
+  if (interval === "free" || interval === "one_time") return null;
   const result = new Date(current);
   const day = result.getUTCDate();
   result.setUTCDate(1);

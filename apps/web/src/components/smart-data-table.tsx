@@ -287,6 +287,7 @@ export function SmartDataTable<Row extends { id: string }>({
               return (
                 <tr
                   className={href ? "smart-table-row navigable" : "smart-table-row"}
+                  data-row-id={row.id}
                   style={{ "--row-index": index } as CSSProperties}
                   key={row.id}
                   // A click that landed on a link, a button or a text selection is left alone:

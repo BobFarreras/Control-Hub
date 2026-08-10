@@ -1,7 +1,16 @@
 "use client";
 
-import { ChevronDown, CircleHelp } from "lucide-react";
-import { useId, type ReactNode, type SelectHTMLAttributes, type InputHTMLAttributes } from "react";
+import { Check, ChevronDown, CircleHelp } from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type InputHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+  type SelectHTMLAttributes
+} from "react";
 
 /**
  * The form primitives every operational screen shares.
@@ -76,13 +85,159 @@ export function Field({ label, hint, error, wide, labelHidden, children }: Field
 
 type Option = { value: string; label: string; disabled?: boolean };
 
+export function SelectControl({
+  options,
+  placeholder,
+  className,
+  value,
+  defaultValue,
+  onChange,
+  disabled,
+  required,
+  name,
+  id,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+  ...select
+}: {
+  options: readonly Option[];
+  placeholder?: string | undefined;
+} & SelectHTMLAttributes<HTMLSelectElement>) {
+  const generatedId = useId();
+  const controlId = id ?? generatedId;
+  const listboxId = `${controlId}-listbox`;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const nativeRef = useRef<HTMLSelectElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [internalValue, setInternalValue] = useState(String(defaultValue ?? ""));
+  const selectedValue = value === undefined ? internalValue : String(value);
+  const selectedOption = options.find((option) => option.value === selectedValue);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  const choose = (nextValue: string) => {
+    if (value === undefined) setInternalValue(nextValue);
+    const native = nativeRef.current;
+    if (native) {
+      native.value = nextValue;
+      native.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const move = (direction: -1 | 1) => {
+    const enabled = options.filter((option) => !option.disabled);
+    const current = enabled.findIndex((option) => option.value === selectedValue);
+    const next =
+      current < 0
+        ? direction === 1
+          ? 0
+          : enabled.length - 1
+        : (current + direction + enabled.length) % enabled.length;
+    const option = enabled[next];
+    if (option) choose(option.value);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setOpen((current) => !current);
+    }
+  };
+
+  return (
+    <div ref={rootRef} className={["select-shell", open ? "is-open" : "", className].filter(Boolean).join(" ")}>
+      <select
+        ref={nativeRef}
+        className="select-native-proxy"
+        name={name}
+        value={selectedValue}
+        onChange={(event) => {
+          if (value === undefined) setInternalValue(event.target.value);
+          onChange?.(event);
+        }}
+        required={required}
+        disabled={disabled}
+        tabIndex={-1}
+        aria-hidden="true"
+        {...select}
+      >
+        {placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
+        {options.map((option) => (
+          <option value={option.value} key={option.value} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button
+        ref={buttonRef}
+        id={controlId}
+        className="select-trigger"
+        type="button"
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-required={required}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={handleKeyDown}
+      >
+        <span className={selectedOption ? "" : "is-placeholder"}>{selectedOption?.label ?? placeholder ?? ""}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="select-dropdown" id={listboxId} role="listbox" aria-label={ariaLabel}>
+          {options.map((option) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={option.value === selectedValue}
+              disabled={option.disabled}
+              key={option.value}
+              onClick={() => choose(option.value)}
+            >
+              <span>{option.label}</span>
+              {option.value === selectedValue && <Check size={15} aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
- * A styled native `<select>`, deliberately not a custom popover listbox.
+ * A themed listbox backed by a native `<select>` for form submission and change events.
  *
- * A hand-built dropdown means re-implementing roving focus, type-ahead, screen reader
- * announcements, touch behaviour and the mobile picker, and getting any of those subtly wrong is
- * worse for the person using it than a native control that already does all of them. The chevron
- * and the focus ring are ours; the behaviour is the platform's.
+ * The visible layer keeps the same surfaces, focus and selected state in light and dark mode. The
+ * proxy preserves existing form contracts while the trigger exposes combobox semantics and the
+ * keyboard behaviour expected from a compact select.
  */
 export function SelectField({
   label,
@@ -107,22 +262,14 @@ export function SelectField({
       {...(labelHidden ? { labelHidden } : {})}
     >
       {({ id, describedBy }) => (
-        <div className="select-shell">
-          <select id={id} aria-describedby={describedBy} aria-invalid={error ? true : undefined} {...select}>
-            {placeholder && (
-              <option value="" disabled>
-                {placeholder}
-              </option>
-            )}
-            {options.map((option) => (
-              <option value={option.value} key={option.value} disabled={option.disabled}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {/* Decorative: the select already announces itself as a listbox. */}
-          <ChevronDown size={16} aria-hidden="true" />
-        </div>
+        <SelectControl
+          id={id}
+          aria-describedby={describedBy}
+          aria-invalid={error ? true : undefined}
+          options={options}
+          {...(placeholder ? { placeholder } : {})}
+          {...select}
+        />
       )}
     </Field>
   );

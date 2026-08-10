@@ -6,13 +6,22 @@ import {
   type FinancialInput,
   type PlanRecord,
   type PriceRecord,
+  type ProductOfferInput,
+  type ProductOfferRecord,
+  type ProductCatalogDetail,
   type ProductRecord,
   type ProductVersionRecord,
   type RenewalAlert,
   type SubscriptionRecord
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import { nextRenewalAt, type BillingInterval, type SubscriptionStatus, type TenantContext } from "@control-hub/domain";
+import {
+  nextRenewalAt,
+  type BillingInterval,
+  type CommercialModel,
+  type SubscriptionStatus,
+  type TenantContext
+} from "@control-hub/domain";
 
 type DatabaseError = { code?: string; constraint_name?: string };
 type PriceRow = Omit<PriceRecord, "amountMinor" | "costMinor"> & {
@@ -27,6 +36,7 @@ type FinancialRow = Omit<FinancialInput, "amountMinor" | "costMinor"> & {
 function duplicate(error: unknown): never {
   const databaseError = error as DatabaseError;
   if (databaseError.code === "23505") throw new CommerceError("DUPLICATE_CODE");
+  if (databaseError.code === "23514") throw new CommerceError("INVALID_INPUT");
   throw error;
 }
 function price(row: PriceRow): PriceRecord {
@@ -47,11 +57,31 @@ export class PostgresCommerceRepository implements CommerceRepository {
       >`select id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt" from product_versions where tenant_id = ${context.tenantId} order by created_at desc`;
       const plans = await tx<
         PlanRecord[]
-      >`select id, product_version_id as "productVersionId", code, name, description, status, created_at as "createdAt" from plans where tenant_id = ${context.tenantId} order by name`;
+      >`select id, product_version_id as "productVersionId", code, name, description, commercial_model as "commercialModel", status, created_at as "createdAt" from plans where tenant_id = ${context.tenantId} order by name`;
       const prices = await tx<
         PriceRow[]
       >`select id, plan_id as "planId", currency, amount_minor as "amountMinor", cost_minor as "costMinor", tax_basis_points as "taxBasisPoints", billing_interval as interval, effective_from as "effectiveFrom", created_at as "createdAt" from plan_prices where tenant_id = ${context.tenantId} order by effective_from desc, created_at desc`;
       return { products, versions, plans, prices: prices.map(price) };
+    });
+  }
+
+  productDetail(context: TenantContext, productId: string): Promise<ProductCatalogDetail> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const products = await tx<
+        ProductRecord[]
+      >`select id, code, name, description, status, created_at as "createdAt" from products where tenant_id = ${context.tenantId} and id = ${productId}`;
+      const product = products[0];
+      if (!product) throw new CommerceError("PRODUCT_NOT_FOUND");
+      const versions = await tx<
+        ProductVersionRecord[]
+      >`select id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt" from product_versions where tenant_id = ${context.tenantId} and product_id = ${productId} order by created_at desc`;
+      const plans = await tx<
+        PlanRecord[]
+      >`select p.id, p.product_version_id as "productVersionId", p.code, p.name, p.description, p.commercial_model as "commercialModel", p.status, p.created_at as "createdAt" from plans p join product_versions v on v.tenant_id = p.tenant_id and v.id = p.product_version_id where p.tenant_id = ${context.tenantId} and v.product_id = ${productId} order by p.name`;
+      const prices = await tx<
+        PriceRow[]
+      >`select pp.id, pp.plan_id as "planId", pp.currency, pp.amount_minor as "amountMinor", pp.cost_minor as "costMinor", pp.tax_basis_points as "taxBasisPoints", pp.billing_interval as interval, pp.effective_from as "effectiveFrom", pp.created_at as "createdAt" from plan_prices pp join plans p on p.tenant_id = pp.tenant_id and p.id = pp.plan_id join product_versions v on v.tenant_id = p.tenant_id and v.id = p.product_version_id where pp.tenant_id = ${context.tenantId} and v.product_id = ${productId} order by pp.effective_from desc, pp.created_at desc`;
+      return { product, products: [product], versions, plans, prices: prices.map(price) };
     });
   }
 
@@ -62,6 +92,38 @@ export class PostgresCommerceRepository implements CommerceRepository {
           ProductRecord[]
         >`insert into products (id, tenant_id, code, name, description) values (${randomUUID()}, ${context.tenantId}, ${input.code}, ${input.name}, ${input.description ?? null}) returning id, code, name, description, status, created_at as "createdAt"`;
         return rows[0]!;
+      });
+    } catch (error) {
+      return duplicate(error);
+    }
+  }
+
+  async createProductOffer(
+    context: TenantContext,
+    input: ProductOfferInput & {
+      version: ProductOfferInput["version"] & { releasedAt: Date };
+      price: ProductOfferInput["price"] & { effectiveFrom: Date };
+    }
+  ): Promise<ProductOfferRecord> {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const productId = randomUUID();
+        const versionId = randomUUID();
+        const planId = randomUUID();
+        const priceId = randomUUID();
+        const products = await tx<
+          ProductRecord[]
+        >`insert into products (id, tenant_id, code, name, description) values (${productId}, ${context.tenantId}, ${input.product.code}, ${input.product.name}, ${input.product.description ?? null}) returning id, code, name, description, status, created_at as "createdAt"`;
+        const versions = await tx<
+          ProductVersionRecord[]
+        >`insert into product_versions (id, tenant_id, product_id, version, status, released_at) values (${versionId}, ${context.tenantId}, ${productId}, ${input.version.version}, 'active', ${input.version.releasedAt}) returning id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt"`;
+        const plans = await tx<
+          PlanRecord[]
+        >`insert into plans (id, tenant_id, product_version_id, code, name, description, commercial_model) values (${planId}, ${context.tenantId}, ${versionId}, ${input.plan.code}, ${input.plan.name}, ${input.plan.description ?? null}, ${input.plan.commercialModel}) returning id, product_version_id as "productVersionId", code, name, description, commercial_model as "commercialModel", status, created_at as "createdAt"`;
+        const prices = await tx<
+          PriceRow[]
+        >`insert into plan_prices (id, tenant_id, plan_id, currency, amount_minor, cost_minor, tax_basis_points, billing_interval, effective_from) values (${priceId}, ${context.tenantId}, ${planId}, ${input.price.currency}, ${input.price.amountMinor}, ${input.price.costMinor}, ${input.price.taxBasisPoints}, ${input.price.interval}, ${input.price.effectiveFrom}) returning id, plan_id as "planId", currency, amount_minor as "amountMinor", cost_minor as "costMinor", tax_basis_points as "taxBasisPoints", billing_interval as interval, effective_from as "effectiveFrom", created_at as "createdAt"`;
+        return { product: products[0]!, version: versions[0]!, plan: plans[0]!, price: price(prices[0]!) };
       });
     } catch (error) {
       return duplicate(error);
@@ -89,13 +151,13 @@ export class PostgresCommerceRepository implements CommerceRepository {
   async createPlan(
     context: TenantContext,
     productVersionId: string,
-    input: { code: string; name: string; description?: string }
+    input: { code: string; name: string; description?: string; commercialModel?: CommercialModel }
   ) {
     try {
       return await withTenant(this.database, context.tenantId, async (tx) => {
         const rows = await tx<
           PlanRecord[]
-        >`insert into plans (id, tenant_id, product_version_id, code, name, description) select ${randomUUID()}, ${context.tenantId}, id, ${input.code}, ${input.name}, ${input.description ?? null} from product_versions where tenant_id = ${context.tenantId} and id = ${productVersionId} returning id, product_version_id as "productVersionId", code, name, description, status, created_at as "createdAt"`;
+        >`insert into plans (id, tenant_id, product_version_id, code, name, description, commercial_model) select ${randomUUID()}, ${context.tenantId}, id, ${input.code}, ${input.name}, ${input.description ?? null}, ${input.commercialModel ?? "subscription"} from product_versions where tenant_id = ${context.tenantId} and id = ${productVersionId} returning id, product_version_id as "productVersionId", code, name, description, commercial_model as "commercialModel", status, created_at as "createdAt"`;
         if (!rows[0]) throw new CommerceError("VERSION_NOT_FOUND");
         return rows[0];
       });

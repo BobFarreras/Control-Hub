@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { waitForHydration } from "./support/fixture";
+import { selectFieldOption, waitForHydration } from "./support/fixture";
 
 /**
  * The owner review gate of phase 5B, written down as a test.
@@ -67,7 +67,7 @@ test("publishes rates and prices the hours with the one in force on the day work
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
   await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Barems ${code}`);
-  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(dialog.getByLabel("Client", { exact: true }), { index: 0 });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -95,7 +95,7 @@ test("publishes rates and prices the hours with the one in force on the day work
   await waitForHydration(amount);
 
   // 30.00 an hour of cost, in force from the day the work was done.
-  await cost.getByLabel(t.member, { exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(cost.getByLabel(t.member, { exact: true }), { index: 0 });
   await amount.fill("30,00");
   await cost.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   const costSaved = page.waitForResponse(
@@ -106,8 +106,8 @@ test("publishes rates and prices the hours with the one in force on the day work
 
   // 90.00 an hour of sale, on this project.
   const billing = page.getByRole("region", { name: t.billingTitle });
-  await billing.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await billing.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Barems ${code}` });
+  await selectFieldOption(billing.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(billing.getByLabel(t.project, { exact: true }), { label: `${code} · Barems ${code}` });
   await billing.getByLabel(t.amount, { exact: true }).fill("90,00");
   await billing.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   const billingSaved = page.waitForResponse(
@@ -145,7 +145,7 @@ test("a rate published today does not change what earlier work was worth", async
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
   await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Historic ${code}`);
-  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(dialog.getByLabel("Client", { exact: true }), { index: 0 });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -170,8 +170,8 @@ test("a rate published today does not change what earlier work was worth", async
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const billing = page.getByRole("region", { name: t.billingTitle });
   await waitForHydration(billing.getByLabel(t.amount, { exact: true }));
-  await billing.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await billing.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Historic ${code}` });
+  await selectFieldOption(billing.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(billing.getByLabel(t.project, { exact: true }), { label: `${code} · Historic ${code}` });
   await billing.getByLabel(t.amount, { exact: true }).fill("50,00");
   await billing.getByLabel(t.effectiveFrom, { exact: true }).fill("2020-01-01");
   let saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -185,8 +185,8 @@ test("a rate published today does not change what earlier work was worth", async
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const again = page.getByRole("region", { name: t.billingTitle });
   await waitForHydration(again.getByLabel(t.amount, { exact: true }));
-  await again.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await again.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Historic ${code}` });
+  await selectFieldOption(again.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(again.getByLabel(t.project, { exact: true }), { label: `${code} · Historic ${code}` });
   await again.getByLabel(t.amount, { exact: true }).fill("500,00");
   await again.getByLabel(t.effectiveFrom, { exact: true }).fill(today);
   saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -222,8 +222,8 @@ test("prices a project by its kind of work, and a project rate still wins", asyn
   expect((await created).status()).toBe(201);
 
   const billing = page.getByRole("region", { name: t.billingTitle });
-  await billing.getByLabel(t.applies, { exact: true }).selectOption("service_type");
-  await billing.getByLabel(t.scopeServiceType, { exact: true }).selectOption({ label: typeName });
+  await selectFieldOption(billing.getByLabel(t.applies, { exact: true }), "service_type");
+  await selectFieldOption(billing.getByLabel(t.scopeServiceType, { exact: true }), { label: typeName });
   await billing.getByLabel(t.amount, { exact: true }).fill("70,00");
   await billing.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   let saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -239,8 +239,8 @@ test("prices a project by its kind of work, and a project rate still wins", asyn
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
   await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Tipus ${code}`);
-  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
-  await dialog.getByLabel(t.serviceTitle, { exact: true }).selectOption({ label: typeName });
+  await selectFieldOption(dialog.getByLabel("Client", { exact: true }), { index: 0 });
+  await selectFieldOption(dialog.getByLabel(t.serviceTitle, { exact: true }), { label: typeName });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -268,8 +268,8 @@ test("prices a project by its kind of work, and a project rate still wins", asyn
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const own = page.getByRole("region", { name: t.billingTitle });
   await waitForHydration(own.getByLabel(t.amount, { exact: true }));
-  await own.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await own.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Tipus ${code}` });
+  await selectFieldOption(own.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(own.getByLabel(t.project, { exact: true }), { label: `${code} · Tipus ${code}` });
   await own.getByLabel(t.amount, { exact: true }).fill("110,00");
   await own.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -295,7 +295,7 @@ test("withdraws a rate typed wrong and publishes the right one the same day", as
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Codi del projecte", { exact: true }).fill(code);
   await dialog.getByLabel("Nom del projecte", { exact: true }).fill(`Correccio ${code}`);
-  await dialog.getByLabel("Client", { exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(dialog.getByLabel("Client", { exact: true }), { index: 0 });
   await dialog.getByRole("button", { name: "Crear" }).click();
 
   const row = page.getByRole("row").filter({ hasText: code });
@@ -318,8 +318,8 @@ test("withdraws a rate typed wrong and publishes the right one the same day", as
   await page.goto("/ca/projects/rates", { waitUntil: "domcontentloaded" });
   const billing = page.getByRole("region", { name: t.billingTitle });
   await waitForHydration(billing.getByLabel(t.amount, { exact: true }));
-  await billing.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await billing.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Correccio ${code}` });
+  await selectFieldOption(billing.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(billing.getByLabel(t.project, { exact: true }), { label: `${code} · Correccio ${code}` });
   await billing.getByLabel(t.amount, { exact: true }).fill("900,00");
   await billing.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   let saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -352,8 +352,8 @@ test("withdraws a rate typed wrong and publishes the right one the same day", as
   // The same project, the same currency and the same day: only possible because the wrong row was
   // withdrawn rather than left in force.
   const again = page.getByRole("region", { name: t.billingTitle });
-  await again.getByLabel(t.applies, { exact: true }).selectOption("project");
-  await again.getByLabel(t.project, { exact: true }).selectOption({ label: `${code} · Correccio ${code}` });
+  await selectFieldOption(again.getByLabel(t.applies, { exact: true }), "project");
+  await selectFieldOption(again.getByLabel(t.project, { exact: true }), { label: `${code} · Correccio ${code}` });
   await again.getByLabel(t.amount, { exact: true }).fill("90,00");
   await again.getByLabel(t.effectiveFrom, { exact: true }).fill(workedOn);
   saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -420,8 +420,8 @@ test("refuses to delete a service type with a published rate and deactivates it 
 
   // A rate under it, which is what makes deleting it impossible.
   const billing = page.getByRole("region", { name: t.billingTitle });
-  await billing.getByLabel(t.applies, { exact: true }).selectOption("service_type");
-  await billing.getByLabel(t.scopeServiceType, { exact: true }).selectOption({ label: typeName });
+  await selectFieldOption(billing.getByLabel(t.applies, { exact: true }), "service_type");
+  await selectFieldOption(billing.getByLabel(t.scopeServiceType, { exact: true }), { label: typeName });
   await billing.getByLabel(t.amount, { exact: true }).fill("65,00");
   await billing.getByLabel(t.effectiveFrom, { exact: true }).fill("2026-01-09");
   response = page.waitForResponse((r) => r.url().endsWith("/api/v1/rates/billing") && r.request().method() === "POST");
@@ -448,6 +448,6 @@ test("refuses to delete a service type with a published rate and deactivates it 
   await expect(listed.getByRole("button", { name: new RegExp(`^${t.reactivateService}`) }).first()).toBeVisible();
 
   const picker = page.getByRole("region", { name: t.billingTitle });
-  await picker.getByLabel(t.applies, { exact: true }).selectOption("service_type");
+  await selectFieldOption(picker.getByLabel(t.applies, { exact: true }), "service_type");
   await expect(picker.getByLabel(t.scopeServiceType, { exact: true })).not.toContainText(typeName);
 });

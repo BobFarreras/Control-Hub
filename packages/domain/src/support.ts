@@ -1,5 +1,170 @@
 import { businessMinutesBetween, type SupportCalendar } from "./support-calendar.js";
 
+// ---------------------------------------------------------------------------
+// Inbox SLA visual status
+// ---------------------------------------------------------------------------
+
+export const inboxSlaStatuses = ["on_time", "near", "breached", "paused", "not_configured"] as const;
+export type InboxSlaStatus = (typeof inboxSlaStatuses)[number];
+
+/** The percentage of the target at which a ticket is flagged as "near". */
+const NEAR_THRESHOLD = 0.8;
+
+/**
+ * Derives a single visual status from the raw SLA state and the ticket's current status.
+ *
+ * Priority order:
+ * 1. Not measurable → not_configured
+ * 2. Clock paused (waiting_customer / waiting_third_party) → paused
+ * 3. Breached → breached
+ * 4. Consumed ≥ 80% of target → near
+ * 5. Otherwise → on_time
+ */
+export function deriveInboxSlaStatus(
+  consumedMinutes: number,
+  targetMinutes: number,
+  measurable: boolean,
+  breached: boolean,
+  isPaused: boolean
+): InboxSlaStatus {
+  if (!measurable) return "not_configured";
+  if (isPaused) return "paused";
+  if (breached) return "breached";
+  if (consumedMinutes >= targetMinutes * NEAR_THRESHOLD) return "near";
+  return "on_time";
+}
+
+// ---------------------------------------------------------------------------
+// Inbox SLA detail (for the dialog)
+// ---------------------------------------------------------------------------
+
+/** Which of a ticket's two targets is active in the inbox row. */
+export type InboxActiveTarget = "first_response" | "resolution";
+
+export type InboxSlaDetail = {
+  status: InboxSlaStatus;
+  targetMinutes: number;
+  consumedMinutes: number;
+  remainingMinutes: number;
+  /** ISO string — when the target was or will be missed. Null when not measurable. */
+  estimatedDeadline: string | null;
+  activeTarget: InboxActiveTarget;
+};
+
+export type InboxSlaInfo = {
+  firstResponse: InboxSlaDetail;
+  resolution: InboxSlaDetail;
+};
+
+/**
+ * Estimates when a target will be breached based on the current consumption rate.
+ *
+ * Uses wall-clock time (not working minutes) for the estimate, because working-minute
+ * rates vary with the schedule and a rough estimate is enough for a "you might miss it"
+ * indicator. Returns null when there is no way to estimate (not measurable, already
+ * breached, or consumed is zero).
+ */
+export function estimateDeadline(
+  consumedMinutes: number,
+  targetMinutes: number,
+  measurable: boolean,
+  breached: boolean,
+  openedAt: Date,
+  now: Date,
+  pauses: readonly SlaPause[]
+): string | null {
+  if (!measurable || breached || consumedMinutes === 0) return null;
+
+  // Wall-clock elapsed, minus pauses that are still open (their `to` is null).
+  const wallMs = now.getTime() - openedAt.getTime();
+  const pausedWallMs = pauses.reduce((total, pause) => {
+    const to = pause.to ?? now;
+    return total + (to.getTime() - pause.from.getTime());
+  }, 0);
+  const effectiveWallMs = Math.max(0, wallMs - pausedWallMs);
+  if (effectiveWallMs === 0) return null;
+
+  const ratePerMs = consumedMinutes / effectiveWallMs;
+  const remainingMs = (targetMinutes - consumedMinutes) / ratePerMs;
+  return new Date(now.getTime() + remainingMs).toISOString();
+}
+
+/**
+ * Builds the full `InboxSlaInfo` for a ticket row.
+ */
+export function inboxSlaInfo(
+  firstResponse: { consumedMinutes: number; targetMinutes: number; measurable: boolean; breached: boolean },
+  resolution: { consumedMinutes: number; targetMinutes: number; measurable: boolean; breached: boolean },
+  firstResponseAt: Date | undefined,
+  resolvedAt: Date | undefined,
+  openedAt: Date,
+  now: Date,
+  pauses: readonly SlaPause[]
+): InboxSlaInfo {
+  const isPaused = pauses.length > 0 && pauses[pauses.length - 1] !== undefined && !pauses[pauses.length - 1]!.to;
+
+  const activeFirstResponse: InboxActiveTarget = "first_response";
+  const activeResolution: InboxActiveTarget = "resolution";
+
+  const frStatus = deriveInboxSlaStatus(
+    firstResponse.consumedMinutes,
+    firstResponse.targetMinutes,
+    firstResponse.measurable,
+    firstResponse.breached,
+    isPaused
+  );
+  const rsStatus = deriveInboxSlaStatus(
+    resolution.consumedMinutes,
+    resolution.targetMinutes,
+    resolution.measurable,
+    resolution.breached,
+    isPaused
+  );
+
+  return {
+    firstResponse: {
+      status: frStatus,
+      targetMinutes: firstResponse.targetMinutes,
+      consumedMinutes: firstResponse.consumedMinutes,
+      remainingMinutes: Math.max(0, firstResponse.targetMinutes - firstResponse.consumedMinutes),
+      estimatedDeadline: firstResponseAt
+        ? null
+        : estimateDeadline(
+            firstResponse.consumedMinutes,
+            firstResponse.targetMinutes,
+            firstResponse.measurable,
+            firstResponse.breached,
+            openedAt,
+            now,
+            pauses
+          ),
+      activeTarget: activeFirstResponse
+    },
+    resolution: {
+      status: rsStatus,
+      targetMinutes: resolution.targetMinutes,
+      consumedMinutes: resolution.consumedMinutes,
+      remainingMinutes: Math.max(0, resolution.targetMinutes - resolution.consumedMinutes),
+      estimatedDeadline: resolvedAt
+        ? null
+        : estimateDeadline(
+            resolution.consumedMinutes,
+            resolution.targetMinutes,
+            resolution.measurable,
+            resolution.breached,
+            openedAt,
+            now,
+            pauses
+          ),
+      activeTarget: activeResolution
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Existing types
+// ---------------------------------------------------------------------------
+
 export const ticketStatuses = ["new", "open", "waiting_customer", "waiting_third_party", "resolved", "closed"] as const;
 export type TicketStatus = (typeof ticketStatuses)[number];
 

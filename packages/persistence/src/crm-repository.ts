@@ -7,29 +7,47 @@ import {
   type CrmListQuery,
   type CrmRepository,
   type CreateLeadInput,
+  type CreateCustomerAddressInput,
+  type CreateCustomerInterestInput,
+  type CustomerAddressRecord,
   type CustomerDetail,
+  type CustomerInterestStage,
+  type CustomerProductInterestRecord,
+  type CustomerProductOption,
+  type CustomerProjectRecord,
   type CustomerRecord,
+  type CustomerServiceRecord,
+  type CustomerTicketRecord,
   type LeadRecord,
   type NoteRecord,
-  type TaskRecord
+  type TaskRecord,
+  type UpdateCustomerInput
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import {
   leadStatuses,
+  normalizeComparableName,
   normalizeEmail,
   normalizePhone,
   recoverLeadStatus,
   type LeadStatus,
   type TenantContext
 } from "@control-hub/domain";
+import type postgres from "postgres";
 
 type DatabaseError = { code?: string; constraint_name?: string };
+type CustomerProductInterestRow = Omit<CustomerProductInterestRecord, "estimatedAmountMinor" | "currency"> & {
+  estimatedAmountMinor: string | number | null;
+  currency: string | null;
+};
 
 function mapDuplicate(error: unknown): never {
   const databaseError = error as DatabaseError;
   if (databaseError.code === "23505") {
     if (databaseError.constraint_name?.includes("email")) throw new CrmError("DUPLICATE_EMAIL");
     if (databaseError.constraint_name?.includes("phone")) throw new CrmError("DUPLICATE_PHONE");
+    if (databaseError.constraint_name?.includes("customer_product_interests_open"))
+      throw new CrmError("DUPLICATE_INTEREST");
   }
   throw error;
 }
@@ -200,6 +218,17 @@ export class PostgresCrmRepository implements CrmRepository {
         >`insert into customers (id, tenant_id, display_name, normalized_name, billing_email, normalized_billing_email, phone, normalized_phone, owner_membership_id, created_from_lead_id)
           select ${customerId}, tenant_id, ${displayName}, normalized_name, email, normalized_email, phone, normalized_phone, owner_membership_id, id from leads where tenant_id = ${context.tenantId} and id = ${leadId}
           returning id, display_name as "displayName", legal_name as "legalName", billing_email as "billingEmail", phone, website, status, owner_membership_id as "ownerMembershipId", created_from_lead_id as "createdFromLeadId", created_at as "createdAt", updated_at as "updatedAt"`;
+        if (lead.companyName) {
+          const contactId = randomUUID();
+          await tx`insert into contacts (id, tenant_id, customer_id, name, email, normalized_email, phone,
+            normalized_phone, is_primary, source_lead_id)
+            values (${contactId}, ${context.tenantId}, ${customerId}, ${lead.name}, ${lead.email},
+              ${lead.email ? normalizeEmail(lead.email) : null}, ${lead.phone},
+              ${lead.phone ? normalizePhone(lead.phone) : null}, true, ${lead.id})`;
+          await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata)
+            values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'contact.created',
+              ${tx.json({ contactId, sourceLeadId: lead.id })})`;
+        }
         await tx`update leads set status = 'won', converted_customer_id = ${customerId}, updated_at = now() where tenant_id = ${context.tenantId} and id = ${leadId}`;
         await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'lead.converted', ${tx.json({ leadId })})`;
         return customers[0]!;
@@ -213,13 +242,28 @@ export class PostgresCrmRepository implements CrmRepository {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const customers = await tx<
         CustomerRecord[]
-      >`select id, display_name as "displayName", legal_name as "legalName", billing_email as "billingEmail", phone, website, status, owner_membership_id as "ownerMembershipId", created_from_lead_id as "createdFromLeadId", created_at as "createdAt", updated_at as "updatedAt" from customers where tenant_id = ${context.tenantId} and id = ${customerId}`;
+      >`select id, display_name as "displayName", legal_name as "legalName", billing_email as "billingEmail", phone,
+        website, tax_id as "taxId", preferred_locale as "preferredLocale", timezone, status,
+        owner_membership_id as "ownerMembershipId", created_from_lead_id as "createdFromLeadId",
+        created_at as "createdAt", updated_at as "updatedAt"
+        from customers where tenant_id = ${context.tenantId} and id = ${customerId}`;
       const customer = customers[0];
       if (!customer) throw new CrmError("CUSTOMER_NOT_FOUND");
-      const [contacts, notes, tasks, activity] = await Promise.all([
+      const [
+        contacts,
+        notes,
+        tasks,
+        activity,
+        services,
+        projects,
+        tickets,
+        interestRows,
+        availableProducts,
+        addresses
+      ] = await Promise.all([
         tx<
           ContactRecord[]
-        >`select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", created_at as "createdAt" from contacts where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by is_primary desc, name`,
+        >`select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", source_lead_id as "sourceLeadId", created_at as "createdAt" from contacts where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by is_primary desc, name`,
         tx<
           NoteRecord[]
         >`select id, body, author_user_id as "authorUserId", created_at as "createdAt" from crm_notes where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by created_at desc`,
@@ -228,9 +272,68 @@ export class PostgresCrmRepository implements CrmRepository {
         >`select id, title, due_at as "dueAt", completed_at as "completedAt", assignee_membership_id as "assigneeMembershipId", created_at as "createdAt" from crm_tasks where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by completed_at nulls first, due_at nulls last`,
         tx<
           ActivityRecord[]
-        >`select id, type, metadata, occurred_at as "occurredAt" from crm_activity where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by occurred_at desc limit 200`
+        >`select id, type, metadata, occurred_at as "occurredAt" from crm_activity where tenant_id = ${context.tenantId} and customer_id = ${customerId} order by occurred_at desc limit 200`,
+        tx<CustomerServiceRecord[]>`
+          select service.id, product.id as "productId", product.name as "productName", plan.name as "planName",
+            service.project_id as "projectId", project.name as "projectName", service.status,
+            service.starts_at as "startedAt", recurrence.renewal_at as "renewalAt"
+          from customer_services service
+          join plans plan on plan.tenant_id = service.tenant_id and plan.id = service.plan_id
+          join product_versions version on version.tenant_id = plan.tenant_id and version.id = plan.product_version_id
+          join products product on product.tenant_id = version.tenant_id and product.id = version.product_id
+          left join customer_service_recurrence recurrence on recurrence.tenant_id = service.tenant_id and recurrence.customer_service_id = service.id
+          left join projects project on project.tenant_id = service.tenant_id and project.id = service.project_id
+          where service.tenant_id = ${context.tenantId} and service.customer_id = ${customerId}
+          order by (service.status = 'active') desc, service.starts_at desc`,
+        tx<CustomerProjectRecord[]>`
+          select id, code, name, status, started_at as "startedAt", due_at as "dueAt"
+          from projects where tenant_id = ${context.tenantId} and customer_id = ${customerId}
+          order by (status = 'active') desc, updated_at desc limit 50`,
+        tx<CustomerTicketRecord[]>`
+          select id, ticket_number::int as "ticketNumber", subject, status, priority, opened_at as "openedAt"
+          from tickets where tenant_id = ${context.tenantId} and customer_id = ${customerId}
+          order by (status not in ('resolved', 'closed')) desc, opened_at desc limit 50`,
+        tx<CustomerProductInterestRow[]>`
+          select interest.id, interest.product_id as "productId", product.name as "productName", interest.stage,
+            interest.probability, interest.estimated_amount_minor as "estimatedAmountMinor", interest.currency,
+            interest.next_step as "nextStep", interest.owner_membership_id as "ownerMembershipId",
+            interest.created_at as "createdAt", interest.updated_at as "updatedAt"
+          from customer_product_interests interest
+          join products product on product.tenant_id = interest.tenant_id and product.id = interest.product_id
+          where interest.tenant_id = ${context.tenantId} and interest.customer_id = ${customerId}
+          order by (interest.stage not in ('won', 'lost')) desc, interest.updated_at desc`,
+        tx<CustomerProductOption[]>`
+          select id, name from products where tenant_id = ${context.tenantId} and status = 'active' order by name`,
+        tx<CustomerAddressRecord[]>`
+          select id, type, label, line1, line2, postal_code as "postalCode", city, region,
+            country_code as "countryCode", is_primary as "isPrimary", created_at as "createdAt", updated_at as "updatedAt"
+          from customer_addresses where tenant_id = ${context.tenantId} and customer_id = ${customerId}
+          order by is_primary desc, type, created_at`
       ]);
-      return { ...customer, contacts, notes, tasks, activity };
+      const canReadFinancials = context.permissions.includes("financials:read");
+      const interests = interestRows.map((interest) => {
+        const { estimatedAmountMinor, currency, ...safe } = interest;
+        return canReadFinancials
+          ? {
+              ...safe,
+              estimatedAmountMinor: estimatedAmountMinor === null ? null : Number(estimatedAmountMinor),
+              currency
+            }
+          : safe;
+      });
+      return {
+        ...customer,
+        contacts,
+        notes,
+        tasks,
+        activity,
+        services,
+        projects,
+        tickets,
+        interests,
+        availableProducts,
+        addresses
+      };
     });
   }
 
@@ -248,13 +351,183 @@ export class PostgresCrmRepository implements CrmRepository {
         const id = randomUUID();
         const rows = await tx<
           ContactRecord[]
-        >`insert into contacts (id, tenant_id, customer_id, name, role, email, normalized_email, phone, normalized_phone, is_primary) values (${id}, ${context.tenantId}, ${customerId}, ${input.name}, ${input.role ?? null}, ${input.email ?? null}, ${input.email ? normalizeEmail(input.email) : null}, ${input.phone ?? null}, ${input.phone ? normalizePhone(input.phone) : null}, ${input.isPrimary}) returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", created_at as "createdAt"`;
+        >`insert into contacts (id, tenant_id, customer_id, name, role, email, normalized_email, phone, normalized_phone, is_primary) values (${id}, ${context.tenantId}, ${customerId}, ${input.name}, ${input.role ?? null}, ${input.email ?? null}, ${input.email ? normalizeEmail(input.email) : null}, ${input.phone ?? null}, ${input.phone ? normalizePhone(input.phone) : null}, ${input.isPrimary}) returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary", source_lead_id as "sourceLeadId", created_at as "createdAt"`;
         await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata) values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId}, 'contact.created', ${tx.json({ contactId: id })})`;
         return rows[0]!;
       });
     } catch (error) {
       return mapDuplicate(error);
     }
+  }
+
+  async createContactFromSourceLead(context: TenantContext, customerId: string) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const customers = await tx<{ sourceLeadId: string | null }[]>`
+          select created_from_lead_id as "sourceLeadId" from customers
+          where tenant_id = ${context.tenantId} and id = ${customerId} for update`;
+        const customer = customers[0];
+        if (!customer) throw new CrmError("CUSTOMER_NOT_FOUND");
+        if (!customer.sourceLeadId) throw new CrmError("SOURCE_LEAD_NOT_AVAILABLE");
+        const recovered = await tx<ContactRecord[]>`
+          select id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary",
+            source_lead_id as "sourceLeadId", created_at as "createdAt"
+          from contacts where tenant_id = ${context.tenantId} and source_lead_id = ${customer.sourceLeadId}`;
+        if (recovered[0]) return recovered[0];
+        const contacts = await tx`select 1 from contacts
+          where tenant_id = ${context.tenantId} and customer_id = ${customerId} limit 1`;
+        if (contacts[0]) throw new CrmError("CUSTOMER_ALREADY_HAS_CONTACTS");
+        const leads = await tx<
+          { id: string; name: string; companyName: string | null; email: string | null; phone: string | null }[]
+        >`select id, name, company_name as "companyName", email, phone from leads
+          where tenant_id = ${context.tenantId} and id = ${customer.sourceLeadId}`;
+        const lead = leads[0];
+        if (!lead?.companyName) throw new CrmError("SOURCE_LEAD_NOT_AVAILABLE");
+        const id = randomUUID();
+        const rows = await tx<ContactRecord[]>`
+          insert into contacts (id, tenant_id, customer_id, name, email, normalized_email, phone,
+            normalized_phone, is_primary, source_lead_id)
+          values (${id}, ${context.tenantId}, ${customerId}, ${lead.name}, ${lead.email},
+            ${lead.email ? normalizeEmail(lead.email) : null}, ${lead.phone},
+            ${lead.phone ? normalizePhone(lead.phone) : null}, true, ${lead.id})
+          returning id, customer_id as "customerId", name, role, email, phone, is_primary as "isPrimary",
+            source_lead_id as "sourceLeadId", created_at as "createdAt"`;
+        await tx`insert into crm_activity (id, tenant_id, customer_id, actor_user_id, type, metadata)
+          values (${randomUUID()}, ${context.tenantId}, ${customerId}, ${context.userId},
+            'contact.recovered_from_lead', ${tx.json({ contactId: id, sourceLeadId: lead.id })})`;
+        return rows[0]!;
+      });
+    } catch (error) {
+      return mapDuplicate(error);
+    }
+  }
+
+  async updateCustomer(context: TenantContext, customerId: string, input: UpdateCustomerInput) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const rows = await tx<CustomerRecord[]>`
+          update customers set display_name = ${input.displayName},
+            normalized_name = ${normalizeComparableName(input.displayName)}, legal_name = ${input.legalName ?? null},
+            billing_email = ${input.billingEmail ?? null},
+            normalized_billing_email = ${input.billingEmail ? normalizeEmail(input.billingEmail) : null},
+            phone = ${input.phone ?? null}, normalized_phone = ${input.phone ? normalizePhone(input.phone) : null},
+            website = ${input.website ?? null}, tax_id = ${input.taxId ?? null},
+            preferred_locale = ${input.preferredLocale ?? null}, timezone = ${input.timezone ?? null},
+            status = ${input.status},
+            updated_at = date_trunc('milliseconds', now())
+          where tenant_id = ${context.tenantId} and id = ${customerId}
+            and date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${input.expectedUpdatedAt}::timestamptz)
+          returning id, display_name as "displayName", legal_name as "legalName", billing_email as "billingEmail",
+            phone, website, tax_id as "taxId", preferred_locale as "preferredLocale", timezone, status,
+            owner_membership_id as "ownerMembershipId",
+            created_from_lead_id as "createdFromLeadId", created_at as "createdAt", updated_at as "updatedAt"`;
+        if (rows[0]) return rows[0];
+        const exists = await tx`select 1 from customers where tenant_id = ${context.tenantId} and id = ${customerId}`;
+        if (!exists[0]) throw new CrmError("CUSTOMER_NOT_FOUND");
+        throw new CrmError("CUSTOMER_VERSION_CONFLICT");
+      });
+    } catch (error) {
+      return mapDuplicate(error);
+    }
+  }
+
+  async createCustomerInterest(context: TenantContext, customerId: string, input: CreateCustomerInterestInput) {
+    try {
+      return await withTenant(this.database, context.tenantId, async (tx) => {
+        const id = randomUUID();
+        const rows = await tx<{ id: string }[]>`
+          insert into customer_product_interests
+            (id, tenant_id, customer_id, product_id, probability, estimated_amount_minor, currency, next_step,
+              owner_membership_id)
+          select ${id}, ${context.tenantId}, customer.id, product.id, ${input.probability ?? null},
+            ${input.estimatedAmountMinor ?? null}, ${input.currency ?? null}, ${input.nextStep ?? null},
+            null
+          from customers customer cross join products product
+          where customer.tenant_id = ${context.tenantId} and customer.id = ${customerId}
+            and product.tenant_id = ${context.tenantId} and product.id = ${input.productId}
+            and product.status = 'active' returning id`;
+        if (!rows[0]) {
+          const customer =
+            await tx`select 1 from customers where tenant_id = ${context.tenantId} and id = ${customerId}`;
+          if (!customer[0]) throw new CrmError("CUSTOMER_NOT_FOUND");
+          throw new CrmError("PRODUCT_NOT_FOUND");
+        }
+        await tx`insert into customer_product_interest_events
+          (id, tenant_id, interest_id, actor_user_id, from_stage, to_stage)
+          values (${randomUUID()}, ${context.tenantId}, ${id}, ${context.userId}, null, 'detected')`;
+        return this.getCustomerInterestWithTransaction(tx, context, id);
+      });
+    } catch (error) {
+      return mapDuplicate(error);
+    }
+  }
+
+  getCustomerInterest(context: TenantContext, interestId: string) {
+    return withTenant(this.database, context.tenantId, (tx) =>
+      this.getCustomerInterestWithTransaction(tx, context, interestId)
+    );
+  }
+
+  async transitionCustomerInterest(context: TenantContext, interestId: string, stage: CustomerInterestStage) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const current = await this.getCustomerInterestWithTransaction(tx, context, interestId);
+      const rows = await tx`update customer_product_interests set stage = ${stage}, updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${interestId} returning id`;
+      if (!rows[0]) throw new CrmError("INTEREST_NOT_FOUND");
+      await tx`insert into customer_product_interest_events
+        (id, tenant_id, interest_id, actor_user_id, from_stage, to_stage)
+        values (${randomUUID()}, ${context.tenantId}, ${interestId}, ${context.userId}, ${current.stage}, ${stage})`;
+      return this.getCustomerInterestWithTransaction(tx, context, interestId);
+    });
+  }
+
+  private async getCustomerInterestWithTransaction(
+    tx: postgres.TransactionSql,
+    context: TenantContext,
+    interestId: string
+  ): Promise<CustomerProductInterestRecord> {
+    const rows = await tx<CustomerProductInterestRow[]>`
+      select interest.id, interest.product_id as "productId", product.name as "productName", interest.stage,
+        interest.probability, interest.estimated_amount_minor as "estimatedAmountMinor", interest.currency,
+        interest.next_step as "nextStep", interest.owner_membership_id as "ownerMembershipId",
+        interest.created_at as "createdAt", interest.updated_at as "updatedAt"
+      from customer_product_interests interest
+      join products product on product.tenant_id = interest.tenant_id and product.id = interest.product_id
+      where interest.tenant_id = ${context.tenantId} and interest.id = ${interestId}`;
+    const row = rows[0];
+    if (!row) throw new CrmError("INTEREST_NOT_FOUND");
+    const { estimatedAmountMinor, currency, ...safe } = row;
+    return context.permissions.includes("financials:read")
+      ? { ...safe, estimatedAmountMinor: estimatedAmountMinor === null ? null : Number(estimatedAmountMinor), currency }
+      : safe;
+  }
+
+  async createCustomerAddress(context: TenantContext, customerId: string, input: CreateCustomerAddressInput) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      if (input.isPrimary)
+        await tx`update customer_addresses set is_primary = false, updated_at = now()
+          where tenant_id = ${context.tenantId} and customer_id = ${customerId} and type = ${input.type} and is_primary`;
+      const rows = await tx<CustomerAddressRecord[]>`
+        insert into customer_addresses
+          (id, tenant_id, customer_id, type, label, line1, line2, postal_code, city, region, country_code, is_primary)
+        select ${id}, ${context.tenantId}, id, ${input.type}, ${input.label ?? null}, ${input.line1},
+          ${input.line2 ?? null}, ${input.postalCode ?? null}, ${input.city}, ${input.region ?? null},
+          ${input.countryCode}, ${input.isPrimary}
+        from customers where tenant_id = ${context.tenantId} and id = ${customerId}
+        returning id, type, label, line1, line2, postal_code as "postalCode", city, region,
+          country_code as "countryCode", is_primary as "isPrimary", created_at as "createdAt", updated_at as "updatedAt"`;
+      if (!rows[0]) throw new CrmError("CUSTOMER_NOT_FOUND");
+      return rows[0];
+    });
+  }
+
+  async deleteCustomerAddress(context: TenantContext, customerId: string, addressId: string) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx`delete from customer_addresses
+        where tenant_id = ${context.tenantId} and customer_id = ${customerId} and id = ${addressId} returning id`;
+      if (!rows[0]) throw new CrmError("ADDRESS_NOT_FOUND");
+    });
   }
 
   async addNote(context: TenantContext, customerId: string, body: string) {

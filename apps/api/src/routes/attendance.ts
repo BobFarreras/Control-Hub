@@ -1,5 +1,5 @@
 import type { AttendanceRange } from "@control-hub/application";
-import { attendanceEventKinds, type AttendanceEventKind } from "@control-hub/domain";
+import { attendanceEventKinds, type AttendanceAbsence, type AttendanceEventKind } from "@control-hub/domain";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { AttendanceContext } from "./context.js";
 
@@ -54,6 +54,86 @@ const correctionSchema = {
       occurredAt: { type: "string", format: "date-time" },
       reason: { type: "string", minLength: 1, maxLength: 500 },
       correctsEventId: uuid
+    }
+  }
+} as const;
+
+const holidaySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["date", "name"],
+    properties: {
+      date: isoDate,
+      name: { type: "string", minLength: 1, maxLength: 200 }
+    }
+  }
+} as const;
+
+const nonWorkingDaySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["dayOfWeek"],
+    properties: {
+      dayOfWeek: { type: "integer", minimum: 0, maximum: 6 }
+    }
+  }
+} as const;
+
+const vacationSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["membershipId", "startDate", "endDate"],
+    properties: {
+      membershipId: uuid,
+      startDate: isoDate,
+      endDate: isoDate,
+      notes: { type: "string", minLength: 1, maxLength: 1000 }
+    }
+  }
+} as const;
+
+const vacationStatusSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["vacationId", "status"],
+    properties: {
+      vacationId: uuid,
+      status: { type: "string", enum: ["approved", "rejected"] }
+    }
+  }
+} as const;
+
+const absenceSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["membershipId", "startDate", "endDate", "type"],
+    properties: {
+      membershipId: uuid,
+      startDate: isoDate,
+      endDate: isoDate,
+      type: { type: "string", enum: ["sick_leave", "personal_leave", "other"] },
+      documentUrl: { type: "string", minLength: 1, maxLength: 2000 },
+      notes: { type: "string", minLength: 1, maxLength: 1000 }
+    }
+  }
+} as const;
+
+const blockSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["membershipId", "date", "startTime", "endTime", "reason"],
+    properties: {
+      membershipId: uuid,
+      date: isoDate,
+      startTime: { type: "string", pattern: "^[0-9]{2}:[0-9]{2}$" },
+      endTime: { type: "string", pattern: "^[0-9]{2}:[0-9]{2}$" },
+      reason: { type: "string", minLength: 1, maxLength: 500 }
     }
   }
 } as const;
@@ -194,4 +274,236 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
       return { members: await attendance.reconciliation(context, range(request.query)) };
     }
   );
+
+  // Holidays
+
+  app.get<{ Querystring: { from: string; to: string } }>(
+    "/api/v1/attendance/holidays",
+    { schema: rangeSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:holidays");
+      return { holidays: await attendance.listHolidays(context, range(request.query)) };
+    }
+  );
+
+  app.post<{ Body: { date: string; name: string } }>(
+    "/api/v1/attendance/holidays",
+    { schema: holidaySchema },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:holidays");
+      const holiday = await attendance.createHoliday(context, request.body);
+      await writeAudit(database, context, request, {
+        action: "attendance.holiday_created",
+        targetType: "attendance_holiday",
+        targetId: holiday.id,
+        outcome: "success",
+        metadata: { date: holiday.date }
+      });
+      return reply.code(201).send({ holiday });
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/holidays/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:holidays");
+    await attendance.deleteHoliday(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.holiday_deleted",
+      targetType: "attendance_holiday",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
+
+  // Non-working days
+
+  app.get("/api/v1/attendance/non-working-days", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:holidays");
+    return { nonWorkingDays: await attendance.listNonWorkingDays(context) };
+  });
+
+  app.post<{ Body: { dayOfWeek: number } }>(
+    "/api/v1/attendance/non-working-days",
+    { schema: nonWorkingDaySchema },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:holidays");
+      const day = await attendance.createNonWorkingDay(context, request.body);
+      return reply.code(201).send({ nonWorkingDay: day });
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/non-working-days/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:holidays");
+    await attendance.deleteNonWorkingDay(context, request.params.id);
+    return reply.code(204).send();
+  });
+
+  // Vacations
+
+  app.get<{ Querystring: { from: string; to: string; membershipId?: string } }>(
+    "/api/v1/attendance/vacations",
+    { schema: memberRangeSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:record");
+      const membershipId = request.query.membershipId;
+      if (membershipId) {
+        return { vacations: await attendance.listVacationsByMember(context, membershipId, range(request.query)) };
+      }
+      return { vacations: await attendance.listVacations(context, range(request.query)) };
+    }
+  );
+
+  app.post<{ Body: { membershipId: string; startDate: string; endDate: string; notes?: string } }>(
+    "/api/v1/attendance/vacations",
+    { schema: vacationSchema },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:record");
+      const vacation = await attendance.createVacation(context, request.body);
+      await writeAudit(database, context, request, {
+        action: "attendance.vacation_requested",
+        targetType: "attendance_vacation",
+        targetId: vacation.id,
+        outcome: "success",
+        metadata: { startDate: vacation.startDate, endDate: vacation.endDate }
+      });
+      return reply.code(201).send({ vacation });
+    }
+  );
+
+  app.put<{ Body: { vacationId: string; status: "approved" | "rejected" } }>(
+    "/api/v1/attendance/vacations",
+    { schema: vacationStatusSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:vacations");
+      const vacation = await attendance.updateVacationStatus(context, request.body);
+      await writeAudit(database, context, request, {
+        action: request.body.status === "approved" ? "attendance.vacation_approved" : "attendance.vacation_rejected",
+        targetType: "attendance_vacation",
+        targetId: vacation.id,
+        outcome: "success"
+      });
+      return { vacation };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/vacations/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:vacations");
+    await attendance.deleteVacation(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.vacation_deleted",
+      targetType: "attendance_vacation",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
+
+  // Absences
+
+  app.get<{ Querystring: { from: string; to: string; membershipId?: string } }>(
+    "/api/v1/attendance/absences",
+    { schema: memberRangeSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:record");
+      const membershipId = request.query.membershipId;
+      if (membershipId) {
+        return { absences: await attendance.listAbsencesByMember(context, membershipId, range(request.query)) };
+      }
+      return { absences: await attendance.listAbsences(context, range(request.query)) };
+    }
+  );
+
+  app.post<{
+    Body: {
+      membershipId: string;
+      startDate: string;
+      endDate: string;
+      type: AttendanceAbsence["type"];
+      documentUrl?: string;
+      notes?: string;
+    };
+  }>("/api/v1/attendance/absences", { schema: absenceSchema }, async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:record");
+    const absence = await attendance.createAbsence(context, request.body);
+    await writeAudit(database, context, request, {
+      action: "attendance.absence_created",
+      targetType: "attendance_absence",
+      targetId: absence.id,
+      outcome: "success",
+      metadata: { type: absence.type }
+    });
+    return reply.code(201).send({ absence });
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/absences/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:manage");
+    await attendance.deleteAbsence(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.absence_deleted",
+      targetType: "attendance_absence",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
+
+  // Blocks
+
+  app.get<{ Querystring: { from: string; to: string; membershipId?: string } }>(
+    "/api/v1/attendance/blocks",
+    { schema: memberRangeSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:record");
+      const membershipId = request.query.membershipId;
+      if (membershipId) {
+        return { blocks: await attendance.listBlocksByMember(context, membershipId, range(request.query)) };
+      }
+      return { blocks: await attendance.listBlocks(context, range(request.query)) };
+    }
+  );
+
+  app.post<{ Body: { membershipId: string; date: string; startTime: string; endTime: string; reason: string } }>(
+    "/api/v1/attendance/blocks",
+    { schema: blockSchema },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:record");
+      const block = await attendance.createBlock(context, request.body);
+      await writeAudit(database, context, request, {
+        action: "attendance.block_created",
+        targetType: "attendance_block",
+        targetId: block.id,
+        outcome: "success",
+        metadata: { date: block.date }
+      });
+      return reply.code(201).send({ block });
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/v1/attendance/blocks/:id", async (request, reply) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "attendance:manage");
+    await attendance.deleteBlock(context, request.params.id);
+    await writeAudit(database, context, request, {
+      action: "attendance.block_deleted",
+      targetType: "attendance_block",
+      targetId: request.params.id,
+      outcome: "success"
+    });
+    return reply.code(204).send();
+  });
 }

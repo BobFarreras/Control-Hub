@@ -4,6 +4,7 @@ import { createDatabaseClient, withTenant, type DatabaseClient } from "@control-
 import type { TenantContext } from "@control-hub/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresCommerceRepository } from "./commerce-repository.js";
+import { PostgresCustomerServicesRepository } from "./customer-services-repository.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const adminUrl = process.env.TEST_DATABASE_ADMIN_URL;
@@ -17,6 +18,7 @@ suite("PostgresCommerceRepository", () => {
   let admin: DatabaseClient;
   let repository: PostgresCommerceRepository;
   let service: CommerceService;
+  let customerServices: PostgresCustomerServicesRepository;
   const tenantA = randomUUID();
   const tenantB = randomUUID();
   const userId = randomUUID();
@@ -34,6 +36,7 @@ suite("PostgresCommerceRepository", () => {
     database = createDatabaseClient(databaseUrl!);
     admin = createDatabaseClient(adminUrl!);
     repository = new PostgresCommerceRepository(database);
+    customerServices = new PostgresCustomerServicesRepository(database);
     service = new CommerceService(repository);
     await admin`insert into "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values (${userId}, 'Commerce Test', ${`${userId}@test.local`}, true, now(), now())`;
     await admin`insert into tenants (id, slug, name) values (${tenantA}, ${`commerce-${tenantA}`}, 'Commerce A'), (${tenantB}, ${`commerce-${tenantB}`}, 'Commerce B')`;
@@ -42,9 +45,13 @@ suite("PostgresCommerceRepository", () => {
 
   afterAll(async () => {
     await admin`alter table subscription_events disable trigger subscription_events_append_only`;
+    await admin`alter table customer_service_events disable trigger customer_service_events_append_only`;
     await admin`alter table plan_prices disable trigger plan_prices_append_only`;
     try {
       await admin`delete from subscription_events where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_service_events where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_service_recurrence where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_services where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from subscriptions where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from plan_prices where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from plans where tenant_id in (${tenantA}, ${tenantB})`;
@@ -52,6 +59,7 @@ suite("PostgresCommerceRepository", () => {
       await admin`delete from products where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
       await admin`alter table subscription_events enable trigger subscription_events_append_only`;
+      await admin`alter table customer_service_events enable trigger customer_service_events_append_only`;
       await admin`alter table plan_prices enable trigger plan_prices_append_only`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
@@ -82,10 +90,37 @@ suite("PostgresCommerceRepository", () => {
     ).rejects.toThrow();
   });
 
+  it("creates the first complete offer atomically and rolls every row back on a late conflict", async () => {
+    const offer = await service.createProductOffer(context(tenantA), {
+      product: { code: "atomic-offer", name: "Atomic Offer" },
+      version: { version: "1.0" },
+      plan: { code: "atomic-plan", name: "Atomic Plan", commercialModel: "subscription" },
+      price: { currency: "EUR", amountMinor: 4900, costMinor: 900, taxBasisPoints: 2100, interval: "monthly" }
+    });
+    expect(offer.price.planId).toBe(offer.plan.id);
+
+    await expect(
+      service.createProductOffer(context(tenantA), {
+        product: { code: "must-roll-back", name: "Must Roll Back" },
+        version: { version: "1.0" },
+        plan: { code: "atomic-plan", name: "Duplicated Plan", commercialModel: "subscription" },
+        price: { currency: "EUR", amountMinor: 1000, costMinor: 0, taxBasisPoints: 0, interval: "monthly" }
+      })
+    ).rejects.toEqual(expect.objectContaining({ code: "DUPLICATE_CODE" }));
+    expect(
+      (await service.catalog(context(tenantA))).products.some((product) => product.code === "must-roll-back")
+    ).toBe(false);
+    const detail = await service.productDetail(context(tenantA), offer.product.id);
+    expect(detail).toMatchObject({ product: { id: offer.product.id }, plans: [{ commercialModel: "subscription" }] });
+    await expect(service.productDetail(context(tenantB), offer.product.id)).rejects.toEqual(
+      expect.objectContaining({ code: "PRODUCT_NOT_FOUND" })
+    );
+  });
+
   it("calculates metrics, renewal alerts and immutable state changes", async () => {
     const catalog = await service.catalog(context(tenantA));
-    const plan = catalog.plans[0]!;
-    const price = catalog.prices[0]!;
+    const price = catalog.prices.find((candidate) => candidate.amountMinor === 2500)!;
+    const plan = catalog.plans.find((candidate) => candidate.id === price.planId)!;
     const renewalAt = new Date(Date.now() + 3 * 86400_000);
     const subscription = await service.createSubscription(context(tenantA), {
       customerId: customerA,
@@ -122,5 +157,63 @@ suite("PostgresCommerceRepository", () => {
         tx`select type from subscription_events where tenant_id = ${tenantA} and subscription_id = ${subscription.id}`
     );
     expect(history).toHaveLength(5);
+  });
+
+  it("persists recurring customer services and isolates their commercial data by tenant", async () => {
+    const catalog = await service.catalog(context(tenantA));
+    const price = catalog.prices.find((candidate) => candidate.amountMinor === 2500)!;
+    const plan = catalog.plans.find((candidate) => candidate.id === price.planId)!;
+    const now = new Date();
+    const created = await customerServices.create(context(tenantA), {
+      customerId: customerA,
+      planId: plan.id,
+      priceId: price.id,
+      quantity: 1,
+      contractedAt: now,
+      startsAt: now,
+      currentPeriodStart: now,
+      autoRenew: true,
+      renewalAt: new Date(now.getTime() + 30 * 86400_000),
+      renewalAlertDays: 14
+    });
+
+    expect(created).toMatchObject({
+      customerId: customerA,
+      commercialModel: "subscription",
+      autoRenew: true,
+      currency: "EUR"
+    });
+    await expect(customerServices.list(context(tenantA), {})).resolves.toContainEqual(created);
+    await expect(customerServices.list(context(tenantB), {})).resolves.toEqual([]);
+
+    const pausedAt = new Date(now.getTime() + 1_000);
+    const paused = await customerServices.transition(context(tenantA), {
+      serviceId: created.id,
+      action: "pause",
+      effectiveAt: pausedAt,
+      expectedStatus: "active",
+      targetStatus: "paused",
+      eventType: "paused"
+    });
+    expect(paused.status).toBe("paused");
+    await expect(
+      customerServices.transition(context(tenantA), {
+        serviceId: created.id,
+        action: "pause",
+        effectiveAt: pausedAt,
+        expectedStatus: "active",
+        targetStatus: "paused",
+        eventType: "paused"
+      })
+    ).rejects.toMatchObject({ code: "CUSTOMER_SERVICE_CONFLICT" });
+    const events = await withTenant(
+      database,
+      tenantA,
+      (tx) =>
+        tx<
+          { type: string }[]
+        >`select type from customer_service_events where customer_service_id = ${created.id} order by effective_at`
+    );
+    expect(events.map((event) => event.type)).toEqual(["created", "paused"]);
   });
 });

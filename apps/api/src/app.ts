@@ -5,6 +5,8 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  CustomerServicesError,
+  CustomerServicesService,
   CrmError,
   CrmService,
   ProjectsError,
@@ -20,6 +22,7 @@ import {
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
+  PostgresCustomerServicesRepository,
   PostgresCrmRepository,
   IdentityInvariantError,
   InvitationError,
@@ -74,6 +77,7 @@ export function buildApp(options: BuildAppOptions) {
   const database = createDatabaseClient(options.databaseUrl);
   const crm = new CrmService(new PostgresCrmRepository(database));
   const commerce = new CommerceService(new PostgresCommerceRepository(database));
+  const customerServices = new CustomerServicesService(new PostgresCustomerServicesRepository(database));
   const companySubscriptions = new CompanySubscriptionService(new PostgresCompanySubscriptionRepository(database));
   const support = new SupportService(new PostgresSupportRepository(database));
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
@@ -124,6 +128,8 @@ export function buildApp(options: BuildAppOptions) {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (typeof error === "object" && error !== null && "validation" in error)
+      return reply.code(400).send({ code: "INVALID_INPUT", requestId: request.id });
     if (error instanceof ApiSecurityError)
       return reply.code(error.statusCode).send({ code: error.code, requestId: request.id });
     if (error instanceof IdentityInvariantError)
@@ -137,7 +143,11 @@ export function buildApp(options: BuildAppOptions) {
     if (error instanceof CrmError) {
       const status = error.code.endsWith("NOT_FOUND")
         ? 404
-        : error.code.startsWith("DUPLICATE") || error.code === "INVALID_TRANSITION"
+        : error.code.startsWith("DUPLICATE") ||
+            error.code === "INVALID_TRANSITION" ||
+            error.code === "SOURCE_LEAD_NOT_AVAILABLE" ||
+            error.code === "CUSTOMER_ALREADY_HAS_CONTACTS" ||
+            error.code === "CUSTOMER_VERSION_CONFLICT"
           ? 409
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -146,6 +156,16 @@ export function buildApp(options: BuildAppOptions) {
       const status = error.code.endsWith("NOT_FOUND")
         ? 404
         : error.code === "DUPLICATE_CODE" || error.code === "INVALID_SUBSCRIPTION_TRANSITION"
+          ? 409
+          : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
+    if (error instanceof CustomerServicesError) {
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code.endsWith("REFERENCE_INVALID") ||
+            error.code.endsWith("INVALID_TRANSITION") ||
+            error.code.endsWith("CONFLICT")
           ? 409
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
@@ -195,7 +215,13 @@ export function buildApp(options: BuildAppOptions) {
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     if (error instanceof CompanySubscriptionError) {
-      const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "DUPLICATE_SUBSCRIPTION" ? 409 : 400;
+      const status = error.code.endsWith("NOT_FOUND")
+        ? 404
+        : error.code.endsWith("REFERENCE_INVALID") ||
+            error.code.endsWith("INVALID_TRANSITION") ||
+            error.code.endsWith("CONFLICT")
+          ? 409
+          : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
     request.log.error({ err: error }, "request failed");
@@ -216,7 +242,7 @@ export function buildApp(options: BuildAppOptions) {
       const context = { app, database, auth: options.auth };
       registerAuthProxyRoutes({ ...context, appOrigin: options.appOrigin });
       registerIdentityRoutes(context);
-      registerCommerceRoutes({ ...context, commerce });
+      registerCommerceRoutes({ ...context, commerce, customerServices });
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });

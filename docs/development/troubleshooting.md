@@ -434,3 +434,43 @@ commit**, i no ho vaig comprovar. Un `git add -A` no es una verificacio.
    feina funciona. La copia de treball i el que hi ha a la branca no son el mateix.
 2. Les proves d'un modul darrere una flag comproven **primer** que la ruta hi es, i fallen amb el
    nom de la variable que falta. Un minut de diagnosi en comptes de sis d'espera.
+
+### Una edicio valida torna `INVALID_INPUT` despres de crear el registre
+
+**Simptoma.** L'alta d'una despesa recurrent respon `201`, pero editar-ne nomes el nom respon
+`400 INVALID_INPUT`. El payload del `PATCH` es valid i els camps visibles tenen el tipus esperat.
+
+**Causa.** `amount_minor` es un `bigint`. El driver de PostgreSQL el retorna com a text per no
+perdre precisio, mentre que el repositori el declarava com a `number` sense convertir-lo. El cas
+d'us recompon el contracte complet abans d'editar i `Number.isSafeInteger` rebutja aquest text.
+
+**Solucio.** Normalitzar el tipus a la frontera de persistencia amb
+`amount_minor::float8 as "amountMinor"`. La restriccio de la columna ja limita el valor a
+`Number.MAX_SAFE_INTEGER`, per tant la conversio es exacta dins el domini admès. La prova
+d'integracio ha d'assertar també `typeof created.amountMinor === "number"`; un generic TypeScript
+sobre la consulta no converteix el valor en execucio.
+
+### El camp «Compte o correu» rebutja un usuari de plataforma valid
+
+**Simptoma.** Editar una despesa amb un identificador com `workspace-admin` mostra l'error generic,
+tot i que l'especificacio permet un correu o un usuari.
+
+**Causa.** La UI usava `type="email"`, l'esquema HTTP exigia `format: "email"` i el cas d'us
+aplicava una expressio regular de correu. Les tres capes contradeien COM-3 i el nom visible del camp.
+
+**Solucio.** Tractar-lo com un identificador opac: retallar espais exteriors, conservar majuscules i
+limitar-lo a 320 caracters, sense exigir sintaxi de correu. L'E2E ha d'editar-lo amb un usuari que no
+sigui email i comprovar el valor renderitzat; provar nomes el nom del servei no cobreix el contracte.
+
+### Una prova de metriques canvia de resultat entre Windows i CI
+
+**Simptoma.** `financialSummary` retorna imports diferents dels esperats nomes al runner Linux,
+tot i que cada fila i el calcul son correctes.
+
+**Causa.** La prova triava `catalog.plans[0]` i `catalog.prices[0]` despres d'haver creat mes d'una
+oferta. La consulta no promet ordre i PostgreSQL pot retornar qualsevol fila primer; el resultat
+depenia del pla d'execucio, no del sistema operatiu.
+
+**Solucio.** Les proves seleccionen la dada que han creat mitjancant una identitat o propietat
+estable i relacionen el pla pel seu `planId`. Mai s'utilitza la primera fila d'una consulta sense
+`ORDER BY` com si fos part del contracte.
