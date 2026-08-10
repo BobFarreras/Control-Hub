@@ -16,11 +16,18 @@ async function loadCustomer(customerId: string): Promise<CustomerDetailData> {
   return (await readJson<CustomerDetailResponse>(response)).customer;
 }
 
+async function canReadFinancials() {
+  const response = await apiFetch("/api/v1/me");
+  if (!response.ok) throw await loadFailure("SESSION_LOAD_ERROR", response);
+  const payload = await readJson<{ context: { permissions: string[] } }>(response);
+  return payload.context.permissions.includes("financials:read");
+}
+
 export default async function CustomerPage({ params }: { params: Promise<{ locale: string; customerId: string }> }) {
   const { locale, customerId } = await params;
   if (!isLocale(locale) || !/^[0-9a-f-]{36}$/i.test(customerId)) notFound();
   await requireSession(locale);
-  const customer = await loadCustomer(customerId);
+  const [customer, financialsVisible] = await Promise.all([loadCustomer(customerId), canReadFinancials()]);
   const common = getDictionary(locale);
   const labels = { ...common.crm, ...getCrmDetailDictionary(locale) };
   return (
@@ -43,7 +50,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ local
           }
         />
         <main className="customer-page compact-main">
-          <CustomerDetail customer={customer} labels={labels} locale={locale} />
+          <CustomerDetail customer={customer} labels={labels} locale={locale} canReadFinancials={financialsVisible} />
         </main>
       </div>
     </div>

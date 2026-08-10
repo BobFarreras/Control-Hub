@@ -42,6 +42,14 @@ export type CustomerRow = {
 };
 
 export type CustomerDetail = CustomerRow & {
+  legalName: string | null;
+  website: string | null;
+  taxId: string | null;
+  preferredLocale: "ca" | "es" | "en" | null;
+  timezone: string | null;
+  ownerMembershipId: string | null;
+  createdFromLeadId: string | null;
+  updatedAt: string;
   contacts: {
     id: string;
     name: string;
@@ -49,10 +57,55 @@ export type CustomerDetail = CustomerRow & {
     email: string | null;
     phone: string | null;
     isPrimary: boolean;
+    sourceLeadId: string | null;
   }[];
   notes: { id: string; body: string; createdAt: string }[];
   tasks: { id: string; title: string; dueAt: string | null; completedAt: string | null }[];
   activity: { id: string; type: string; occurredAt: string }[];
+  services: {
+    id: string;
+    productId: string;
+    productName: string;
+    planName: string;
+    projectId: string | null;
+    projectName: string | null;
+    status: string;
+    startedAt: string;
+    renewalAt: string | null;
+  }[];
+  projects: {
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+    startedAt: string | null;
+    dueAt: string | null;
+  }[];
+  tickets: { id: string; ticketNumber: number; subject: string; status: string; priority: string; openedAt: string }[];
+  interests: {
+    id: string;
+    productId: string;
+    productName: string;
+    stage: "detected" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
+    probability: number | null;
+    estimatedAmountMinor?: number | null;
+    currency?: string | null;
+    nextStep: string | null;
+    updatedAt: string;
+  }[];
+  availableProducts: { id: string; name: string }[];
+  addresses: {
+    id: string;
+    type: "billing" | "shipping" | "office" | "other";
+    label: string | null;
+    line1: string;
+    line2: string | null;
+    postalCode: string | null;
+    city: string;
+    region: string | null;
+    countryCode: string;
+    isPrimary: boolean;
+  }[];
 };
 
 export type CrmSummary = {
@@ -72,12 +125,22 @@ export type SlaTargetState = {
   measurable: boolean;
 };
 
+export type InboxSlaDetail = {
+  status: string;
+  targetMinutes: number;
+  consumedMinutes: number;
+  remainingMinutes: number;
+  estimatedDeadline: string | null;
+  activeTarget: string;
+};
+
 export type InboxTicket = {
   id: string;
   ticketNumber: number;
   customerId: string;
   customerName: string;
   projectId: string | null;
+  projectName: string | null;
   subject: string;
   status: string;
   priority: string;
@@ -85,10 +148,12 @@ export type InboxTicket = {
   assigneeMembershipId: string | null;
   assigneeName: string | null;
   openedAt: string;
+  updatedAt: string;
   firstResponseAt: string | null;
   resolvedAt: string | null;
   closedAt: string | null;
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+  inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
 };
 
 export type TicketMessage = {
@@ -107,6 +172,7 @@ export type TicketDetail = {
   ticket: InboxTicket & { description: string };
   messages: TicketMessage[];
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
+  inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
   assignableMembers: AssignableMember[];
 };
 
@@ -228,10 +294,19 @@ export type TimeEntriesPage = {
   pageSize: TablePreference["pageSize"];
 };
 
-export type Product = { id: string; code: string; name: string; status: string };
+export type Product = { id: string; code: string; name: string; description: string | null; status: string };
 export type Version = { id: string; productId: string; version: string; status: string };
-export type Plan = { id: string; productVersionId: string; code: string; name: string; status: string };
-export type BillingInterval = "free" | "monthly" | "quarterly" | "semiannual" | "annual";
+export type CommercialModel = "subscription" | "maintenance" | "one_time" | "project_service";
+export type Plan = {
+  id: string;
+  productVersionId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  commercialModel: CommercialModel;
+  status: string;
+};
+export type BillingInterval = "free" | "one_time" | "monthly" | "quarterly" | "semiannual" | "annual";
 
 export type Price = {
   id: string;
@@ -245,6 +320,7 @@ export type Price = {
 };
 
 export type Catalog = { products: Product[]; versions: Version[]; plans: Plan[]; prices: Price[] };
+export type ProductCatalogDetail = Catalog & { product: Product };
 
 export type CustomerSubscription = {
   id: string;
@@ -257,6 +333,39 @@ export type CustomerSubscription = {
   quantity: number;
   renewalAt: string | null;
 };
+
+export type CustomerService = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  planId: string;
+  planName: string;
+  priceId: string;
+  commercialModel: CommercialModel;
+  status: "active" | "paused" | "completed" | "canceled";
+  quantity: number;
+  contractedAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  ownerMembershipId: string | null;
+  ownerName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  canceledAt: string | null;
+  currency: string;
+  interval: BillingInterval;
+  currentPeriodStart: string | null;
+  renewalAt: string | null;
+  autoRenew: boolean | null;
+  renewalAlertDays: number | null;
+  createdAt: string;
+  updatedAt: string;
+  financials?: { amountMinor: number; costMinor: number; taxBasisPoints: number };
+};
+
+export type CustomerServicesResponse = { services: CustomerService[] };
 
 export type FinancialMetric = {
   currency: string;
@@ -282,14 +391,30 @@ export type CompanySubscription = {
   provider: string;
   serviceName: string;
   category: string;
-  status: "active" | "trial" | "canceled";
-  currency: string;
-  amountMinor: number;
-  interval: "monthly" | "quarterly" | "semiannual" | "annual";
+  status: "active" | "trial" | "paused" | "canceled";
   renewalAt: string | null;
   renewalAlertDays: number;
   autoRenew: boolean;
   websiteUrl: string | null;
+  notes: string | null;
+  accountEmail: string | null;
+  ownerMembershipId: string | null;
+  ownerName: string | null;
+  quantity: number;
+  startedAt: string | null;
+  trialEndsAt: string | null;
+  cancelBeforeAt: string | null;
+  canceledAt: string | null;
+  costCenter: string | null;
+  paymentMethodLabel: string | null;
+  secretManagerUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  financials?: {
+    currency: string;
+    amountMinor: number;
+    interval: "monthly" | "quarterly" | "semiannual" | "annual";
+  };
 };
 
 /** Response envelopes, named after the route that returns them. */
@@ -325,6 +450,7 @@ export type AttendanceSession = {
 };
 export type AttendanceMonth = {
   membershipId: string;
+  memberName: string;
   days: AttendanceDay[];
   sessions: AttendanceSession[];
   totalMinutes: number;
@@ -343,3 +469,55 @@ export type AttendanceTeamRow = {
   unbilledMinutes?: number;
 };
 export type AttendanceTeamResponse = { members: AttendanceTeamRow[] };
+
+export type AttendanceHoliday = {
+  id: string;
+  date: string;
+  name: string;
+};
+
+export type AttendanceNonWorkingDay = {
+  id: string;
+  dayOfWeek: number;
+};
+
+export type AttendanceVacationStatus = "pending" | "approved" | "rejected";
+
+export type AttendanceVacation = {
+  id: string;
+  membershipId: string;
+  startDate: string;
+  endDate: string;
+  status: AttendanceVacationStatus;
+  approvedByMembershipId: string | null;
+  approvedAt: string | null;
+  notes: string | null;
+};
+
+export type AttendanceAbsenceType = "sick_leave" | "personal_leave" | "other";
+
+export type AttendanceAbsence = {
+  id: string;
+  membershipId: string;
+  startDate: string;
+  endDate: string;
+  type: AttendanceAbsenceType;
+  documentUrl: string | null;
+  notes: string | null;
+  createdByMembershipId: string;
+};
+
+export type AttendanceBlock = {
+  id: string;
+  membershipId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+};
+
+export type AttendanceHolidaysResponse = { holidays: AttendanceHoliday[] };
+export type AttendanceNonWorkingDaysResponse = { nonWorkingDays: AttendanceNonWorkingDay[] };
+export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
+export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
+export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };

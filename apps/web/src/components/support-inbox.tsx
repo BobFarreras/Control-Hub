@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Clock, Plus, X } from "lucide-react";
+import { AlertTriangle, Clock, Pause, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
-import type { CustomerOption, InboxTicket, TablePreference } from "@/lib/api-types";
+import type { CustomerOption, InboxSlaDetail, InboxTicket, TablePreference } from "@/lib/api-types";
 import { formValue, optionalFormValue } from "@/lib/form";
 import { eventHandler } from "@/lib/handlers";
 
@@ -25,16 +25,177 @@ function formatRemaining(minutes: number): string {
 }
 
 /**
- * The target a row should be judged by: until somebody answers, that is the first response;
- * afterwards it is the resolution. Showing both would double every row for no gain.
- *
- * Nothing here expires. What runs down is the commitment published for that priority, which is
- * why the column is not called a due date: a ticket stays open and workable past it, it is the
- * promise that has been missed.
+ * Formats a date as a relative time string (e.g. "2 h", "30 min").
+ * Falls back to the absolute date if the browser does not support Intl.RelativeTimeFormat.
  */
-function activeTarget(ticket: InboxTicket) {
-  return ticket.firstResponseAt ? ticket.sla.resolution : ticket.sla.firstResponse;
+function formatRelative(iso: string, locale: string): string {
+  const date = new Date(iso);
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMin = Math.round(diffMs / 60_000);
+
+  if (Math.abs(diffMin) < 1) return "ara";
+
+  try {
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    if (Math.abs(diffMin) < 60) return rtf.format(-diffMin, "minute");
+    const diffH = Math.round(diffMin / 60);
+    if (Math.abs(diffH) < 24) return rtf.format(-diffH, "hour");
+    const diffD = Math.round(diffH / 24);
+    return rtf.format(-diffD, "day");
+  } catch {
+    return date.toLocaleDateString(locale);
+  }
 }
+
+/**
+ * The active SLA detail for a ticket row: first response until answered, resolution afterwards.
+ */
+function activeInboxSla(ticket: InboxTicket): InboxSlaDetail {
+  return ticket.firstResponseAt ? ticket.inboxSla.resolution : ticket.inboxSla.firstResponse;
+}
+
+// ---------------------------------------------------------------------------
+// SLA status badge
+// ---------------------------------------------------------------------------
+
+const slaStatusClasses: Record<string, string> = {
+  on_time: "sla-on-time",
+  near: "sla-near",
+  breached: "sla-breached",
+  paused: "sla-paused",
+  not_configured: "sla-unknown"
+};
+
+function SlaStatusBadge({ sla, labels: t, onClick }: { sla: InboxSlaDetail; labels: Labels; onClick: () => void }) {
+  const className = slaStatusClasses[sla.status] ?? "sla-unknown";
+  const statusKey = `slaStatus_${sla.status}`;
+  const label = t[statusKey] ?? sla.status;
+  const icon =
+    sla.status === "breached" ? (
+      <AlertTriangle size={14} aria-hidden="true" />
+    ) : sla.status === "paused" ? (
+      <Pause size={14} aria-hidden="true" />
+    ) : sla.status === "not_configured" ? null : (
+      <Clock size={14} aria-hidden="true" />
+    );
+
+  return (
+    <button
+      type="button"
+      className={`sla-badge ${className}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        onClick();
+      }}
+      title={t.slaDetailTitle}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SLA detail dialog
+// ---------------------------------------------------------------------------
+
+function SlaDetailDialog({ ticket, labels: t, onClose }: { ticket: InboxTicket; labels: Labels; onClose: () => void }) {
+  const { inboxSla } = ticket;
+  const fr = inboxSla.firstResponse;
+  const rs = inboxSla.resolution;
+
+  return (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="crm-dialog sla-detail-dialog" role="dialog" aria-modal="true">
+        <header>
+          <h2>{t.slaDetailTitle}</h2>
+          <button className="icon-button" onClick={onClose} aria-label={t.cancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="sla-detail-body">
+          <SlaTargetSection
+            target={fr}
+            label={t.targetFirstResponse!}
+            stageLabel={t.firstResponsePending!}
+            labels={t}
+          />
+          <SlaTargetSection target={rs} label={t.targetResolution!} stageLabel={t.resolutionPending!} labels={t} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SlaTargetSection({
+  target,
+  label,
+  stageLabel,
+  labels: t
+}: {
+  target: InboxSlaDetail;
+  label: string;
+  stageLabel: string;
+  labels: Labels;
+}) {
+  const statusKey = `slaStatus_${target.status}`;
+  const statusLabel = t[statusKey] ?? target.status;
+
+  return (
+    <div className="sla-detail-section">
+      <h3>{label}</h3>
+      <dl>
+        <dt>{t.status}</dt>
+        <dd>{stageLabel}</dd>
+
+        <dt>{t.columnSlaStatus}</dt>
+        <dd>{statusLabel}</dd>
+
+        <dt>{t.slaDetailTarget}</dt>
+        <dd>{formatRemaining(target.targetMinutes)}</dd>
+
+        <dt>{t.slaDetailConsumed}</dt>
+        <dd>{formatRemaining(target.consumedMinutes)}</dd>
+
+        <dt>{t.slaDetailRemaining}</dt>
+        <dd>{target.status === "breached" ? "\u2014" : formatRemaining(target.remainingMinutes)}</dd>
+
+        {target.status === "not_configured" && (
+          <>
+            <dt>{t.slaDetailNoSchedule}</dt>
+            <dd>\u2014</dd>
+          </>
+        )}
+
+        {target.status === "paused" && (
+          <>
+            <dt>{t.slaDetailPaused}</dt>
+            <dd>\u2014</dd>
+          </>
+        )}
+
+        {target.estimatedDeadline && (
+          <>
+            <dt>{t.slaDetailDeadline}</dt>
+            <dd>{new Date(target.estimatedDeadline).toLocaleString()}</dd>
+          </>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function SupportInbox({
   tickets,
@@ -57,6 +218,7 @@ export function SupportInbox({
   const [dialog, setDialog] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slaDetailTicket, setSlaDetailTicket] = useState<InboxTicket | null>(null);
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -85,32 +247,6 @@ export function SupportInbox({
     setDialog(false);
     router.refresh();
   }
-  const due = (ticket: InboxTicket) => {
-    const target = activeTarget(ticket);
-    const stage = ticket.firstResponseAt ? t.resolutionPending : t.firstResponsePending;
-
-    if (!target.measurable) {
-      // An unconfigured schedule is not "on time"; saying so would be a quiet lie.
-      return <span className="sla-unknown">{t.notMeasured}</span>;
-    }
-    const remaining = target.targetMinutes - target.consumedMinutes;
-    if (target.breached) {
-      return (
-        // Not colour alone: the icon and the word carry the same meaning for anyone who
-        // cannot separate red from green.
-        <span className="sla-breached" title={stage}>
-          <AlertTriangle size={15} aria-hidden="true" />
-          {t.breached}
-        </span>
-      );
-    }
-    return (
-      <span className="sla-remaining" title={stage}>
-        <Clock size={15} aria-hidden="true" />
-        {t.remaining} {formatRemaining(remaining)}
-      </span>
-    );
-  };
 
   const columns: SmartColumn<InboxTicket>[] = [
     {
@@ -143,7 +279,44 @@ export function SupportInbox({
       label: t.assignee!,
       render: (ticket) => ticket.assigneeName ?? <span className="muted">{t.unassigned}</span>
     },
-    { id: "due", label: t.due!, help: t.dueHelp!, render: due }
+    {
+      id: "createdAt",
+      label: t.columnCreated!,
+      render: (ticket) => (
+        <time
+          dateTime={ticket.openedAt}
+          title={new Date(ticket.openedAt).toLocaleString(locale)}
+          suppressHydrationWarning
+        >
+          {formatRelative(ticket.openedAt, locale)}
+        </time>
+      )
+    },
+    {
+      id: "appliedTarget",
+      label: t.columnAppliedTarget!,
+      render: (ticket) => <span>{ticket.firstResponseAt ? t.targetResolution : t.targetFirstResponse}</span>
+    },
+    {
+      id: "slaStatus",
+      label: t.columnSlaStatus!,
+      render: (ticket) => (
+        <SlaStatusBadge sla={activeInboxSla(ticket)} labels={t} onClick={() => setSlaDetailTicket(ticket)} />
+      )
+    },
+    {
+      id: "updatedAt",
+      label: t.columnLastUpdate!,
+      render: (ticket) => (
+        <time
+          dateTime={ticket.updatedAt}
+          title={new Date(ticket.updatedAt).toLocaleString(locale)}
+          suppressHydrationWarning
+        >
+          {formatRelative(ticket.updatedAt, locale)}
+        </time>
+      )
+    }
   ];
 
   return (
@@ -249,6 +422,9 @@ export function SupportInbox({
             </form>
           </section>
         </div>
+      )}
+      {slaDetailTicket && (
+        <SlaDetailDialog ticket={slaDetailTicket} labels={t} onClose={() => setSlaDetailTicket(null)} />
       )}
     </>
   );

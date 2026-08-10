@@ -1,9 +1,12 @@
 import {
   billingIntervals,
+  commercialModels,
+  isCommercialIntervalAllowed,
   monthlyFromAnnualMinor,
   recurringMetrics,
   subscriptionStatuses,
   type BillingInterval,
+  type CommercialModel,
   type SubscriptionStatus,
   type TenantContext
 } from "@control-hub/domain";
@@ -30,6 +33,7 @@ export type PlanRecord = {
   code: string;
   name: string;
   description: string | null;
+  commercialModel: CommercialModel;
   status: "active" | "archived";
   createdAt: Date;
 };
@@ -49,6 +53,26 @@ export type Catalog = {
   versions: ProductVersionRecord[];
   plans: PlanRecord[];
   prices: PriceRecord[];
+};
+export type ProductOfferRecord = {
+  product: ProductRecord;
+  version: ProductVersionRecord;
+  plan: PlanRecord;
+  price: PriceRecord;
+};
+export type ProductCatalogDetail = Catalog & { product: ProductRecord };
+export type ProductOfferInput = {
+  product: { code: string; name: string; description?: string };
+  version: { version: string };
+  plan: { code: string; name: string; description?: string; commercialModel: CommercialModel };
+  price: {
+    currency: string;
+    amountMinor: number;
+    costMinor: number;
+    taxBasisPoints: number;
+    interval: BillingInterval;
+    effectiveFrom?: Date;
+  };
 };
 export type SubscriptionRecord = {
   id: string;
@@ -110,6 +134,7 @@ export class CommerceError extends Error {
 
 export interface CommerceRepository {
   catalog(context: TenantContext): Promise<Catalog>;
+  productDetail(context: TenantContext, productId: string): Promise<ProductCatalogDetail>;
   createProduct(
     context: TenantContext,
     input: { code: string; name: string; description?: string }
@@ -122,7 +147,7 @@ export interface CommerceRepository {
   createPlan(
     context: TenantContext,
     productVersionId: string,
-    input: { code: string; name: string; description?: string }
+    input: { code: string; name: string; description?: string; commercialModel?: CommercialModel }
   ): Promise<PlanRecord>;
   createPrice(
     context: TenantContext,
@@ -136,6 +161,13 @@ export interface CommerceRepository {
       effectiveFrom: Date;
     }
   ): Promise<PriceRecord>;
+  createProductOffer(
+    context: TenantContext,
+    input: ProductOfferInput & {
+      version: ProductOfferInput["version"] & { releasedAt: Date };
+      price: ProductOfferInput["price"] & { effectiveFrom: Date };
+    }
+  ): Promise<ProductOfferRecord>;
   listSubscriptions(context: TenantContext): Promise<SubscriptionRecord[]>;
   createSubscription(
     context: TenantContext,
@@ -177,10 +209,35 @@ function code(value: string) {
   return normalized;
 }
 
+function normalizedPrice(
+  input: ProductOfferInput["price"],
+  commercialModel?: CommercialModel
+): ProductOfferInput["price"] & { effectiveFrom: Date } {
+  const currency = input.currency.trim().toUpperCase();
+  if (
+    !/^[A-Z]{3}$/.test(currency) ||
+    !billingIntervals.includes(input.interval) ||
+    !Number.isSafeInteger(input.amountMinor) ||
+    input.amountMinor < 0 ||
+    !Number.isSafeInteger(input.costMinor) ||
+    input.costMinor < 0 ||
+    !Number.isInteger(input.taxBasisPoints) ||
+    input.taxBasisPoints < 0 ||
+    input.taxBasisPoints > 10000 ||
+    (input.interval === "free" && input.amountMinor !== 0) ||
+    (commercialModel !== undefined && !isCommercialIntervalAllowed(commercialModel, input.interval))
+  )
+    throw new CommerceError("INVALID_INPUT");
+  return { ...input, currency, effectiveFrom: input.effectiveFrom ?? new Date() };
+}
+
 export class CommerceService {
   constructor(private readonly repository: CommerceRepository) {}
   catalog(context: TenantContext) {
     return this.repository.catalog(context);
+  }
+  productDetail(context: TenantContext, productId: string) {
+    return this.repository.productDetail(context, productId);
   }
   listSubscriptions(context: TenantContext) {
     return this.repository.listSubscriptions(context);
@@ -195,6 +252,24 @@ export class CommerceService {
       ...(input.description?.trim() ? { description: required(input.description, 2000) } : {})
     });
   }
+  createProductOffer(context: TenantContext, input: ProductOfferInput) {
+    const releasedAt = new Date();
+    return this.repository.createProductOffer(context, {
+      product: {
+        code: code(input.product.code),
+        name: required(input.product.name, 160),
+        ...(input.product.description?.trim() ? { description: required(input.product.description, 2000) } : {})
+      },
+      version: { version: required(input.version.version, 80), releasedAt },
+      plan: {
+        code: code(input.plan.code),
+        name: required(input.plan.name, 160),
+        commercialModel: input.plan.commercialModel,
+        ...(input.plan.description?.trim() ? { description: required(input.plan.description, 2000) } : {})
+      },
+      price: normalizedPrice(input.price, input.plan.commercialModel)
+    });
+  }
   createVersion(
     context: TenantContext,
     productId: string,
@@ -205,11 +280,14 @@ export class CommerceService {
   createPlan(
     context: TenantContext,
     productVersionId: string,
-    input: { code: string; name: string; description?: string }
+    input: { code: string; name: string; description?: string; commercialModel?: CommercialModel }
   ) {
+    const commercialModel = input.commercialModel ?? "subscription";
+    if (!commercialModels.includes(commercialModel)) throw new CommerceError("INVALID_INPUT");
     return this.repository.createPlan(context, productVersionId, {
       code: code(input.code),
       name: required(input.name, 160),
+      commercialModel,
       ...(input.description?.trim() ? { description: required(input.description, 2000) } : {})
     });
   }
@@ -225,25 +303,7 @@ export class CommerceService {
       effectiveFrom?: Date;
     }
   ) {
-    const currency = input.currency.trim().toUpperCase();
-    if (
-      !/^[A-Z]{3}$/.test(currency) ||
-      !billingIntervals.includes(input.interval) ||
-      !Number.isSafeInteger(input.amountMinor) ||
-      input.amountMinor < 0 ||
-      !Number.isSafeInteger(input.costMinor) ||
-      input.costMinor < 0 ||
-      !Number.isInteger(input.taxBasisPoints) ||
-      input.taxBasisPoints < 0 ||
-      input.taxBasisPoints > 10000 ||
-      (input.interval === "free" && input.amountMinor !== 0)
-    )
-      throw new CommerceError("INVALID_INPUT");
-    return this.repository.createPrice(context, planId, {
-      ...input,
-      currency,
-      effectiveFrom: input.effectiveFrom ?? new Date()
-    });
+    return this.repository.createPrice(context, planId, normalizedPrice(input));
   }
   createSubscription(
     context: TenantContext,

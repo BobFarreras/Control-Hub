@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import { waitForHydration } from "./support/fixture";
+import { selectFieldOption, selectFieldValue, waitForHydration } from "./support/fixture";
 
 /**
  * The Catalan labels the projects screens render. Kept together so a wording change is one edit.
@@ -49,7 +49,7 @@ async function createProject(page: Page): Promise<{ code: string; name: string }
   await dialog.getByLabel(t.projectCode, { exact: true }).fill(code);
   await dialog.getByLabel(t.projectName, { exact: true }).fill(name);
   // Whichever customer the seed created first; the point is that a project needs one.
-  await dialog.getByLabel(t.customer, { exact: true }).selectOption({ index: 0 });
+  await selectFieldOption(dialog.getByLabel(t.customer, { exact: true }), { index: 0 });
 
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/projects") && response.request().method() === "POST"
@@ -141,12 +141,12 @@ test.describe("projects", () => {
       const saved = page.waitForResponse(
         (response) => response.url().includes("/status") && response.request().method() === "PATCH"
       );
-      await status.selectOption(next);
+      await selectFieldOption(status, next);
       expect((await saved).status()).toBe(200);
       await page.reload({ waitUntil: "domcontentloaded" });
     }
 
-    await expect(page.getByLabel(t.statusOf, { exact: true })).toHaveValue("closed");
+    await expect(selectFieldValue(page.getByLabel(t.statusOf, { exact: true }))).toHaveValue("closed");
     // The form is closed too, and says why rather than failing on submit.
     await expect(page.getByLabel(t.duration, { exact: true })).toBeDisabled();
     await expect(page.getByText(t.projectClosed)).toBeVisible();

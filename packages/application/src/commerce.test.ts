@@ -12,6 +12,55 @@ const context = {
 } as TenantContext;
 
 describe("CommerceService", () => {
+  it("validates and normalizes a complete product offering before the atomic repository call", async () => {
+    const createProductOffer = vi.fn().mockResolvedValue({});
+    const service = new CommerceService({ createProductOffer } as unknown as CommerceRepository);
+    await service.createProductOffer(context, {
+      product: { code: " AGENT-WHATSAPP ", name: " Agent WhatsApp " },
+      version: { version: " 1.0 " },
+      plan: { code: " PRO-MONTHLY ", name: " Pro ", commercialModel: "subscription" },
+      price: { currency: "eur", amountMinor: 4900, costMinor: 900, taxBasisPoints: 2100, interval: "monthly" }
+    });
+
+    expect(createProductOffer).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        product: { code: "agent-whatsapp", name: "Agent WhatsApp" },
+        version: expect.objectContaining({ version: "1.0", releasedAt: expect.any(Date) }),
+        plan: { code: "pro-monthly", name: "Pro", commercialModel: "subscription" },
+        price: expect.objectContaining({ currency: "EUR", effectiveFrom: expect.any(Date) })
+      })
+    );
+  });
+
+  it("rejects an invalid price before creating any part of an offering", () => {
+    const createProductOffer = vi.fn();
+    const service = new CommerceService({ createProductOffer } as unknown as CommerceRepository);
+    expect(() =>
+      service.createProductOffer(context, {
+        product: { code: "agent-whatsapp", name: "Agent WhatsApp" },
+        version: { version: "1.0" },
+        plan: { code: "pro-monthly", name: "Pro", commercialModel: "subscription" },
+        price: { currency: "EUR", amountMinor: 1, costMinor: 0, taxBasisPoints: 0, interval: "free" }
+      })
+    ).toThrow("INVALID_INPUT");
+    expect(createProductOffer).not.toHaveBeenCalled();
+  });
+
+  it("rejects recurring prices for one-time commercial models", () => {
+    const createProductOffer = vi.fn();
+    const service = new CommerceService({ createProductOffer } as unknown as CommerceRepository);
+    expect(() =>
+      service.createProductOffer(context, {
+        product: { code: "custom-project", name: "Custom project" },
+        version: { version: "1.0" },
+        plan: { code: "project-base", name: "Base", commercialModel: "project_service" },
+        price: { currency: "EUR", amountMinor: 10000, costMinor: 0, taxBasisPoints: 0, interval: "monthly" }
+      })
+    ).toThrow("INVALID_INPUT");
+    expect(createProductOffer).not.toHaveBeenCalled();
+  });
+
   it("keeps currencies separate in financial summaries", async () => {
     const repository = {
       financialInputs: vi.fn().mockResolvedValue([

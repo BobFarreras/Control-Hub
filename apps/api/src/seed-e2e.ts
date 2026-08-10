@@ -185,6 +185,34 @@ try {
       values (${id(`${tenantId}:customer:${billingEmail}`)}, ${tenantId}, ${name}, ${name.toLowerCase()}, ${billingEmail}, ${billingEmail})
       on conflict do nothing`;
 
+  const commerceFixture = {
+    customer: customers[0][0],
+    product: "E2E Agent de veu",
+    plan: "Professional"
+  } as const;
+  const productId = id(`${tenantId}:product:e2e-voice-agent`);
+  const versionId = id(`${tenantId}:version:e2e-voice-agent:1.0.0`);
+  const planId = id(`${tenantId}:plan:e2e-voice-agent:professional`);
+  await database`
+    insert into products (id, tenant_id, code, name, description)
+    values (${productId}, ${tenantId}, 'e2e-voice-agent', ${commerceFixture.product}, 'Oferta recurrent per a proves E2E')
+    on conflict do nothing`;
+  await database`
+    insert into product_versions (id, tenant_id, product_id, version, status, released_at)
+    values (${versionId}, ${tenantId}, ${productId}, '1.0.0', 'active', '2026-01-01T00:00:00Z')
+    on conflict do nothing`;
+  await database`
+    insert into plans (id, tenant_id, product_version_id, code, name, commercial_model)
+    values (${planId}, ${tenantId}, ${versionId}, 'e2e-voice-agent-pro', ${commerceFixture.plan}, 'subscription')
+    on conflict do nothing`;
+  await database`
+    insert into plan_prices
+      (id, tenant_id, plan_id, currency, amount_minor, cost_minor, tax_basis_points, billing_interval, effective_from)
+    values
+      (${id(`${tenantId}:price:e2e-voice-agent:professional`)}, ${tenantId}, ${planId}, 'EUR', 9900, 2500, 2100,
+       'monthly', '2026-01-01T00:00:00Z')
+    on conflict do nothing`;
+
   /**
    * Every ticket here has a job.
    *
@@ -312,7 +340,8 @@ try {
         tickets: Object.fromEntries(ticketIds),
         subjects: Object.fromEntries(tickets.map((ticket) => [ticket.key, ticket.subject])),
         internalNote: conversation.find((message) => message.visibility === "internal")!.body,
-        customerReply: conversation.find((message) => message.visibility === "customer")!.body
+        customerReply: conversation.find((message) => message.visibility === "customer")!.body,
+        commerce: commerceFixture
       },
       null,
       2

@@ -1,7 +1,7 @@
 # Pla de millores abans de la Fase 6
 
-**Estat:** implementacio incremental en curs.
-**Branca activa:** `develop`.
+**Estat:** increments 0-11 implementats i validats.
+**Branca activa:** `develop` (increments integrats).
 
 ## Objectiu
 
@@ -16,13 +16,13 @@ correspongui; no es fa una reescriptura transversal.
 - [x] Increment 1 — Leads perduts recuperables i filtre de perduts.
 - [x] Increment 2 — Exportacio Excel professional del CRM.
 - [x] Increment 3 — Importacio guiada de leads.
-- [ ] Increment 4 — Fitxa de client com a vista 360.
-- [ ] Increment 5 — Simplificar el cataleg comercial.
-- [ ] Increment 6 — Serveis, subscripcions i compres dels clients.
-- [ ] Increment 7 — Subscripcions contractades per l'empresa.
+- [x] Increment 4 — Fitxa de client com a vista 360.
+- [x] Increment 5 — Simplificar el cataleg comercial.
+- [x] Increment 6 — Serveis, subscripcions i compres dels clients.
+- [x] Increment 7 — Subscripcions contractades per l'empresa.
 - [x] Increment 8 — Defaults de dates a l'alta de projectes.
-- [ ] Increment 9 — Safata de suport explicable.
-- [ ] Increment 10 — Jornada amb calendari laboral.
+- [x] Increment 9 — Safata de suport explicable.
+- [x] Increment 10 — Jornada amb calendari laboral.
 - [x] Increment 11 — Toast global a baix a la dreta.
 
 El check indica implementacio i validacio completades. Una decisio documentada sense codi no
@@ -108,6 +108,17 @@ fitxer malformat, limits, formula injection, RLS i E2E del flux complet.
 
 ### Increment 4 — fitxa de client com a vista 360 del CRM
 
+Progres intern:
+
+- [x] Resum operatiu amb dades CRM existents, contacte principal, propera tasca i activitat.
+- [x] Dades empresarials visibles, formulari de contacte complet i estats buits accionables.
+- [x] Conversio amb contacte principal i recuperacio idempotent des del lead original.
+- [x] Edicio inline auditada, amb desament explicit i control de concurrencia.
+- [x] Relacions no financeres amb serveis, projectes i suport, agregades sense N+1.
+- [x] Interessos comercials de producte i oportunitats amb pipeline complet, selector accessible i
+  probabilitat guiada en passos de 10% amb barra semantica.
+- [x] Ampliacio opcional de dades fiscals, idioma, zona horaria i adreces.
+
 Primer s'omple la fitxa actual amb dades i relacions existents; despres s'amplia el model.
 
 - Capcalera: nom comercial/legal, estat, identificacio fiscal, idioma, zona horaria,
@@ -131,6 +142,14 @@ Proves minimes: agregacio sense N+1, permisos financers (les quantitats no arrib
 si no pertoquen), tenant scope, estats buits i E2E de la vista 360.
 
 ### Increment 5 — simplificar el cataleg comercial
+
+Progres intern:
+
+- [x] Portada centrada en productes, amb resum de plans/ofertes i una unica accio principal.
+- [x] Versions, plans i publicacio de preus contextualitzats dins de cada producte.
+- [x] Alta guiada atomica de producte, primera versio, pla i preu publicat.
+- [x] Modalitats comercials al nivell del pla, amb compatibilitat de periodicitat protegida al domini i a PostgreSQL.
+- [x] Fitxa dedicada de producte amb jerarquia tenant-scoped de versions, plans i preus publicats.
 
 Model mental visible:
 
@@ -159,6 +178,18 @@ traçabilitat, pero ocultar-les del flux habitual fins que es publiqui una nova 
 
 ### Increment 6 — serveis, subscripcions i compres dels clients
 
+Progres intern:
+
+- [x] Model unificat aprovat: `customer_services` com a contracte pare i recurrencia opcional.
+- [x] Estats, invariants, permisos i pla de migracio gradual documentats a `commerce.md`.
+- [x] Migracio additiva, backfill idempotent i adaptador de persistencia.
+- [x] API i casos d'us de serveis de clients.
+- [x] Taula professional, filtres, alta guiada i integracio amb la fitxa 360.
+- [x] Accions de cicle de vida amb historial append-only i cancel·lacio motivada.
+- [x] Filtres integrats a la taula i alertes segons la finestra de renovacio de cada contracte.
+- [x] Exportacio Excel professional amb filtres, auditoria i permisos financers.
+- [x] Proves d'integracio, permisos financers i E2E.
+
 Canviar el nom visible de “Subscripcions de clients” a **Serveis de clients**. La taula ha de
 representar el que cada client te contractat, no nomes recurrencia:
 
@@ -172,15 +203,25 @@ representar el que cada client te contractat, no nomes recurrencia:
 Filtres: client, producte, modalitat, estat, renovacio propera, responsable i moneda. Vistes
 rapides: actius, vencen aviat, sense data de renovacio i cancel·lats.
 
-**Porta de decisio COM-2:** ampliar `subscriptions` o crear una entitat `customer_services`.
-Recomanacio: `customer_services` com a contracte comercial pare i una recurrencia opcional;
-una compra unica no ha de fingir ser una subscripcio cancel·lada. Requereix especificacio i
-pla de migracio abans de codi.
+**Decisio COM-2 aprovada:** `customer_services` es el contracte comercial pare i te una
+recurrencia opcional; una compra unica no fingeix ser una subscripcio cancel·lada. L'especificacio
+i el pla de migracio son a `commerce.md`.
 
 No s'implementen pressupostos ni factures dins aquest increment: es preparen identificadors i
 linies de contracte perquè el modul financer futur els pugui referenciar.
 
 ### Increment 7 — subscripcions contractades per l'empresa
+
+Progres intern:
+
+- [x] Revisio del model actual i decisio COM-3 aprovada.
+- [x] Camps, invariants, permisos i pla de migracio additiva documentats.
+- [x] Migracio, backfill idempotent i persistencia.
+- [x] API i casos d'us.
+- [x] Taula generalitzada, filtres, edicio i cicle de vida.
+  - [x] Taula generalitzada, filtres integrats, alta completa i cicle de vida.
+  - [x] Edicio segura amb control de concurrencia i event `updated`.
+- [x] Alertes, exportacio i proves E2E.
 
 Canviar el nom visible a **Eines i despeses recurrents** per evitar confondre-les amb clients.
 Taula recomanada:
@@ -227,7 +268,7 @@ Millora immediata de la taula:
 - estat de mesura: a temps, proper, incomplert, pausat o sense configuracio;
 - prioritat, client, responsable i ultima actualitzacio.
 
-El text “incomplert” ha d'obrir un detall que expliqui l'objectiu copiat al ticket, calendari,
+El text "incomplert" ha d'obrir un detall que expliqui l'objectiu copiat al ticket, calendari,
 pauses i instant d'incompliment. No s'ha de recalcular contra una politica nova.
 
 Canals d'entrada, per fases:
@@ -245,9 +286,21 @@ correu automatic, perquè identifica tenant i client de manera fiable. El correu
 pero necessita quarantena i mes operacio. Aquesta decisio amplia l'abast de fases aprovades i
 no s'implementa sense actualitzar el roadmap.
 
-### Increment 10 — jornada amb calendari laboral
+Implementat el 10 d'agost de 2026:
 
-- Treure els textos “mes anterior/seguent” i conservar fletxes amb `aria-label` i tooltip.
+- Domini: tipus `InboxSlaStatus` (5 estats), `InboxSlaDetail`, `InboxSlaInfo`, funcions
+  `deriveInboxSlaStatus`, `estimateDeadline` i `inboxSlaInfo`.
+- Persistencia: `updatedAt` al SELECT de listTickets.
+- Servei: `TicketListRow` i `InboxTicket` amb `updatedAt` i `inboxSla`. `TicketDetail` amb
+  `inboxSla`. `listInbox` calcula l'estat per cada ticket en una sola passada.
+- UI: columnes noves (creat, objectiu, estat SLA, ultima actualitzacio), badge clickable amb
+  5 estats visuals i dialeg de detall amb objectiu, consumit, restant, data limit i pauses.
+- i18n: nous textos en ca, es i en per als 5 estats, columnes i dialeg.
+- Proves: 7 noves al domini (deriveInboxSlaStatus, estimateDeadline, inboxSlaInfo).
+
+### Increment 10 — jornada amb calendari laboral (implementat)
+
+- Treure els textos "mes anterior/seguent" i conservar fletxes amb `aria-label` i tooltip.
 - Afegir vista mensual accessible: estat diari, hores registrades, absencia i incidencies de
   registre. No representar nomes per color.
 - Separar conceptes: festius del tenant, dies no laborables del calendari, vacances aprovades,
@@ -257,6 +310,21 @@ no s'implementa sense actualitzar el roadmap.
 **Porta de decisio ATT-1:** abast de vacances. Recomanacio: primer calendari de lectura amb
 festius i dies no laborables; sol·licitud/aprovacio de vacances en un increment propi, perquè
 afegeix saldos, politiques, aprovacions i dades laborals sensibles.
+
+Implementat el 9 d'agost de 2026:
+
+- Migracions additives: `0025_attendance_calendar.sql` (taules de festius, vacances, absencies i
+  bloquejos) i `0026_attendance_permissions_calendar.sql` (permisos nous + backfill).
+- Domini a `packages/domain/src/attendance.ts`: tipus nous (`AttendanceHoliday`,
+  `AttendanceNonWorkingDay`, `AttendanceVacation`, `AttendanceAbsence`, `AttendanceBlock`,
+  `AttendanceDayStatus`) i funcions pures (`isHoliday`, `isNonWorkingDay`, `isVacationDay`,
+  `isAbsenceDay`, `hasBlockOverlap`, `deriveDayStatus`).
+- Aplicacio i repositori: CRUD complet per a totes les entitats amb permisos i auditoria.
+- API: rutes per a festius, dies no laborables, vacances, absencies i bloquejos.
+- UI: navegacio de mes amb fletxes accessibles, canvi taula/calendari amb conservacio del mes a
+  la URL, vista de calendari amb estat diari i text descriptiu.
+- Proves: 6 proves noves al domini (festius, dies no laborables, vacances, absencies, bloquejos,
+  derivacio d'estat diari).
 
 ### Increment 11 — toast global a baix a la dreta (implementat)
 

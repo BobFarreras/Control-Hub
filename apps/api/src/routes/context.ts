@@ -2,6 +2,7 @@ import type {
   AttendanceService,
   CommerceService,
   CompanySubscriptionService,
+  CustomerServicesService,
   CrmService,
   ProjectsService,
   SupportService
@@ -25,7 +26,7 @@ export type RouteContext = {
 };
 
 export type CrmContext = RouteContext & { crm: CrmService };
-export type CommerceContext = RouteContext & { commerce: CommerceService };
+export type CommerceContext = RouteContext & { commerce: CommerceService; customerServices: CustomerServicesService };
 export type CompanySubscriptionContext = RouteContext & { companySubscriptions: CompanySubscriptionService };
 export type SupportContext = RouteContext & { support: SupportService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
