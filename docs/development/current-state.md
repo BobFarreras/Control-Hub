@@ -64,6 +64,9 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
 ## Decisions UI vigents
 
 - `PageTopbar` es la capcalera canonica: eyebrow, titol i descripcio aprofiten la topbar.
+- `PageTopbar` centralitza el retorn contextual: conserva la traça interna de la pestanya i cau
+  al pare funcional si una pantalla s'ha obert directament. El dashboard es l'arrel i no mostra
+  retorn; les pantalles no dupliquen enllacos de retorn al contingut ni a les accions.
 - KPI i accions principals comparteixen franges compactes.
 - `MetricHelp` explica sigles i metriques per hover i focus amb text traduit.
 - `SmartDataTable` proporciona paginacio server-side, cerca instantania, ordenacio,
@@ -77,6 +80,11 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
 - Jornada separa Calendari, Registre i Equip (aquest darrer nomes amb `attendance:manage`). Les
   taules de dies, moviments i equip reutilitzen `SmartDataTable`, amb ordre recent-primer,
   filtres, paginacio i configuracio de columnes.
+- El cataleg de productes reutilitza `SmartDataTable` i porta la gestio comercial a la fitxa
+  del producte. La identitat del producte es estable; funcionalitats, contingut, esquema i
+  notes pertanyen a la versio. Els recursos son enllacos HTTPS tipats i el codi es referencia
+  com a repositori, no es desa com un blob. La fitxa deriva els clients contractats dels
+  `customer_services` i explica la jerarquia versio -> pla -> preu immutable.
 
 ## Decisions de projectes i temps vigents
 
@@ -99,6 +107,9 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
 - `0013_user_table_preferences.sql`: preferencies de taula per tenant i usuari amb RLS.
 - `0029_company_subscriptions_polish.sql`: evolucio additiva de les despeses recurrents,
   responsable tenant-scoped, dates contractuals, historial append-only i backfill idempotent.
+- `0031_product_knowledge.sql`: coneixement versionat del producte i recursos externs tipats,
+  amb claus foranes tenant-scoped, RLS i validacio que la versio vinculada pertany al producte.
+  `0030` queda reservada per la plataforma de connectors desenvolupada en paral.lel.
 - `0016_projects_and_time.sql`: projectes, historial, barems i imputacions. Tres garanties que
   no viuen al domini: el xor de la imputacio (`num_nonnulls(project_id, ticket_id) = 1`), el
   trigger que rebutja hores sobre un projecte tancat (SQLSTATE propi `CH001`), i la clau forana

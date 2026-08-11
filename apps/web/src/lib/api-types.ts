@@ -294,8 +294,28 @@ export type TimeEntriesPage = {
   pageSize: TablePreference["pageSize"];
 };
 
-export type Product = { id: string; code: string; name: string; description: string | null; status: string };
-export type Version = { id: string; productId: string; version: string; status: string };
+export type Product = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type Version = {
+  id: string;
+  productId: string;
+  version: string;
+  status: string;
+  releasedAt: string | null;
+  releaseNotes: string | null;
+  features: string[];
+  contents: string[];
+  schemaDocument: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
 export type CommercialModel = "subscription" | "maintenance" | "one_time" | "project_service";
 export type Plan = {
   id: string;
@@ -320,7 +340,31 @@ export type Price = {
 };
 
 export type Catalog = { products: Product[]; versions: Version[]; plans: Plan[]; prices: Price[] };
-export type ProductCatalogDetail = Catalog & { product: Product };
+export type ProductResource = {
+  id: string;
+  productId: string;
+  productVersionId: string | null;
+  kind: "information" | "documentation" | "diagram" | "repository" | "demo";
+  label: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ProductCustomer = {
+  serviceId: string;
+  customerId: string;
+  customerName: string;
+  planId: string;
+  planName: string;
+  status: string;
+  startsAt: string;
+  endsAt: string | null;
+};
+export type ProductCatalogDetail = Catalog & {
+  product: Product;
+  resources: ProductResource[];
+  customers: ProductCustomer[];
+};
 
 export type CustomerSubscription = {
   id: string;

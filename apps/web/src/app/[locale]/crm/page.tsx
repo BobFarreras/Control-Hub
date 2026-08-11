@@ -164,6 +164,7 @@ export default async function CrmPage({
           title={t.crm.title}
           description={t.crm.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
         />
         <main className="crm-main">
           <CrmWorkspace

@@ -29,6 +29,7 @@ export default async function CustomerSubscriptionsPage({
           title={labels.customerServices}
           description={labels.customerServicesDescription}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}/products` }}
         />
         <main className="compact-main">
           <CustomerServicesWorkspace {...data} labels={labels} locale={locale} />

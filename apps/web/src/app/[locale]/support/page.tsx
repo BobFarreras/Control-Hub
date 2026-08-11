@@ -75,6 +75,7 @@ export default async function SupportPage({
           title={labels.title}
           description={labels.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
           actions={<InstantSearch placeholder={labels.searchPlaceholder} resetParams={["page"]} />}
         />
         <main className="compact-main">

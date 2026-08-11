@@ -39,6 +39,24 @@ La fitxa dedicada del producte carrega nomes la seva jerarquia completa mitjanç
 tenant-scoped. Mostra versions, plans, modalitat i snapshots de preu; la portada continua sent el
 punt de gestio contextual per afegir versions, plans i preus.
 
+### Coneixement operatiu del producte
+
+La fitxa es la font operativa per entendre **que es ven, que conte i a qui**. La identitat
+estable (`code`, nom, descripcio i estat) viu al producte. El contingut que evoluciona viu a la
+versio: notes de publicacio, funcionalitats, contingut inclos i esquema JSON. Les llistes son
+arrays de textos validats, no HTML ni blobs opacs.
+
+Els enllaços son recursos tipats (`information`, `documentation`, `diagram`, `repository` o
+`demo`) vinculats al producte i, opcionalment, a una versio concreta. Nomes accepten HTTPS,
+tenen etiqueta visible i mai provoquen una peticio backend: el navegador els obre com a enllaç
+extern. El codi font no es desa a PostgreSQL; es referencia amb un recurs `repository`.
+
+La portada reutilitza `SmartDataTable` i mostra una fila per producte: estat, darrera versio,
+plans, ofertes publicades i clients actius. La fitxa mostra els serveis de clients derivats de
+`customer_services`; no crea una relacio duplicada producte-client. Editar identitat o
+documentacio exigeix `products:manage`, MFA, tenant scope, auditoria i `expectedUpdatedAt` per
+rebutjar sobreescriptures concurrents. Versions i preus histories continuen sense reescriure's.
+
 ## Serveis de clients
 
 ### Decisio COM-2: contracte comercial unificat
