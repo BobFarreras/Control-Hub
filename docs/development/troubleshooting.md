@@ -408,16 +408,27 @@ se n'assabenta.
 despres de cada recarrega. Un localitzador de Playwright es una consulta, no un element: sobreviu a
 la recarrega i per aixo no es queixa.
 
-### `Applied migration changed` a la base de verificacio local
+### `Applied migration changed` a una base local d'usar i llencar
 
 **Causa.** Diferent de la de CI d'aqui dalt: aqui la migracio **si** que ha canviat. Passa quan
 s'aplica una migracio mentre encara s'esta escrivint i despres s'edita el fitxer. La base es queda
 amb un esquema que ja no es el que descriu el repositori.
 
-**Solucio.** Recrear la base d'usar i llencar (`drop database ... with (force)`, `create database`),
-`pnpm db:migrate:verify` i `pnpm db:seed:verify`. **No reparar el checksum a ma:** deixaria una base
-que diu que te aplicada una migracio que no te, i el seguent que hi verifiqui res verificara contra
-un esquema que CI no tindra mai.
+**Solucio.** Recrear la base d'usar i llencar (`drop database ... with (force)`, `create database`)
+i tornar a migrar. Per a la de verificacio, despres `pnpm db:migrate:verify` i `pnpm db:seed:verify`.
+**No reparar el checksum a ma:** deixaria una base que diu que te aplicada una migracio que no te, i
+el seguent que hi verifiqui res verificara contra un esquema que CI no tindra mai.
+
+**El migrador s'atura a la primera discrepancia**, aixi que la base es queda tambe sense cap de les
+migracions posteriors. `control_hub_test` va estar des del 7 fins a l'11 d'agost amb la `0018` mal
+aplicada i dotze migracions sense aplicar. Localment aixo pot passar desapercebut molt de temps: les
+suites d'integracio se salten soles quan no hi ha `TEST_DATABASE_URL`, i qui no les exporta no veu
+mai que la base ha quedat enrere. Val la pena comprovar de tant en tant que el recompte de
+`schema_migrations` coincideix amb el nombre de fitxers a `packages/database/migrations`:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub_test -c "select count(*) from schema_migrations;"
+```
 
 ### Correr el suite autenticat contra la pila de verificacio
 

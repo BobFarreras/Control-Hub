@@ -34,11 +34,6 @@ Fets els increments 1 a 4 del pla que tanca l'especificacio:
 
 El seguent es el 5: el vault — anell de claus versionat, segellat AES-256-GCM i rotacio.
 
-La base de proves d'integracio local (`control_hub_test`) es va quedar el 7 d'agost amb la
-migracio `0018` aplicada mentre encara s'escrivia, i el migrador s'hi atura. Els 30 tests de
-l'increment 4 es van verificar sobre una base migrada de zero; recrear-la es el procediment de
-`docs/development/troubleshooting.md`.
-
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai
 despres d'haver-la aplicat enlloc.
