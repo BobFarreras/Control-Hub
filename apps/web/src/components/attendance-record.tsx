@@ -3,6 +3,7 @@
 import { AlertTriangle, Clock, PencilLine, Plane, FileText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type FormEvent } from "react";
+import { SelectControl } from "@/components/form-field";
 import { MetricTile } from "@/components/metric-tile";
 import { useToast } from "@/components/toast";
 import type {
@@ -330,11 +331,16 @@ export function AttendanceRecord({
             <form className="commerce-form" onSubmit={(event) => void submitAbsence(event)}>
               <label>
                 {t.absenceType}
-                <select name="type" required disabled={busy}>
-                  <option value="sick_leave">{t.absenceSick}</option>
-                  <option value="personal_leave">{t.absencePersonal}</option>
-                  <option value="other">{t.absenceOther}</option>
-                </select>
+                <SelectControl
+                  name="type"
+                  required
+                  disabled={busy}
+                  options={[
+                    { value: "sick_leave", label: t.absenceSick ?? "sick_leave" },
+                    { value: "personal_leave", label: t.absencePersonal ?? "personal_leave" },
+                    { value: "other", label: t.absenceOther ?? "other" }
+                  ]}
+                />
               </label>
               <label>
                 {t.absenceStart}

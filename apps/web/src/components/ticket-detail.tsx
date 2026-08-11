@@ -4,6 +4,7 @@ import { AlertTriangle, CalendarClock, Clock, FolderOpen, Lock, Send, Tag, UserC
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { SelectControl } from "@/components/form-field";
 import type { TicketDetail as TicketDetailData } from "@/lib/api-types";
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
@@ -102,8 +103,7 @@ export function TicketDetail({
           <div className="ticket-meta-field">
             <dt>{t.status}</dt>
             <dd>
-              <select
-                className="ticket-meta-select"
+              <SelectControl
                 aria-label={t.status}
                 value={ticket.status}
                 disabled={busy}
@@ -112,16 +112,13 @@ export function TicketDetail({
                     send(`/api/v1/support/tickets/${ticket.id}/status`, { status: event.target.value }, "PATCH"),
                   fail
                 )}
-              >
-                <option value={ticket.status}>{t[ticket.status]}</option>
-                {workableStatuses
-                  .filter((status) => status !== ticket.status)
-                  .map((status) => (
-                    <option value={status} key={status}>
-                      {t[status]}
-                    </option>
-                  ))}
-              </select>
+                options={[
+                  { value: ticket.status, label: t[ticket.status] ?? ticket.status },
+                  ...workableStatuses
+                    .filter((status) => status !== ticket.status)
+                    .map((status) => ({ value: status, label: t[status] ?? status }))
+                ]}
+              />
             </dd>
           </div>
 
@@ -165,8 +162,7 @@ export function TicketDetail({
               {t.assignee}
             </dt>
             <dd>
-              <select
-                className="ticket-meta-select"
+              <SelectControl
                 aria-label={t.assignee}
                 value={ticket.assigneeMembershipId ?? ""}
                 disabled={busy}
@@ -179,14 +175,11 @@ export function TicketDetail({
                     ),
                   fail
                 )}
-              >
-                <option value="">{t.unassigned}</option>
-                {assignableMembers.map((member) => (
-                  <option value={member.membershipId} key={member.membershipId}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: t.unassigned ?? "UNASSIGNED" },
+                  ...assignableMembers.map((member) => ({ value: member.membershipId, label: member.name }))
+                ]}
+              />
             </dd>
           </div>
 
@@ -289,10 +282,15 @@ export function TicketDetail({
             <div className="ticket-reply-actions">
               <label>
                 {t.replyVisibility}
-                <select name="visibility" defaultValue="internal" disabled={busy}>
-                  <option value="internal">{t.internalNote}</option>
-                  <option value="customer">{t.customerReply}</option>
-                </select>
+                <SelectControl
+                  name="visibility"
+                  defaultValue="internal"
+                  disabled={busy}
+                  options={[
+                    { value: "internal", label: t.internalNote ?? "INTERNAL_NOTE" },
+                    { value: "customer", label: t.customerReply ?? "CUSTOMER_REPLY" }
+                  ]}
+                />
               </label>
               <button className="primary-button" disabled={busy}>
                 <Send size={16} />

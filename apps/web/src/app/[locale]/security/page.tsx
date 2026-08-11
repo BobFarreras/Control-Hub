@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState, type FormEvent } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
+import { SelectControl } from "@/components/form-field";
 import { PageTopbar } from "@/components/page-topbar";
 import { authClient } from "@/lib/auth-client";
 import { formValue } from "@/lib/form";
@@ -221,10 +222,14 @@ export default function SecurityPage() {
                   </label>
                   <label>
                     {t.invitations.role}
-                    <select name="role" defaultValue="technical">
-                      <option value="technical">{t.invitations.technical}</option>
-                      <option value="administrator">{t.invitations.administrator}</option>
-                    </select>
+                    <SelectControl
+                      name="role"
+                      defaultValue="technical"
+                      options={[
+                        { value: "technical", label: t.invitations.technical },
+                        { value: "administrator", label: t.invitations.administrator }
+                      ]}
+                    />
                   </label>
                   <button className="primary-button">{t.invitations.send}</button>
                 </form>

@@ -3,6 +3,7 @@
 import { AlertTriangle, Clock, Pause, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { SelectControl } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import type { CustomerOption, InboxSlaDetail, InboxTicket, TablePreference } from "@/lib/api-types";
 import { formValue, optionalFormValue } from "@/lib/form";
@@ -385,13 +386,15 @@ export function SupportInbox({
             <form className="commerce-form" onSubmit={eventHandler(create, fail)}>
               <label>
                 {t.customer}
-                <select name="customerId" required disabled={busy}>
-                  {customers.map((customer) => (
-                    <option value={customer.id} key={customer.id}>
-                      {customer.displayName}
-                    </option>
-                  ))}
-                </select>
+              <SelectControl
+                name="customerId"
+                required
+                disabled={busy}
+                options={customers.map((customer) => ({
+                  value: customer.id,
+                  label: customer.displayName
+                }))}
+              />
               </label>
               <label>
                 {t.subject}
@@ -400,12 +403,17 @@ export function SupportInbox({
               <label>
                 {t.priority}
                 {/* Normal by default: a form that opens on Urgent teaches people to ignore it. */}
-                <select name="priority" defaultValue="normal" disabled={busy}>
-                  <option value="low">{t.low}</option>
-                  <option value="normal">{t.normal}</option>
-                  <option value="high">{t.high}</option>
-                  <option value="urgent">{t.urgent}</option>
-                </select>
+                <SelectControl
+                  name="priority"
+                  defaultValue="normal"
+                  disabled={busy}
+                  options={[
+                    { value: "low", label: t.low ?? "low" },
+                    { value: "normal", label: t.normal ?? "normal" },
+                    { value: "high", label: t.high ?? "high" },
+                    { value: "urgent", label: t.urgent ?? "urgent" }
+                  ]}
+                />
               </label>
               <label>
                 {t.category}
