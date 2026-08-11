@@ -197,6 +197,37 @@ export class PostgresConnectorRepository implements ConnectorRepository {
   }
 
   /**
+   * Ends a rotation inside one transaction: the old primary is revoked and the secondary takes
+   * its place, in that order because the partial unique index will not hold two live primaries.
+   *
+   * The `for update` on the secondary is what makes two concurrent promotions safe. The second
+   * one waits, then re-evaluates its own `where` against the row as it now is — no longer a
+   * secondary — finds nothing, and answers null instead of revoking the credential the first one
+   * just promoted and leaving the instance with none.
+   */
+  async promoteCredential(context: TenantContext, instanceId: string, kind: string): Promise<CredentialMetadata | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [secondary] = await tx<{ id: string }[]>`
+        select id from connector_credentials
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId} and kind = ${kind}
+          and slot = 'secondary' and revoked_at is null
+        for update`;
+      if (!secondary) return null;
+
+      await tx`
+        update connector_credentials set revoked_at = now(), updated_at = now()
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId} and kind = ${kind}
+          and slot = 'primary' and revoked_at is null`;
+
+      const [promoted] = await tx<CredentialMetadata[]>`
+        update connector_credentials set slot = 'primary', rotated_at = now(), updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${secondary.id}
+        returning ${tx.unsafe(credentialMetadataColumns)}`;
+      return promoted ?? null;
+    }).catch(mapConstraint);
+  }
+
+  /**
    * Opens a run, or reports that this exact attempt already has one.
    *
    * The queue delivers at least once, so the same attempt can arrive twice — after a crash, or

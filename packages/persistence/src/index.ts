@@ -11,6 +11,7 @@ export * from "./commerce-repository.js";
 export * from "./customer-services-repository.js";
 export * from "./company-subscription-repository.js";
 export * from "./connector-repository.js";
+export * from "./credential-vault.js";
 export * from "./crm-repository.js";
 export * from "./identity-repository.js";
 export * from "./invitation-repository.js";

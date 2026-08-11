@@ -1,4 +1,4 @@
-import { parseWorkerEnvironment } from "@control-hub/config";
+import { connectorKeyRingWarning, parseWorkerEnvironment } from "@control-hub/config";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import { Queue, Worker } from "bullmq";
@@ -14,6 +14,11 @@ const connection = {
   password: connectionUrl.password || undefined
 };
 const database = createDatabaseClient(environment.DATABASE_URL);
+
+// Said once here too: the worker is the only process that opens a credential, so a missing ring
+// means every connector job will find nothing to open and stop, and this is why.
+const keyRingWarning = connectorKeyRingWarning(environment);
+if (keyRingWarning) logger.warn(keyRingWarning);
 
 const ESCALATION_JOB = "support-escalation";
 

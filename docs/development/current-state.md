@@ -24,15 +24,28 @@ dos workers, base neta i sense reintents.
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
 
-Fets els increments 1 a 4 del pla que tanca l'especificacio:
+Fets els increments 1 a 5 del pla que tanca l'especificacio:
 
 | # | Que hi ha | On |
 |---|---|---|
 | 2 | Domini pur: salut derivada, backoff amb jitter, circuit breaker, redaccio | `packages/domain/src/connectors.ts` |
 | 3 | Contracte de connector, registre resolt en build-time, webhook generic | `packages/connectors/` |
 | 4 | Migracio `0030`, port d'emmagatzematge i adaptador tenant-scoped | `packages/database/migrations/0030_connectors.sql`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts` |
+| 5 | Vault: anell de claus versionat, segellat AES-256-GCM i rotacio en dos slots | `packages/config/src/key-ring.ts`, `packages/persistence/src/credential-vault.ts`, `packages/application/src/connector-credentials.ts` |
 
-El seguent es el 5: el vault — anell de claus versionat, segellat AES-256-GCM i rotacio.
+El seguent es el 6: el runtime del worker — `guarded-fetch` amb la llista d'egressos, reintents
+amb el backoff del domini, el circuit breaker i el registre de `connector_sync_runs`.
+
+**El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
+fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
+`parseKeyRing`. Un anell mal format atura l'arrencada tant si el flag `connectors` esta obert com
+si no — un secret amb una errata ha de fallar el dia que es desplega. Un anell absent no atura
+res: el proces arrenca, `connectorKeyRing` es null i l'arrencada ho diu amb un avis, tal com
+demana l'especificacio. Escriure una credencial exigeix
+`credentials:rotate` **i** segon factor, i qui la pot escriure no la pot llegir: `ConnectorCredentialService`
+no te cap metode que retorni un secret, i `ConnectorSecretReader` — l'unic que n'obre — nomes
+l'importa el worker. Una rotacio ocupa dos slots i es tanca amb `promoteCredential`, que revoca
+l'antic i promou el nou dins la mateixa transaccio.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai

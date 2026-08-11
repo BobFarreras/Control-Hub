@@ -1,5 +1,6 @@
 export type { TenantContext } from "@control-hub/domain";
 export * from "./commerce.js";
+export * from "./connector-credentials.js";
 export * from "./connectors.js";
 export * from "./customer-services.js";
 export * from "./company-subscriptions.js";

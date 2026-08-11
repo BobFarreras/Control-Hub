@@ -379,6 +379,9 @@ importers:
       '@control-hub/application':
         specifier: workspace:*
         version: link:../application
+      '@control-hub/config':
+        specifier: workspace:*
+        version: link:../config
       '@control-hub/database':
         specifier: workspace:*
         version: link:../database

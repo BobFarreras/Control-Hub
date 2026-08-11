@@ -61,13 +61,36 @@ export type HealthOutcome = {
  * The plain value never has a field here, in either direction. Sealing and opening belong to the
  * vault of ADR-0008; this port only moves the envelope.
  */
-export type SealedCredential = {
+export type CredentialEnvelope = {
+  keyId: string;
+  nonce: Uint8Array;
+  /** The GCM tag travels appended, so a envelope sealed under a retired key fails authentication. */
+  ciphertext: Uint8Array;
+};
+
+export type SealedCredential = CredentialEnvelope & {
   id: string;
   kind: string;
   slot: CredentialSlot;
-  keyId: string;
-  nonce: Uint8Array;
-  ciphertext: Uint8Array;
+};
+
+/**
+ * What a ciphertext is bound to.
+ *
+ * It rides along as additional authenticated data, which is what makes an envelope copied into
+ * another tenant's row fail to open even when the master key is the same one.
+ */
+export type CredentialAad = { tenantId: string; instanceId: string };
+
+/**
+ * The vault, as the use cases see it.
+ *
+ * Declared here so a service depends on the operation and not on `node:crypto`; the
+ * implementation lives beside the repository that writes the column, per ADR-0008.
+ */
+export type CredentialSealer = {
+  seal(plaintext: string, aad: CredentialAad): CredentialEnvelope;
+  open(envelope: CredentialEnvelope, aad: CredentialAad): string;
 };
 
 export const credentialSlots = ["primary", "secondary"] as const;
@@ -219,6 +242,13 @@ export type ConnectorRepository = {
   markCredentialUsed(context: TenantContext, credentialId: string): Promise<void>;
   /** Revokes every live credential of an instance, or of one kind. Returns how many it revoked. */
   revokeCredentials(context: TenantContext, instanceId: string, kind?: string): Promise<number>;
+  /**
+   * Ends a rotation: the secondary becomes the primary and the old primary is revoked, together.
+   *
+   * Null when there is no secondary to promote, and in that case the primary stays exactly as it
+   * was — a rotation nobody started must not end with the instance holding no credential at all.
+   */
+  promoteCredential(context: TenantContext, instanceId: string, kind: string): Promise<CredentialMetadata | null>;
 
   startRun(context: TenantContext, input: StartRunInput): Promise<StartRunResult>;
   finishRun(context: TenantContext, runId: string, outcome: RunOutcome): Promise<SyncRunRecord | null>;

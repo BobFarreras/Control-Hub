@@ -265,6 +265,88 @@ suite("PostgresConnectorRepository", () => {
       await repository.revokeCredentials(asA(), instance.id, "ingress_signing");
       await expect(put(2)).resolves.toMatchObject({ keyId: "ring-2" });
     });
+
+    it("promotes the secondary and revokes the old primary in one step", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const put = (slot: "primary" | "secondary", byte: number) =>
+        repository.putCredential(asA(), {
+          instanceId: instance.id,
+          kind: "ingress_signing",
+          slot,
+          keyId: `ring-${byte}`,
+          ...envelope(byte)
+        });
+      await put("primary", 1);
+      const secondary = await put("secondary", 2);
+
+      const promoted = await repository.promoteCredential(asA(), instance.id, "ingress_signing");
+      expect(promoted).toMatchObject({ id: secondary.id, slot: "primary", keyId: "ring-2" });
+      expect(promoted!.rotatedAt!.getTime()).toBeGreaterThanOrEqual(secondary.rotatedAt!.getTime());
+
+      const live = await repository.readSealedCredentials(asA(), instance.id, "ingress_signing");
+      expect(live.map((credential) => credential.keyId)).toEqual(["ring-2"]);
+      expect((await repository.listCredentials(asA(), instance.id)).filter((row) => row.revokedAt)).toHaveLength(1);
+    });
+
+    it("leaves the primary alone when there is no secondary to promote", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await repository.putCredential(asA(), {
+        instanceId: instance.id,
+        kind: "ingress_signing",
+        slot: "primary",
+        keyId: "ring-1",
+        ...envelope(1)
+      });
+
+      expect(await repository.promoteCredential(asA(), instance.id, "ingress_signing")).toBeNull();
+      const live = await repository.readSealedCredentials(asA(), instance.id, "ingress_signing");
+      expect(live.map((credential) => credential.keyId)).toEqual(["ring-1"]);
+    });
+
+    it("promotes only the kind it was asked for", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const put = (kind: string, slot: "primary" | "secondary", byte: number) =>
+        repository.putCredential(asA(), {
+          instanceId: instance.id,
+          kind,
+          slot,
+          keyId: `${kind}-${byte}`,
+          ...envelope(byte)
+        });
+      await put("ingress_signing", "primary", 1);
+      await put("ingress_signing", "secondary", 2);
+      await put("api_key", "primary", 3);
+      await put("api_key", "secondary", 4);
+
+      await repository.promoteCredential(asA(), instance.id, "api_key");
+      expect(
+        (await repository.readSealedCredentials(asA(), instance.id, "ingress_signing")).map(
+          (credential) => credential.keyId
+        )
+      ).toEqual(["ingress_signing-2", "ingress_signing-1"]);
+    });
+
+    it("promotes nothing that belongs to another tenant", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await repository.putCredential(asA(), {
+        instanceId: instance.id,
+        kind: "ingress_signing",
+        slot: "primary",
+        keyId: "ring-1",
+        ...envelope(1)
+      });
+      await repository.putCredential(asA(), {
+        instanceId: instance.id,
+        kind: "ingress_signing",
+        slot: "secondary",
+        keyId: "ring-2",
+        ...envelope(2)
+      });
+
+      expect(await repository.promoteCredential(asB(), instance.id, "ingress_signing")).toBeNull();
+      const live = await repository.readSealedCredentials(asA(), instance.id, "ingress_signing");
+      expect(live.map((credential) => credential.keyId)).toEqual(["ring-2", "ring-1"]);
+    });
   });
 
   describe("runs", () => {

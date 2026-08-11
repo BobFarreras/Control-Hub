@@ -1,4 +1,9 @@
-import { parseApiEnvironment, parseFeatureFlags, unknownFeatureFlags } from "@control-hub/config";
+import {
+  connectorKeyRingWarning,
+  parseApiEnvironment,
+  parseFeatureFlags,
+  unknownFeatureFlags
+} from "@control-hub/config";
 import { buildApp } from "./app.js";
 import { createAuth } from "./auth.js";
 import { createMailSender } from "./email.js";
@@ -26,6 +31,11 @@ const app = buildApp({
 // capability that is simply off, and somebody would spend an afternoon on it.
 const unknown = unknownFeatureFlags(environment.CONTROL_HUB_FLAGS);
 if (unknown.length > 0) app.log.warn({ unknown }, "ignoring feature flags that are not declared");
+
+// Connectors without a key ring: the API serves everything else, and says once why the
+// credential routes are not there, rather than failing when somebody first tries to save one.
+const keyRingWarning = connectorKeyRingWarning(environment);
+if (keyRingWarning) app.log.warn(keyRingWarning);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutdown requested");

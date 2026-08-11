@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@control-hub/application": "workspace:*",
+    "@control-hub/config": "workspace:*",
     "@control-hub/database": "workspace:*",
     "@control-hub/domain": "workspace:*",
     "postgres": "^3.4.7"
