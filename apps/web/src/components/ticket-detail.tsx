@@ -83,14 +83,22 @@ export function TicketDetail({
       {/* ── Identity strip ──────────────────────────────────────────────── */}
       <section className="ticket-identity">
         <div className="ticket-identity-main">
-          <span className="ticket-reference">#{ticket.ticketNumber}</span>
           <h2>{ticket.subject}</h2>
-          <p className="ticket-identity-customer">{ticket.customerName}</p>
-          {ticket.projectName && (
-            <Link className="ticket-project-link" href={`/projects/${ticket.projectId}`}>
-              <FolderOpen size={14} aria-hidden="true" />
-              {ticket.projectName}
-            </Link>
+          <div className="ticket-identity-meta">
+            <span className="ticket-identity-field">
+              <span className="ticket-identity-label">{t.customer}:</span> {ticket.customerName}
+            </span>
+            {ticket.projectName && (
+              <span className="ticket-identity-field">
+                <Link className="ticket-project-link" href={`/projects/${ticket.projectId}`}>
+                  <FolderOpen size={13} aria-hidden="true" />
+                  {ticket.projectName}
+                </Link>
+              </span>
+            )}
+          </div>
+          {ticket.description && (
+            <p className="ticket-identity-description">{ticket.description}</p>
           )}
         </div>
       </section>
@@ -99,6 +107,14 @@ export function TicketDetail({
       <div className="ticket-body">
         {/* ── Metadata sidebar ─────────────────────────────────────────── */}
         <aside className="ticket-meta" aria-label={t.status}>
+          {/* Reference */}
+          <div className="ticket-meta-field">
+            <dt>{t.reference}</dt>
+            <dd>
+              <span className="ticket-reference">#{ticket.ticketNumber}</span>
+            </dd>
+          </div>
+
           {/* Status */}
           <div className="ticket-meta-field">
             <dt>{t.status}</dt>

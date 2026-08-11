@@ -3100,16 +3100,34 @@ main {
 .ticket-identity-main {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
   min-width: 0;
 }
-.ticket-reference {
-  font-variant-numeric: tabular-nums;
+.ticket-identity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  font-size: 0.875rem;
   color: var(--text-muted);
-  font-size: 0.85rem;
 }
-.ticket-identity-customer {
+.ticket-identity-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.ticket-identity-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.ticket-identity-description {
   color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-top: 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ticket-project-link {
   display: inline-flex;
