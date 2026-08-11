@@ -284,7 +284,21 @@ worker.
 - Idempotencia per identificador d'event del proveidor; si no en dona, `sha256` del cos cru.
 - **Endpoint desconegut, firma invalida i timestamp fora de finestra responen igual**: `404` amb
   el mateix cos generic. Qui prova URLs no aprèn quines existeixen.
-- Exit: `202` amb cos buit. Processar es del worker.
+- Exit: `202` amb cos buit, tant si l'event es nou com si ja el teniem. Processar es del worker.
+
+Un cos ben signat que el connector no pot llegir es l'unica excepcio a la resposta unica: `400`
+amb el codi del connector. Per arribar-hi cal la nostra clau de firma, aixi que no diu res a qui
+no la te, i qui la te ha de poder veure que ens ha enviat alguna cosa que no sabem interpretar.
+
+La verificacio la fa `ConnectorIngressService`, que obre el secret dins seu i respon si la firma
+quadra — mai amb que. Cap handler de l'API rep un objecte que pugui retornar un secret. La ruta
+publica queda exempta de la comprovacio d'`Origin` de la resta de l'API: aquella comprovacio
+protegeix rutes amb autoritat ambient (una cookie que el navegador adjunta sol) i aquesta no en
+te cap.
+
+Processar la inbox arriba amb el primer connector que digui que se n'ha de fer amb un event.
+Fins llavors els events queden `pending`: marcar-los `processed` sense que ningu els hagi tocat
+seria inventar-se una prova de feina que no s'ha fet.
 
 ## API, errors i idempotencia
 
@@ -305,14 +319,21 @@ REST sota `/api/v1`, problem details RFC 9457 amb `code` estable, segons
 | `PUT /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Nomes escriu; retorna metadades |
 | `POST /api/v1/integrations/:id/credentials/:kind/promote` | `credentials:rotate` | Tanca la rotacio |
 | `DELETE /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Revoca |
-| `POST /api/v1/integrations/:id/endpoints` | `integrations:manage` | Retorna URL i secret **una vegada** |
-| `DELETE /api/v1/integrations/:id/endpoints/:id` | `integrations:manage` | Revoca |
+| `GET /api/v1/integrations/:id/endpoints` | `integrations:read` | Metadades: mai el `public_id` |
+| `POST /api/v1/integrations/:id/endpoints` | `integrations:manage` | Retorna cami i secret **una vegada** |
+| `DELETE /api/v1/integrations/:id/endpoints/:endpointId` | `integrations:manage` | Revoca l'adreca i el seu secret |
 
 El `202` de la comprovacio de salut retorna l'identificador de la peticio encuada, no el d'un
 run: el run el crea el worker quan comença, i inventar-ne l'id abans faria que la redelivery
 trobes la fila ja oberta i no fes la feina. El resultat apareix a `/runs`.
 
-Les rutes de credencials nomes es declaren si hi ha anell de claus. Sense, la resta de la
+La creacio d'un endpoint retorna el **cami** (`/api/v1/webhooks/<public_id>`) i no una URL
+absoluta: l'unica cosa que l'API sap de la seva adreca publica es una capcalera `Host` que tria
+qui truca, i la pantalla ja sap contra quin origen parla. Una instancia te un endpoint viu alhora,
+perque el secret de firma viu per instancia i slot; revocar-lo revoca tambe el secret. Rotar
+aquest secret son les rutes de credencials, amb el `kind` `ingress_signing`.
+
+Les rutes de credencials i les d'endpoints nomes es declaren si hi ha anell de claus. Sense, la resta de la
 superficie funciona i aquestes responen `404`, que es la veritat: no hi ha res amb que segellar.
 
 Les operacions repetibles accepten `Idempotency-Key`: a `health-checks` la clau esdeve

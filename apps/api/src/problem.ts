@@ -51,6 +51,15 @@ const titles: Record<string, string> = {
   UNKNOWN_CONNECTOR_TYPE: "Unknown connector type",
   INSTANCE_NOT_FOUND: "Integration not found",
   INSTANCE_NOT_ENABLED: "Integration is not enabled",
+  INGRESS_NOT_SUPPORTED: "This connector receives no webhooks",
+  ENDPOINT_ALREADY_EXISTS: "The integration already has an endpoint",
+  ENDPOINT_NOT_FOUND: "Endpoint not found",
+  // The one answer an inbound delivery ever gets when it is not accepted, whatever the reason.
+  NOT_FOUND: "Not found",
+  INVALID_PAYLOAD: "The payload could not be read",
+  PAYLOAD_TOO_LARGE: "Payload too large",
+  UNSUPPORTED_MEDIA_TYPE: "Unsupported content type",
+  RATE_LIMITED: "Too many requests",
   DUPLICATE_INSTANCE_NAME: "An integration already uses that name",
   DUPLICATE_ENTRY: "Already exists",
   CREDENTIAL_SLOT_TAKEN: "A rotation is already open",
@@ -123,8 +132,9 @@ export function describeConnectorError(
 
 function connectorServiceStatus(code: string): number {
   if (code === "FORBIDDEN") return 403;
-  if (code === "INSTANCE_NOT_FOUND") return 404;
-  if (code === "INSTANCE_NOT_ENABLED") return 409;
+  if (code === "INSTANCE_NOT_FOUND" || code === "ENDPOINT_NOT_FOUND") return 404;
+  if (code === "INSTANCE_NOT_ENABLED" || code === "ENDPOINT_ALREADY_EXISTS" || code === "ROTATION_ALREADY_OPEN")
+    return 409;
   // A well-formed request asking for something the rules do not allow: 422, per the error
   // specification's classes. A malformed one never reaches a service.
   return 422;

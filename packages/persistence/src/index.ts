@@ -14,6 +14,7 @@ export * from "./connector-repository.js";
 export * from "./credential-vault.js";
 export * from "./crm-repository.js";
 export * from "./identity-repository.js";
+export * from "./ingress-crypto.js";
 export * from "./invitation-repository.js";
 export * from "./projects-repository.js";
 export * from "./support-repository.js";

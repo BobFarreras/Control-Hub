@@ -6,6 +6,7 @@ import {
   CompanySubscriptionError,
   CompanySubscriptionService,
   ConnectorCredentialService,
+  ConnectorIngressService,
   ConnectorService,
   CustomerServicesError,
   CustomerServicesService,
@@ -30,6 +31,7 @@ import {
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
   IdentityInvariantError,
+  nodeIngressCrypto,
   InvitationError,
   PostgresProjectsRepository,
   PostgresSupportRepository
@@ -58,6 +60,7 @@ import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerSupportRoutes } from "./routes/support.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
 
@@ -149,6 +152,12 @@ export function buildApp(options: BuildAppOptions) {
 
   app.addHook("onRequest", async (request, reply) => {
     if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method) || !request.url.startsWith("/api/")) return;
+    // Inbound webhooks are exempt, and lose nothing by it. This check defends routes that carry
+    // ambient authority — a session cookie a browser attaches on its own — and that route has
+    // none: it reads no cookie and resolves no session, and a signature is the only thing that
+    // gets a delivery accepted. A provider that happens to send an `Origin` would otherwise have
+    // every delivery refused with a code nobody could explain.
+    if (request.url.startsWith("/api/v1/webhooks/")) return;
     const origin = request.headers.origin;
     if (origin && options.appOrigin && origin !== options.appOrigin)
       return reply.code(403).send({ code: "ORIGIN_DENIED" });
@@ -337,11 +346,20 @@ export function buildApp(options: BuildAppOptions) {
     const repository = new PostgresConnectorRepository(database);
     connectorQueue = new Queue(systemQueueName, { connection: queueConnection(options.redisUrl) });
     const keyRing = options.connectorKeyRing ?? null;
+    const vault = keyRing ? new CredentialVault(keyRing) : null;
+    const ingress = vault
+      ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto)
+      : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),
-      credentials: keyRing ? new ConnectorCredentialService(repository, new CredentialVault(keyRing)) : null
+      credentials: vault ? new ConnectorCredentialService(repository, vault) : null,
+      ingress
     });
+    // The public route exists only where a signature can be verified. Without a ring there is
+    // nothing to compare against, and a route that accepted deliveries it cannot authenticate
+    // would be worse than no route at all.
+    if (ingress) registerWebhookRoutes({ app, ingress });
   }
 
   /**

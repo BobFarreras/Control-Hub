@@ -3,7 +3,8 @@ import {
   type ConnectorCatalogueEntry,
   type ConnectorInstanceRecord,
   type CredentialMetadata,
-  type SyncRunRecord
+  type SyncRunRecord,
+  type WebhookEndpointRecord
 } from "@control-hub/application";
 import type { TenantContext } from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
@@ -73,6 +74,28 @@ export function runResponse(run: SyncRunRecord) {
   };
 }
 
+/**
+ * An endpoint as a listing sees it: when it was made, whether it is still live.
+ *
+ * No `publicId`. The address was handed over once at creation, exactly like the secret beside it,
+ * and re-displaying it would put the ingress URL of every installation into every screenshot and
+ * support ticket for no operation that needs it.
+ */
+export function endpointResponse(endpoint: WebhookEndpointRecord) {
+  return { id: endpoint.id, createdAt: endpoint.createdAt, revokedAt: endpoint.revokedAt };
+}
+
+/**
+ * The path a provider posts to, rather than an absolute URL.
+ *
+ * The API does not know its own public address: what it has is a `Host` header, which the caller
+ * chose, and inventing an origin from it would hand somebody a URL pointing wherever they liked.
+ * The screen that displays this composes it against the origin it is already talking to.
+ */
+export function webhookPath(publicId: string): string {
+  return `/api/v1/webhooks/${publicId}`;
+}
+
 export function catalogueResponse(entry: ConnectorCatalogueEntry) {
   return {
     type: entry.type,
@@ -120,13 +143,21 @@ const credentialParams = {
 } as const;
 
 /**
- * `credentials` is null on an installation with no key ring.
+ * `credentials` and `ingress` are null on an installation with no key ring.
  *
- * The four credential routes are then not declared at all, which is the truth: there is no key to
- * seal a secret with, and a route that accepted one would take a customer's provider credential
- * and fail to store it. The boot log says the same thing in words.
+ * The credential and endpoint routes are then not declared at all, which is the truth: there is
+ * no key to seal a secret with, and a route that accepted one would take a customer's provider
+ * credential and fail to store it. Minting a webhook endpoint is in the same position — it seals
+ * the secret that signs for it. The boot log says the same thing in words.
  */
-export function registerIntegrationRoutes({ app, database, auth, connectors, credentials }: IntegrationsContext) {
+export function registerIntegrationRoutes({
+  app,
+  database,
+  auth,
+  connectors,
+  credentials,
+  ingress
+}: IntegrationsContext) {
   /**
    * A permission refused is a thing that happened, and the audit log is where it is recorded.
    *
@@ -344,7 +375,88 @@ export function registerIntegrationRoutes({ app, database, auth, connectors, cre
     }
   );
 
-  if (!credentials) return;
+  if (!credentials || !ingress) return;
+
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/integrations/:instanceId/endpoints",
+    { schema: { params: instanceParams } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "integrations:read");
+      const endpoints = await ingress.listEndpoints(context, request.params.instanceId);
+      return { endpoints: endpoints.map(endpointResponse) };
+    }
+  );
+
+  /**
+   * Mints the address and the secret, and this is the only response that carries either.
+   *
+   * The audit row names the endpoint, never the secret: an audit log is read by more people than
+   * the vault is, and a value written there would outlive every rotation.
+   */
+  app.post<{ Params: { instanceId: string } }>(
+    "/api/v1/integrations/:instanceId/endpoints",
+    { schema: { params: instanceParams } },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId } = request.params;
+      await requireAudited(context, request, "integrations:manage", {
+        action: "connector_endpoint.created",
+        targetType: "connector_endpoint",
+        targetId: instanceId
+      });
+      const { endpoint, secret } = await ingress.createEndpoint(context, instanceId);
+      await writeAudit(database, context, request, {
+        action: "connector_endpoint.created",
+        targetType: "connector_endpoint",
+        targetId: endpoint.id,
+        outcome: "success",
+        metadata: { instanceId }
+      });
+      return reply.code(201).send({
+        endpoint: endpointResponse(endpoint),
+        path: webhookPath(endpoint.publicId),
+        // Shown once. There is no route that can return it again, because nothing outside the
+        // ingress service can open it.
+        secret
+      });
+    }
+  );
+
+  app.delete<{ Params: { instanceId: string; endpointId: string } }>(
+    "/api/v1/integrations/:instanceId/endpoints/:endpointId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["instanceId", "endpointId"],
+          properties: {
+            instanceId: { type: "string", format: "uuid" },
+            endpointId: { type: "string", format: "uuid" }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId, endpointId } = request.params;
+      await requireAudited(context, request, "integrations:manage", {
+        action: "connector_endpoint.revoked",
+        targetType: "connector_endpoint",
+        targetId: endpointId
+      });
+      const { revokedCredentials } = await ingress.revokeEndpoint(context, instanceId, endpointId);
+      await writeAudit(database, context, request, {
+        action: "connector_endpoint.revoked",
+        targetType: "connector_endpoint",
+        targetId: endpointId,
+        outcome: "success",
+        metadata: { instanceId, revokedCredentials }
+      });
+      return { revoked: true, revokedCredentials };
+    }
+  );
 
   app.get<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/credentials",

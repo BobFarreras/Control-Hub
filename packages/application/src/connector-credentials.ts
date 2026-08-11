@@ -12,8 +12,10 @@ import type {
  *
  * `ConnectorCredentialService` can seal and can never open: the API imports it, so no route can
  * return a secret even by mistake, because the object it holds has no method that produces one.
- * `ConnectorSecretReader` can open and is imported only by the worker, which is the single
- * process that talks to a provider. The boundary is a type, not a convention in a comment.
+ * `ConnectorSecretReader` can open, and the only things that hold one are the worker, which is
+ * the single process that talks to a provider, and `ConnectorIngressService`, which keeps its own
+ * private and answers whether a signature matched rather than what it matched against. No route
+ * is ever handed a reader. The boundary is a type, not a convention in a comment.
  *
  * Decision: `docs/adr/0008-connector-credential-vault.md`.
  */

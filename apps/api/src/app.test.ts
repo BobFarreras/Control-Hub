@@ -282,11 +282,20 @@ describe("feature flags", () => {
     ["GET", "/api/v1/integrations/:instanceId/runs"]
   ] as const;
 
-  const credentialRoutes = [
+  /**
+   * The routes that need a key ring: the credential ones, the endpoint ones, and the public
+   * webhook. Minting an endpoint seals the secret that signs for it, and verifying a delivery
+   * opens it, so none of the three can exist without a key.
+   */
+  const sealedRoutes = [
     ["GET", "/api/v1/integrations/:instanceId/credentials"],
     ["PUT", "/api/v1/integrations/:instanceId/credentials/:kind"],
     ["DELETE", "/api/v1/integrations/:instanceId/credentials/:kind"],
-    ["POST", "/api/v1/integrations/:instanceId/credentials/:kind/promote"]
+    ["POST", "/api/v1/integrations/:instanceId/credentials/:kind/promote"],
+    ["GET", "/api/v1/integrations/:instanceId/endpoints"],
+    ["POST", "/api/v1/integrations/:instanceId/endpoints"],
+    ["DELETE", "/api/v1/integrations/:instanceId/endpoints/:endpointId"],
+    ["POST", "/api/v1/webhooks/:publicId"]
   ] as const;
 
   it("does not declare the connector surface while its flag is off", async () => {
@@ -309,10 +318,13 @@ describe("feature flags", () => {
     await app.ready();
 
     expect(connectorRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
-    expect(credentialRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    expect(sealedRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    // Including the public one: an address that accepted deliveries it cannot authenticate
+    // would be worse than no address at all.
+    expect((await app.inject({ method: "POST", url: "/api/v1/webhooks/anything" })).statusCode).toBe(404);
   });
 
-  it("declares the credential routes once a key ring is configured", async () => {
+  it("declares the credential, endpoint and webhook routes once a key ring is configured", async () => {
     const app = buildApp({
       ...authenticated,
       featureFlags: new Set(["connectors"] as const),
@@ -323,7 +335,36 @@ describe("feature flags", () => {
     apps.push(app);
     await app.ready();
 
-    expect(credentialRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+    expect(sealedRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+  });
+
+  /**
+   * The content type allowlist, which is the one part of the inbound path that can be reached
+   * without a database: the parser refuses before any handler runs. What the route answers once
+   * a handler does run is a table, tested in ./routes/webhooks.test.ts.
+   */
+  it("refuses a content type the ingress route does not accept, before any handler runs", async () => {
+    const app = buildApp({
+      ...authenticated,
+      featureFlags: new Set(["connectors"] as const),
+      connectorKeyRing: parseKeyRing(
+        JSON.stringify({ activeKeyId: "2026-08", keys: { "2026-08": Buffer.alloc(32, 3).toString("base64") } })
+      )
+    });
+    apps.push(app);
+    await app.ready();
+
+    const refused = await app.inject({
+      method: "POST",
+      url: "/api/v1/webhooks/an-address-nobody-minted",
+      headers: { "content-type": "application/xml" },
+      payload: "<event/>"
+    });
+
+    expect(refused.statusCode).toBe(415);
+    // And with this API's vocabulary, not the framework's: a provider reading `500` here would
+    // retry a delivery we are never going to accept.
+    expect(refused.json()).toMatchObject({ status: 415, code: "UNSUPPORTED_MEDIA_TYPE" });
   });
 });
 

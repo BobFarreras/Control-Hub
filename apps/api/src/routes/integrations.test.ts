@@ -1,7 +1,19 @@
-import type { ConnectorInstanceRecord, CredentialMetadata, SyncRunRecord } from "@control-hub/application";
+import type {
+  ConnectorInstanceRecord,
+  CredentialMetadata,
+  SyncRunRecord,
+  WebhookEndpointRecord
+} from "@control-hub/application";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
-import { credentialResponse, idempotencyKeyOf, instanceResponse, runResponse } from "./integrations.js";
+import {
+  credentialResponse,
+  endpointResponse,
+  idempotencyKeyOf,
+  instanceResponse,
+  runResponse,
+  webhookPath
+} from "./integrations.js";
 
 const instance: ConnectorInstanceRecord = {
   id: "i-1",
@@ -125,5 +137,37 @@ describe("an idempotency key", () => {
     for (const key of ["short", "has:colon", "has space", "a".repeat(129), "../../etc"]) {
       expect(() => idempotencyKeyOf(requestWith(key))).toThrow("INVALID_IDEMPOTENCY_KEY");
     }
+  });
+});
+
+describe("what an endpoint response says", () => {
+  /**
+   * The address is handed over once, at creation, beside the secret. A listing that repeated it
+   * would put the ingress URL of every installation into every screenshot and support ticket,
+   * and the record the response is built from has no field for it either.
+   */
+  it("carries no public identifier, so a listing cannot show the address again", () => {
+    const endpoint = {
+      id: "e-1",
+      instanceId: "i-1",
+      createdAt: new Date(0),
+      revokedAt: null,
+      publicId: "the-address-nobody-should-see-twice",
+      tenantId: "t-1"
+    } as unknown as WebhookEndpointRecord;
+
+    const response = endpointResponse(endpoint);
+
+    expect(Object.keys(response).sort()).toEqual(["createdAt", "id", "revokedAt"]);
+    expect(JSON.stringify(response)).not.toContain("the-address-nobody-should-see-twice");
+  });
+
+  /**
+   * A path and not an absolute URL: the only thing this API knows about its own address is a
+   * `Host` header the caller chose, and building an origin from that hands somebody a URL
+   * pointing wherever they liked.
+   */
+  it("gives the path a provider posts to, for the screen to compose against its own origin", () => {
+    expect(webhookPath("an-address")).toBe("/api/v1/webhooks/an-address");
   });
 });

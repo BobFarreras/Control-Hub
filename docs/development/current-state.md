@@ -24,7 +24,7 @@ dos workers, base neta i sense reintents.
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
 
-Fets els increments 1 a 6 del pla que tanca l'especificacio:
+Fets els increments 1 a 8 del pla que tanca l'especificacio:
 
 | # | Que hi ha | On |
 |---|---|---|
@@ -34,9 +34,11 @@ Fets els increments 1 a 6 del pla que tanca l'especificacio:
 | 5 | Vault: anell de claus versionat, segellat AES-256-GCM i rotacio en dos slots | `packages/config/src/key-ring.ts`, `packages/persistence/src/credential-vault.ts`, `packages/application/src/connector-credentials.ts` |
 | 6 | Runtime del worker: `guarded-fetch`, breaker compartit, reintents per cua i registre de cada execucio | `packages/domain/src/egress.ts`, `packages/config/src/egress-allowlist.ts`, `apps/worker/src/connectors/` |
 | 7 | API d'integracions darrere el flag `connectors`, problem details i auditoria de les accions i de les denegades | `packages/application/src/connector-instances.ts`, `apps/api/src/problem.ts`, `apps/api/src/routes/integrations.ts` |
+| 8 | Ingress: encunyat d'endpoints, verificacio de firma, finestra de replay i inbox idempotent | `packages/application/src/connector-ingress.ts`, `packages/persistence/src/ingress-crypto.ts`, `apps/api/src/routes/webhooks.ts` |
 
-El seguent es el 8: l'ingress — firma HMAC, finestra de replay, inbox i idempotencia, amb les
-rutes d'endpoints que l'increment 7 ha deixat expressament per a aquest.
+El seguent es el 9: la pantalla `/{locale}/integrations` amb les claus `ca`, `es` i `en`. Es
+l'unic increment que toca `packages/ui` i `apps/web/src/components`, aixi que s'ha de coordinar
+amb l'altra sessio abans de comencar-lo.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -76,6 +78,29 @@ proposit, i el que comparteixen es el `code`, que es el que la UI tradueix. Els 
 UPPER_SNAKE com a tot arreu. Desactivar atura primer i revoca despres, mai al reves. La
 comprovacio de salut s'encua i retorna `202`: l'API no parla mai amb un proveidor. I les rutes de
 credencials no es declaren si no hi ha anell de claus, tal com anuncia l'avis d'arrencada.
+
+**El que l'increment 8 deixa decidit i no s'ha de tornar a decidir.** Una adreca d'ingress i el
+seu secret es donen **un sol cop**, quan es crea l'endpoint, i no hi ha cap ruta que els pugui
+tornar a mostrar: el llistat no porta `public_id` i cap objecte de l'API pot obrir el secret. El
+que retorna la creacio es el **cami** (`/api/v1/webhooks/<public_id>`), no una URL absoluta,
+perque l'unica cosa que l'API sap de la seva propia adreca es una capcalera `Host` que tria qui
+truca. Una instancia te **un endpoint viu**, perque el secret de firma viu per instancia i slot;
+revocar l'endpoint revoca tambe el secret, en aquest ordre. La verificacio no la fa cap ruta:
+`ConnectorIngressService` obre el secret dins seu i respon si la firma quadra, mai amb que — cap
+handler de l'API rep mai un `ConnectorSecretReader`. Es proven els dos secrets vius, perque
+durant una rotacio la firma pot venir de qualsevol dels dos, i es marca el que ha quadrat. La
+finestra de replay son 5 minuts **als dos costats**, el `timestamp` va dins dels bytes signats i
+la comparacio es de llargada fixa (es fa el hash dels dos costats abans del `timingSafeEqual`).
+**Adreca desconeguda, firma que no quadra i timestamp fora de finestra tenen una sola sortida**,
+`ingressAnswer`, que retorna sempre `404 NOT_FOUND`: una funcio, no una branca per cas. L'unica
+excepcio es un cos ben signat que el connector no pot llegir — `400`, perque per arribar-hi cal
+tenir el nostre secret i qui el te mereix saber que ha enviat. L'exit es `202` amb cos buit, i un
+event repetit tambe: la idempotencia la decideix la restriccio unica de `connector_inbox`, amb
+l'identificador del proveidor o el `sha256` del cos cru. **El que encara no fa ningu es
+processar-los**: els events queden `pending` a la inbox fins que un connector digui que se n'ha
+de fer amb ells, i marcar-los `processed` sense que ningu els hagi tocat seria inventar-se una
+prova. La ruta publica queda exempta de la comprovacio d'`Origin` perque no llegeix cap cookie ni
+resol cap sessio: la firma es l'unica autoritat que hi val.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai
