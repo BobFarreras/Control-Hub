@@ -1,6 +1,4 @@
 import { getDictionary, getProjectsDictionary, isLocale } from "@control-hub/i18n";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
@@ -66,12 +64,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ locale
           title={detail.project.name}
           description={detail.project.customerName}
           themeLabel={t.header.theme}
-          actions={
-            <Link className="secondary-button" href={`/${locale}/projects`}>
-              <ArrowLeft size={17} />
-              {labels.backToProjects}
-            </Link>
-          }
+          back={{ label: t.header.back, fallbackHref: `/${locale}/projects` }}
         />
         <main className="compact-main">
           <ProjectDetail

@@ -89,6 +89,7 @@ export default async function AttendanceTeamPage({
           title={labels.teamTitle}
           description={labels.teamDescription}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}/attendance` }}
         />
         <main className="compact-main">
           <AttendancePendingRequests

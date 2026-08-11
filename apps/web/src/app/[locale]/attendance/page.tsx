@@ -57,6 +57,7 @@ export default async function AttendancePage({
           title={labels.title}
           description={labels.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
           help={{
             label: labels.help,
             title: labels.help,

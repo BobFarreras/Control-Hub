@@ -155,7 +155,9 @@ export function buildApp(options: BuildAppOptions) {
     if (error instanceof CommerceError) {
       const status = error.code.endsWith("NOT_FOUND")
         ? 404
-        : error.code === "DUPLICATE_CODE" || error.code === "INVALID_SUBSCRIPTION_TRANSITION"
+        : error.code === "DUPLICATE_CODE" ||
+            error.code === "INVALID_SUBSCRIPTION_TRANSITION" ||
+            error.code === "CONCURRENT_MODIFICATION"
           ? 409
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });

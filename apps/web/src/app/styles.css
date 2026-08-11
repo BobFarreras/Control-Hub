@@ -103,6 +103,7 @@ a {
 .brand {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 0 10px 28px;
 }
@@ -209,9 +210,33 @@ a {
   backdrop-filter: blur(16px);
 }
 .topbar-page-title {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   gap: 5px;
+}
+.topbar-back {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.topbar-back:hover,
+.topbar-back:focus-visible {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: var(--brand-subtle);
 }
 .topbar-page-title p {
   margin: 0;
@@ -2045,9 +2070,14 @@ main {
 .product-detail-hero {
   padding: 20px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px;
+}
+.product-detail-hero > div:first-child {
+  min-width: 210px;
+  flex: 1 1 320px;
 }
 .product-detail-hero h2 {
   margin: 5px 0 8px;
@@ -2062,21 +2092,26 @@ main {
   font: 500 11px/1 "JetBrains Mono";
 }
 .product-detail-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .product-detail-summary article {
-  padding: 14px 16px;
-  display: grid;
-  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .product-detail-summary strong {
-  font: 700 20px/1 "JetBrains Mono";
+  font: 700 17px/1 "JetBrains Mono";
 }
 .product-detail-summary span {
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 .product-offer-tree {
   padding: 18px;
@@ -2126,13 +2161,255 @@ main {
   flex-wrap: wrap;
   gap: 8px;
 }
+.catalog-table-product {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.catalog-table-product a {
+  width: fit-content;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+.catalog-table-product a:hover {
+  color: var(--brand);
+}
+.catalog-table-product small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-detail-actions {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.product-knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.product-knowledge-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.product-knowledge-panel > header,
+.product-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.product-knowledge-panel h2,
+.product-section-heading h2 {
+  margin: 3px 0 0;
+  font-size: 17px;
+}
+.product-knowledge-panel header span,
+.product-section-heading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.product-section-heading p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.product-resource-row,
+.product-customer-row {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+}
+.product-resource-row > div,
+.product-customer-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.product-resource-row span,
+.product-customer-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.product-resource-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--brand);
+  font-weight: 650;
+}
+.version-knowledge-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.version-knowledge-summary > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.version-knowledge-summary ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.version-knowledge-summary p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.product-detail-dialog {
+  width: min(660px, 100%);
+}
+.product-detail-form {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+.product-detail-form label {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.product-detail-form label:has(textarea),
+.product-detail-form > button {
+  grid-column: 1 / -1;
+}
+.product-detail-form input,
+.product-detail-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface-subtle);
+  font: inherit;
+}
+.product-detail-form input {
+  height: 42px;
+}
+.product-detail-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+.product-detail-form > button {
+  width: fit-content;
+  justify-self: end;
+}
+.product-detail-form .code-textarea {
+  min-height: 170px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
 @media (max-width: 680px) {
-  .product-detail-summary {
-    grid-template-columns: 1fr;
+  .topbar-back {
+    width: 38px;
+    padding: 0;
+  }
+  .topbar-back span {
+    display: none;
   }
   .product-detail-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+  .product-detail-summary {
+    width: 100%;
+  }
+  .product-detail-summary article {
+    flex: 1 1 130px;
+  }
+  .product-knowledge-grid,
+  .version-knowledge-summary {
+    grid-template-columns: 1fr;
+  }
+  .product-detail-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .product-detail-form {
+    grid-template-columns: 1fr;
+  }
+  .product-detail-form label,
+  .product-detail-form > button {
+    grid-column: 1;
+  }
+}
+
+.catalog-inline-kpis {
+  height: 38px;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.catalog-inline-kpis span {
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.catalog-inline-kpis span + span {
+  border-left: 1px solid var(--border);
+}
+.catalog-inline-kpis strong {
+  color: var(--text);
+  font: 700 13px/1 "JetBrains Mono";
+}
+.smart-table-primary:has(.catalog-inline-kpis) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.smart-table-primary:has(.catalog-inline-kpis) .primary-command {
+  min-height: 38px;
+  margin-left: auto;
+}
+@media (max-width: 1120px) {
+  .smart-table:has(.catalog-inline-kpis) .smart-table-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .smart-table:has(.catalog-inline-kpis) .smart-table-settings {
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 720px) {
+  .smart-table-primary:has(.catalog-inline-kpis) {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .smart-table-primary:has(.catalog-inline-kpis) .crm-search {
+    width: 100%;
+  }
+  .catalog-inline-kpis {
+    flex: 1 1 auto;
   }
 }
 .catalog-offer-details {

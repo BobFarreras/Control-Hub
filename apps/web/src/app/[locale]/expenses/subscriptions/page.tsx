@@ -39,6 +39,7 @@ export default async function CompanySubscriptionsPage({
           title={labels.title}
           description={labels.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
         />
         <main className="compact-main">
           <CompanySubscriptionsWorkspace {...data} labels={labels} locale={locale} />

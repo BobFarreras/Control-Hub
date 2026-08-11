@@ -110,4 +110,34 @@ describe("CommerceService", () => {
     } as unknown as CommerceRepository;
     expect((await new CommerceService(repository).financialSummary(context))[0]?.mrrMinor).toBe(1);
   });
+
+  it("normalizes product resources and rejects non-HTTPS URLs", async () => {
+    const replaceProductResources = vi.fn().mockResolvedValue([]);
+    const service = new CommerceService({ replaceProductResources } as unknown as CommerceRepository);
+
+    await service.replaceProductResources(context, "product", [
+      { kind: "documentation", label: "  API guide  ", url: "https://docs.example.test/api" }
+    ]);
+    expect(replaceProductResources).toHaveBeenCalledWith(context, "product", [
+      { kind: "documentation", label: "API guide", url: "https://docs.example.test/api" }
+    ]);
+    expect(() =>
+      service.replaceProductResources(context, "product", [
+        { kind: "repository", label: "Code", url: "http://git.example.test/project" }
+      ])
+    ).toThrow("INVALID_INPUT");
+  });
+
+  it("validates version knowledge before persistence", () => {
+    const updateVersionKnowledge = vi.fn();
+    const service = new CommerceService({ updateVersionKnowledge } as unknown as CommerceRepository);
+    expect(() =>
+      service.updateVersionKnowledge(context, "version", {
+        features: ["x".repeat(501)],
+        contents: [],
+        expectedUpdatedAt: new Date()
+      })
+    ).toThrow("INVALID_INPUT");
+    expect(updateVersionKnowledge).not.toHaveBeenCalled();
+  });
 });

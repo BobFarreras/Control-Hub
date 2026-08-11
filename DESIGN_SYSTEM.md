@@ -103,6 +103,9 @@ Desktop utilitza sidebar i topbar. Mobile utilitza topbar compacta i navegacio i
 - KPI, resums i accions principals comparteixen una franja compacta sempre que siguin comparables i hi hagi espai.
 - Les sigles i metriques no evidents inclouen ajuda contextual accessible per hover i focus, traduida a `ca`, `es` i `en`.
 - Les pantalles noves reutilitzen `PageTopbar`, `MetricHelp` i les franges de resum existents abans de crear variants locals.
+- Les pantalles internes configuren el retorn de `PageTopbar`. El control conserva la navegacio
+  real entre pantalles de Control Hub i utilitza una ruta pare segura quan la URL s'ha obert
+  directament; no es creen enllacos locals de "tornar" dins del contingut.
 
 ## Components obligatoris
 

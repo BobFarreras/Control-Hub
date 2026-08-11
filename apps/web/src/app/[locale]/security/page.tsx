@@ -111,6 +111,7 @@ export default function SecurityPage() {
           title={t.security.title}
           description={session.data?.user.email}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
           actions={
             <button className="secondary-button" onClick={actionHandler(signOut, () => setError("OPERATION_FAILED"))}>
               <LogOut size={17} />
