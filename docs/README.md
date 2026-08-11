@@ -29,6 +29,10 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   imputades. Aprovada, Fase 5C. Requereix confirmacio de la gestoria.
 - `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i
   marge. Aprovada, implementada com a Fase 5B darrere la flag `projects_and_time`.
+- `specifications/connectors.md`: contracte de connector, vault de credencials, crides
+  sortints i webhooks entrants. Aprovada, Fase 6, en desenvolupament darrere la flag
+  `connectors`. La norma de seguretat que ha de complir es
+  `specifications/connector-security.md`.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

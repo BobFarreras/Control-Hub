@@ -19,8 +19,19 @@ dos workers, base neta i sense reintents.
 
 ## El seguent pas
 
-**Revisio funcional final i obertura de la Fase 6.** El detall i els checks de cada increment de
-consolidacio son a `docs/development/pre-phase-6-product-polish.md`.
+**Fase 6 oberta a `feature/phase-6-connector-platform`, amb el disseny aprovat.**
+
+L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
+decisio criptografica a `docs/adr/0008-connector-credential-vault.md`. El seguent increment es
+el 2 del pla que tanca l'especificacio: domini pur — salut derivada, backoff, circuit breaker i
+redaccio — sense I/O ni migracio.
+
+Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
+hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai
+despres d'haver-la aplicat enlloc.
+
+El detall i els checks dels increments de consolidacio previs son a
+`docs/development/pre-phase-6-product-polish.md`.
 
 ## Pendents coneguts, no bloquejants
 
