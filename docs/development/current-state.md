@@ -24,7 +24,7 @@ dos workers, base neta i sense reintents.
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
 
-Fets els increments 1 a 5 del pla que tanca l'especificacio:
+Fets els increments 1 a 6 del pla que tanca l'especificacio:
 
 | # | Que hi ha | On |
 |---|---|---|
@@ -32,9 +32,10 @@ Fets els increments 1 a 5 del pla que tanca l'especificacio:
 | 3 | Contracte de connector, registre resolt en build-time, webhook generic | `packages/connectors/` |
 | 4 | Migracio `0030`, port d'emmagatzematge i adaptador tenant-scoped | `packages/database/migrations/0030_connectors.sql`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts` |
 | 5 | Vault: anell de claus versionat, segellat AES-256-GCM i rotacio en dos slots | `packages/config/src/key-ring.ts`, `packages/persistence/src/credential-vault.ts`, `packages/application/src/connector-credentials.ts` |
+| 6 | Runtime del worker: `guarded-fetch`, breaker compartit, reintents per cua i registre de cada execucio | `packages/domain/src/egress.ts`, `packages/config/src/egress-allowlist.ts`, `apps/worker/src/connectors/` |
 
-El seguent es el 6: el runtime del worker — `guarded-fetch` amb la llista d'egressos, reintents
-amb el backoff del domini, el circuit breaker i el registre de `connector_sync_runs`.
+El seguent es el 7: l'API d'integracions — altes i configuracio d'instancies, credencials,
+execucions, errors en `application/problem+json` i traca d'auditoria.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -46,6 +47,20 @@ demana l'especificacio. Escriure una credencial exigeix
 no te cap metode que retorni un secret, i `ConnectorSecretReader` — l'unic que n'obre — nomes
 l'importa el worker. Una rotacio ocupa dos slots i es tanca amb `promoteCredential`, que revoca
 l'antic i promou el nou dins la mateixa transaccio.
+
+**El que l'increment 6 deixa decidit i no s'ha de tornar a decidir.** Un connector no te cap
+altra sortida de xarxa que el `HttpPort` que rep: `guarded-fetch` resol el nom, refusa tota
+adreca que no sigui publica — llevat de les que l'operador ha escrit a
+`CONNECTOR_INTERNAL_ALLOWLIST`, que cap tenant pot tocar — i **connecta a l'adreca que ha
+validat**, fixant-la amb l'opcio `lookup` de Node i `agent: false`, de manera que un canvi de DNS
+entre la comprovacio i la connexio no serveix de res. Cada redireccio es torna a validar i, si
+canvia d'origen, les capcaleres lligades a l'origen (`authorization`, `cookie`, `x-api-key`) no hi
+viatgen. El worker **no dorm mai**: una fallada transitoria acaba la feina i demana a la cua que
+la torni amb `moveToDelayed`, perque un worker adormit es una plaça que un proveidor lent ha pres
+a tots els altres tenants. L'estat del breaker viu a Valkey, compartit entre repliques i amb TTL;
+si Valkey no respon, el breaker deixa passar — una caiguda del cache no pot convertir-se en una
+caiguda dels connectors. Un error que ningu ha classificat es tracta com a permanent, per no
+reintentar indefinidament un defecte nostre.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai

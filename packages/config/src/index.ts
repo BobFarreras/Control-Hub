@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseEgressAllowlist, type AllowedDestination } from "./egress-allowlist.js";
 import { isFeatureEnabled, parseFeatureFlags } from "./flags.js";
 import { parseKeyRing, type KeyRing } from "./key-ring.js";
 
@@ -19,7 +20,10 @@ const baseSchema = z.object({
   CONTROL_HUB_FLAGS: z.string().default(""),
   // The connector key ring, as JSON. Injected as a Docker secret; never in a versioned .env.
   // Its shape is validated by ./key-ring.ts. See docs/adr/0008-connector-credential-vault.md.
-  CONNECTOR_KEY_RING: z.string().optional()
+  CONNECTOR_KEY_RING: z.string().optional(),
+  // Comma-separated origins a connector may reach besides the public internet, for services this
+  // installation runs itself. Administrative: no tenant can add one. Parsed by ./egress-allowlist.ts.
+  CONNECTOR_INTERNAL_ALLOWLIST: z.string().optional()
 });
 
 export const apiEnvironmentSchema = baseSchema.extend({
@@ -46,12 +50,14 @@ export const workerEnvironmentSchema = baseSchema;
  * the only handle anybody has on the keys is a `KeyRing`, which refuses to print itself. An
  * environment object reaches a log sooner or later, and this is what makes that harmless.
  */
-export type ApiEnvironment = Omit<z.infer<typeof apiEnvironmentSchema>, "CONNECTOR_KEY_RING"> & {
+type ConnectorEnvironment = {
   connectorKeyRing: KeyRing | null;
+  connectorEgressAllowlist: readonly AllowedDestination[];
 };
-export type WorkerEnvironment = Omit<z.infer<typeof workerEnvironmentSchema>, "CONNECTOR_KEY_RING"> & {
-  connectorKeyRing: KeyRing | null;
-};
+
+export type ApiEnvironment = Omit<z.infer<typeof apiEnvironmentSchema>, "CONNECTOR_KEY_RING"> & ConnectorEnvironment;
+export type WorkerEnvironment = Omit<z.infer<typeof workerEnvironmentSchema>, "CONNECTOR_KEY_RING"> &
+  ConnectorEnvironment;
 
 function resolveConnectorKeyRing(source: { CONNECTOR_KEY_RING?: string | undefined }): KeyRing | null {
   const raw = source.CONNECTOR_KEY_RING?.trim();
@@ -74,13 +80,22 @@ export function connectorKeyRingWarning(environment: {
 
 export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
   const { CONNECTOR_KEY_RING, ...environment } = apiEnvironmentSchema.parse(source);
-  return { ...environment, connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }) };
+  return {
+    ...environment,
+    connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
+    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST)
+  };
 }
 
 export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnvironment {
   const { CONNECTOR_KEY_RING, ...environment } = workerEnvironmentSchema.parse(source);
-  return { ...environment, connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }) };
+  return {
+    ...environment,
+    connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
+    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST)
+  };
 }
 
+export * from "./egress-allowlist.js";
 export * from "./flags.js";
 export * from "./key-ring.js";

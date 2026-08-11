@@ -1,7 +1,11 @@
 import { connectorKeyRingWarning, parseWorkerEnvironment } from "@control-hub/config";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
+import { PostgresConnectorRepository } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
+import Redis from "ioredis";
+import { connectorJobName, runConnectorJob } from "./connectors/job.js";
+import { createConnectorRuntime } from "./connectors/wiring.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
 
@@ -22,9 +26,33 @@ if (keyRingWarning) logger.warn(keyRingWarning);
 
 const ESCALATION_JOB = "support-escalation";
 
+/**
+ * One more connection to Valkey, for the circuit breaker.
+ *
+ * Not the one BullMQ uses: that client is busy blocking on the queue, and a breaker read waiting
+ * behind a `BRPOPLPUSH` would add the queue's latency to every connector call.
+ */
+const circuitClient = new Redis(environment.REDIS_URL, { maxRetriesPerRequest: 1, connectTimeout: 500 });
+circuitClient.on("error", (error) => logger.warn({ err: error }, "circuit breaker store unavailable"));
+
+const connectorRuntime = createConnectorRuntime({
+  repository: new PostgresConnectorRepository(database),
+  keyRing: environment.connectorKeyRing,
+  allowlist: environment.connectorEgressAllowlist,
+  circuitClient,
+  logger
+});
+
 const worker = new Worker(
   "control-hub-system",
   async (job) => {
+    if (job.name === connectorJobName) {
+      if (!connectorRuntime) {
+        logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
+        return { status: "skipped", reason: "no_key_ring" };
+      }
+      return runConnectorJob(connectorRuntime, job);
+    }
     if (job.name === ESCALATION_JOB) {
       const sweep = await sweepSupportEscalations(database);
       for (const failure of sweep.failed) {
@@ -62,6 +90,7 @@ const shutdown = async (signal: string) => {
   logger.info({ signal }, "shutdown requested");
   await worker.close();
   await queue.close();
+  circuitClient.disconnect();
   await database.end({ timeout: 5 });
   process.exit(0);
 };
