@@ -1,5 +1,5 @@
 import { connectorKeyRingWarning, parseWorkerEnvironment } from "@control-hub/config";
-import { systemQueueName } from "@control-hub/contracts";
+import { systemQueueName } from "@control-hub/contracts/jobs";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import { PostgresConnectorRepository } from "@control-hub/persistence";

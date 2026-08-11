@@ -1,6 +1,6 @@
 import type { ConnectorRepository, ConnectorSecretReader, SyncRunRecord } from "@control-hub/application";
 import type { ConnectorContext, HttpPort, RegisteredConnector } from "@control-hub/connectors";
-import { connectorHealthOperation } from "@control-hub/contracts";
+import { connectorHealthOperation } from "@control-hub/contracts/jobs";
 import {
   backoffDelayMs,
   defaultBackoff,

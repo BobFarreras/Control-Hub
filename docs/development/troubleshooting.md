@@ -174,6 +174,13 @@ build del web, i no el de l'API.
 
 De passada estalvia arrossegar zod cap al web, que no el necessita per llegir una flag.
 
+**Ha tornat a passar.** L'11 d'agost de 2026, amb `@control-hub/contracts`: l'increment 7 de la
+Fase 6 hi va afegir `connector-jobs.ts` i el va reexportar des de l'arrel, i el web importa
+aquest paquet per l'arrel (`parseCsv`). Mateixa solucio, subcami `./jobs`, i l'API i el worker
+importen els noms de feina d'alla. **La regla, per no descobrir-ho una tercera vegada:** el
+fitxer arrel d'un paquet que el web importa per l'arrel no pot tenir imports relatius. Es veu
+nomes amb `pnpm build` — `typecheck`, `test` i `lint` passen tots tres amb el build trencat.
+
 ### La pantalla de projectes respon 404 i el menu no la mostra
 
 **Causa.** `projects_and_time` esta apagada. Amb la flag avall l'API no declara ni tan sols les

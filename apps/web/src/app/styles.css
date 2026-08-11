@@ -4957,3 +4957,83 @@ main {
     transition: none;
   }
 }
+
+/* The integrations screen: a listing that gives half its width to whatever is selected. The
+   detail column collapses under the table on a narrow screen rather than shrinking to a strip. */
+.integrations-layout {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+.integrations-layout.selected {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+}
+@media (width < 1200px) {
+  .integrations-layout.selected {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.integrations-layout .muted {
+  color: var(--muted);
+}
+.integration-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.integration-config {
+  width: 100%;
+  min-height: 120px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: 400 12px/1.6 "JetBrains Mono", ui-monospace, monospace;
+  white-space: pre;
+}
+.integration-issues {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--danger);
+  font-size: 12px;
+}
+.integration-issues code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+/* Shown once, and it has to look like it. The warning above it is a `.notice-warning`; this box
+   is the thing to copy out of, so the two never share a treatment. */
+.integration-secret {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-subtle);
+}
+.integration-secret h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.integration-secret > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.integration-secret code {
+  overflow-wrap: anywhere;
+  font: 400 12px/1.5 "JetBrains Mono", ui-monospace, monospace;
+}
+.integration-secret .primary-button {
+  justify-self: start;
+  margin-top: 6px;
+}

@@ -521,3 +521,86 @@ export type AttendanceNonWorkingDaysResponse = { nonWorkingDays: AttendanceNonWo
 export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
 export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
 export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };
+
+/**
+ * The connector platform, as the integrations screen sees it.
+ *
+ * Note what is absent and must stay absent: a credential has no value here and no `keyId`, and a
+ * webhook endpoint has no `publicId`. The API cannot send either — the responses are written
+ * field by field — and repeating the omission in the type means a screen cannot ask for one.
+ */
+export type ConnectorHealthStatus = "unknown" | "healthy" | "degraded" | "failing" | "disabled";
+export type ConnectorInstanceStatus = "draft" | "enabled" | "disabled" | "error";
+
+export type ConnectorInstance = {
+  id: string;
+  connectorType: string;
+  name: string;
+  status: ConnectorInstanceStatus;
+  config: Record<string, unknown>;
+  configVersion: number;
+  health: { status: ConnectorHealthStatus; checkedAt: string | null; lastErrorCode: string | null };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConnectorCatalogueEntry = {
+  type: string;
+  contractVersion: number;
+  credentialKinds: string[];
+  capabilities: {
+    egress: { schemes: string[]; destination: string } | null;
+    operations: string[];
+    ingress: boolean;
+  };
+};
+
+export type ConnectorCredential = {
+  id: string;
+  kind: string;
+  slot: "primary" | "secondary";
+  rotatedAt: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type ConnectorEndpoint = { id: string; createdAt: string; revokedAt: string | null };
+
+export type ConnectorRun = {
+  id: string;
+  operation: string;
+  status: "running" | "succeeded" | "failed" | "dead_letter";
+  attempt: number;
+  configVersion: number;
+  startedAt: string;
+  finishedAt: string | null;
+  errorCode: string | null;
+  itemsProcessed: number;
+};
+
+export type IntegrationsResponse = { integrations: ConnectorInstance[] };
+export type IntegrationResponse = { integration: ConnectorInstance };
+export type ConnectorCatalogueResponse = { connectors: ConnectorCatalogueEntry[] };
+export type ConnectorCredentialsResponse = { credentials: ConnectorCredential[] };
+export type ConnectorEndpointsResponse = { endpoints: ConnectorEndpoint[] };
+export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page: number; pageSize: number };
+/** The only response that carries an address and a secret, and only the once. */
+export type CreatedConnectorEndpointResponse = { endpoint: ConnectorEndpoint; path: string; secret: string };
+
+/** Everything the screen shows about one integration, loaded together by the page that selects it. */
+export type IntegrationDetail = {
+  instance: ConnectorInstance;
+  endpoints: ConnectorEndpoint[];
+  credentials: ConnectorCredential[];
+  runs: ConnectorRun[];
+  /**
+   * Whether this deployment has a key ring at all.
+   *
+   * Without one the API declares no credential and no endpoint route, so an empty list and a
+   * missing route look identical from here. They are not: offering a button that mints a secret
+   * on an installation that cannot seal one is offering an operation that always fails.
+   */
+  vaultAvailable: boolean;
+};

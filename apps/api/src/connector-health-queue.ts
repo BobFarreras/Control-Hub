@@ -1,5 +1,5 @@
 import type { ConnectorHealthCheckQueue } from "@control-hub/application";
-import { connectorHealthOperation, connectorJobName, type ConnectorJobPayload } from "@control-hub/contracts";
+import { connectorHealthOperation, connectorJobName, type ConnectorJobPayload } from "@control-hub/contracts/jobs";
 import type { Queue } from "bullmq";
 
 /**

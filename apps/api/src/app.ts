@@ -19,7 +19,8 @@ import {
 } from "@control-hub/application";
 import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet, type KeyRing } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
-import { systemQueueName, type LiveHealth, type ReadyHealth } from "@control-hub/contracts";
+import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
+import { systemQueueName } from "@control-hub/contracts/jobs";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {

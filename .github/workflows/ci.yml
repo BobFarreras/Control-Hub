@@ -262,8 +262,10 @@ jobs:
       E2E_TENANT_NAME: Control Hub E2E
       E2E_TENANT_SLUG: control-hub-e2e
       # Both the API and the web read this. Without it the projects routes are never declared,
-      # and projects.authenticated.spec.ts would be testing a 404.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance
+      # and projects.authenticated.spec.ts would be testing a 404. Same for `connectors` and
+      # integrations.authenticated.spec.ts — which runs without `CONNECTOR_KEY_RING` on purpose,
+      # so it exercises the deployment that cannot hold a secret.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

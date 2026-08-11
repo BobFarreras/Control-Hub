@@ -24,7 +24,7 @@ dos workers, base neta i sense reintents.
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
 
-Fets els increments 1 a 8 del pla que tanca l'especificacio:
+Fets els increments 1 a 9 del pla que tanca l'especificacio:
 
 | # | Que hi ha | On |
 |---|---|---|
@@ -35,10 +35,10 @@ Fets els increments 1 a 8 del pla que tanca l'especificacio:
 | 6 | Runtime del worker: `guarded-fetch`, breaker compartit, reintents per cua i registre de cada execucio | `packages/domain/src/egress.ts`, `packages/config/src/egress-allowlist.ts`, `apps/worker/src/connectors/` |
 | 7 | API d'integracions darrere el flag `connectors`, problem details i auditoria de les accions i de les denegades | `packages/application/src/connector-instances.ts`, `apps/api/src/problem.ts`, `apps/api/src/routes/integrations.ts` |
 | 8 | Ingress: encunyat d'endpoints, verificacio de firma, finestra de replay i inbox idempotent | `packages/application/src/connector-ingress.ts`, `packages/persistence/src/ingress-crypto.ts`, `apps/api/src/routes/webhooks.ts` |
+| 9 | Pantalla `/{locale}/integrations` amb `ca`, `es` i `en`: llistat, panell de detall, endpoints i execucions | `apps/web/src/app/[locale]/integrations/page.tsx`, `apps/web/src/components/integrations-workspace.tsx`, `apps/web/src/lib/integrations.ts`, `packages/i18n/src/index.ts` |
 
-El seguent es el 9: la pantalla `/{locale}/integrations` amb les claus `ca`, `es` i `en`. Es
-l'unic increment que toca `packages/ui` i `apps/web/src/components`, aixi que s'ha de coordinar
-amb l'altra sessio abans de comencar-lo.
+El seguent es el 10: OpenAPI de la superficie de connectors, el runbook de rotacio de la clau
+mestra i el tancament de la Definition of Done de la fase.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -102,9 +102,25 @@ de fer amb ells, i marcar-los `processed` sense que ningu els hagi tocat seria i
 prova. La ruta publica queda exempta de la comprovacio d'`Origin` perque no llegeix cap cookie ni
 resol cap sessio: la firma es l'unica autoritat que hi val.
 
-Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
-hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai
-despres d'haver-la aplicat enlloc.
+**El que l'increment 9 deixa decidit i no s'ha de tornar a decidir.** La pantalla no ensenya mai
+paraules d'un proveidor ni d'un connector: el que arriba de l'API es un `code` i el que llegeix
+una persona es la nostra frase per aquell codi (`errorMessage` a `apps/web/src/lib/integrations.ts`),
+amb una frase generica per a un codi que encara ningu ha traduit — un `INSTANCE_NOT_ENABLED` a la
+pantalla seria ensenyar les nostres interioritats. L'avis que l'adreca i el secret **nomes es
+veuran un cop** va **abans** del boto que els encunya, no al costat del resultat: un avis llegit
+despres no es un avis. El secret viu nomes a la memoria del component, no al `query string` ni a
+cap `storage`, i el panell va **amb `key` per instancia**, de manera que seleccionar-ne una altra
+no arrossega ni una configuracio a mig editar ni un secret encunyat. Qui nomes te
+`integrations:read` veu la pantalla sencera sense cap boto que canvii res, i ho diu un avis, no
+un boto que falla en clicar-lo. El llistat s'ordena, es filtra i es pagina **a la pagina**, perque
+`GET /api/v1/integrations` respon amb totes les instancies del tenant i sense paginacio; el dia
+que aquesta llista deixi de cabre en una resposta, el fitxer que ha de canviar es la pagina. La
+configuracio es un camp JSON perque es l'unica forma que generalitza a connectors que aquesta
+versio encara no porta, i les incidencies es dibuixen amb cami i codi, mai amb el valor escrit.
+
+Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`; el 9 nomes toca
+`apps/web` i el diccionari, mai `packages/ui`. Si una altra sessio hi afegeix una migracio abans,
+la `0030` de connectors es renumera **abans del merge**, mai despres d'haver-la aplicat enlloc.
 
 El detall i els checks dels increments de consolidacio previs son a
 `docs/development/pre-phase-6-product-polish.md`.
@@ -130,6 +146,10 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   pantalles. `/{locale}/projects` respon 404.
 - `attendance` — apagada per defecte fins que la gestoria confirmi que la forma del registre li
   serveix.
+- `connectors` — apagada per defecte. Amb la bandera tancada l'API no declara cap ruta
+  d'integracions ni de webhooks, la web no mostra l'entrada del menu i `/{locale}/integrations`
+  respon 404. Obrir-la sense `CONNECTOR_KEY_RING` deixa la pantalla en peu pero sense credencials
+  ni endpoints: aquelles rutes no existeixen en aquell desplegament.
 
 ## Superficie executable
 

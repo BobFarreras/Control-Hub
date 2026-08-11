@@ -41,6 +41,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   // serve is worse than no entry at all, and the sidebar cannot read the environment itself.
   const projectsEnabled = useFeature("projects_and_time");
   const attendanceEnabled = useFeature("attendance");
+  const connectorsEnabled = useFeature("connectors");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false) => (
     <Link
       className={
@@ -91,7 +92,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
         {item(`/${locale}/support`, labels.support, Headphones)}
         {attendanceEnabled && item(`/${locale}/attendance`, labels.attendance, Clock)}
         {item("#", labels.infrastructure, CloudCog)}
-        {item("#", labels.integrations, Boxes)}
+        {connectorsEnabled && item(`/${locale}/integrations`, labels.integrations, Boxes)}
         {item(`/${locale}/security`, labels.settings, Settings)}
       </nav>
       {ready && (

@@ -1,4 +1,4 @@
-import { connectorJobName } from "@control-hub/contracts";
+import { connectorJobName } from "@control-hub/contracts/jobs";
 import type { TenantContext } from "@control-hub/domain";
 import { DelayedError } from "bullmq";
 import { z } from "zod";

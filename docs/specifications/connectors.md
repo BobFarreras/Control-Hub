@@ -349,6 +349,12 @@ proveidor. Claus `ca`, `es` i `en` al mateix commit que el component.
 
 La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de generar-lo.
 
+En un desplegament sense anell de claus, les seccions de credencials i d'adreces d'entrada no
+surten. No hi ha ruta que les serveixi, i un boto que encunya un secret alla on no se'n pot
+segellar cap es un boto que sempre falla. La configuracio de la instancia es un camp JSON: es
+l'unica forma que serveix per a un connector que aquesta versio encara no coneix, i el que es
+dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit.
+
 ## Threat model
 
 | Amenaça | Control |
