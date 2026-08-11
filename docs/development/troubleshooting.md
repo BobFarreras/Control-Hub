@@ -120,6 +120,19 @@ suite hagi corregut abans o alhora. Va passar amb l'escombrada d'escalats: asser
 seu tenant, el seu ticket. Si de veritat necessites provar un comptador global, el paquet
 necessita una base propia, no la compartida.
 
+### Escriure a una columna `jsonb` viola un `check` que hauria de passar
+
+**Simptoma.** Un `check (jsonb_typeof(config) = 'object')` rebutja un objecte que evidentment
+n'es un. El mateix `insert` executat a `psql` amb el mateix text funciona.
+
+**Causa.** `${JSON.stringify(valor)}::jsonb`. El cast explicit fa que PostgreSQL declari el
+parametre com a `jsonb`, i llavors postgres.js torna a serialitzar la cadena que ja li havies
+serialitzat. El que arriba no es l'objecte sino la seva representacio com a **cadena** JSON, i
+`jsonb_typeof` respon `string`.
+
+**Solucio.** `${tx.json(valor)}`, que es el que fa la resta del repositori. El driver serialitza
+una vegada i el tipus del parametre queda correcte sense cap cast.
+
 ## Seguretat i CI
 
 ### Gitleaks marca una constant que no es cap credencial
