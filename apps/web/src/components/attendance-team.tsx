@@ -2,8 +2,11 @@
 
 import ExcelJS from "exceljs";
 import { Clock, Download, Receipt, TrendingUp, Users } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { AttendanceMonthNavigation } from "@/components/attendance-month-navigation";
 import { MetricTile } from "@/components/metric-tile";
-import type { AttendanceTeamRow } from "@/lib/api-types";
+import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
+import type { AttendanceTeamRow, TablePreference } from "@/lib/api-types";
 import { formatHours } from "@/lib/format";
 
 type Labels = Record<string, string>;
@@ -34,7 +37,7 @@ export function AttendanceTeam({
   locale
 }: {
   rows: AttendanceTeamRow[];
-  range: { from: string; to: string };
+  range: { from: string; to: string; month: string };
   /** False when the caller may read the record but not what it costs. */
   reconciled: boolean;
   labels: Labels;
@@ -43,6 +46,97 @@ export function AttendanceTeam({
   const recorded = rows.reduce((total, row) => total + row.totalMinutes, 0);
   const logged = rows.reduce((total, row) => total + (row.loggedMinutes ?? 0), 0);
   const corrections = rows.reduce((total, row) => total + row.declaredEntries, 0);
+  const params = useSearchParams();
+  const sort = params.get("teamSort") ?? "recorded_desc";
+  const status = params.get("teamStatus");
+  const page = Math.max(1, Number(params.get("teamPage")) || 1);
+  const pageSize = (Number(params.get("teamSize")) || 10) as TablePreference["pageSize"];
+  let tableRows = rows.map((row) => ({ ...row, id: row.membershipId }));
+  if (status === "corrected") tableRows = tableRows.filter((row) => row.declaredEntries > 0);
+  if (status === "unbilled") tableRows = tableRows.filter((row) => (row.unbilledMinutes ?? 0) !== 0);
+  tableRows.sort((a, b) => {
+    if (sort === "name_asc") return a.memberName.localeCompare(b.memberName, locale);
+    if (sort === "name_desc") return b.memberName.localeCompare(a.memberName, locale);
+    return sort === "recorded_asc" ? a.totalMinutes - b.totalMinutes : b.totalMinutes - a.totalMinutes;
+  });
+  const tableTotal = tableRows.length;
+  tableRows = tableRows.slice((page - 1) * pageSize, page * pageSize);
+  type TeamTableRow = (typeof tableRows)[number];
+  const columns: SmartColumn<TeamTableRow>[] = [
+    {
+      id: "person",
+      label: t.person!,
+      locked: true,
+      width: 220,
+      sort: { asc: "name_asc", desc: "name_desc" },
+      render: (row) => row.memberName
+    },
+    {
+      id: "recorded",
+      label: t.recorded!,
+      width: 150,
+      sort: { asc: "recorded_asc", desc: "recorded_desc" },
+      render: (row) => formatHours(row.totalMinutes)
+    },
+    ...(reconciled
+      ? [
+          {
+            id: "logged",
+            label: t.logged!,
+            width: 150,
+            render: (row: TeamTableRow) => formatHours(row.loggedMinutes ?? 0)
+          }
+        ]
+      : []),
+    ...(reconciled
+      ? [
+          {
+            id: "unbilled",
+            label: t.unbilled!,
+            width: 160,
+            filter: {
+              parameter: "teamStatus",
+              options: [
+                { value: "unbilled", label: t.withDifference! },
+                { value: "corrected", label: t.withCorrections! }
+              ]
+            },
+            render: (row: TeamTableRow) => {
+              const value = row.unbilledMinutes ?? 0;
+              return (
+                <span className={value < 0 ? "metric-value negative" : undefined}>
+                  {value < 0 ? "-" : ""}
+                  {formatHours(Math.abs(value))}
+                </span>
+              );
+            }
+          }
+        ]
+      : []),
+    { id: "corrections", label: t.declaredEntries!, width: 140, render: (row) => row.declaredEntries || "—" }
+  ];
+  const tablePreference: TablePreference = {
+    tableId: "attendance.team",
+    columnOrder: [],
+    hiddenColumns: [],
+    columnWidths: {},
+    pageSize: 10
+  };
+  const tableLabels = {
+    sort: t.sort!,
+    columns: t.columns!,
+    visibility: t.visibility!,
+    narrower: t.narrower!,
+    wider: t.wider!,
+    moveUp: t.moveUp!,
+    moveDown: t.moveDown!,
+    filter: t.filter!,
+    all: t.all!,
+    results: t.results!,
+    rows: t.rows!,
+    previous: t.previous!,
+    nextPage: t.nextPage!
+  };
 
   async function download() {
     const workbook = new ExcelJS.Workbook();
@@ -151,25 +245,32 @@ export function AttendanceTeam({
 
   return (
     <>
-      <section className="metric-row" aria-label={t.teamTitle}>
-        <MetricTile label={t.teamTotal!} icon={Clock} value={formatHours(recorded)} />
-        {reconciled && <MetricTile label={t.teamLogged!} icon={Receipt} value={formatHours(logged)} />}
-        {reconciled && (
+      <section className="attendance-team-summary" aria-label={t.teamTitle}>
+        <div className="metric-row">
+          <MetricTile label={t.teamTotal!} icon={Clock} value={formatHours(recorded)} />
+          {reconciled && <MetricTile label={t.teamLogged!} icon={Receipt} value={formatHours(logged)} />}
+          {reconciled && (
+            <MetricTile
+              label={t.teamUnbilled!}
+              help={t.unbilledHelp}
+              icon={TrendingUp}
+              value={`${recorded - logged < 0 ? "-" : ""}${formatHours(Math.abs(recorded - logged))}`}
+              tone={recorded - logged < 0 ? "negative" : undefined}
+            />
+          )}
           <MetricTile
-            label={t.teamUnbilled!}
-            help={t.unbilledHelp}
-            icon={TrendingUp}
-            value={`${recorded - logged < 0 ? "-" : ""}${formatHours(Math.abs(recorded - logged))}`}
-            tone={recorded - logged < 0 ? "negative" : undefined}
+            label={t.people!}
+            icon={Users}
+            value={rows.length}
+            footnote={corrections > 0 ? `${corrections} ${t.declaredEntries!.toLowerCase()}` : undefined}
           />
-        )}
-        <MetricTile
-          label={t.people!}
-          icon={Users}
-          value={rows.length}
-          // On the tile, not buried in a column: whether a period was touched after the fact is
-          // the first thing somebody checking a record wants to know.
-          footnote={corrections > 0 ? `${corrections} ${t.declaredEntries!.toLowerCase()}` : undefined}
+        </div>
+        <AttendanceMonthNavigation
+          month={range.month}
+          locale={locale}
+          href={(monthValue) => `/${locale}/attendance/team?month=${monthValue}`}
+          previousLabel={t.monthPrevious!}
+          nextLabel={t.monthNext!}
         />
       </section>
 
@@ -189,47 +290,27 @@ export function AttendanceTeam({
 
         {!reconciled && <p className="dialog-note">{t.noReconciliation}</p>}
 
-        <div className="crm-table-wrap inside-panel">
-          <table className="crm-table">
-            <thead>
-              <tr>
-                <th>{t.person}</th>
-                <th>{t.recorded}</th>
-                {reconciled && <th>{t.logged}</th>}
-                {reconciled && <th>{t.unbilled}</th>}
-                <th>{t.declaredEntries}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={reconciled ? 5 : 3}>{t.empty}</td>
-                </tr>
-              )}
-              {rows.map((row) => {
-                const unbilled = row.unbilledMinutes ?? 0;
-                return (
-                  <tr key={row.membershipId}>
-                    <td>{row.memberName}</td>
-                    <td>{formatHours(row.totalMinutes)}</td>
-                    {reconciled && <td>{formatHours(row.loggedMinutes ?? 0)}</td>}
-                    {reconciled && (
-                      /*
-                        Never merged with the hours worked, and never hidden when negative: more
-                        logged than clocked is the one signal that says a record is wrong.
-                      */
-                      <td className={unbilled < 0 ? "metric-value negative" : undefined}>
-                        {unbilled < 0 ? "-" : ""}
-                        {formatHours(Math.abs(unbilled))}
-                      </td>
-                    )}
-                    <td>{row.declaredEntries > 0 ? row.declaredEntries : ""}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <SmartDataTable
+          tableId="attendance.team"
+          rows={tableRows}
+          columns={columns}
+          preference={tablePreference}
+          total={tableTotal}
+          page={page}
+          pageSize={pageSize}
+          pageParam="teamPage"
+          pageSizeParam="teamSize"
+          sortParam="teamSort"
+          sort={sort}
+          sortOptions={[
+            { value: "recorded_desc", label: t.mostHours! },
+            { value: "recorded_asc", label: t.leastHours! },
+            { value: "name_asc", label: t.nameAsc! },
+            { value: "name_desc", label: t.nameDesc! }
+          ]}
+          empty={t.empty!}
+          labels={tableLabels}
+        />
       </section>
     </>
   );

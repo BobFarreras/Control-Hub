@@ -1,16 +1,14 @@
 import { getAttendanceDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AttendanceRecord } from "@/components/attendance-record";
-import { AttendanceTeamLink } from "@/components/attendance-team-link";
 import { PageTopbar } from "@/components/page-topbar";
 import { apiFetch, readJson } from "@/lib/api";
 import type { AttendanceMonth } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
+import { formatHours } from "@/lib/format";
 import { requireSession } from "@/lib/require-session";
-import { monthName, monthRange, shiftMonth } from "./month-range";
+import { monthRange } from "./month-range";
 
 const emptyMonth: AttendanceMonth = {
   membershipId: "",
@@ -37,8 +35,9 @@ export default async function AttendancePage({
 
   const t = getDictionary(locale);
   const labels = getAttendanceDictionary(locale);
-  const range = monthRange((await searchParams).month);
-  const view = ((await searchParams).view ?? "table") as "table" | "calendar";
+  const query = await searchParams;
+  const range = monthRange(query.month);
+  const view = query.view === "records" || query.view === "table" ? "records" : "calendar";
 
   let month = emptyMonth;
   try {
@@ -64,53 +63,15 @@ export default async function AttendancePage({
             body: labels.helpBody,
             closeLabel: labels.cancel
           }}
-          /*
-            Links rather than buttons, so a month can be shared, bookmarked and opened in a new
-            tab. The accountancy asks for "March" far more often than for "this month".
-          */
           actions={
-            <nav className="month-nav" aria-label={labels.title}>
-              <Link
-                className="secondary-button"
-                href={`/${locale}/attendance?month=${shiftMonth(range.month, -1)}&view=${view}`}
-                aria-label={labels.monthPrevious}
-              >
-                <ChevronLeft size={16} aria-hidden="true" />
-              </Link>
-              <strong className="month-current">{monthName(range.month, locale)}</strong>
-              <Link
-                className="secondary-button"
-                href={`/${locale}/attendance?month=${shiftMonth(range.month, 1)}&view=${view}`}
-                aria-label={labels.monthNext}
-              >
-                <ChevronRight size={16} aria-hidden="true" />
-              </Link>
-              {/* View toggle */}
-              <div className="attendance-view-toggle" role="group" aria-label={labels.calendarView}>
-                <Link
-                  className={`secondary-button ${view === "table" ? "active" : ""}`}
-                  href={`/${locale}/attendance?month=${range.month}&view=table`}
-                  aria-label={labels.tableView}
-                  aria-pressed={view === "table"}
-                >
-                  {labels.table}
-                </Link>
-                <Link
-                  className={`secondary-button ${view === "calendar" ? "active" : ""}`}
-                  href={`/${locale}/attendance?month=${range.month}&view=calendar`}
-                  aria-label={labels.calendarView}
-                  aria-pressed={view === "calendar"}
-                >
-                  {labels.calendar}
-                </Link>
-              </div>
-              {/* Absent for anybody who may not read another person's record. */}
-              <AttendanceTeamLink href={`/${locale}/attendance/team?month=${range.month}`} label={labels.team} />
-            </nav>
+            <div className="attendance-topbar-total">
+              <span>{labels.total}</span>
+              <strong>{formatHours(month.totalMinutes)}</strong>
+            </div>
           }
         />
         <main className="compact-main">
-          <AttendanceRecord month={month} labels={labels} locale={locale} view={view} />
+          <AttendanceRecord month={month} labels={labels} locale={locale} range={range} view={view} />
         </main>
       </div>
     </div>
