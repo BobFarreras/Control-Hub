@@ -26,9 +26,9 @@ consolidacio son a `docs/development/pre-phase-6-product-polish.md`.
 
 - Alta d'incidencies i el seu vincle amb tickets: l'esquema hi es, la UI no.
 - Pantalla de configuracio de suport (horari, festius, objectius): l'API hi es, la UI no.
-- UI de gestio de festius, vacances, absencies i bloquejos: nomes hi ha API i domini.
-- La vista de calendari de jornada no mostra festius, vacances ni absencies, nomes hores
-  treballades i sessions obertes. Cal connectar-la amb les dades noves.
+- UI de gestio global de festius i bloquejos: nomes hi ha API i domini. La jornada personal ja
+  mostra i permet sol·licitar vacances i absencies sobre qualsevol mes de l'any; el calendari
+  consulta sempre el rang mensual complet, fins i tot quan no hi ha fitxatges.
 - CRM, productes i subscripcions no tenen encara proves E2E amb sessio iniciada, tot i que la
   infraestructura ja hi es.
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
@@ -74,6 +74,9 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
 - CRM permet canviar visualment les etapes actives del lead; Guanyat converteix el lead
   en client i Perdut es una accio terminal separada.
 - Tota UI nova ha de seguir `DESIGN_SYSTEM.md` i reutilitzar aquestes primitives.
+- Jornada separa Calendari, Registre i Equip (aquest darrer nomes amb `attendance:manage`). Les
+  taules de dies, moviments i equip reutilitzen `SmartDataTable`, amb ordre recent-primer,
+  filtres, paginacio i configuracio de columnes.
 
 ## Decisions de projectes i temps vigents
 

@@ -66,7 +66,7 @@ export function AttendancePendingRequests({
   if (vacations.length === 0 && absences.length === 0) return null;
 
   return (
-    <section className="project-panel" aria-label={t.pendingRequests}>
+    <section className="project-panel attendance-pending-requests" aria-label={t.pendingRequests}>
       <h3>{t.pendingRequests}</h3>
       <div className="crm-table-wrap inside-panel">
         <table className="crm-table">
