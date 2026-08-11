@@ -22,9 +22,22 @@ dos workers, base neta i sense reintents.
 **Fase 6 oberta a `feature/phase-6-connector-platform`, amb el disseny aprovat.**
 
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
-decisio criptografica a `docs/adr/0008-connector-credential-vault.md`. El seguent increment es
-el 2 del pla que tanca l'especificacio: domini pur — salut derivada, backoff, circuit breaker i
-redaccio — sense I/O ni migracio.
+decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
+
+Fets els increments 1 a 4 del pla que tanca l'especificacio:
+
+| # | Que hi ha | On |
+|---|---|---|
+| 2 | Domini pur: salut derivada, backoff amb jitter, circuit breaker, redaccio | `packages/domain/src/connectors.ts` |
+| 3 | Contracte de connector, registre resolt en build-time, webhook generic | `packages/connectors/` |
+| 4 | Migracio `0030`, port d'emmagatzematge i adaptador tenant-scoped | `packages/database/migrations/0030_connectors.sql`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts` |
+
+El seguent es el 5: el vault — anell de claus versionat, segellat AES-256-GCM i rotacio.
+
+La base de proves d'integracio local (`control_hub_test`) es va quedar el 7 d'agost amb la
+migracio `0018` aplicada mentre encara s'escrivia, i el migrador s'hi atura. Els 30 tests de
+l'increment 4 es van verificar sobre una base migrada de zero; recrear-la es el procediment de
+`docs/development/troubleshooting.md`.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai
@@ -113,6 +126,12 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   composta `tickets(tenant_id, project_id, customer_id)` que obliga el projecte d'un ticket a
   ser del mateix client.
 - `0017_projects_permissions.sql`: permisos nous amb backfill per als tenants existents.
+- `0030_connectors.sql`: instancies, credencials segellades, execucions, endpoints d'ingress i
+  inbox. Dues garanties que no viuen a l'aplicacio: l'index unic parcial que nomes deixa dues
+  credencials vives per tipus — la finestra de rotacio — i la clau unica
+  `(tenant_id, endpoint_id, provider_event_id)`, que es la idempotencia d'ingress feta complir
+  per la base i no per una lectura que dos workers poden creuar. Cap permis nou: `integrations:read`,
+  `integrations:manage` i `credentials:rotate` existeixen des de la `0003`.
 - `pnpm db:seed:dev`: dades representatives locals, idempotents i sense esborrar dades. **Encara
   no sembra projectes ni imputacions.**
 
