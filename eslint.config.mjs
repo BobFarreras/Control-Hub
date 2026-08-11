@@ -29,6 +29,21 @@ const workspaceLayers = {
     "@control-hub/i18n",
     "@control-hub/ui"
   ],
+  /**
+   * A connector may know the domain and nothing else of ours. Everything it needs to reach the
+   * outside arrives as a port, which is what keeps a defective connector unable to cross a
+   * tenant boundary: there is no adapter in scope to cross it with.
+   */
+  connectors: [
+    "@control-hub/application",
+    "@control-hub/config",
+    "@control-hub/contracts",
+    "@control-hub/database",
+    "@control-hub/i18n",
+    "@control-hub/observability",
+    "@control-hub/persistence",
+    "@control-hub/ui"
+  ],
   /** Everything else in packages/ is a leaf: shared plumbing with no workspace dependencies. */
   leaf: ["@control-hub/*"]
 };
@@ -118,6 +133,13 @@ export default tseslint.config(
     rules: restrict(
       workspaceLayers.application,
       "Use cases may only import @control-hub/domain; adapters belong outside this layer."
+    )
+  },
+  {
+    files: ["packages/connectors/**/*.ts"],
+    rules: restrict(
+      workspaceLayers.connectors,
+      "A connector may only import @control-hub/domain: everything else it needs arrives as a port."
     )
   },
   {
