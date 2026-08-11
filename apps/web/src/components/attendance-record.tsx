@@ -38,12 +38,16 @@ export function AttendanceRecord({
   month,
   labels: t,
   locale,
-  view = "table"
+  view = "table",
+  monthRange,
+  membershipId = ""
 }: {
   month: AttendanceMonth;
   labels: Labels;
   locale: string;
   view?: "table" | "calendar";
+  monthRange: { from: string; to: string };
+  membershipId?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -58,16 +62,40 @@ export function AttendanceRecord({
   const [vacations, setVacations] = useState<AttendanceVacation[]>([]);
   const [absences, setAbsences] = useState<AttendanceAbsence[]>([]);
   const [calendarVersion, setCalendarVersion] = useState(0);
+  const [resolvedMembershipId, setResolvedMembershipId] = useState(membershipId);
+
+  // Resolve membershipId from the summary API if not provided
+  useEffect(() => {
+    if (!membershipId && monthRange.from && monthRange.to) {
+      fetch(`/api/v1/attendance/summary?from=${monthRange.from}&to=${monthRange.to}`)
+        .then(async (res) => {
+          if (res.ok) {
+            const data = (await res.json()) as AttendanceMonth;
+            if (data.membershipId) setResolvedMembershipId(data.membershipId);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [membershipId, monthRange.from, monthRange.to]);
 
   const superseded = supersededIds(month.events);
   const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
   const date = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" });
 
+  // Force re-fetch when month changes (e.g., navigating between months)
   useEffect(() => {
-    if (view !== "calendar" || month.days.length === 0) return;
-    const from = month.days[0]!.day;
-    const to = month.days[month.days.length - 1]!.day;
-    const params = `from=${from}&to=${to}&membershipId=${month.membershipId}`;
+    if (view === "calendar") {
+      setHolidays([]);
+      setVacations([]);
+      setAbsences([]);
+      setCalendarVersion((v) => v + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on month change
+  }, [monthRange.from, monthRange.to]);
+
+  useEffect(() => {
+    if (view !== "calendar" || !resolvedMembershipId) return;
+    const params = `from=${monthRange.from}&to=${monthRange.to}&membershipId=${resolvedMembershipId}`;
 
     void Promise.all([
       fetch(`/api/v1/attendance/holidays?${params}`).then(async (response): Promise<HolidaysResponse> =>
@@ -84,7 +112,7 @@ export function AttendanceRecord({
       setVacations(v.vacations ?? []);
       setAbsences(a.absences ?? []);
     });
-  }, [view, month.days, month.membershipId, calendarVersion]);
+  }, [view, monthRange.from, monthRange.to, resolvedMembershipId, calendarVersion]);
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,7 +145,7 @@ export function AttendanceRecord({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        membershipId: month.membershipId,
+        membershipId: resolvedMembershipId,
         startDate: formValue(data, "startDate"),
         endDate: formValue(data, "endDate"),
         notes: formValue(data, "notes") || undefined
@@ -139,7 +167,7 @@ export function AttendanceRecord({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        membershipId: month.membershipId,
+        membershipId: resolvedMembershipId,
         startDate: formValue(data, "startDate"),
         endDate: formValue(data, "endDate"),
         type: formValue(data, "type"),

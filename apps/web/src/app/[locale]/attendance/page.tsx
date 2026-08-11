@@ -49,6 +49,9 @@ export default async function AttendancePage({
     // written, and a screen that says nothing is better than one that will not open.
   }
 
+  // Ensure membershipId is always available for the calendar component
+  const membershipId = month.membershipId || "";
+
   return (
     <div className="app-shell">
       <AppSidebar locale={locale} labels={t.navigation} />
@@ -110,7 +113,7 @@ export default async function AttendancePage({
           }
         />
         <main className="compact-main">
-          <AttendanceRecord month={month} labels={labels} locale={locale} view={view} />
+          <AttendanceRecord month={month} labels={labels} locale={locale} view={view} monthRange={range} membershipId={membershipId} />
         </main>
       </div>
     </div>
