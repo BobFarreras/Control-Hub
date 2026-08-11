@@ -33,9 +33,10 @@ Fets els increments 1 a 6 del pla que tanca l'especificacio:
 | 4 | Migracio `0030`, port d'emmagatzematge i adaptador tenant-scoped | `packages/database/migrations/0030_connectors.sql`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts` |
 | 5 | Vault: anell de claus versionat, segellat AES-256-GCM i rotacio en dos slots | `packages/config/src/key-ring.ts`, `packages/persistence/src/credential-vault.ts`, `packages/application/src/connector-credentials.ts` |
 | 6 | Runtime del worker: `guarded-fetch`, breaker compartit, reintents per cua i registre de cada execucio | `packages/domain/src/egress.ts`, `packages/config/src/egress-allowlist.ts`, `apps/worker/src/connectors/` |
+| 7 | API d'integracions darrere el flag `connectors`, problem details i auditoria de les accions i de les denegades | `packages/application/src/connector-instances.ts`, `apps/api/src/problem.ts`, `apps/api/src/routes/integrations.ts` |
 
-El seguent es el 7: l'API d'integracions — altes i configuracio d'instancies, credencials,
-execucions, errors en `application/problem+json` i traca d'auditoria.
+El seguent es el 8: l'ingress — firma HMAC, finestra de replay, inbox i idempotencia, amb les
+rutes d'endpoints que l'increment 7 ha deixat expressament per a aquest.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -61,6 +62,20 @@ a tots els altres tenants. L'estat del breaker viu a Valkey, compartit entre rep
 si Valkey no respon, el breaker deixa passar — una caiguda del cache no pot convertir-se en una
 caiguda dels connectors. Un error que ningu ha classificat es tracta com a permanent, per no
 reintentar indefinidament un defecte nostre.
+
+**El que l'increment 7 deixa decidit i no s'ha de tornar a decidir.** L'API mai no retorna un
+secret perque no en te cap manera d'obtenir-lo: les rutes reben `ConnectorCredentialService`, que
+segella i no obre, i `credentialResponse` escriu camp a camp — una columna nova a la taula no pot
+arribar a un client pel sol fet d'existir. Tampoc surt el `key_id`. Les regles que un operador pot
+trencar viuen a `ConnectorService`, no a la ruta, i per aixo els criteris 2 i 7 es tanquen amb
+proves que no obren cap socket: configuracio invalida es `422` amb codi estable i les incidencies
+nomes diuen el cami i el codi, mai el valor; un `Administrator` rep `403` a tot el que canvia
+alguna cosa i `200` a llegir. Els errors d'aquesta superficie son RFC 9457 amb
+`application/problem+json`; la resta de l'API conserva el sobre antic fins que algu la migri a
+proposit, i el que comparteixen es el `code`, que es el que la UI tradueix. Els codis segueixen en
+UPPER_SNAKE com a tot arreu. Desactivar atura primer i revoca despres, mai al reves. La
+comprovacio de salut s'encua i retorna `202`: l'API no parla mai amb un proveidor. I les rutes de
+credencials no es declaren si no hi ha anell de claus, tal com anuncia l'avis d'arrencada.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`. Si una altra sessio
 hi afegeix una migracio abans, la `0030` de connectors es renumera **abans del merge**, mai

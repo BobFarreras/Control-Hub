@@ -1,3 +1,4 @@
+import { parseKeyRing } from "@control-hub/config";
 import type { FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
@@ -267,6 +268,62 @@ describe("feature flags", () => {
     expect(attendanceRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
     // And the two flags are independent: one on does not drag the other in.
     expect(app.hasRoute({ method: "GET", url: "/api/v1/projects" })).toBe(false);
+  });
+
+  const connectorRoutes = [
+    ["GET", "/api/v1/connectors"],
+    ["GET", "/api/v1/integrations"],
+    ["POST", "/api/v1/integrations"],
+    ["GET", "/api/v1/integrations/:instanceId"],
+    ["PATCH", "/api/v1/integrations/:instanceId"],
+    ["POST", "/api/v1/integrations/:instanceId/enable"],
+    ["POST", "/api/v1/integrations/:instanceId/disable"],
+    ["POST", "/api/v1/integrations/:instanceId/health-checks"],
+    ["GET", "/api/v1/integrations/:instanceId/runs"]
+  ] as const;
+
+  const credentialRoutes = [
+    ["GET", "/api/v1/integrations/:instanceId/credentials"],
+    ["PUT", "/api/v1/integrations/:instanceId/credentials/:kind"],
+    ["DELETE", "/api/v1/integrations/:instanceId/credentials/:kind"],
+    ["POST", "/api/v1/integrations/:instanceId/credentials/:kind/promote"]
+  ] as const;
+
+  it("does not declare the connector surface while its flag is off", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set() });
+    apps.push(app);
+    await app.ready();
+
+    expect(connectorRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    expect((await app.inject({ method: "GET", url: "/api/v1/integrations" })).statusCode).toBe(404);
+  });
+
+  /**
+   * With the flag on and no key ring the integrations are readable and configurable, and there is
+   * nowhere to put a secret. Declaring the credential routes anyway would accept a customer's
+   * provider credential and then fail to store it, which is worse than answering 404.
+   */
+  it("declares the connector surface without the credential routes when there is no key ring", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["connectors"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(connectorRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+    expect(credentialRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+  });
+
+  it("declares the credential routes once a key ring is configured", async () => {
+    const app = buildApp({
+      ...authenticated,
+      featureFlags: new Set(["connectors"] as const),
+      connectorKeyRing: parseKeyRing(
+        JSON.stringify({ activeKeyId: "2026-08", keys: { "2026-08": Buffer.alloc(32, 3).toString("base64") } })
+      )
+    });
+    apps.push(app);
+    await app.ready();
+
+    expect(credentialRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
   });
 });
 

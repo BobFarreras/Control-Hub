@@ -15,6 +15,7 @@
     "@control-hub/application": "workspace:*",
     "@control-hub/config": "workspace:*",
     "@control-hub/connectors": "workspace:*",
+    "@control-hub/contracts": "workspace:*",
     "@control-hub/database": "workspace:*",
     "@control-hub/domain": "workspace:*",
     "@control-hub/observability": "workspace:*",

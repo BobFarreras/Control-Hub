@@ -1,3 +1,5 @@
+export * from "./connector-jobs.js";
+
 export type DependencyHealth = { status: "up" | "down"; latencyMs: number };
 export type LiveHealth = { status: "ok"; service: string; version: string };
 export type ReadyHealth = {

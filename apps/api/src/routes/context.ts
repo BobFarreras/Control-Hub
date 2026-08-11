@@ -2,6 +2,8 @@ import type {
   AttendanceService,
   CommerceService,
   CompanySubscriptionService,
+  ConnectorCredentialService,
+  ConnectorService,
   CustomerServicesService,
   CrmService,
   ProjectsService,
@@ -32,6 +34,17 @@ export type SupportContext = RouteContext & { support: SupportService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type AttendanceContext = RouteContext & { attendance: AttendanceService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };
+
+/**
+ * Two services rather than one, and that is the point: `credentials` can seal a secret and has no
+ * method that returns one. Reading a credential belongs to the worker, which imports a different
+ * class entirely.
+ */
+export type IntegrationsContext = RouteContext & {
+  connectors: ConnectorService;
+  /** Null when this installation has no key ring, in which case no credential route is declared. */
+  credentials: ConnectorCredentialService | null;
+};
 
 /** The public routes run before any session exists, so they take no auth instance. */
 export type PublicContext = {

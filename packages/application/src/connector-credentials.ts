@@ -77,6 +77,7 @@ export class ConnectorCredentialService {
    */
   async write(context: TenantContext, input: WriteCredentialInput): Promise<CredentialMetadata> {
     assertWritable(context);
+    await this.requireInstance(context, input.instanceId);
 
     const kind = input.kind.trim();
     if (!kindPattern.test(kind)) throw new ConnectorCredentialError("INVALID_KIND");
@@ -111,6 +112,7 @@ export class ConnectorCredentialService {
    */
   async promote(context: TenantContext, instanceId: string, kind: string): Promise<CredentialMetadata> {
     assertWritable(context);
+    await this.requireInstance(context, instanceId);
     const promoted = await this.repository.promoteCredential(context, instanceId, kind.trim());
     if (!promoted) throw new ConnectorCredentialError("NO_ROTATION_IN_PROGRESS");
     return promoted;
@@ -119,6 +121,7 @@ export class ConnectorCredentialService {
   /** Revokes every live credential of an instance, or of one kind. Returns how many it revoked. */
   async revoke(context: TenantContext, instanceId: string, kind?: string): Promise<number> {
     assertWritable(context);
+    await this.requireInstance(context, instanceId);
     const trimmed = kind?.trim();
     return trimmed
       ? this.repository.revokeCredentials(context, instanceId, trimmed)
@@ -128,7 +131,20 @@ export class ConnectorCredentialService {
   /** Metadata only. There is no method here that returns a secret; see the note at the top. */
   async list(context: TenantContext, instanceId: string): Promise<CredentialMetadata[]> {
     if (!hasPermission(context, "integrations:read")) throw new ConnectorCredentialError("FORBIDDEN");
+    await this.requireInstance(context, instanceId);
     return this.repository.listCredentials(context, instanceId);
+  }
+
+  /**
+   * The instance has to exist, in this tenant, before anything is sealed against it.
+   *
+   * Without this the identifier reaches the foreign key and comes back as a constraint violation,
+   * which says the same thing far less clearly — and an identifier from another tenant would be
+   * refused by a database error rather than by a rule, which is not a boundary anybody can read.
+   */
+  private async requireInstance(context: TenantContext, instanceId: string): Promise<void> {
+    const instance = await this.repository.getInstance(context, instanceId);
+    if (!instance) throw new ConnectorCredentialError("INSTANCE_NOT_FOUND");
   }
 }
 

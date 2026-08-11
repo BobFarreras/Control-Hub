@@ -1,4 +1,5 @@
 import { connectorKeyRingWarning, parseWorkerEnvironment } from "@control-hub/config";
+import { systemQueueName } from "@control-hub/contracts";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import { PostgresConnectorRepository } from "@control-hub/persistence";
@@ -44,7 +45,7 @@ const connectorRuntime = createConnectorRuntime({
 });
 
 const worker = new Worker(
-  "control-hub-system",
+  systemQueueName,
   async (job) => {
     if (job.name === connectorJobName) {
       if (!connectorRuntime) {
@@ -76,7 +77,7 @@ const worker = new Worker(
  * Missing a run is harmless: the pass recomputes from the ticket's own history rather than
  * from what happened since last time, and a breach already recorded is skipped.
  */
-const queue = new Queue("control-hub-system", { connection });
+const queue = new Queue(systemQueueName, { connection });
 await queue.upsertJobScheduler(
   ESCALATION_JOB,
   { every: 5 * 60 * 1000 },
@@ -97,4 +98,4 @@ const shutdown = async (signal: string) => {
 process.once("SIGINT", () => void shutdown("SIGINT"));
 process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
-logger.info({ queue: "control-hub-system", scheduled: ESCALATION_JOB }, "worker ready");
+logger.info({ queue: systemQueueName, scheduled: ESCALATION_JOB }, "worker ready");

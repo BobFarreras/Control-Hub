@@ -10,6 +10,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@control-hub/connectors": "workspace:*",
     "@control-hub/domain": "workspace:*"
   },
   "devDependencies": {

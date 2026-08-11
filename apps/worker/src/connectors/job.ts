@@ -1,3 +1,4 @@
+import { connectorJobName } from "@control-hub/contracts";
 import type { TenantContext } from "@control-hub/domain";
 import { DelayedError } from "bullmq";
 import { z } from "zod";
@@ -14,7 +15,7 @@ import type { ConnectorRuntime, RunVerdict } from "./runtime.js";
  * Specification: `docs/specifications/connectors.md`.
  */
 
-export const connectorJobName = "connector-run";
+export { connectorJobName };
 
 export const connectorJobSchema = z.strictObject({
   tenantId: z.uuid(),

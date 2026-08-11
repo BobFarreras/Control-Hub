@@ -1,5 +1,6 @@
 import type { ConnectorRepository, ConnectorSecretReader, SyncRunRecord } from "@control-hub/application";
 import type { ConnectorContext, HttpPort, RegisteredConnector } from "@control-hub/connectors";
+import { connectorHealthOperation } from "@control-hub/contracts";
 import {
   backoffDelayMs,
   defaultBackoff,
@@ -64,8 +65,13 @@ export type RunRequest = {
   cursor: string | null;
 };
 
-/** The operation name reserved for a health check, which is not one a connector declares. */
-export const healthOperation = "health";
+/**
+ * The operation name reserved for a health check, which is not one a connector declares.
+ *
+ * It comes from the contracts package because the API enqueues health checks under exactly this
+ * name: the two processes have to mean the same thing by it.
+ */
+export const healthOperation = connectorHealthOperation;
 
 export class ConnectorRuntime {
   private readonly backoff: BackoffPolicy;

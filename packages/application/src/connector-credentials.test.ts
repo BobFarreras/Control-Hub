@@ -60,7 +60,13 @@ type Row = SealedCredential & { instanceId: string; revoked: boolean; usedAt: Da
 /** Only the credential half of the port. Everything else throws if a test reaches for it. */
 class FakeRepository {
   readonly rows: Row[] = [];
+  /** Every instance exists except this one, which stands in for another tenant's identifier. */
+  readonly missingInstanceId = "44444444-4444-4444-8444-444444444444";
   private next = 0;
+
+  getInstance(_context: TenantContext, id: string): Promise<{ id: string } | null> {
+    return Promise.resolve(id === this.missingInstanceId ? null : { id });
+  }
 
   putCredential(_context: TenantContext, input: PutCredentialInput): Promise<CredentialMetadata> {
     this.next += 1;
@@ -220,6 +226,19 @@ describe("writing a credential", () => {
         "INVALID_KIND"
       );
     }
+  });
+
+  /**
+   * The read that answers this is tenant-scoped, so another tenant's instance is simply not
+   * found. Nothing is sealed against an identifier somebody guessed.
+   */
+  it("refuses an instance this tenant does not have", async () => {
+    const missing = repository.missingInstanceId;
+    await expect(service.write(rotator, { instanceId: missing, kind: "api_key", secret: "sk_live_9f2c8ab4" }))
+      .rejects.toThrow("INSTANCE_NOT_FOUND");
+    await expect(service.promote(rotator, missing, "api_key")).rejects.toThrow("INSTANCE_NOT_FOUND");
+    await expect(service.revoke(rotator, missing)).rejects.toThrow("INSTANCE_NOT_FOUND");
+    expect(sealer.sealed).toEqual([]);
   });
 });
 

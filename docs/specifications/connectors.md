@@ -293,19 +293,31 @@ REST sota `/api/v1`, problem details RFC 9457 amb `code` estable, segons
 
 | Metode i ruta | Permis | Notes |
 |---|---|---|
+| `GET /api/v1/connectors` | `integrations:read` | Cataleg del que porta la release, per poder triar |
 | `GET /api/v1/integrations` | `integrations:read` | Instancies amb salut; mai credencials |
+| `GET /api/v1/integrations/:id` | `integrations:read` | Una instancia; `404` si no es d'aquest tenant |
 | `POST /api/v1/integrations` | `integrations:manage` | Valida config; `422` si no passa |
 | `PATCH /api/v1/integrations/:id` | `integrations:manage` | Revalida i puja `config_version` |
-| `POST /api/v1/integrations/:id/enable` i `/disable` | `integrations:manage` | Desactivar revoca credencials |
-| `POST /api/v1/integrations/:id/health-checks` | `integrations:manage` | Encua; `202` amb id de run |
+| `POST /api/v1/integrations/:id/enable` i `/disable` | `integrations:manage` | Enable revalida; disable revoca credencials |
+| `POST /api/v1/integrations/:id/health-checks` | `integrations:manage` | Encua; `202` amb l'identificador de la peticio |
 | `GET /api/v1/integrations/:id/runs` | `integrations:read` | Historial paginat |
+| `GET /api/v1/integrations/:id/credentials` | `integrations:read` | Nomes metadades: ni valor ni `key_id` |
 | `PUT /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Nomes escriu; retorna metadades |
+| `POST /api/v1/integrations/:id/credentials/:kind/promote` | `credentials:rotate` | Tanca la rotacio |
 | `DELETE /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Revoca |
 | `POST /api/v1/integrations/:id/endpoints` | `integrations:manage` | Retorna URL i secret **una vegada** |
 | `DELETE /api/v1/integrations/:id/endpoints/:id` | `integrations:manage` | Revoca |
 
-Les operacions repetibles accepten `Idempotency-Key`. OpenAPI s'actualitza al mateix increment
-que la ruta.
+El `202` de la comprovacio de salut retorna l'identificador de la peticio encuada, no el d'un
+run: el run el crea el worker quan comença, i inventar-ne l'id abans faria que la redelivery
+trobes la fila ja oberta i no fes la feina. El resultat apareix a `/runs`.
+
+Les rutes de credencials nomes es declaren si hi ha anell de claus. Sense, la resta de la
+superficie funciona i aquestes responen `404`, que es la veritat: no hi ha res amb que segellar.
+
+Les operacions repetibles accepten `Idempotency-Key`: a `health-checks` la clau esdeve
+l'identificador del job, i BullMQ refusa el segon amb el mateix. OpenAPI s'actualitza al mateix
+increment que la ruta.
 
 ## UX, i18n i accessibilitat
 
