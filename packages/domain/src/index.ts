@@ -228,4 +228,5 @@ export {
 export * from "./support.js";
 export * from "./projects.js";
 export * from "./attendance.js";
+export * from "./connectors.js";
 export { localDay, localParts, type LocalParts } from "./tenant-clock.js";
