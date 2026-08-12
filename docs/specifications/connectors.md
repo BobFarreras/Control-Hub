@@ -340,6 +340,14 @@ Les operacions repetibles accepten `Idempotency-Key`: a `health-checks` la clau 
 l'identificador del job, i BullMQ refusa el segon amb el mateix. OpenAPI s'actualitza al mateix
 increment que la ruta.
 
+El document OpenAPI es **genera de les rutes** (`/api/docs` quan `exposeApiDocs` esta obert), amb
+`tags`, `summary` i `description` a cada ruta d'aquesta superficie, i cap **response schema**: a
+Fastify un schema de resposta tambe es el serialitzador, aixi que un camp que hi faltes
+desapareixeria de la resposta. Les formes de resposta son les d'aquesta seccio i les del cataleg,
+i aquest document es qui les fixa. La ruta publica d'ingress tambe hi surt, perque es l'adreca
+contra la qual algu ha de configurar un proveidor; que qualsevol refus respongui igual es
+propietat del handler, no del fet de no documentar-la.
+
 ## UX, i18n i accessibilitat
 
 Una pantalla, `/{locale}/integrations`, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com

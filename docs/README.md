@@ -13,7 +13,9 @@
 - `adr/`: decisions i alternatives.
 - `specifications/`: contractes implementables.
 - `security/`: amenaces i controls.
-- `runbooks/`: operacio i resposta.
+- `runbooks/`: operacio i resposta. `runbooks/installation.md` (instal·lacio i actualitzacions),
+  `runbooks/disaster-recovery.md` (recuperacio) i `runbooks/connector-key-rotation.md` (rotar
+  l'anell de claus dels connectors, segons `adr/0008-connector-credential-vault.md`).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 

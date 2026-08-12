@@ -24,7 +24,7 @@ dos workers, base neta i sense reintents.
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
 
-Fets els increments 1 a 9 del pla que tanca l'especificacio:
+Fets els increments 1 a 10 del pla que tanca l'especificacio:
 
 | # | Que hi ha | On |
 |---|---|---|
@@ -37,8 +37,27 @@ Fets els increments 1 a 9 del pla que tanca l'especificacio:
 | 8 | Ingress: encunyat d'endpoints, verificacio de firma, finestra de replay i inbox idempotent | `packages/application/src/connector-ingress.ts`, `packages/persistence/src/ingress-crypto.ts`, `apps/api/src/routes/webhooks.ts` |
 | 9 | Pantalla `/{locale}/integrations` amb `ca`, `es` i `en`: llistat, panell de detall, endpoints i execucions | `apps/web/src/app/[locale]/integrations/page.tsx`, `apps/web/src/components/integrations-workspace.tsx`, `apps/web/src/lib/integrations.ts`, `packages/i18n/src/index.ts` |
 
-El seguent es el 10: OpenAPI de la superficie de connectors, el runbook de rotacio de la clau
-mestra i el tancament de la Definition of Done de la fase.
+| 10 | OpenAPI de la superficie de connectors generada del codi, runbook de rotacio de l'anell i tancament de la fase | `apps/api/src/app.ts`, `apps/api/src/routes/integrations.ts`, `apps/api/src/openapi.test.ts`, `docs/runbooks/connector-key-rotation.md` |
+
+**Definition of Done de la Fase 6.** Els set criteris d'acceptacio de
+`docs/specifications/connectors.md`, i on falla la prova si algu els trenca:
+
+| # | Criteri | On es prova |
+|---|---|---|
+| 1 | Cap credencial surt per l'API | `apps/api/src/routes/integrations.test.ts` (la resposta s'escriu camp a camp i el test hi posa una fila amb ciphertext i secret a sobre), `packages/persistence/src/credential-vault.test.ts`, `packages/persistence/src/connector-repository.integration.test.ts` |
+| 2 | Configuracio invalida rebutjada amb `422` i codi estable | `packages/application/src/connector-instances.test.ts`, `packages/connectors/src/contract.test.ts` |
+| 3 | Timeout i rate limit no bloquegen el worker | `apps/worker/src/connectors/job.unit.test.ts` ("never sleeps"), `apps/worker/src/connectors/guarded-fetch.unit.test.ts` |
+| 4 | Un retry no duplica efectes | `apps/worker/src/connectors/runtime.unit.test.ts` (redelivery), `packages/application/src/connector-ingress.test.ts` (inbox idempotent) |
+| 5 | Un connector fallit no afecta el core | `apps/worker/src/connectors/circuit-store.unit.test.ts`, `apps/api/src/app.test.ts` (la superficie no declarada no toca la resta) |
+| 6 | Cap tenant veu res d'un altre | `packages/persistence/src/connector-repository.integration.test.ts`, `packages/application/src/connector-credentials.test.ts` (l'AAD lliga el sobre al tenant que truca, no al que nomena) |
+| 7 | `Administrator` rep `403` a tot el que canvia i `200` a llegir | `packages/application/src/connector-instances.test.ts`, `packages/application/src/connector-ingress.test.ts` |
+
+El que **no** tanca aquest increment i s'ha de saber abans del merge: la prova E2E
+`tests/e2e/integrations.authenticated.spec.ts` esta escrita pero **encara no s'ha executat mai**
+en aquesta branca, perque `pnpm check:e2e` aixeca la seva propia pila i la de verificacio estava
+amunt. I la migracio `0030` es renumera abans del merge si una altra sessio n'hi ha afegit una.
+
+El seguent pas de la fase es executar-la i decidir el merge cap a `develop`.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -117,6 +136,22 @@ un boto que falla en clicar-lo. El llistat s'ordena, es filtra i es pagina **a l
 que aquesta llista deixi de cabre en una resposta, el fitxer que ha de canviar es la pagina. La
 configuracio es un camp JSON perque es l'unica forma que generalitza a connectors que aquesta
 versio encara no porta, i les incidencies es dibuixen amb cami i codi, mai amb el valor escrit.
+
+**El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
+**genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i
+`description` al seu propi `schema`, i `apps/api/src/openapi.test.ts` falla si alguna en surt
+sense. Cap ruta declara **response schema**, i es una decisio: a Fastify un schema de resposta
+tambe es el serialitzador, de manera que un camp que hi falti desapareix de la resposta — un
+document que edita silenciosament el que l'API retorna es pitjor que un que la descriu en prosa,
+i encara mes a l'unica resposta que porta un secret un sol cop. Les formes viuen a
+l'especificacio. El document diu la veritat del desplegament que el genera: sense anell de claus
+no hi surten ni credencials, ni endpoints, ni el webhook public, perque en aquell desplegament no
+existeixen. La ruta publica d'ingress **si** que es documenta: amagar-la nomes la treu de la
+pagina que llegeix qui ha de configurar el proveidor, i la resposta uniforme davant qualsevol
+refus es una propietat del handler, no d'una ruta no documentada. El runbook de rotacio es
+`docs/runbooks/connector-key-rotation.md`: rotar no reescriu cap fila, perque cada sobre porta el
+seu `key_id`, i per tant una fuga **no** es arregla rotant — s'arregla tornant a escriure totes
+les credencials i rotant-les tambe al proveidor.
 
 Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`; el 9 nomes toca
 `apps/web` i el diccionari, mai `packages/ui`. Si una altra sessio hi afegeix una migracio abans,

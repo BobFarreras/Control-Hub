@@ -35,6 +35,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`INTERNATIONALIZATION.md`](INTERNATIONALIZATION.md): catala, castella, angles i regles de localitzacio.
 - [`BRANCHING.md`](BRANCHING.md): branques, pull requests, releases i hotfixes.
 - [`docs/runbooks/installation.md`](docs/runbooks/installation.md): instal·lacio, primer Owner, membres i actualitzacions.
+- [`docs/runbooks/connector-key-rotation.md`](docs/runbooks/connector-key-rotation.md): rotar l'anell de claus que segella les credencials dels connectors.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.
 - [`SECURITY.md`](SECURITY.md): reporting privat i politica de seguretat.
 - [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md): baseline d'aplicacio, xarxa, contenidors, dades i supply chain.

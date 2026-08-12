@@ -148,7 +148,37 @@ export function buildApp(options: BuildAppOptions) {
     nameSpace: "control-hub:rate-limit:",
     skipOnError: true
   });
-  void app.register(swagger, { openapi: { info: { title: "Control Hub API", version: options.version ?? "0.1.0" } } });
+  /**
+   * The document, described but never serialised from.
+   *
+   * No route here declares a `response` schema, and that is a decision rather than an omission:
+   * in Fastify a response schema is also the serialiser, so a field missing from it disappears
+   * from the answer. A document that silently edits what the API returns is worse than one that
+   * describes it in prose — especially on the one route whose answer carries a secret exactly
+   * once. The shapes are written out in `docs/specifications/connectors.md`.
+   */
+  void app.register(swagger, {
+    openapi: {
+      info: {
+        title: "Control Hub API",
+        version: options.version ?? "0.1.0",
+        description: [
+          "The connector surface answers errors as RFC 9457 problem details",
+          "(`application/problem+json`) with a stable UPPER_SNAKE `code`; the rest of the API",
+          "still answers `{ code, requestId }`. The `code` is the part both shapes share and the",
+          "part a client may branch on. No response anywhere returns a credential value, and the",
+          "signing secret of a webhook endpoint is returned once, by the call that mints it."
+        ].join(" ")
+      },
+      tags: [
+        { name: "connectors", description: "What this release can connect to at all." },
+        { name: "integrations", description: "Instances of a connector, their state and their health." },
+        { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
+        { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
+        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." }
+      ]
+    }
+  });
   if (options.exposeApiDocs) void app.register(swaggerUi, { routePrefix: "/api/docs" });
 
   app.addHook("onRequest", async (request, reply) => {
@@ -348,9 +378,7 @@ export function buildApp(options: BuildAppOptions) {
     connectorQueue = new Queue(systemQueueName, { connection: queueConnection(options.redisUrl) });
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
-    const ingress = vault
-      ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto)
-      : null;
+    const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),

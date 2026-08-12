@@ -135,7 +135,16 @@ export function registerWebhookRoutes({ app, ingress }: WebhookContext) {
         // No params schema on purpose: a malformed identifier would be answered `400` by the
         // validator and a well-formed unknown one `404`, which is the enumeration this route is
         // written to prevent. The service refuses both the same way.
-        schema: { hide: true }
+        //
+        // Described in the document even so. Hiding it would only keep it out of the page an
+        // integrator reads, and this is the one address a provider is configured against: the
+        // uniform refusal is a property of the handler, not of an undocumented route.
+        schema: {
+          tags: ["webhooks"],
+          summary: "Receive a delivery from a provider",
+          description:
+            "Public: authenticated by the endpoint's own signature, not by a session. The delivery must be `application/json`, at most 1 MiB, and signed with the secret handed over when the address was minted; the body is verified as the bytes that arrived, so a re-serialised payload will not match. 202 with an empty body means stored, not processed, and a redelivery answers the same. Every refusal — unknown address, bad signature, timestamp outside the window — answers 404 `NOT_FOUND`."
+        }
       },
       async (request, reply) => {
         const outcome: IngressOutcome = await ingress.accept({

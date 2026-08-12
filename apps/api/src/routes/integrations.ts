@@ -178,21 +178,43 @@ export function registerIntegrationRoutes({
     }
   }
 
-  app.get("/api/v1/connectors", async (request) => {
-    const context = await resolveTenantContext(auth, database, request);
-    requirePermission(context, "integrations:read");
-    return { connectors: connectors.catalogueEntries(context).map(catalogueResponse) };
-  });
+  app.get(
+    "/api/v1/connectors",
+    {
+      schema: {
+        tags: ["connectors"],
+        summary: "What this release can connect to",
+        description:
+          "The connectors compiled into this build, with the operations and credential kinds each declares. A type absent here cannot be installed: the registry is resolved at build time, not from the database."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "integrations:read");
+      return { connectors: connectors.catalogueEntries(context).map(catalogueResponse) };
+    }
+  );
 
-  app.get("/api/v1/integrations", async (request) => {
-    const context = await resolveTenantContext(auth, database, request);
-    requirePermission(context, "integrations:read");
-    return { integrations: (await connectors.list(context)).map(instanceResponse) };
-  });
+  app.get(
+    "/api/v1/integrations",
+    {
+      schema: {
+        tags: ["integrations"],
+        summary: "Every integration of this tenant",
+        description:
+          "Unpaginated on purpose: an installation holds a handful of instances, and the caller sorts and filters what it gets."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "integrations:read");
+      return { integrations: (await connectors.list(context)).map(instanceResponse) };
+    }
+  );
 
   app.get<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId",
-    { schema: { params: instanceParams } },
+    { schema: { params: instanceParams, tags: ["integrations"], summary: "One integration" } },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "integrations:read");
@@ -204,6 +226,10 @@ export function registerIntegrationRoutes({
     "/api/v1/integrations",
     {
       schema: {
+        tags: ["integrations"],
+        summary: "Install a connector",
+        description:
+          "The instance starts as a draft. Its configuration is validated by the connector itself, so an unknown or malformed field is refused with `INVALID_CONFIG` and issues that name the path, never the value.",
         body: {
           type: "object",
           additionalProperties: false,
@@ -246,6 +272,10 @@ export function registerIntegrationRoutes({
     "/api/v1/integrations/:instanceId",
     {
       schema: {
+        tags: ["integrations"],
+        summary: "Replace the configuration",
+        description:
+          "Bumps `configVersion`, which is what every run records, so an old run stays readable against the configuration it actually ran with.",
         params: instanceParams,
         body: {
           type: "object",
@@ -279,7 +309,7 @@ export function registerIntegrationRoutes({
 
   app.post<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/enable",
-    { schema: { params: instanceParams } },
+    { schema: { params: instanceParams, tags: ["integrations"], summary: "Enable an integration" } },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId } = request.params;
@@ -302,7 +332,14 @@ export function registerIntegrationRoutes({
 
   app.post<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/disable",
-    { schema: { params: instanceParams } },
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["integrations"],
+        summary: "Stop an integration and revoke its credentials",
+        description: "Stops first and revokes after, never the other way round."
+      }
+    },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId } = request.params;
@@ -325,7 +362,15 @@ export function registerIntegrationRoutes({
 
   app.post<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/health-checks",
-    { schema: { params: instanceParams } },
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["integrations"],
+        summary: "Ask for a health check",
+        description:
+          "Answers 202: the check is queued, never performed here. The API does not talk to providers; the outcome arrives as a run. An `Idempotency-Key` header makes a retry land on the same job."
+      }
+    },
     async (request, reply) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId } = request.params;
@@ -355,6 +400,8 @@ export function registerIntegrationRoutes({
     "/api/v1/integrations/:instanceId/runs",
     {
       schema: {
+        tags: ["integrations"],
+        summary: "What this integration has run",
         params: instanceParams,
         querystring: {
           type: "object",
@@ -379,7 +426,14 @@ export function registerIntegrationRoutes({
 
   app.get<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/endpoints",
-    { schema: { params: instanceParams } },
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["endpoints"],
+        summary: "The inbound addresses of an integration",
+        description: "Without the address itself: it was handed over once, exactly like the secret beside it."
+      }
+    },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "integrations:read");
@@ -396,7 +450,15 @@ export function registerIntegrationRoutes({
    */
   app.post<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/endpoints",
-    { schema: { params: instanceParams } },
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["endpoints"],
+        summary: "Mint an address and its signing secret",
+        description:
+          "The only response in this API that carries a secret, and it carries it once. It answers with a path rather than a URL: the API knows nothing of its own public address beyond a `Host` header the caller chose."
+      }
+    },
     async (request, reply) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId } = request.params;
@@ -427,6 +489,9 @@ export function registerIntegrationRoutes({
     "/api/v1/integrations/:instanceId/endpoints/:endpointId",
     {
       schema: {
+        tags: ["endpoints"],
+        summary: "Revoke an address",
+        description: "Revokes the endpoint and then the secret that signed for it, in that order.",
         params: {
           type: "object",
           additionalProperties: false,
@@ -460,7 +525,15 @@ export function registerIntegrationRoutes({
 
   app.get<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/credentials",
-    { schema: { params: instanceParams } },
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["credentials"],
+        summary: "Credential metadata",
+        description:
+          "When each credential was written, used, rotated and revoked. Never the value, and not the ring key that sealed it either."
+      }
+    },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "integrations:read");
@@ -473,6 +546,10 @@ export function registerIntegrationRoutes({
     "/api/v1/integrations/:instanceId/credentials/:kind",
     {
       schema: {
+        tags: ["credentials"],
+        summary: "Write or rotate a credential",
+        description:
+          "Requires `credentials:rotate`, which is a role a second factor guards. Writing a second value for the same kind opens a rotation in the secondary slot; promoting it closes the rotation. Whoever may write a credential may not read it back: no route in this API can.",
         params: credentialParams,
         body: {
           type: "object",
@@ -519,7 +596,14 @@ export function registerIntegrationRoutes({
    */
   app.post<{ Params: { instanceId: string; kind: string } }>(
     "/api/v1/integrations/:instanceId/credentials/:kind/promote",
-    { schema: { params: credentialParams } },
+    {
+      schema: {
+        params: credentialParams,
+        tags: ["credentials"],
+        summary: "Finish a rotation",
+        description: "The secondary slot becomes the primary and the previous value is revoked, in one transaction."
+      }
+    },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId, kind } = request.params;
@@ -543,7 +627,14 @@ export function registerIntegrationRoutes({
 
   app.delete<{ Params: { instanceId: string; kind: string } }>(
     "/api/v1/integrations/:instanceId/credentials/:kind",
-    { schema: { params: credentialParams } },
+    {
+      schema: {
+        params: credentialParams,
+        tags: ["credentials"],
+        summary: "Revoke a credential",
+        description: "The sealed envelope stays in the table so the revocation itself can be audited later."
+      }
+    },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       const { instanceId, kind } = request.params;
