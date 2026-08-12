@@ -36,8 +36,8 @@ describe("the registry", () => {
 });
 
 describe("what this installation ships", () => {
-  it("carries the reference connector and nothing else yet", () => {
-    expect(connectorRegistry.types()).toEqual(["generic-webhook"]);
+  it("carries the reference connector and n8n", () => {
+    expect(connectorRegistry.types()).toEqual(["generic-webhook", "n8n"]);
   });
 
   it("resolves it at build time, with no door to register another at runtime", () => {

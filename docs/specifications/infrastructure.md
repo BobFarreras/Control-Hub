@@ -232,9 +232,25 @@ pantalla de configuracio: la d'integracions ja els mostra, perque llegeix el cat
 | Config | `baseUrl` (allowlistada), `includeArchived: false`, `executionsWindowHours` (1..168, per defecte 24) |
 | Credencials | `api_token` (capcalera `X-N8N-API-KEY`) i `ingress_signing` |
 | Egress | `operator_allowlist`, esquemes `http` i `https` |
-| Operacions | `pull_workflows` (`GET /api/v1/workflows`, forma `state`, cada 15 min) i `pull_executions` (`GET /api/v1/executions`, amb cursor, forma `event`, cada 5 min) |
+| Operacions | `pull_workflows` (`GET /api/v1/workflows`, forma `state`, cada 15 min) i `pull_executions` (`GET /api/v1/executions?status=error&includeData=false`, amb cursor, forma `event`, cada 5 min) |
 | Ingress | Si. Un **error workflow** d'n8n ens signa i ens empeny l'execucio fallida |
 | `externalId` | `workflow:<id>` i `execution:<id>` |
+
+**Del que n8n ens dona, en desem una projeccio, mai el cos.** Un workflow d'n8n porta els seus
+nodes a dins, i els parametres d'un node contenen habitualment claus d'API, cadenes de connexio i
+dades del client que algu ha escrit a l'editor; una execucio porta els items que hi han passat.
+Desar-ho seria convertir Control Hub en una copia de tots els secrets de tots els workflows de tots
+els clients. Per aixo els esquemes del connector **nomenen els camps que es queden** —d'un
+workflow: nom, actiu, arxivat, etiquetes i dates; d'una execucio: workflow, estat, mode i hores— i
+la resta cau al parser, abans de construir el registre. Per aixo mateix `pull_executions` demana
+`includeData=false` i nomes les fallades: una execucio correcta no la mira ningu, i una instancia
+amb milers al dia ompliria la taula de files que no es llegeixen.
+
+**El cursor de `pull_executions` es una marca d'aigua, no una pagina.** El cursor d'n8n apunta cap
+enrere, aixi que guardar-lo entre passades seria caminar cap al passat i no veure mai res nou. El
+que es desa es l'id mes alt ja llegit; la passada seguent baixa fins que en reconeix un i para. La
+finestra `executionsWindowHours` nomes acota **la primera** lectura d'una instancia amb anys
+d'historial.
 
 **El secret de firma el generem nosaltres i l'ha de fer servir un workflow d'n8n.** n8n no signa
 res sol: qui configura la instancia ha de posar un node HMAC-SHA256 a l'error workflow amb el

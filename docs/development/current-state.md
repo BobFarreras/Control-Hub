@@ -24,11 +24,10 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A4 de la Fase 7.1**: el connector `n8n` — `pull_workflows`, `pull_executions` i
-l'entrada de l'error workflow. Amb A3 tancat, la plataforma ja sap programar-lo, executar-lo un
-cop alhora i desar el que torni; A4 nomes ha de tocar
-`packages/connectors/src/built-in/n8n.ts` i el seu test. Si en algun punt cal tocar `packages/domain`,
-`packages/application` o `apps/api`, el que falla es la plataforma i s'arregla alli.
+**L'increment A5 de la Fase 7.1**: la migracio `0035`, l'associacio d'un workflow amb un client,
+el motor d'alertes amb la regla `workflow_failed`, i els casos d'us i les rutes d'API que hi van.
+Es el primer increment de la fase que toca `packages/domain`, `packages/application` i `apps/api`,
+i el primer que fa servir de debo el que A2, A3 i A4 han deixat escrit a `connector_records`.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -47,6 +46,7 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 | A1 | La flag `infrastructure` registrada i apagada, i l'especificacio aprovada a l'index | `packages/config/src/flags.ts`, `docs/specifications/infrastructure.md` |
 | A2 | G1 tapat: `connector_records` i `connector_operation_state` (`0033`), forma per operacio al manifest, cursor persistit i purga horaria | `packages/database/migrations/0033_connector_records.sql`, `packages/connectors/src/contract.ts`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/` |
 | A3 | G2 i G3 tapats: cadencia al manifest amb minim de 60 s, cua `connectors` a part, reconciliador de calendari cada 2 minuts, una execucio alhora per operacio (`0034`) i confinament a la base sota `operator_allowlist` | `packages/connectors/src/contract.ts`, `packages/contracts/src/connector-jobs.ts`, `packages/database/migrations/0034_connector_run_lease.sql`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
+| A4 | Connector `n8n`: `pull_workflows` i `pull_executions` amb marca d'aigua, salut autenticada i entrada de l'error workflow signada. Del que n8n dona se'n desa una projeccio, mai el cos | `packages/connectors/src/built-in/n8n.ts` i el seu test |
 
 L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
 sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
@@ -62,6 +62,13 @@ nomes evites programar de nou deixaria els calendaris antics sondejant proveidor
 d'aturar-los que no fos un desplegament. Tambe seu: les operacions no van per la cua `system` sino
 per una de propia, `connectors`, amb concurrencia 4, i la migracio `0034` posa un sostre d'una
 execucio alhora per `(instancia, operacio)` amb un arrendament de 10 minuts.
+
+**El connector `n8n` ja es al registre, pero encara no el fa servir ningu**: cal una instancia
+creada per la pantalla d'integracions, amb la seva `api_token` desada a la caixa forta, i la flag
+`infrastructure` oberta perque el reconciliador li programi res. Els seus contract tests van contra
+fixtures escrites des del contracte public documentat de l'API v1, **no capturades d'una instancia
+real** — l'acces a produccio es fora d'abast d'aquesta fase. El dia que se sapiga la versio d'n8n
+de la VPS, les fixtures s'hi fixen i el test la nomena.
 
 **No confondre amb la "Fase 7B - Accions i credencials OAuth"** que hi ha proposada a
 `IMPLEMENTATION_PLAN.md`: es una fase diferent i posterior. Per aixo la particio d'aquesta va amb
