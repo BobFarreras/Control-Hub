@@ -270,9 +270,10 @@ no tornar a escriure res.
 
 ## Model de dades
 
-Tres migracions. Al moment d'escriure aixo el numero mes alt del repositori es `0032`; si una
-altra sessio se'ns avanca, es **renumeren abans del merge**, mai despres d'haver-les aplicat
-enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tenant_id, id)`.
+Quatre migracions. Se'n van reservar tres i en va caldre una quarta, la `0034`, que la seccio de
+cua explica. Al moment d'escriure aixo el numero mes alt del repositori era `0032`; les d'aquesta
+fase han quedat de la `0033` a la `0036`, i si una altra sessio se'ns avanca es **renumeren abans
+del merge**, mai despres d'haver-les aplicat enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tenant_id, id)`.
 
 **`0033_connector_records.sql` — plataforma, tanca G1 (7.1)**
 
@@ -285,7 +286,19 @@ enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tena
   `last_success_at`. `unique (tenant_id, instance_id, operation)`. `last_success_at` es el que la
   pantalla ensenya com a edat de la lectura i el que fa afamar una regla.
 
-**`0034_infrastructure_automations.sql` — modul (7.1)**
+**`0034_connector_run_lease.sql` — plataforma, sostre de concurrencia (7.1)**
+
+- Index unic parcial `(tenant_id, instance_id, operation) where status = 'running'` sobre
+  `connector_sync_runs`. **L'index es el sostre**, no una lectura previa: dos workers que
+  comprovessin alhora si hi ha una execucio en curs tots dos veurien que no, i tots dos tindrien
+  rao. La segona insercio xoca i el runtime torna `skipped: already_running`.
+- La migracio tanca abans com a `dead_letter` les files `running` que ja hi hagi de mes, per no
+  deixar l'index sense poder crear-se.
+- El sostre no pot ser permanent: un worker mort a mitja passada deixaria l'operacio bloquejada
+  per sempre. `startRun` dona per abandonada tota execucio que porti mes de **10 minuts** en
+  `running` (`RUN_ABANDONED`) i li pren el relleu.
+
+**`0035_infrastructure_automations.sql` — modul (7.1)**
 
 - `infra_automation_links` — `(instance_id, external_id)` cap a `customer_id` i notes. **Es
   l'associacio empresarial**; el workflow en si viu a `connector_records` i no es copia.
@@ -297,7 +310,7 @@ enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tena
   `(tenant_id, rule_id, dedup_key) where status = 'firing'`. Les resoltes es guarden 180 dies:
   son evidencia.
 
-**`0035_infrastructure_hosts.sql` — modul (7.2)**
+**`0036_infrastructure_hosts.sql` — modul (7.2)**
 
 - `infra_hosts` — `name`, `hostname` (l'etiqueta amb que Prometheus l'anomena), `environment`,
   `notes`. `unique (tenant_id, name)`.
@@ -320,7 +333,9 @@ i la separacio la fa impossible per construccio, no per calibratge.
 
 **Una execucio alhora per `(instancia, operacio)`.** Si arriba la passada seguent i l'anterior
 encara consta `running`, la nova acaba sense fer res (`skipped: already_running`). El sostre de
-concurrencia d'una instancia lenta es, doncs, **una placa**, i no depen de com de lenta sigui.
+concurrencia d'una instancia lenta es, doncs, **una placa**, i no depen de com de lenta sigui. Ho
+imposa l'index unic parcial de la `0034`, amb un arrendament de 10 minuts perque un worker mort no
+deixi l'operacio bloquejada per sempre.
 
 **La cadencia surt del manifest**, no de la configuracio del tenant: `pull_workflows` cada 15
 minuts, `pull_executions` cada 5. La plataforma imposa un minim de 60 segons, perque un connector
@@ -472,7 +487,7 @@ al mateix commit.
 | A2 | G1: `0033`, magatzem de registres, cursor, forma i purga | `packages/database`, `packages/application/src/connectors.ts`, `packages/persistence`, `apps/worker` | Criteri 6 |
 | A3 | G2 i G3: cadencia al manifest, cua `connectors`, reconciliador, confinament a la base | `packages/connectors/src/contract.ts`, `packages/contracts`, `apps/worker` | Criteris 7 i 8 |
 | A4 | Connector `n8n`: operacions i ingress | **`packages/connectors/src/built-in/n8n.ts` i el seu test, i res mes** | Criteri 2, contract tests |
-| A5 | `0034`, associacions, motor d'alertes amb `workflow_failed`, casos d'us i API | `packages/domain`, `packages/application`, `apps/api`, `packages/database` | Criteris 5 i 9 |
+| A5 | `0035`, associacions, motor d'alertes amb `workflow_failed`, casos d'us i API | `packages/domain`, `packages/application`, `apps/api`, `packages/database` | Criteris 5 i 9 |
 | A6 | Pantalla, i18n `ca`/`es`/`en`, menu lateral, OpenAPI, runbook de l'error workflow | `apps/web`, `packages/i18n`, `docs/runbooks` | Criteris 1, 3 i 4, E2E |
 
 **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1–B4)
@@ -480,7 +495,7 @@ al mateix commit.
 | # | Increment | Fitxers que toca | Tanca |
 |---|---|---|---|
 | B1 | Connector `prometheus`, amb `pull_probe_state` | **`packages/connectors/src/built-in/prometheus.ts` i el seu test, i res mes** | Contract tests |
-| B2 | `0035`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
+| B2 | `0036`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
 
@@ -540,8 +555,9 @@ nosaltres, aquest dia, i ho va demanar aquesta persona".
 
 ## Riscos coneguts
 
-- **El numero de migracio pot xocar.** `0033`, `0034` i `0035` es renumeren **abans del merge** si
-  una altra sessio se'ns avanca, mai despres d'aplicar-les enlloc.
+- **El numero de migracio pot xocar.** Les d'aquesta fase van de la `0033` a la `0036` i es
+  renumeren **abans del merge** si una altra sessio se'ns avanca, mai despres d'aplicar-les
+  enlloc.
 - **La forma de l'API d'n8n canvia entre versions.** Es fixa la versio contra la qual s'han
   capturat les fixtures i el contract test la nomena; quan la VPS pugi de versio, el test es el
   que ho dira.

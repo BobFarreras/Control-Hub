@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   ConnectorStorageError,
+  runLeaseMs,
   type ConnectorConfig,
   type ConnectorInstanceRecord,
   type ConnectorInstanceStatus,
@@ -259,14 +260,24 @@ export class PostgresConnectorRepository implements ConnectorRepository {
   }
 
   /**
-   * Opens a run, or reports that this exact attempt already has one.
+   * Opens a run, or says why it could not.
    *
-   * The queue delivers at least once, so the same attempt can arrive twice — after a crash, or
-   * after a lease expired while the work was still running. `on conflict do nothing` lets the
-   * database be the one that decides, which two workers racing cannot both win.
+   * Three things happen here in one transaction, and the order matters. First a run whose lease
+   * has expired is written off, because a worker killed mid-run would otherwise hold its
+   * operation shut for ever. Then the insert, where `on conflict do nothing` answers the
+   * at-least-once question the database is the only one able to answer -- two workers racing
+   * cannot both win it. Last, the partial unique index answers the other question: if a previous
+   * pass is genuinely still running, the insert violates it and this pass stands down.
    */
   async startRun(context: TenantContext, input: StartRunInput): Promise<StartRunResult> {
     return withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        update connector_sync_runs
+        set status = 'dead_letter', finished_at = now(), error_code = 'RUN_ABANDONED'
+        where tenant_id = ${context.tenantId} and instance_id = ${input.instanceId}
+          and operation = ${input.operation} and status = 'running'
+          and started_at < now() - ${`${runLeaseMs} milliseconds`}::interval`;
+
       const [inserted] = await tx<SyncRunRecord[]>`
         insert into connector_sync_runs
           (id, tenant_id, instance_id, operation, job_id, attempt, config_version)
@@ -274,13 +285,20 @@ export class PostgresConnectorRepository implements ConnectorRepository {
           ${input.jobId}, ${input.attempt}, ${input.configVersion})
         on conflict (tenant_id, job_id, attempt) do nothing
         returning ${tx.unsafe(runColumns)}`;
-      if (inserted) return { run: inserted, started: true };
+      if (inserted) return { outcome: "started" as const, run: inserted };
 
       const [existing] = await tx<SyncRunRecord[]>`
         select ${tx.unsafe(runColumns)} from connector_sync_runs
         where tenant_id = ${context.tenantId} and job_id = ${input.jobId} and attempt = ${input.attempt}`;
-      return { run: existing!, started: false };
-    }).catch(mapConstraint);
+      return { outcome: "already_attempted" as const, run: existing! };
+    }).catch((error) => {
+      // The one violation that is an ordinary answer rather than a fault: a pass arrived while
+      // the previous one was still going, and standing down is the correct behaviour.
+      if (isUniqueViolation(error, "connector_sync_runs_one_running_idx")) {
+        return { outcome: "already_running" as const };
+      }
+      return mapConstraint(error);
+    });
   }
 
   /**
@@ -512,6 +530,12 @@ export class PostgresConnectorRepository implements ConnectorRepository {
  * taken: the first is a form error, the second means a rotation is already open and finishing it
  * is a different operation from starting one.
  */
+/** Narrow enough to be a fact about one index, rather than "some uniqueness was violated". */
+function isUniqueViolation(error: unknown, indexName: string): boolean {
+  const databaseError = error as DatabaseError;
+  return databaseError.code === "23505" && databaseError.constraint_name === indexName;
+}
+
 function mapConstraint(error: unknown): never {
   const databaseError = error as DatabaseError;
   if (databaseError.code === "23505" && databaseError.constraint_name?.includes("live_slot")) {

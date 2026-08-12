@@ -142,6 +142,17 @@ function check(raw: string, options: GuardedHttpOptions, base: URL | null): URL 
     if (!isAllowlistedDestination(options.allowlist, url)) {
       throw new EgressError("DESTINATION_NOT_ALLOWLISTED", "blocked_destination");
     }
+    // The allowlist says what this installation may reach at all. It does not say which of those
+    // addresses belong to this instance, and an operator who allowed an internal n8n and an
+    // internal Prometheus was not thereby letting either instance call the other. So when the
+    // instance has a base, it still confines -- the two checks answer different questions and
+    // both have to pass.
+    //
+    // No base is not treated as "confined to nothing": a connector may legitimately have no base
+    // in its configuration, and refusing it here would break it on a policy it never chose.
+    if (base && !isUnderBase(url, base)) {
+      throw new EgressError("DESTINATION_OUTSIDE_BASE_URL", "blocked_destination");
+    }
     return url;
   }
 

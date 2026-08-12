@@ -44,7 +44,12 @@ class FakeRepository {
     });
   }
 
+  /** Set by a test that wants the database to report a pass already in flight. */
+  running = false;
+
   startRun(_context: TenantContext, input: { jobId: string; attempt: number }) {
+    if (this.running) return Promise.resolve({ outcome: "already_running" as const });
+
     const key = `${input.jobId}:${input.attempt}`;
     const started = !this.startedAttempts.has(key);
     if (started) {
@@ -53,7 +58,10 @@ class FakeRepository {
       this.startedAttempts.add(key);
     }
     const run = this.runs[this.runs.length - 1]!;
-    return Promise.resolve({ run: run as never, started });
+    return Promise.resolve({
+      outcome: started ? ("started" as const) : ("already_attempted" as const),
+      run: run as never
+    });
   }
 
   finishRun(
@@ -244,6 +252,22 @@ describe("a redelivered attempt", () => {
     expect(second).toEqual({ status: "skipped", reason: "already_attempted" });
     expect(connector.run).toHaveBeenCalledTimes(1);
     expect(repository.runs).toHaveLength(1);
+  });
+
+  /**
+   * A different pass, not a redelivery of the same one. It arrives because the provider got
+   * slower than the cadence, and the right answer is to stand down: two passes of one operation
+   * writing the same records at once is the accumulation that takes the whole queue.
+   */
+  it("stands down when the previous pass of the same operation is still going", async () => {
+    const runtime = build();
+    repository.running = true;
+
+    const verdict = await runtime.run(context, request({ jobId: "job-later" }));
+    expect(verdict).toEqual({ status: "skipped", reason: "already_running" });
+    expect(connector.run).not.toHaveBeenCalled();
+    // Nothing was recorded against the instance either: standing down is not an outcome to file.
+    expect(repository.runs).toHaveLength(0);
   });
 
   it("treats a genuinely new attempt as new", async () => {

@@ -350,6 +350,11 @@ suite("PostgresConnectorRepository", () => {
   });
 
   describe("runs", () => {
+    const started = (result: Awaited<ReturnType<typeof repository.startRun>>) => {
+      if (result.outcome === "already_running") throw new Error("expected a run to have started");
+      return result.run;
+    };
+
     it("gives a redelivered attempt the row it already has, not a second one", async () => {
       const instance = await newInstance(tenantA, membershipA);
       const input = {
@@ -362,9 +367,9 @@ suite("PostgresConnectorRepository", () => {
 
       const first = await repository.startRun(asA(), input);
       const second = await repository.startRun(asA(), input);
-      expect(first.started).toBe(true);
-      expect(second.started).toBe(false);
-      expect(second.run.id).toBe(first.run.id);
+      expect(first.outcome).toBe("started");
+      expect(second.outcome).toBe("already_attempted");
+      expect(started(second).id).toBe(started(first).id);
       expect((await repository.listRuns(asA(), instance.id, 1, 20)).total).toBe(1);
     });
 
@@ -372,20 +377,78 @@ suite("PostgresConnectorRepository", () => {
       const instance = await newInstance(tenantA, membershipA);
       const jobId = `job-${randomUUID()}`;
       const base = { instanceId: instance.id, operation: "pull", jobId, configVersion: 1 };
-      await repository.startRun(asA(), { ...base, attempt: 1 });
-      await repository.startRun(asA(), { ...base, attempt: 2 });
+
+      const first = await repository.startRun(asA(), { ...base, attempt: 1 });
+      // A retry happens after the previous attempt ended, which is what makes it a retry.
+      await repository.finishRun(asA(), started(first).id, { status: "failed", errorCode: "timeout" });
+      expect((await repository.startRun(asA(), { ...base, attempt: 2 })).outcome).toBe("started");
+
       expect((await repository.listRuns(asA(), instance.id, 1, 20)).total).toBe(2);
+    });
+
+    /**
+     * The ceiling that keeps a slow instance to one worker slot. Enforced by a partial unique
+     * index rather than by looking first: two workers would both read no running row, both
+     * insert, and both be right about what they saw.
+     */
+    it("refuses a second pass of one operation while the first is still running", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const base = { instanceId: instance.id, operation: "pull", configVersion: 1, attempt: 1 };
+
+      const first = await repository.startRun(asA(), { ...base, jobId: `job-${randomUUID()}` });
+      const second = await repository.startRun(asA(), { ...base, jobId: `job-${randomUUID()}` });
+
+      expect(second).toEqual({ outcome: "already_running" });
+      // The pass that stood down changed nothing: the run in flight is still in flight.
+      const runs = await repository.listRuns(asA(), instance.id, 1, 20);
+      expect(runs.total).toBe(1);
+      expect(runs.items[0]).toMatchObject({ id: started(first).id, status: "running" });
+    });
+
+    it("lets two different operations of one instance run at the same time", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const base = { instanceId: instance.id, configVersion: 1, attempt: 1 };
+
+      const pull = await repository.startRun(asA(), { ...base, operation: "pull", jobId: `job-${randomUUID()}` });
+      const health = await repository.startRun(asA(), { ...base, operation: "health", jobId: `job-${randomUUID()}` });
+
+      expect(pull.outcome).toBe("started");
+      expect(health.outcome).toBe("started");
+    });
+
+    /**
+     * Without this a worker killed mid-run would hold its operation shut for ever, and the only
+     * cure would be somebody editing the database. The lease is what makes the ceiling above
+     * self-healing rather than a new way to lose an integration silently.
+     */
+    it("takes over from a run whose lease has expired, and writes the old one off", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const base = { instanceId: instance.id, operation: "pull", configVersion: 1, attempt: 1 };
+
+      const abandoned = started(await repository.startRun(asA(), { ...base, jobId: `job-${randomUUID()}` }));
+      await admin`update connector_sync_runs set started_at = now() - interval '2 hours'
+        where id = ${abandoned.id}`;
+
+      const taken = await repository.startRun(asA(), { ...base, jobId: `job-${randomUUID()}` });
+      expect(taken.outcome).toBe("started");
+
+      const [old] = await admin<{ status: string; error_code: string | null }[]>`
+        select status, error_code from connector_sync_runs where id = ${abandoned.id}`;
+      // Written off, not deleted: a run that was cut short is the one somebody needs to see.
+      expect(old).toMatchObject({ status: "dead_letter", error_code: "RUN_ABANDONED" });
     });
 
     it("closes a run once, and answers nothing the second time", async () => {
       const instance = await newInstance(tenantA, membershipA);
-      const { run } = await repository.startRun(asA(), {
-        instanceId: instance.id,
-        operation: "pull",
-        jobId: `job-${randomUUID()}`,
-        attempt: 1,
-        configVersion: 1
-      });
+      const run = started(
+        await repository.startRun(asA(), {
+          instanceId: instance.id,
+          operation: "pull",
+          jobId: `job-${randomUUID()}`,
+          attempt: 1,
+          configVersion: 1
+        })
+      );
 
       const finished = await repository.finishRun(asA(), run.id, { status: "succeeded", itemsProcessed: 3 });
       expect(finished?.status).toBe("succeeded");
@@ -396,26 +459,30 @@ suite("PostgresConnectorRepository", () => {
 
     it("keeps a dead letter, with the code that produced it", async () => {
       const instance = await newInstance(tenantA, membershipA);
-      const { run } = await repository.startRun(asA(), {
-        instanceId: instance.id,
-        operation: "pull",
-        jobId: `job-${randomUUID()}`,
-        attempt: 5,
-        configVersion: 1
-      });
+      const run = started(
+        await repository.startRun(asA(), {
+          instanceId: instance.id,
+          operation: "pull",
+          jobId: `job-${randomUUID()}`,
+          attempt: 5,
+          configVersion: 1
+        })
+      );
       const dead = await repository.finishRun(asA(), run.id, { status: "dead_letter", errorCode: "timeout" });
       expect(dead).toMatchObject({ status: "dead_letter", errorCode: "timeout" });
     });
 
     it("refuses a failure with no reason recorded", async () => {
       const instance = await newInstance(tenantA, membershipA);
-      const { run } = await repository.startRun(asA(), {
-        instanceId: instance.id,
-        operation: "pull",
-        jobId: `job-${randomUUID()}`,
-        attempt: 1,
-        configVersion: 1
-      });
+      const run = started(
+        await repository.startRun(asA(), {
+          instanceId: instance.id,
+          operation: "pull",
+          jobId: `job-${randomUUID()}`,
+          attempt: 1,
+          configVersion: 1
+        })
+      );
       await expect(
         admin`update connector_sync_runs set status = 'failed', finished_at = now(), error_code = null
           where id = ${run.id}`

@@ -111,8 +111,26 @@ export type EgressPolicy = {
  */
 export type RecordShape = "state" | "event";
 
+/**
+ * The floor the platform puts under a declared cadence.
+ *
+ * A connector that could ask to be polled every second would be helping itself to a share of
+ * every other tenant's worker time, and that is not a decision that belongs inside a connector.
+ * Refused at module load rather than clamped: a manifest that asks for five seconds and silently
+ * gets sixty is a manifest that lies to whoever reads it next.
+ */
+export const minimumCadenceSeconds = 60;
+
 export type OperationDeclaration = {
   shape: RecordShape;
+  /**
+   * How often the platform polls this operation.
+   *
+   * Absent means nothing schedules it: it runs when something asks for it and not otherwise. The
+   * number lives in the manifest and not in a tenant's configuration because the cost of a poll
+   * is paid by the installation, not by the tenant who would be choosing it.
+   */
+  everySeconds?: number;
 };
 
 /**
@@ -259,6 +277,12 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   const implemented = new Set(Object.keys(definition.operations));
   for (const name of declared) if (!implemented.has(name)) throw new ConnectorError("OPERATION_NOT_IMPLEMENTED");
   for (const name of implemented) if (!declared.has(name)) throw new ConnectorError("OPERATION_NOT_DECLARED");
+  for (const declaration of Object.values(definition.capabilities.operations)) {
+    const every = declaration.everySeconds;
+    if (every === undefined) continue;
+    if (!Number.isSafeInteger(every)) throw new ConnectorError("CADENCE_NOT_A_WHOLE_SECOND");
+    if (every < minimumCadenceSeconds) throw new ConnectorError("CADENCE_TOO_FREQUENT");
+  }
   if (definition.capabilities.ingress !== Boolean(definition.ingress)) throw new ConnectorError("INGRESS_MISDECLARED");
   if (definition.contractVersion !== connectorContractVersion) throw new ConnectorError("UNSUPPORTED_CONTRACT_VERSION");
 

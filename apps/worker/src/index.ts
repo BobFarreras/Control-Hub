@@ -1,12 +1,20 @@
-import { connectorKeyRingWarning, parseWorkerEnvironment } from "@control-hub/config";
-import { systemQueueName } from "@control-hub/contracts/jobs";
+import {
+  connectorKeyRingWarning,
+  isFeatureEnabled,
+  parseFeatureFlags,
+  parseWorkerEnvironment
+} from "@control-hub/config";
+import { connectorRegistry } from "@control-hub/connectors";
+import { connectorQueueName, systemQueueName } from "@control-hub/contracts/jobs";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import { PostgresConnectorRepository } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
-import { connectorJobName, runConnectorJob } from "./connectors/job.js";
+import { CircuitStore } from "./connectors/circuit-store.js";
+import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.js";
 import { purgeConnectorRecords } from "./connectors/purge.js";
+import { reconcileConnectorSchedules, schedulableInstances } from "./connectors/schedule.js";
 import { createConnectorRuntime } from "./connectors/wiring.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
@@ -28,6 +36,11 @@ if (keyRingWarning) logger.warn(keyRingWarning);
 
 const ESCALATION_JOB = "support-escalation";
 const RECORD_PURGE_JOB = "connector-record-purge";
+const SCHEDULE_RECONCILE_JOB = "connector-schedule-reconcile";
+
+// Read once at boot, like every other flag decision in a composition root. Turning the phase
+// off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
+const infrastructureEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "infrastructure");
 
 /**
  * One more connection to Valkey, for the circuit breaker.
@@ -39,25 +52,22 @@ const circuitClient = new Redis(environment.REDIS_URL, { maxRetriesPerRequest: 1
 circuitClient.on("error", (error) => logger.warn({ err: error }, "circuit breaker store unavailable"));
 
 const connectorRepository = new PostgresConnectorRepository(database);
+// One breaker store, shared: the runtime asks it whether to attempt a call and the reconciler
+// asks it whether to slow the schedule down. Two stores would be two opinions.
+const circuits = new CircuitStore({ client: circuitClient });
 
 const connectorRuntime = createConnectorRuntime({
   repository: connectorRepository,
   keyRing: environment.connectorKeyRing,
   allowlist: environment.connectorEgressAllowlist,
-  circuitClient,
+  circuits,
   logger
 });
 
 const worker = new Worker(
   systemQueueName,
   async (job) => {
-    if (job.name === connectorJobName) {
-      if (!connectorRuntime) {
-        logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
-        return { status: "skipped", reason: "no_key_ring" };
-      }
-      return runConnectorJob(connectorRuntime, job);
-    }
+    if (job.name === SCHEDULE_RECONCILE_JOB) return reconcileSchedules();
     if (job.name === RECORD_PURGE_JOB) {
       return purgeConnectorRecords(connectorRepository, logger);
     }
@@ -75,6 +85,57 @@ const worker = new Worker(
   },
   { connection, concurrency: 4 }
 );
+
+/**
+ * Connector work runs on its own queue, with its own worker and its own concurrency.
+ *
+ * Every job here waits on somebody else's server. On the shared queue, four instances hanging on
+ * a thirty-second budget would hold every slot and the support escalation sweep -- which has a
+ * service level attached -- would wait behind a provider nobody here controls. The separation
+ * makes that impossible by construction rather than by picking the right concurrency.
+ */
+const connectorQueue = new Queue(connectorQueueName, { connection });
+const connectorWorker = new Worker(
+  connectorQueueName,
+  async (job) => {
+    if (!connectorRuntime) {
+      logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
+      return { status: "skipped", reason: "no_key_ring" };
+    }
+    return runConnectorJob(connectorRuntime, job);
+  },
+  { connection, concurrency: 4 }
+);
+
+/**
+ * Makes the schedules in Valkey match the instances that exist right now.
+ *
+ * Reconciliation rather than a call at the moment somebody disables an instance: a removal that
+ * depends on a request arriving leaves an orphan the day that request fails, and an orphaned
+ * schedule is a call to a provider that nobody can explain and nobody can stop.
+ */
+async function reconcileSchedules() {
+  const tenants = await database<{ id: string }[]>`select id from tenants order by created_at asc`;
+  const instances = await schedulableInstances({
+    tenantIds: tenants.map((tenant) => tenant.id),
+    listEnabled: (tenantId) => connectorRepository.listInstances(jobContext(tenantId)),
+    onTenantError: (tenantId, error) =>
+      logger.error({ tenantId, err: error }, "could not read connector instances for tenant")
+  });
+
+  const sweep = await reconcileConnectorSchedules({
+    queue: connectorQueue,
+    jobName: connectorJobName,
+    instances,
+    registry: connectorRegistry,
+    circuitOpen: async (key) => (await circuits.state(key.tenantId, key.instanceId, key.operation)).state === "open",
+    enabled: infrastructureEnabled
+  });
+
+  // Silent when it changed nothing, which is what every pass after the first should be.
+  if (sweep.upserted > 0 || sweep.removed > 0) logger.info(sweep, "connector schedules reconciled");
+  return sweep;
+}
 
 /**
  * The sweep is repeatable rather than driven by a timer in the process. BullMQ keeps one
@@ -102,13 +163,29 @@ await queue.upsertJobScheduler(
   { name: RECORD_PURGE_JOB, opts: { removeOnComplete: 24, removeOnFail: 24 } }
 );
 
-worker.on("failed", (job, error) => logger.error({ jobId: job?.id, err: error }, "job failed"));
-worker.on("error", (error) => logger.error({ err: error }, "worker error"));
+/**
+ * Every two minutes, and unconditional on the flag: with the flag closed the pass still runs and
+ * removes what it finds, because a flag that only stopped new schedules would leave the old ones
+ * polling with no way to stop them short of a deploy.
+ */
+await queue.upsertJobScheduler(
+  SCHEDULE_RECONCILE_JOB,
+  { every: 2 * 60 * 1000 },
+  { name: SCHEDULE_RECONCILE_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
+);
+
+for (const [name, instance] of [
+  ["system", worker],
+  ["connectors", connectorWorker]
+] as const) {
+  instance.on("failed", (job, error) => logger.error({ queue: name, jobId: job?.id, err: error }, "job failed"));
+  instance.on("error", (error) => logger.error({ queue: name, err: error }, "worker error"));
+}
 
 const shutdown = async (signal: string) => {
   logger.info({ signal }, "shutdown requested");
-  await worker.close();
-  await queue.close();
+  await Promise.all([worker.close(), connectorWorker.close()]);
+  await Promise.all([queue.close(), connectorQueue.close()]);
   circuitClient.disconnect();
   await database.end({ timeout: 5 });
   process.exit(0);
@@ -116,4 +193,11 @@ const shutdown = async (signal: string) => {
 process.once("SIGINT", () => void shutdown("SIGINT"));
 process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
-logger.info({ queue: systemQueueName, scheduled: [ESCALATION_JOB, RECORD_PURGE_JOB] }, "worker ready");
+logger.info(
+  {
+    queues: [systemQueueName, connectorQueueName],
+    scheduled: [ESCALATION_JOB, RECORD_PURGE_JOB, SCHEDULE_RECONCILE_JOB],
+    infrastructure: infrastructureEnabled
+  },
+  "worker ready"
+);

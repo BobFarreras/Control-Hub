@@ -143,6 +143,37 @@ describe("what a connector is allowed to address at all", () => {
       "DESTINATION_NOT_ALLOWLISTED"
     );
   });
+
+  /**
+   * Gap G3 of phase 6. The allowlist answers "may this installation reach that address at all",
+   * which is not the same question as "is that address this instance's to call". An operator who
+   * allowed one internal n8n and one internal Prometheus was not thereby allowing every instance
+   * to talk to both, and before this an instance configured against one could reach the other.
+   *
+   * All three refusals happen before a name is resolved, so no socket is opened here.
+   */
+  it("refuses an allowlisted origin that is not this instance's own base", async () => {
+    const http = createGuardedHttp({
+      policy: { schemes: ["http"], destination: "operator_allowlist" },
+      baseUrl: "http://n8n.internal:5678/api/v1",
+      allowlist: [
+        { scheme: "http:", hostname: "n8n.internal", port: 5678 },
+        { scheme: "http:", hostname: "prometheus.internal", port: 9090 }
+      ],
+      resolve: resolvesTo("10.0.0.9")
+    });
+
+    for (const url of [
+      // Named by the operator, and still not this instance's to call.
+      "http://prometheus.internal:9090/api/v1/query",
+      // Its own host, outside its own path.
+      "http://n8n.internal:5678/rest/owner",
+      // The prefix trap applies here too: /api/v1-internal is not under /api/v1.
+      "http://n8n.internal:5678/api/v1-internal"
+    ]) {
+      expect((await failureOf(http.send({ method: "GET", url }))).code).toBe("DESTINATION_OUTSIDE_BASE_URL");
+    }
+  });
 });
 
 describe("talking to a destination the operator allowed", () => {
@@ -163,6 +194,23 @@ describe("talking to a destination the operator allowed", () => {
     expect(response.body).toBe('{"ok":true}');
     expect(lastRequest.method).toBe("POST");
     expect(lastRequest.body).toBe('{"a":1}');
+  });
+
+  /**
+   * The positive half of G3, over a real socket: confining an allowlisted instance must not stop
+   * it doing its job. Every other test in this block runs with `baseUrl: null` and still reaches
+   * the whole allowlist, which is the other case the criterion names -- a connector with no base
+   * configured is not thereby confined to nothing.
+   */
+  it("serves what is under the instance base, and refuses what is beside it", async () => {
+    respond = () => ({ status: 200, body: '{"ok":true}' });
+    const http = allowlisted({ baseUrl: `${origin}/api/v1` });
+
+    const response = await http.send({ method: "GET", url: `${origin}/api/v1/workflows` });
+    expect(response.status).toBe(200);
+
+    const error = await failureOf(http.send({ method: "GET", url: `${origin}/rest/owner` }));
+    expect(error.code).toBe("DESTINATION_OUTSIDE_BASE_URL");
   });
 
   it("identifies itself without saying anything about a tenant", async () => {

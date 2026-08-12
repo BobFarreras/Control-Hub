@@ -5,6 +5,7 @@ import {
   connectorContractVersion,
   defineConnector,
   failureForStatus,
+  minimumCadenceSeconds,
   type ConnectorContext,
   type ConnectorDefinition,
   type HttpResponse
@@ -75,6 +76,46 @@ describe("defining a connector", () => {
         operations: {}
       })
     ).toThrow("INGRESS_MISDECLARED");
+  });
+
+  /**
+   * The cadence is the connector's to declare and the platform's to bound. A connector that could
+   * ask for a poll every second would be granting itself a share of every other tenant's worker
+   * time, which is not a decision that belongs inside a connector.
+   */
+  it("refuses a cadence faster than the platform floor", () => {
+    expect(() =>
+      defineConnector({
+        ...base,
+        capabilities: {
+          egress: null,
+          operations: { pull: { shape: "event", everySeconds: minimumCadenceSeconds - 1 } },
+          ingress: false
+        },
+        operations: { pull: () => Promise.resolve({ records: [], cursor: null }) }
+      })
+    ).toThrow("CADENCE_TOO_FREQUENT");
+  });
+
+  it("refuses a cadence that is not a whole number of seconds", () => {
+    for (const everySeconds of [90.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        defineConnector({
+          ...base,
+          capabilities: { egress: null, operations: { pull: { shape: "event", everySeconds } }, ingress: false },
+          operations: { pull: () => Promise.resolve({ records: [], cursor: null }) }
+        })
+      ).toThrow("CADENCE_NOT_A_WHOLE_SECOND");
+    }
+  });
+
+  it("accepts an operation with no cadence, which is one nothing schedules", () => {
+    const connector = defineConnector({
+      ...base,
+      capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
+      operations: { pull: () => Promise.resolve({ records: [], cursor: null }) }
+    });
+    expect(connector.capabilities.operations["pull"]?.everySeconds).toBeUndefined();
   });
 });
 

@@ -24,10 +24,11 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A3 de la Fase 7.1**: els forats G2 i G3 — la cadencia declarada al manifest, la cua
-`connectors` amb el seu repartiment, el reconciliador que treu de Valkey el calendari d'una
-instancia deshabilitada o esborrada, i el confinament de `guarded-fetch` a la base configurada
-tambe sota `operator_allowlist`. Amb A2 tancat ja hi ha on aterrar; el que falta es qui ho encua.
+**L'increment A4 de la Fase 7.1**: el connector `n8n` — `pull_workflows`, `pull_executions` i
+l'entrada de l'error workflow. Amb A3 tancat, la plataforma ja sap programar-lo, executar-lo un
+cop alhora i desar el que torni; A4 nomes ha de tocar
+`packages/connectors/src/built-in/n8n.ts` i el seu test. Si en algun punt cal tocar `packages/domain`,
+`packages/application` o `apps/api`, el que falla es la plataforma i s'arregla alli.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -45,6 +46,7 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 |---|---|---|
 | A1 | La flag `infrastructure` registrada i apagada, i l'especificacio aprovada a l'index | `packages/config/src/flags.ts`, `docs/specifications/infrastructure.md` |
 | A2 | G1 tapat: `connector_records` i `connector_operation_state` (`0033`), forma per operacio al manifest, cursor persistit i purga horaria | `packages/database/migrations/0033_connector_records.sql`, `packages/connectors/src/contract.ts`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/` |
+| A3 | G2 i G3 tapats: cadencia al manifest amb minim de 60 s, cua `connectors` a part, reconciliador de calendari cada 2 minuts, una execucio alhora per operacio (`0034`) i confinament a la base sota `operator_allowlist` | `packages/connectors/src/contract.ts`, `packages/contracts/src/connector-jobs.ts`, `packages/database/migrations/0034_connector_run_lease.sql`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
 
 L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
 sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
@@ -53,6 +55,13 @@ saber qui escriu un connector, a `docs/development/writing-a-connector.md`.
 
 La purga corre cada hora i **deliberadament no mira la flag**: si es tanques amb files ja escrites,
 apagar la flag deixaria de fer-les caducar en comptes de deixar d'escriure'n de noves.
+
+L'A3 fa el mateix amb el reconciliador de calendari, i pel mateix motiu: corre cada dos minuts
+passi el que passi, i **amb la flag apagada la seva feina es esborrar-los tots**. Una flag que
+nomes evites programar de nou deixaria els calendaris antics sondejant proveidors sense cap manera
+d'aturar-los que no fos un desplegament. Tambe seu: les operacions no van per la cua `system` sino
+per una de propia, `connectors`, amb concurrencia 4, i la migracio `0034` posa un sostre d'una
+execucio alhora per `(instancia, operacio)` amb un arrendament de 10 minuts.
 
 **No confondre amb la "Fase 7B - Accions i credencials OAuth"** que hi ha proposada a
 `IMPLEMENTATION_PLAN.md`: es una fase diferent i posterior. Per aixo la particio d'aquesta va amb
@@ -64,8 +73,8 @@ propietari — s'arreglen a la plataforma, amb la seva prova, mai al connector:
 | # | Que falla | On |
 |---|---|---|
 | G1 | ~~El runtime compta els `records` d'una operacio i els llenca; el cursor no el desa ningu~~ **Tapat a l'A2** | `apps/worker/src/connectors/runtime.ts` |
-| G2 | L'unica operacio que algu encua es el health check: no es pot programar cap altra | `apps/worker/src/index.ts` |
-| G3 | Amb `operator_allowlist`, `guarded-fetch` no confina a la base configurada | `apps/worker/src/connectors/guarded-fetch.ts:141` |
+| G2 | ~~L'unica operacio que algu encua es el health check: no es pot programar cap altra~~ **Tapat a l'A3** | `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
+| G3 | ~~Amb `operator_allowlist`, `guarded-fetch` no confina a la base configurada~~ **Tapat a l'A3**, i sense base configurada segueix funcionant com abans | `apps/worker/src/connectors/guarded-fetch.ts` |
 
 ## La Fase 6, tancada
 
@@ -246,10 +255,11 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   d'integracions ni de webhooks, la web no mostra l'entrada del menu i `/{locale}/integrations`
   respon 404. Obrir-la sense `CONNECTOR_KEY_RING` deixa la pantalla en peu pero sense credencials
   ni endpoints: aquelles rutes no existeixen en aquell desplegament.
-- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Encara no
-  hi ha res darrere seu. Quan n'hi hagi, tancada vol dir: cap ruta declarada, **cap operacio de
-  connector programada i cap calendari viu a Valkey**, cap entrada al menu i
-  `/{locale}/infrastructure` respon 404.
+- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Des de
+  l'A3 ja mana sobre alguna cosa: **apagada, el reconciliador esborra tots els calendaris de
+  connector de Valkey i no en programa cap**. Encara no hi ha ni ruta ni pantalla; quan n'hi hagi,
+  tancada voldra dir tambe cap ruta declarada, cap entrada al menu i `/{locale}/infrastructure`
+  responent 404.
 
 ## Superficie executable
 

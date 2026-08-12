@@ -20,7 +20,7 @@ import {
 import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet, type KeyRing } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
-import { systemQueueName } from "@control-hub/contracts/jobs";
+import { connectorQueueName } from "@control-hub/contracts/jobs";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
@@ -377,7 +377,7 @@ export function buildApp(options: BuildAppOptions) {
    */
   function registerConnectorRoutes(context: RouteContext) {
     const repository = new PostgresConnectorRepository(database);
-    connectorQueue = new Queue(systemQueueName, { connection: queueConnection(options.redisUrl) });
+    connectorQueue = new Queue(connectorQueueName, { connection: queueConnection(options.redisUrl) });
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
     const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;

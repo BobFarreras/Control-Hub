@@ -59,7 +59,7 @@ diuen el mateix.
 ```ts
 capabilities: {
   egress: { schemes: ["https"], destination: "configured_base_url" },
-  operations: { pull_invoices: { shape: "event" } },
+  operations: { pull_invoices: { shape: "event", everySeconds: 300 } },
   ingress: false
 }
 ```
@@ -71,6 +71,14 @@ passar i no canviara mai mes — una execucio — i caduca perque es vella. Decl
 en realitat es un `event` fa creixer la taula sense limit; declarar `event` el que es `state` fa
 desapareixer de la pantalla coses que el proveidor encara te. Les finestres de cada forma son a
 `docs/specifications/data-governance.md`.
+
+`everySeconds` es **la cadencia del sondeig, i la decideix el connector, no el tenant**: qui sap
+cada quant val la pena tornar a preguntar es qui coneix el proveidor. El reconciliador la llegeix
+del manifest i la posa a Valkey; una operacio sense `everySeconds` no es programa mai i nomes
+s'executa quan algu la demana. El minim es de 60 segons, i `defineConnector` peta en carregar el
+modul si en demanes menys: un connector no s'ha de poder autoconcedir un sondeig per segon.
+La cadencia declarada no es la real quan el circuit d'aquella operacio esta obert — llavors
+s'allarga ×10, amb sostre d'una hora, fins que es tanqui.
 
 `destination` te dos valors i la tria importa: `configured_base_url` limita les crides a la
 configuracio de la propia instancia, i `operator_allowlist` a les adreces que l'operador ha

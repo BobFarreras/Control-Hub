@@ -146,13 +146,32 @@ export type StartRunInput = {
 };
 
 /**
- * `started` is false when this exact attempt already has a row.
+ * The three ways asking to start a run can end, and they are genuinely different.
  *
- * At-least-once delivery means a worker can be handed the same attempt twice — after a crash, or
- * after a lease expired while the work was still running. The caller uses this to stop rather
- * than to repeat the effect.
+ * `already_attempted` is at-least-once delivery: this exact attempt already has a row, because a
+ * worker was handed it twice after a crash or an expired queue lease. The row exists and the
+ * caller stops rather than repeating the effect.
+ *
+ * `already_running` is a *different* pass arriving while the previous one is still going, which
+ * is what a provider that got slower looks like. There is no row to hand back, and continuing
+ * would mean two passes of one operation writing the same records at once. The ceiling on a slow
+ * instance is therefore one worker slot, whatever the cadence says.
  */
-export type StartRunResult = { run: SyncRunRecord; started: boolean };
+export type StartRunResult =
+  | { outcome: "started"; run: SyncRunRecord }
+  | { outcome: "already_attempted"; run: SyncRunRecord }
+  | { outcome: "already_running" };
+
+/**
+ * How long a run may be presumed alive before another pass is allowed to take over.
+ *
+ * A worker killed mid-run leaves a row that says `running` for ever, and with the ceiling above
+ * that row would silently disable its operation until somebody noticed and edited the database.
+ * The lease is what makes that self-healing. It is far above any legitimate run -- one egress
+ * request is budgeted at thirty seconds -- and far below the day it would take a person to spot
+ * an operation that had quietly stopped.
+ */
+export const runLeaseMs = 10 * 60 * 1000;
 
 export type RunOutcome =
   { status: "succeeded"; itemsProcessed: number } | { status: "failed" | "dead_letter"; errorCode: string };

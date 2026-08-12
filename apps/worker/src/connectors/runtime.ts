@@ -29,7 +29,7 @@ import { EgressError } from "./guarded-fetch.js";
  */
 
 export type RunVerdict =
-  | { status: "skipped"; reason: "circuit_open" | "instance_unavailable" | "already_attempted" }
+  | { status: "skipped"; reason: "circuit_open" | "instance_unavailable" | "already_attempted" | "already_running" }
   | { status: "succeeded"; runId: string; itemsProcessed: number; cursor: string | null }
   | { status: "retry"; runId: string; errorCode: string; delayMs: number }
   | { status: "failed"; runId: string; errorCode: string }
@@ -106,16 +106,21 @@ export class ConnectorRuntime {
       return { status: "skipped", reason: "circuit_open" };
     }
 
-    const { run, started } = await repository.startRun(context, {
+    const start = await repository.startRun(context, {
       instanceId: instance.id,
       operation: request.operation,
       jobId: request.jobId,
       attempt: request.attempt,
       configVersion: instance.configVersion
     });
+    // A pass that arrives while the previous one is still going stands down, and says so rather
+    // than reporting success. The ceiling on a slow instance is one worker slot however often it
+    // is scheduled -- otherwise a provider that got slower would take the whole queue.
+    if (start.outcome === "already_running") return { status: "skipped", reason: "already_running" };
     // The queue delivers at least once. A row that already exists for this exact attempt means
     // the work was already carried out, or is being carried out right now by somebody else.
-    if (!started) return { status: "skipped", reason: "already_attempted" };
+    if (start.outcome === "already_attempted") return { status: "skipped", reason: "already_attempted" };
+    const run = start.run;
 
     const secretsSeen = new Set<string>();
     const startedAt = this.now();
