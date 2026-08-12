@@ -6,26 +6,28 @@
 
 ## On som
 
-Fases 0 a 5C implementades, i tambe els increments 0-11 de consolidacio previs a la Fase 6. Tot
+Fases 0 a 6 implementades, i tambe els increments 0-11 de consolidacio previs a la Fase 6. Tot
 integrat a `develop`.
 
 El producte executa web, API i worker en monorepo, amb PostgreSQL, Valkey, Better Auth, tenancy,
 RBAC, MFA, CRM, cataleg comercial, serveis contractats pels clients, eines i despeses recurrents
 de l'empresa, suport amb tickets i SLA, projectes amb imputacio de temps i barems versionats, i
-registre de jornada.
+registre de jornada, i la plataforma de connectors.
 
-Portes de qualitat: `pnpm check:e2e` passa amb 25/25 proves autenticades, dos workers, base neta
-i sense reintents. `pnpm check` passa **menys `lint`**, que te un error viu a
-`apps/web/src/components/attendance-record.tsx:88` (`react-hooks/set-state-in-effect`, arribat
-amb el redisseny de la jornada): l'efecte que buida el calendari en canviar de mes es redundant
-—l'efecte que carrega les dades ja depen del mes— pero treure'l es una decisio d'aquell modul,
-no d'aquesta fase.
+Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **25/25** amb dos workers,
+base neta i sense reintents, i `pnpm check` sencer —`lint`, `typecheck`, `test`, `build`— tambe.
+L'error de `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb
+el redisseny de la jornada, que reescriu aquell fitxer.
 
-**Fase 6 completa a `feature/phase-6-connector-platform`**, pendent de fusionar.
+**Fase 6 fusionada a `develop`** (`464ea5f`). La branca `feature/phase-6-connector-platform` ja
+no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**Fase 6 oberta a `feature/phase-6-connector-platform`, amb el disseny aprovat.**
+**La Fase 7 (infraestructura i connector n8n), que encara no te ni branca ni disseny aprovat.**
+Comenca com totes: especificacio curta primer, i implementacio despres.
+
+## La Fase 6, tancada
 
 L'especificacio es a `docs/specifications/connectors.md`, aprovada l'11 d'agost de 2026, i la
 decisio criptografica a `docs/adr/0008-connector-credential-vault.md`.
@@ -62,8 +64,10 @@ neta i sense reintents, incloent-hi `tests/e2e/integrations.authenticated.spec.t
 integracio, veure com la configuracio es refusada en catala amb el cami del camp, activar-la i
 demanar-ne una comprovacio de salut que respon `202`.
 
-Queda una sola cosa abans del merge, i no depen d'aquesta fase: la migracio `0030` es renumera
-si una altra sessio n'hi ha afegit una. Fet aixo, la fase es pot fusionar cap a `develop`.
+El merge cap a `develop` es va fer el 12 d'agost de 2026. Les uniques divergencies van ser de
+jornada i cataleg, i **hi van guanyar els canvis de `develop`**; nomes el menu lateral es va
+fusionar a ma, perque hi conviuen la navegacio nova de jornada i l'entrada d'Integracions. La
+migracio de permisos de jornada es va renumerar a `0032` per deixar el `0031` a `develop`.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
