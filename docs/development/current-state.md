@@ -24,8 +24,35 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**La Fase 7 (infraestructura i connector n8n), que encara no te ni branca ni disseny aprovat.**
-Comenca com totes: especificacio curta primer, i implementacio despres.
+**L'increment A2 de la Fase 7.1**: el magatzem generic de registres (`0033`), que es el forat G1
+de la plataforma. Sense ell no hi ha res a dibuixar, perque avui el runtime compta els registres
+d'una operacio i els llenca.
+
+La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
+`docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
+
+- **7.1 — plataforma, n8n i pantalla** (increments A1 a A6), a la branca
+  `feature/phase-7-1-infrastructure-n8n`. Entregable tota sola: workflows d'n8n amb el seu estat,
+  execucions fallides, associacio amb el client, enllac extern validat i alertes que obren
+  incidencia.
+- **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1 a B4). Depen de la
+  7.1: sense magatzem ni programador no te on aterrar.
+
+**Fet fins ara: l'increment A1**, que registra la flag `infrastructure` apagada i deixa
+l'especificacio aprovada a l'index. Res mes no ha canviat de comportament.
+
+**No confondre amb la "Fase 7B - Accions i credencials OAuth"** que hi ha proposada a
+`IMPLEMENTATION_PLAN.md`: es una fase diferent i posterior. Per aixo la particio d'aquesta va amb
+decimals i no amb lletres.
+
+**Els tres forats de la Fase 6 que la 7.1 ha de tapar**, verificats contra el codi i acceptats pel
+propietari — s'arreglen a la plataforma, amb la seva prova, mai al connector:
+
+| # | Que falla | On |
+|---|---|---|
+| G1 | El runtime compta els `records` d'una operacio i els llenca; el cursor no el desa ningu | `apps/worker/src/connectors/runtime.ts:172` |
+| G2 | L'unica operacio que algu encua es el health check: no es pot programar cap altra | `apps/worker/src/index.ts` |
+| G3 | Amb `operator_allowlist`, `guarded-fetch` no confina a la base configurada | `apps/worker/src/connectors/guarded-fetch.ts:141` |
 
 ## La Fase 6, tancada
 
@@ -188,10 +215,11 @@ El detall i els checks dels increments de consolidacio previs son a
   navegable amb teclat, pero el patro ARIA d'un desplegable d'aquest tipus vol
   `role="combobox"` al boto. Afegir-l'hi obliga a repassar els localitzadors de tres suites E2E
   a la vegada, aixi que es una feina propia, no un afegit a una altra.
-- L'entrada **Infraestructura** del menu lateral es un `href="#"` que no porta enlloc
-  (`apps/web/src/components/app-sidebar.tsx`). Es deixa a posta, reservada per a la pantalla
-  d'infraestructura que encara no te especificacio; no s'ha de confondre amb **Integracions**,
-  que si que existeix i viu darrere el flag `connectors`.
+- L'entrada **Infraestructura** del menu lateral segueix sent un `href="#"` que no porta enlloc
+  (`apps/web/src/components/app-sidebar.tsx`). **Ja te especificacio aprovada**
+  (`docs/specifications/infrastructure.md`) i la pantalla arriba a l'increment A6; fins llavors es
+  queda com esta. No s'ha de confondre amb **Integracions**, que si que existeix i viu darrere el
+  flag `connectors`.
 
 ## Feature flags
 
@@ -205,6 +233,10 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   d'integracions ni de webhooks, la web no mostra l'entrada del menu i `/{locale}/integrations`
   respon 404. Obrir-la sense `CONNECTOR_KEY_RING` deixa la pantalla en peu pero sense credencials
   ni endpoints: aquelles rutes no existeixen en aquell desplegament.
+- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Encara no
+  hi ha res darrere seu. Quan n'hi hagi, tancada vol dir: cap ruta declarada, **cap operacio de
+  connector programada i cap calendari viu a Valkey**, cap entrada al menu i
+  `/{locale}/infrastructure` respon 404.
 
 ## Superficie executable
 

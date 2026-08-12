@@ -35,6 +35,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   sortints i webhooks entrants. Aprovada, Fase 6, en desenvolupament darrere la flag
   `connectors`. La norma de seguretat que ha de complir es
   `specifications/connector-security.md`.
+- `specifications/infrastructure.md`: estat de la VPS i de les automatitzacions d'n8n, amb
+  registres estirats, alertes i incidencies. Aprovada, Fase 7, partida en 7.1 (plataforma, n8n
+  i pantalla) i 7.2 (Prometheus, inventari i alertes), darrere la flag `infrastructure`.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El
