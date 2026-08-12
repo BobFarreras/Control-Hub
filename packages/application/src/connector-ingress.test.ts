@@ -356,8 +356,9 @@ describe("revoking an endpoint", () => {
 
   it("refuses an endpoint identifier that is not this instance's", async () => {
     const { service } = await withLiveEndpoint();
-    expect((await refusalOf(service.revokeEndpoint(owner, instanceId, "66666666-6666-4666-8666-666666666666"))).code)
-      .toBe("ENDPOINT_NOT_FOUND");
+    expect(
+      (await refusalOf(service.revokeEndpoint(owner, instanceId, "66666666-6666-4666-8666-666666666666"))).code
+    ).toBe("ENDPOINT_NOT_FOUND");
   });
 
   it("refuses an Administrator", async () => {

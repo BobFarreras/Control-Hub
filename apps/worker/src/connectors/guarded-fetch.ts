@@ -217,11 +217,7 @@ type SendOptions = {
  * single overall timeout handles far too late, and it is exactly what an attacker sets up to tie
  * up a worker.
  */
-function send(
-  url: URL,
-  validated: { address: string; family: number },
-  options: SendOptions
-): Promise<HttpResponse> {
+function send(url: URL, validated: { address: string; family: number }, options: SendOptions): Promise<HttpResponse> {
   const remaining = options.deadline - Date.now();
   if (remaining <= 0) throw new EgressError("BUDGET_EXHAUSTED", "timeout");
 

@@ -5429,7 +5429,10 @@ main {
   border-radius: 8px;
   background: var(--surface-subtle);
   color: var(--text);
-  font: 400 12px/1.6 "JetBrains Mono", ui-monospace, monospace;
+  font:
+    400 12px/1.6 "JetBrains Mono",
+    ui-monospace,
+    monospace;
   white-space: pre;
 }
 .integration-issues {
@@ -5468,7 +5471,10 @@ main {
 }
 .integration-secret code {
   overflow-wrap: anywhere;
-  font: 400 12px/1.5 "JetBrains Mono", ui-monospace, monospace;
+  font:
+    400 12px/1.5 "JetBrains Mono",
+    ui-monospace,
+    monospace;
 }
 .integration-secret .primary-button {
   justify-self: start;

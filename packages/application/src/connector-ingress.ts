@@ -171,7 +171,8 @@ export class ConnectorIngressService {
     if (!connector) throw new ConnectorServiceError("INGRESS_NOT_SUPPORTED");
 
     const live = await this.repository.listEndpoints(context, instanceId);
-    if (live.some((endpoint) => endpoint.revokedAt === null)) throw new ConnectorServiceError("ENDPOINT_ALREADY_EXISTS");
+    if (live.some((endpoint) => endpoint.revokedAt === null))
+      throw new ConnectorServiceError("ENDPOINT_ALREADY_EXISTS");
 
     const held = await this.repository.readSealedCredentials(context, instanceId, ingressCredentialKind);
     if (held.length >= 2) throw new ConnectorServiceError("ROTATION_ALREADY_OPEN");
@@ -263,10 +264,7 @@ export class ConnectorIngressService {
     };
     let read: IngressResult;
     try {
-      read = await connector.ingest(
-        readingContext(endpoint.instanceId, instance.config, delivery.receivedAt),
-        request
-      );
+      read = await connector.ingest(readingContext(endpoint.instanceId, instance.config, delivery.receivedAt), request);
     } catch (error) {
       // Only the connector's own refusals. Anything else — a closed port, a bug — is ours, and
       // swallowing it here would answer a provider `400` for a fault they cannot do anything about.

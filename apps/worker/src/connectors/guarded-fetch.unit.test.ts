@@ -106,9 +106,7 @@ describe("what a connector is allowed to address at all", () => {
 
   it("refuses a URL carrying credentials, which is how a host is smuggled past a reader", async () => {
     const http = publicHttp(resolvesTo("93.184.216.34"));
-    const error = await failureOf(
-      http.send({ method: "GET", url: "https://provider.test@127.0.0.1/v1/things" })
-    );
+    const error = await failureOf(http.send({ method: "GET", url: "https://provider.test@127.0.0.1/v1/things" }));
     expect(["URL_HAS_CREDENTIALS", "DESTINATION_OUTSIDE_BASE_URL"]).toContain(error.code);
   });
 

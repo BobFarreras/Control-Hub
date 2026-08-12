@@ -1,6 +1,10 @@
 import type { Permission, TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ConnectorCredentialError, ConnectorCredentialService, ConnectorSecretReader } from "./connector-credentials.js";
+import {
+  ConnectorCredentialError,
+  ConnectorCredentialService,
+  ConnectorSecretReader
+} from "./connector-credentials.js";
 import type {
   ConnectorRepository,
   CredentialAad,
@@ -159,9 +163,7 @@ describe("writing a credential", () => {
   it("seals it and never stores the plain value", async () => {
     const written = await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     expect(written.slot).toBe("primary");
-    expect(sealer.sealed).toEqual([
-      { plaintext: "sk_live_9f2c8ab4", aad: { tenantId, instanceId } }
-    ]);
+    expect(sealer.sealed).toEqual([{ plaintext: "sk_live_9f2c8ab4", aad: { tenantId, instanceId } }]);
     expect(JSON.stringify(repository.rows)).not.toContain("sk_live_9f2c8ab4");
   });
 
@@ -184,9 +186,9 @@ describe("writing a credential", () => {
   it("refuses a third, because that would be a rotation on top of a rotation", async () => {
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
-    await expect(
-      service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_1111bbbb" })
-    ).rejects.toThrow("ROTATION_ALREADY_OPEN");
+    await expect(service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_1111bbbb" })).rejects.toThrow(
+      "ROTATION_ALREADY_OPEN"
+    );
   });
 
   it("counts slots per kind, so a signing secret does not block an api key", async () => {
@@ -204,9 +206,9 @@ describe("writing a credential", () => {
   });
 
   it("refuses one too long for the column that has to hold it", async () => {
-    await expect(
-      service.write(rotator, { instanceId, kind: "api_key", secret: "a".repeat(8193) })
-    ).rejects.toThrow("SECRET_TOO_LONG");
+    await expect(service.write(rotator, { instanceId, kind: "api_key", secret: "a".repeat(8193) })).rejects.toThrow(
+      "SECRET_TOO_LONG"
+    );
   });
 
   it("refuses an expiry already in the past", async () => {
@@ -234,8 +236,9 @@ describe("writing a credential", () => {
    */
   it("refuses an instance this tenant does not have", async () => {
     const missing = repository.missingInstanceId;
-    await expect(service.write(rotator, { instanceId: missing, kind: "api_key", secret: "sk_live_9f2c8ab4" }))
-      .rejects.toThrow("INSTANCE_NOT_FOUND");
+    await expect(
+      service.write(rotator, { instanceId: missing, kind: "api_key", secret: "sk_live_9f2c8ab4" })
+    ).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.promote(rotator, missing, "api_key")).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.revoke(rotator, missing)).rejects.toThrow("INSTANCE_NOT_FOUND");
     expect(sealer.sealed).toEqual([]);

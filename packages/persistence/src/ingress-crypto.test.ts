@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { nodeIngressCrypto } from "./ingress-crypto.js";
 
 const secret = "an-ingress-signing-secret";
-const payload = "1786435200.{\"id\":\"evt_1\"}";
+const payload = '1786435200.{"id":"evt_1"}';
 
 function signedWith(value: string): string {
   return createHmac("sha256", value).update(payload, "utf8").digest("hex");

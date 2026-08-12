@@ -41,7 +41,11 @@ const demo = {
   type: "demo",
   contractVersion: 1,
   credentialKinds: ["api_key"],
-  capabilities: { egress: { schemes: ["https"], destination: "configured_base_url" }, operations: ["pull"], ingress: false },
+  capabilities: {
+    egress: { schemes: ["https"], destination: "configured_base_url" },
+    operations: ["pull"],
+    ingress: false
+  },
   ingressSignature: null,
   parseConfig: (value: unknown) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -214,9 +218,9 @@ describe("creating an integration", () => {
     await expect(service.create(owner, { connectorType: "demo", name: " ", config: {} })).rejects.toThrow(
       "INVALID_NAME"
     );
-    await expect(
-      service.create(owner, { connectorType: "demo", name: "a".repeat(121), config: {} })
-    ).rejects.toThrow("INVALID_NAME");
+    await expect(service.create(owner, { connectorType: "demo", name: "a".repeat(121), config: {} })).rejects.toThrow(
+      "INVALID_NAME"
+    );
   });
 });
 
