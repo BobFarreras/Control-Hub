@@ -92,6 +92,11 @@ Despres, el marc:
 - Cap text visible queda hardcoded: afegir sempre claus `ca`, `es` i `en`.
 - Cap component declara colors de producte directament: utilitzar tokens semantics.
 - Tota UI nova funciona en light, dark, teclat i reduced motion.
+- Tots els desplegables seleccionables (selects) utilitzen `SelectControl` o `SelectField` de
+  `@/components/form-field`. No s'utilitzen `<select>` natius d'HTML ni selects de tercers
+  (Radix, shadcn, etc.) per a desplegables d'estil propi. `SelectControl` proporciona
+  accessible, keyboard navigation, dark mode i consistent visualment. `SelectField` afegeix
+  label, hint i error via `Field`.
 
 ## Empaquetat i desplegament
 

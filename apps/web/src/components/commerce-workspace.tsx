@@ -443,13 +443,14 @@ export function CommerceWorkspace({
                       fail
                     )}
                   >
-                    <select name="priceId" defaultValue={subscription.priceId}>
-                      {currentPrices.map((price) => (
-                        <option key={price.id} value={price.id}>
-                          {price.planName} · {currency(price.amountMinor, price.currency)}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="priceId"
+                      defaultValue={subscription.priceId}
+                      options={currentPrices.map((price) => ({
+                        value: price.id,
+                        label: `${price.planName} · ${currency(price.amountMinor, price.currency)}`
+                      }))}
+                    />
                     <button className="icon-button" title={t.changePlan} aria-label={t.changePlan}>
                       <RefreshCw size={15} />
                     </button>
@@ -676,13 +677,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.product}
-                      <select name="productId">
-                        {catalog.products.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="productId"
+                        options={catalog.products.map((item) => ({
+                          value: item.id,
+                          label: item.name
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -713,13 +714,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.version}
-                      <select name="versionId">
-                        {catalog.versions.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {catalog.products.find((product) => product.id === item.productId)?.name} · {item.version}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="versionId"
+                        options={catalog.versions.map((item) => ({
+                          value: item.id,
+                          label: `${catalog.products.find((product) => product.id === item.productId)?.name} · ${item.version}`
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -755,13 +756,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.plan}
-                      <select name="planId">
-                        {catalog.plans.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="planId"
+                        options={catalog.plans.map((item) => ({
+                          value: item.id,
+                          label: item.name
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -801,23 +802,23 @@ export function CommerceWorkspace({
                 <>
                   <label>
                     {t.customer}
-                    <select name="customerId">
-                      {customers.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.displayName}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="customerId"
+                      options={customers.map((item) => ({
+                        value: item.id,
+                        label: item.displayName
+                      }))}
+                    />
                   </label>
                   <label>
                     {t.plan}
-                    <select name="priceId">
-                      {currentPrices.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.planName} · {currency(item.amountMinor, item.currency)}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="priceId"
+                      options={currentPrices.map((item) => ({
+                        value: item.id,
+                        label: `${item.planName} · ${currency(item.amountMinor, item.currency)}`
+                      }))}
+                    />
                   </label>
                   <label>
                     {t.quantity}

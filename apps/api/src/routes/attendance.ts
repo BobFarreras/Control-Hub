@@ -397,7 +397,7 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
 
   app.delete<{ Params: { id: string } }>("/api/v1/attendance/vacations/:id", async (request, reply) => {
     const context = await resolveTenantContext(auth, database, request);
-    requirePermission(context, "attendance:vacations");
+    requirePermission(context, "attendance:record");
     await attendance.deleteVacation(context, request.params.id);
     await writeAudit(database, context, request, {
       action: "attendance.vacation_deleted",
@@ -449,7 +449,7 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
 
   app.delete<{ Params: { id: string } }>("/api/v1/attendance/absences/:id", async (request, reply) => {
     const context = await resolveTenantContext(auth, database, request);
-    requirePermission(context, "attendance:manage");
+    requirePermission(context, "attendance:record");
     await attendance.deleteAbsence(context, request.params.id);
     await writeAudit(database, context, request, {
       action: "attendance.absence_deleted",

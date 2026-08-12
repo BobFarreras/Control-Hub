@@ -35,6 +35,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`INTERNATIONALIZATION.md`](INTERNATIONALIZATION.md): catala, castella, angles i regles de localitzacio.
 - [`BRANCHING.md`](BRANCHING.md): branques, pull requests, releases i hotfixes.
 - [`docs/runbooks/installation.md`](docs/runbooks/installation.md): instal·lacio, primer Owner, membres i actualitzacions.
+- [`docs/runbooks/connector-key-rotation.md`](docs/runbooks/connector-key-rotation.md): rotar l'anell de claus que segella les credencials dels connectors.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.
 - [`SECURITY.md`](SECURITY.md): reporting privat i politica de seguretat.
 - [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md): baseline d'aplicacio, xarxa, contenidors, dades i supply chain.
@@ -43,6 +44,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): requisits, ordres, URLs i arrencada local.
 - [`docs/development/current-state.md`](docs/development/current-state.md): estat implementat i punt de continuacio.
 - [`docs/development/troubleshooting.md`](docs/development/troubleshooting.md): fallades ja diagnosticades, amb causa i solucio.
+- [`docs/development/writing-a-connector.md`](docs/development/writing-a-connector.md): afegir un proveidor nou implementant el contracte de connector.
 
 ## Arrencada local
 

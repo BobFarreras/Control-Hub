@@ -1,3 +1,4 @@
+import { parseKeyRing } from "@control-hub/config";
 import type { FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
@@ -267,6 +268,103 @@ describe("feature flags", () => {
     expect(attendanceRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
     // And the two flags are independent: one on does not drag the other in.
     expect(app.hasRoute({ method: "GET", url: "/api/v1/projects" })).toBe(false);
+  });
+
+  const connectorRoutes = [
+    ["GET", "/api/v1/connectors"],
+    ["GET", "/api/v1/integrations"],
+    ["POST", "/api/v1/integrations"],
+    ["GET", "/api/v1/integrations/:instanceId"],
+    ["PATCH", "/api/v1/integrations/:instanceId"],
+    ["POST", "/api/v1/integrations/:instanceId/enable"],
+    ["POST", "/api/v1/integrations/:instanceId/disable"],
+    ["POST", "/api/v1/integrations/:instanceId/health-checks"],
+    ["GET", "/api/v1/integrations/:instanceId/runs"]
+  ] as const;
+
+  /**
+   * The routes that need a key ring: the credential ones, the endpoint ones, and the public
+   * webhook. Minting an endpoint seals the secret that signs for it, and verifying a delivery
+   * opens it, so none of the three can exist without a key.
+   */
+  const sealedRoutes = [
+    ["GET", "/api/v1/integrations/:instanceId/credentials"],
+    ["PUT", "/api/v1/integrations/:instanceId/credentials/:kind"],
+    ["DELETE", "/api/v1/integrations/:instanceId/credentials/:kind"],
+    ["POST", "/api/v1/integrations/:instanceId/credentials/:kind/promote"],
+    ["GET", "/api/v1/integrations/:instanceId/endpoints"],
+    ["POST", "/api/v1/integrations/:instanceId/endpoints"],
+    ["DELETE", "/api/v1/integrations/:instanceId/endpoints/:endpointId"],
+    ["POST", "/api/v1/webhooks/:publicId"]
+  ] as const;
+
+  it("does not declare the connector surface while its flag is off", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set() });
+    apps.push(app);
+    await app.ready();
+
+    expect(connectorRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    expect((await app.inject({ method: "GET", url: "/api/v1/integrations" })).statusCode).toBe(404);
+  });
+
+  /**
+   * With the flag on and no key ring the integrations are readable and configurable, and there is
+   * nowhere to put a secret. Declaring the credential routes anyway would accept a customer's
+   * provider credential and then fail to store it, which is worse than answering 404.
+   */
+  it("declares the connector surface without the credential routes when there is no key ring", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["connectors"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(connectorRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+    expect(sealedRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    // Including the public one: an address that accepted deliveries it cannot authenticate
+    // would be worse than no address at all.
+    expect((await app.inject({ method: "POST", url: "/api/v1/webhooks/anything" })).statusCode).toBe(404);
+  });
+
+  it("declares the credential, endpoint and webhook routes once a key ring is configured", async () => {
+    const app = buildApp({
+      ...authenticated,
+      featureFlags: new Set(["connectors"] as const),
+      connectorKeyRing: parseKeyRing(
+        JSON.stringify({ activeKeyId: "2026-08", keys: { "2026-08": Buffer.alloc(32, 3).toString("base64") } })
+      )
+    });
+    apps.push(app);
+    await app.ready();
+
+    expect(sealedRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+  });
+
+  /**
+   * The content type allowlist, which is the one part of the inbound path that can be reached
+   * without a database: the parser refuses before any handler runs. What the route answers once
+   * a handler does run is a table, tested in ./routes/webhooks.test.ts.
+   */
+  it("refuses a content type the ingress route does not accept, before any handler runs", async () => {
+    const app = buildApp({
+      ...authenticated,
+      featureFlags: new Set(["connectors"] as const),
+      connectorKeyRing: parseKeyRing(
+        JSON.stringify({ activeKeyId: "2026-08", keys: { "2026-08": Buffer.alloc(32, 3).toString("base64") } })
+      )
+    });
+    apps.push(app);
+    await app.ready();
+
+    const refused = await app.inject({
+      method: "POST",
+      url: "/api/v1/webhooks/an-address-nobody-minted",
+      headers: { "content-type": "application/xml" },
+      payload: "<event/>"
+    });
+
+    expect(refused.statusCode).toBe(415);
+    // And with this API's vocabulary, not the framework's: a provider reading `500` here would
+    // retry a delivery we are never going to accept.
+    expect(refused.json()).toMatchObject({ status: 415, code: "UNSUPPORTED_MEDIA_TYPE" });
   });
 });
 

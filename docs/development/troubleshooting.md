@@ -74,6 +74,30 @@ com de carregada estigui la maquina, cosa que ho fa semblar un defecte del produ
 `__reactProps$` del control concret que es vol tocar. Per descartar-ho a ma: la mateixa accio
 feta amb teclat funciona, perque per llavors ja ha hidratat.
 
+### Un desplegable no es troba mai: `getByRole("combobox")` esgota els 15 segons
+
+**Causa.** Aquell camp ja no es un `<select>` natiu. Un desplegable del sistema visual es un
+**boto** amb `aria-haspopup="listbox"` al costat d'un `<select>` amagat que nomes porta el valor
+del formulari, i aquell `<select>` es `aria-hidden`, o sigui que **cap element de la pantalla
+respon al rol `combobox`**. El localitzador espera un control que ja no existeix mentre el camp
+es alli, ben visible, i sembla que el producte estigui trencat.
+
+**Solucio.** Localitza'l pel nom accessible: `getByLabel("Estat", { exact: true })` arriba al
+boto pel seu `aria-label`. Dues coses a vigilar:
+
+- **El `<label>` embolcallat no serveix.** Per a un `<select>` embolcallat, el text que Playwright
+  compara inclou totes les opcions ("ClientFar Harbour LogisticsTramuntana Foods…"), aixi que cap
+  coincidencia exacta amb "Client" hi encerta. El control ha de portar `aria-label` propi — si no
+  en te, tampoc te nom per a qui fa servir un lector de pantalla, i el que s'ha d'arreglar es la
+  pantalla.
+- **Un `aria-label` repetit fa fallar el mode estricte.** A la fitxa d'un ticket, l'`aside` de
+  metadades i el desplegable d'estat es diuen tots dos "Estat"; cal buscar dins de
+  `aside.ticket-meta` i no a tota la pagina.
+
+Ho va destapar la migracio de tots els `<select>` natius a `SelectControl`, que va canviar els
+components sense tocar cap prova: `pnpm check` passava sencer i la suite E2E queia en dos tests
+de suport. Es l'unica porta que ho veu.
+
 ### Les entrades comencen a fallar a mitja tanda
 
 **Causa.** Les rutes de credencials estan limitades a **deu peticions per minut i per adreca**.
@@ -120,6 +144,19 @@ suite hagi corregut abans o alhora. Va passar amb l'escombrada d'escalats: asser
 seu tenant, el seu ticket. Si de veritat necessites provar un comptador global, el paquet
 necessita una base propia, no la compartida.
 
+### Escriure a una columna `jsonb` viola un `check` que hauria de passar
+
+**Simptoma.** Un `check (jsonb_typeof(config) = 'object')` rebutja un objecte que evidentment
+n'es un. El mateix `insert` executat a `psql` amb el mateix text funciona.
+
+**Causa.** `${JSON.stringify(valor)}::jsonb`. El cast explicit fa que PostgreSQL declari el
+parametre com a `jsonb`, i llavors postgres.js torna a serialitzar la cadena que ja li havies
+serialitzat. El que arriba no es l'objecte sino la seva representacio com a **cadena** JSON, i
+`jsonb_typeof` respon `string`.
+
+**Solucio.** `${tx.json(valor)}`, que es el que fa la resta del repositori. El driver serialitza
+una vegada i el tipus del parametre queda correcte sense cap cast.
+
 ## Seguretat i CI
 
 ### Gitleaks marca una constant que no es cap credencial
@@ -160,6 +197,13 @@ build del web, i no el de l'API.
 ```
 
 De passada estalvia arrossegar zod cap al web, que no el necessita per llegir una flag.
+
+**Ha tornat a passar.** L'11 d'agost de 2026, amb `@control-hub/contracts`: l'increment 7 de la
+Fase 6 hi va afegir `connector-jobs.ts` i el va reexportar des de l'arrel, i el web importa
+aquest paquet per l'arrel (`parseCsv`). Mateixa solucio, subcami `./jobs`, i l'API i el worker
+importen els noms de feina d'alla. **La regla, per no descobrir-ho una tercera vegada:** el
+fitxer arrel d'un paquet que el web importa per l'arrel no pot tenir imports relatius. Es veu
+nomes amb `pnpm build` — `typecheck`, `test` i `lint` passen tots tres amb el build trencat.
 
 ### La pantalla de projectes respon 404 i el menu no la mostra
 
@@ -395,16 +439,27 @@ se n'assabenta.
 despres de cada recarrega. Un localitzador de Playwright es una consulta, no un element: sobreviu a
 la recarrega i per aixo no es queixa.
 
-### `Applied migration changed` a la base de verificacio local
+### `Applied migration changed` a una base local d'usar i llencar
 
 **Causa.** Diferent de la de CI d'aqui dalt: aqui la migracio **si** que ha canviat. Passa quan
 s'aplica una migracio mentre encara s'esta escrivint i despres s'edita el fitxer. La base es queda
 amb un esquema que ja no es el que descriu el repositori.
 
-**Solucio.** Recrear la base d'usar i llencar (`drop database ... with (force)`, `create database`),
-`pnpm db:migrate:verify` i `pnpm db:seed:verify`. **No reparar el checksum a ma:** deixaria una base
-que diu que te aplicada una migracio que no te, i el seguent que hi verifiqui res verificara contra
-un esquema que CI no tindra mai.
+**Solucio.** Recrear la base d'usar i llencar (`drop database ... with (force)`, `create database`)
+i tornar a migrar. Per a la de verificacio, despres `pnpm db:migrate:verify` i `pnpm db:seed:verify`.
+**No reparar el checksum a ma:** deixaria una base que diu que te aplicada una migracio que no te, i
+el seguent que hi verifiqui res verificara contra un esquema que CI no tindra mai.
+
+**El migrador s'atura a la primera discrepancia**, aixi que la base es queda tambe sense cap de les
+migracions posteriors. `control_hub_test` va estar des del 7 fins a l'11 d'agost amb la `0018` mal
+aplicada i dotze migracions sense aplicar. Localment aixo pot passar desapercebut molt de temps: les
+suites d'integracio se salten soles quan no hi ha `TEST_DATABASE_URL`, i qui no les exporta no veu
+mai que la base ha quedat enrere. Val la pena comprovar de tant en tant que el recompte de
+`schema_migrations` coincideix amb el nombre de fitxers a `packages/database/migrations`:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub_test -c "select count(*) from schema_migrations;"
+```
 
 ### Correr el suite autenticat contra la pila de verificacio
 

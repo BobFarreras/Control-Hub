@@ -23,6 +23,16 @@ export const featureFlags = {
     description: "Working time records, corrections and reconciliation against logged hours (Phase 5C).",
     owner: "owner",
     retireOn: "2027-06-30"
+  },
+  /**
+   * Off until the platform is complete. It gates the inbound webhook route as well as the
+   * integrations screen: a signing endpoint that answers before anything can process what it
+   * accepts is an open door, not a partial feature. See `docs/specifications/connectors.md`.
+   */
+  connectors: {
+    description: "Connector contract, credential vault, outbound calls and signed webhooks (Phase 6).",
+    owner: "owner",
+    retireOn: "2027-06-30"
   }
 } as const;
 

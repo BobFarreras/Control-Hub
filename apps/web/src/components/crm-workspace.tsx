@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
+import { SelectControl } from "@/components/form-field";
 import { InstantSearch } from "@/components/instant-search";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import type {
@@ -462,12 +463,16 @@ export function CrmWorkspace({
               <input name="source" defaultValue="manual" required />
             </Field>
             <Field label={labels.priority}>
-              <select name="priority" defaultValue="normal">
-                <option value="low">{labels.low}</option>
-                <option value="normal">{labels.normal}</option>
-                <option value="high">{labels.high}</option>
-                <option value="urgent">{labels.urgent}</option>
-              </select>
+              <SelectControl
+                name="priority"
+                defaultValue="normal"
+                options={[
+                  { value: "low", label: labels.low ?? "low" },
+                  { value: "normal", label: labels.normal ?? "normal" },
+                  { value: "high", label: labels.high ?? "high" },
+                  { value: "urgent", label: labels.urgent ?? "urgent" }
+                ]}
+              />
             </Field>
             <footer>
               <button type="button" className="secondary-button" onClick={() => setDialog(null)}>
@@ -522,19 +527,19 @@ export function CrmWorkspace({
                       {labels[field] ?? field}
                       {(["name", "source", "priority"] as const).includes(field as "name" | "source" | "priority") &&
                         " *"}
-                      <select
+                      <SelectControl
                         value={columnMapping[field]}
                         onChange={(event) =>
                           setColumnMapping((current) => ({ ...current, [field]: event.currentTarget.value }))
                         }
-                      >
-                        <option value="">{labels.ignoreColumn}</option>
-                        {parsedImport.headers.map((header) => (
-                          <option value={header} key={`${field}-${header}`}>
-                            {header}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: labels.ignoreColumn ?? "IGNORE" },
+                          ...parsedImport.headers.map((header) => ({
+                            value: header,
+                            label: header
+                          }))
+                        ]}
+                      />
                     </label>
                   ))}
                 </div>

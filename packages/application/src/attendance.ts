@@ -419,7 +419,9 @@ export class AttendanceService {
   }
 
   async deleteVacation(context: TenantContext, vacationId: string): Promise<void> {
-    if (!hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
+    // Owners can cancel their own vacation with just attendance:record
+    // Managers need attendance:vacations to cancel any vacation
+    if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.deleteVacation(context, vacationId);
   }
 
@@ -459,7 +461,9 @@ export class AttendanceService {
   }
 
   async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
-    if (!hasPermission(context, "attendance:manage")) throw new AttendanceError("PERMISSION_DENIED");
+    // Owners can cancel their own absence with just attendance:record
+    // Managers need attendance:manage to cancel any absence
+    if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.deleteAbsence(context, absenceId);
   }
 

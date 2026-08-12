@@ -3,6 +3,7 @@
 import { AlertTriangle, Download, ExternalLink, KeyRound, Pause, Pencil, Play, Plus, RotateCcw, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { SelectControl } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import { StatusPill, type StatusTone } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
@@ -382,20 +383,23 @@ export function CompanySubscriptionsWorkspace({
               </label>
               <label>
                 {t.category}
-                <select name="category">
-                  {["saas", "api", "infrastructure", "domain", "license", "other"].map((value) => (
-                    <option value={value} key={value}>
-                      {t[value]}
-                    </option>
-                  ))}
-                </select>
+                <SelectControl
+                  name="category"
+                  options={["saas", "api", "infrastructure", "domain", "license", "other"].map((value) => ({
+                    value,
+                    label: t[value] ?? value
+                  }))}
+                />
               </label>
               <label>
                 {t.status}
-                <select name="status">
-                  <option value="active">{t.active}</option>
-                  <option value="trial">{t.trial}</option>
-                </select>
+                <SelectControl
+                  name="status"
+                  options={[
+                    { value: "active", label: t.active ?? "active" },
+                    { value: "trial", label: t.trial ?? "trial" }
+                  ]}
+                />
               </label>
               <label>
                 {t.account}
@@ -415,13 +419,13 @@ export function CompanySubscriptionsWorkspace({
               </label>
               <label>
                 {t.interval}
-                <select name="interval">
-                  {["monthly", "quarterly", "semiannual", "annual"].map((value) => (
-                    <option value={value} key={value}>
-                      {t[value]}
-                    </option>
-                  ))}
-                </select>
+                <SelectControl
+                  name="interval"
+                  options={["monthly", "quarterly", "semiannual", "annual"].map((value) => ({
+                    value,
+                    label: t[value] ?? value
+                  }))}
+                />
               </label>
               <label>
                 {t.startedAt}
@@ -544,13 +548,14 @@ export function CompanySubscriptionsWorkspace({
               </label>
               <label>
                 {t.category}
-                <select name="category" defaultValue={editing.category}>
-                  {["saas", "api", "infrastructure", "domain", "license", "other"].map((item) => (
-                    <option value={item} key={item}>
-                      {t[item]}
-                    </option>
-                  ))}
-                </select>
+                <SelectControl
+                  name="category"
+                  defaultValue={editing.category}
+                  options={["saas", "api", "infrastructure", "domain", "license", "other"].map((item) => ({
+                    value: item,
+                    label: t[item] ?? item
+                  }))}
+                />
               </label>
               <label>
                 {t.account}
