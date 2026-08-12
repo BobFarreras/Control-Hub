@@ -41,3 +41,5 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   primer document a llegir en obrir una sessio.**
 - `development/troubleshooting.md`: fallades reals ja diagnosticades, amb simptoma, causa i
   solucio. Consulta-l'ho abans de dedicar temps a un simptoma estrany.
+- `development/writing-a-connector.md`: com afegir un proveidor nou implementant el contracte de
+  connector, sense tocar el domini ni l'API.

@@ -14,8 +14,14 @@ RBAC, MFA, CRM, cataleg comercial, serveis contractats pels clients, eines i des
 de l'empresa, suport amb tickets i SLA, projectes amb imputacio de temps i barems versionats, i
 registre de jornada.
 
-Portes de qualitat: `pnpm check` passa, i `pnpm check:e2e` passa amb 24/24 proves autenticades,
-dos workers, base neta i sense reintents.
+Portes de qualitat: `pnpm check:e2e` passa amb 25/25 proves autenticades, dos workers, base neta
+i sense reintents. `pnpm check` passa **menys `lint`**, que te un error viu a
+`apps/web/src/components/attendance-record.tsx:88` (`react-hooks/set-state-in-effect`, arribat
+amb el redisseny de la jornada): l'efecte que buida el calendari en canviar de mes es redundant
+—l'efecte que carrega les dades ja depen del mes— pero treure'l es una decisio d'aquell modul,
+no d'aquesta fase.
+
+**Fase 6 completa a `feature/phase-6-connector-platform`**, pendent de fusionar.
 
 ## El seguent pas
 
@@ -36,7 +42,6 @@ Fets els increments 1 a 10 del pla que tanca l'especificacio:
 | 7 | API d'integracions darrere el flag `connectors`, problem details i auditoria de les accions i de les denegades | `packages/application/src/connector-instances.ts`, `apps/api/src/problem.ts`, `apps/api/src/routes/integrations.ts` |
 | 8 | Ingress: encunyat d'endpoints, verificacio de firma, finestra de replay i inbox idempotent | `packages/application/src/connector-ingress.ts`, `packages/persistence/src/ingress-crypto.ts`, `apps/api/src/routes/webhooks.ts` |
 | 9 | Pantalla `/{locale}/integrations` amb `ca`, `es` i `en`: llistat, panell de detall, endpoints i execucions | `apps/web/src/app/[locale]/integrations/page.tsx`, `apps/web/src/components/integrations-workspace.tsx`, `apps/web/src/lib/integrations.ts`, `packages/i18n/src/index.ts` |
-
 | 10 | OpenAPI de la superficie de connectors generada del codi, runbook de rotacio de l'anell i tancament de la fase | `apps/api/src/app.ts`, `apps/api/src/routes/integrations.ts`, `apps/api/src/openapi.test.ts`, `docs/runbooks/connector-key-rotation.md` |
 
 **Definition of Done de la Fase 6.** Els set criteris d'acceptacio de
@@ -52,12 +57,13 @@ Fets els increments 1 a 10 del pla que tanca l'especificacio:
 | 6 | Cap tenant veu res d'un altre | `packages/persistence/src/connector-repository.integration.test.ts`, `packages/application/src/connector-credentials.test.ts` (l'AAD lliga el sobre al tenant que truca, no al que nomena) |
 | 7 | `Administrator` rep `403` a tot el que canvia i `200` a llegir | `packages/application/src/connector-instances.test.ts`, `packages/application/src/connector-ingress.test.ts` |
 
-El que **no** tanca aquest increment i s'ha de saber abans del merge: la prova E2E
-`tests/e2e/integrations.authenticated.spec.ts` esta escrita pero **encara no s'ha executat mai**
-en aquesta branca, perque `pnpm check:e2e` aixeca la seva propia pila i la de verificacio estava
-amunt. I la migracio `0030` es renumera abans del merge si una altra sessio n'hi ha afegit una.
+I la porta que no es una prova unitaria: `pnpm check:e2e` passa **25/25** amb dos workers, base
+neta i sense reintents, incloent-hi `tests/e2e/integrations.authenticated.spec.ts` — crear una
+integracio, veure com la configuracio es refusada en catala amb el cami del camp, activar-la i
+demanar-ne una comprovacio de salut que respon `202`.
 
-El seguent pas de la fase es executar-la i decidir el merge cap a `develop`.
+Queda una sola cosa abans del merge, i no depen d'aquesta fase: la migracio `0030` es renumera
+si una altra sessio n'hi ha afegit una. Fet aixo, la fase es pot fusionar cap a `develop`.
 
 **El que l'increment 5 deixa decidit i no s'ha de tornar a decidir.** La clau mai arriba d'un
 fitxer versionat: `CONNECTOR_KEY_RING` es un secret de Docker, i el seu format el valida
@@ -172,6 +178,16 @@ El detall i els checks dels increments de consolidacio previs son a
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
   en un entorn local acabat de sembrar.
 - Les migracions `0025` i `0026` s'han de pujar a la base de dades de produccio.
+- El desplegable del sistema visual (`SelectControl`) es un boto amb `aria-haspopup="listbox"`
+  i un `<select>` amagat al costat: **cap element respon al rol `combobox`**, i a la fitxa d'un
+  ticket el camp nomes te nom accessible perque hi porta un `aria-label` a ma. Funciona i es
+  navegable amb teclat, pero el patro ARIA d'un desplegable d'aquest tipus vol
+  `role="combobox"` al boto. Afegir-l'hi obliga a repassar els localitzadors de tres suites E2E
+  a la vegada, aixi que es una feina propia, no un afegit a una altra.
+- L'entrada **Infraestructura** del menu lateral es un `href="#"` que no porta enlloc
+  (`apps/web/src/components/app-sidebar.tsx`). Es deixa a posta, reservada per a la pantalla
+  d'infraestructura que encara no te especificacio; no s'ha de confondre amb **Integracions**,
+  que si que existeix i viu darrere el flag `connectors`.
 
 ## Feature flags
 
