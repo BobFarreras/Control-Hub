@@ -74,6 +74,30 @@ com de carregada estigui la maquina, cosa que ho fa semblar un defecte del produ
 `__reactProps$` del control concret que es vol tocar. Per descartar-ho a ma: la mateixa accio
 feta amb teclat funciona, perque per llavors ja ha hidratat.
 
+### Un desplegable no es troba mai: `getByRole("combobox")` esgota els 15 segons
+
+**Causa.** Aquell camp ja no es un `<select>` natiu. Un desplegable del sistema visual es un
+**boto** amb `aria-haspopup="listbox"` al costat d'un `<select>` amagat que nomes porta el valor
+del formulari, i aquell `<select>` es `aria-hidden`, o sigui que **cap element de la pantalla
+respon al rol `combobox`**. El localitzador espera un control que ja no existeix mentre el camp
+es alli, ben visible, i sembla que el producte estigui trencat.
+
+**Solucio.** Localitza'l pel nom accessible: `getByLabel("Estat", { exact: true })` arriba al
+boto pel seu `aria-label`. Dues coses a vigilar:
+
+- **El `<label>` embolcallat no serveix.** Per a un `<select>` embolcallat, el text que Playwright
+  compara inclou totes les opcions ("ClientFar Harbour LogisticsTramuntana Foods…"), aixi que cap
+  coincidencia exacta amb "Client" hi encerta. El control ha de portar `aria-label` propi — si no
+  en te, tampoc te nom per a qui fa servir un lector de pantalla, i el que s'ha d'arreglar es la
+  pantalla.
+- **Un `aria-label` repetit fa fallar el mode estricte.** A la fitxa d'un ticket, l'`aside` de
+  metadades i el desplegable d'estat es diuen tots dos "Estat"; cal buscar dins de
+  `aside.ticket-meta` i no a tota la pagina.
+
+Ho va destapar la migracio de tots els `<select>` natius a `SelectControl`, que va canviar els
+components sense tocar cap prova: `pnpm check` passava sencer i la suite E2E queia en dos tests
+de suport. Es l'unica porta que ho veu.
+
 ### Les entrades comencen a fallar a mitja tanda
 
 **Causa.** Les rutes de credencials estan limitades a **deu peticions per minut i per adreca**.

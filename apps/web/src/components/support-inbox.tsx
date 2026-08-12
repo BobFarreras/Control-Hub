@@ -386,15 +386,21 @@ export function SupportInbox({
             <form className="commerce-form" onSubmit={eventHandler(create, fail)}>
               <label>
                 {t.customer}
-              <SelectControl
-                name="customerId"
-                required
-                disabled={busy}
-                options={customers.map((customer) => ({
-                  value: customer.id,
-                  label: customer.displayName
-                }))}
-              />
+                {/*
+                 * Named here rather than by the label wrapped around it: the first labelable
+                 * element inside is the hidden `<select>` that carries the form value, so the
+                 * control a person actually operates would otherwise have no name at all.
+                 */}
+                <SelectControl
+                  aria-label={t.customer}
+                  name="customerId"
+                  required
+                  disabled={busy}
+                  options={customers.map((customer) => ({
+                    value: customer.id,
+                    label: customer.displayName
+                  }))}
+                />
               </label>
               <label>
                 {t.subject}
@@ -404,6 +410,7 @@ export function SupportInbox({
                 {t.priority}
                 {/* Normal by default: a form that opens on Urgent teaches people to ignore it. */}
                 <SelectControl
+                  aria-label={t.priority}
                   name="priority"
                   defaultValue="normal"
                   disabled={busy}
