@@ -10,7 +10,7 @@ const stub = (type: string): RegisteredConnector =>
     contractVersion: connectorContractVersion,
     configSchema: z.strictObject({}),
     credentialKinds: [],
-    capabilities: { egress: null, operations: [], ingress: false },
+    capabilities: { egress: null, operations: {}, ingress: false },
     health: () => Promise.resolve({ status: "ok" }),
     operations: {}
   });

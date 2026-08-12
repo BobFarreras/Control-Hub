@@ -533,4 +533,214 @@ suite("PostgresConnectorRepository", () => {
       expect(seenByB.map((row) => row.endpointId)).not.toContain(endpoint.id);
     });
   });
+
+  describe("records", () => {
+    const pull = (instanceId: string, operation: string, shape: "state" | "event") => ({
+      instanceId,
+      operation,
+      shape
+    });
+
+    it("leaves one row per external id, remembering when it was first seen", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const first = new Date("2026-08-01T10:00:00.000Z");
+      const second = new Date("2026-08-01T11:00:00.000Z");
+
+      const initial = await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "workflows", "state"),
+        records: [
+          { externalId: "wf_1", data: { active: true } },
+          { externalId: "wf_2", data: { active: false } }
+        ],
+        seenAt: first
+      });
+      const again = await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "workflows", "state"),
+        records: [{ externalId: "wf_1", data: { active: false } }],
+        seenAt: second
+      });
+
+      expect(initial).toEqual({ inserted: 2, updated: 0 });
+      expect(again).toEqual({ inserted: 0, updated: 1 });
+
+      const rows = await admin<{ external_id: string; data: unknown; first_seen_at: Date; last_seen_at: Date }[]>`
+        select external_id, data, first_seen_at, last_seen_at from connector_records
+        where instance_id = ${instance.id} order by external_id`;
+
+      expect(rows.map((row) => row.external_id)).toEqual(["wf_1", "wf_2"]);
+      expect(rows[0]?.data).toEqual({ active: false });
+      // The second pass moved the sighting forward and left the discovery where it was.
+      expect(rows[0]?.first_seen_at).toEqual(first);
+      expect(rows[0]?.last_seen_at).toEqual(second);
+    });
+
+    it("separates the same external id under two operations", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const seenAt = new Date("2026-08-02T09:00:00.000Z");
+
+      for (const operation of ["workflows", "executions"]) {
+        await repository.upsertRecords(asA(), {
+          ...pull(instance.id, operation, "state"),
+          records: [{ externalId: "shared_id", data: { operation } }],
+          seenAt
+        });
+      }
+
+      const rows = await admin<{ operation: string }[]>`
+        select operation from connector_records
+        where instance_id = ${instance.id} and external_id = 'shared_id' order by operation`;
+      expect(rows.map((row) => row.operation)).toEqual(["executions", "workflows"]);
+    });
+
+    it("refuses to hang a record off another tenant's instance", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await expect(
+        repository.upsertRecords(asB(), {
+          ...pull(instance.id, "workflows", "state"),
+          records: [{ externalId: "wf_stolen", data: {} }],
+          seenAt: new Date()
+        })
+      ).rejects.toThrow("INSTANCE_NOT_FOUND");
+    });
+
+    /** As with the tables above: the isolation has to hold with the tenant clause taken away. */
+    it("shows nothing across tenants even to a query with no tenant clause at all", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "workflows", "state"),
+        records: [{ externalId: "wf_private", data: {} }],
+        seenAt: new Date()
+      });
+
+      const seen = await database.begin(async (tx) => {
+        await tx`select set_config('app.tenant_id', ${tenantB}, true)`;
+        return tx<{ external_id: string }[]>`
+          select external_id from connector_records where instance_id = ${instance.id}`;
+      });
+      expect(seen).toEqual([]);
+    });
+
+    it("keeps a cursor per operation, and not across tenants", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const ranAt = new Date("2026-08-03T08:00:00.000Z");
+
+      await repository.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "workflows",
+        cursor: "page-2",
+        ranAt,
+        succeeded: true
+      });
+      await repository.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "executions",
+        cursor: "2026-08-03T07:59:00Z",
+        ranAt,
+        succeeded: true
+      });
+
+      expect(await repository.readOperationState(asA(), instance.id, "workflows")).toMatchObject({
+        cursor: "page-2",
+        lastRunAt: ranAt,
+        lastSuccessAt: ranAt
+      });
+      expect((await repository.readOperationState(asA(), instance.id, "executions"))?.cursor).toBe(
+        "2026-08-03T07:59:00Z"
+      );
+      expect(await repository.readOperationState(asB(), instance.id, "workflows")).toBeNull();
+    });
+
+    it("does not move the last success when a pass fails", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const worked = new Date("2026-08-04T08:00:00.000Z");
+      const failed = new Date("2026-08-04T08:05:00.000Z");
+
+      await repository.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "workflows",
+        cursor: "page-1",
+        ranAt: worked,
+        succeeded: true
+      });
+      await repository.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "workflows",
+        cursor: "page-1",
+        ranAt: failed,
+        succeeded: false
+      });
+
+      // The age a screen shows is the age of the answer, not the age of the attempt.
+      expect(await repository.readOperationState(asA(), instance.id, "workflows")).toMatchObject({
+        lastRunAt: failed,
+        lastSuccessAt: worked
+      });
+    });
+
+    it("expires each shape on its own clock and leaves fresh rows alone", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const now = Date.now();
+      const daysAgo = (days: number) => new Date(now - days * 24 * 60 * 60 * 1000);
+
+      await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "workflows", "state"),
+        records: [{ externalId: "wf_gone", data: {} }],
+        seenAt: daysAgo(40)
+      });
+      await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "executions", "event"),
+        records: [
+          { externalId: "exec_old", data: {} },
+          { externalId: "exec_kept", data: {} }
+        ],
+        seenAt: daysAgo(40)
+      });
+      // The survivor is the same shape as `exec_old`, only younger than the window.
+      await repository.upsertRecords(asA(), {
+        ...pull(instance.id, "executions", "event"),
+        records: [{ externalId: "exec_kept", data: {} }],
+        seenAt: daysAgo(10)
+      });
+
+      const result = await repository.purgeRecords({
+        stateBefore: daysAgo(30),
+        eventBefore: daysAgo(90),
+        maxPerOperation: 100_000,
+        batchLimit: 5_000
+      });
+
+      // A 40-day-old state row is past its window; a 40-day-old event row is not past its own.
+      expect(result.purged).toBeGreaterThanOrEqual(1);
+      const survivors = await admin<{ external_id: string }[]>`
+        select external_id from connector_records where instance_id = ${instance.id} order by external_id`;
+      expect(survivors.map((row) => row.external_id)).toEqual(["exec_kept", "exec_old"]);
+    });
+
+    it("trims the oldest first when an operation goes past its ceiling", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const base = Date.parse("2026-08-05T00:00:00.000Z");
+
+      for (const [index, externalId] of ["exec_1", "exec_2", "exec_3", "exec_4"].entries()) {
+        await repository.upsertRecords(asA(), {
+          ...pull(instance.id, "executions", "event"),
+          records: [{ externalId, data: {} }],
+          seenAt: new Date(base + index * 60_000)
+        });
+      }
+
+      // Epoch on both windows, so nothing expires and only the ceiling can delete anything.
+      const result = await repository.purgeRecords({
+        stateBefore: new Date(0),
+        eventBefore: new Date(0),
+        maxPerOperation: 2,
+        batchLimit: 5_000
+      });
+
+      expect(result.purged).toBe(0);
+      expect(result.trimmed).toBeGreaterThanOrEqual(2);
+      const survivors = await admin<{ external_id: string }[]>`
+        select external_id from connector_records where instance_id = ${instance.id} order by external_id`;
+      expect(survivors.map((row) => row.external_id)).toEqual(["exec_3", "exec_4"]);
+    });
+  });
 });

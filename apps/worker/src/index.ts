@@ -6,6 +6,7 @@ import { PostgresConnectorRepository } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { connectorJobName, runConnectorJob } from "./connectors/job.js";
+import { purgeConnectorRecords } from "./connectors/purge.js";
 import { createConnectorRuntime } from "./connectors/wiring.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
@@ -26,6 +27,7 @@ const keyRingWarning = connectorKeyRingWarning(environment);
 if (keyRingWarning) logger.warn(keyRingWarning);
 
 const ESCALATION_JOB = "support-escalation";
+const RECORD_PURGE_JOB = "connector-record-purge";
 
 /**
  * One more connection to Valkey, for the circuit breaker.
@@ -36,8 +38,10 @@ const ESCALATION_JOB = "support-escalation";
 const circuitClient = new Redis(environment.REDIS_URL, { maxRetriesPerRequest: 1, connectTimeout: 500 });
 circuitClient.on("error", (error) => logger.warn({ err: error }, "circuit breaker store unavailable"));
 
+const connectorRepository = new PostgresConnectorRepository(database);
+
 const connectorRuntime = createConnectorRuntime({
-  repository: new PostgresConnectorRepository(database),
+  repository: connectorRepository,
   keyRing: environment.connectorKeyRing,
   allowlist: environment.connectorEgressAllowlist,
   circuitClient,
@@ -53,6 +57,9 @@ const worker = new Worker(
         return { status: "skipped", reason: "no_key_ring" };
       }
       return runConnectorJob(connectorRuntime, job);
+    }
+    if (job.name === RECORD_PURGE_JOB) {
+      return purgeConnectorRecords(connectorRepository, logger);
     }
     if (job.name === ESCALATION_JOB) {
       const sweep = await sweepSupportEscalations(database);
@@ -84,6 +91,17 @@ await queue.upsertJobScheduler(
   { name: ESCALATION_JOB, opts: { removeOnComplete: 50, removeOnFail: 50 } }
 );
 
+/**
+ * Hourly, and unconditional on the feature flag: rows written while the flag was open still have
+ * to expire after somebody closes it. Retention that stops with the feature is how a table nobody
+ * is watching any more becomes the one that fills the disk.
+ */
+await queue.upsertJobScheduler(
+  RECORD_PURGE_JOB,
+  { every: 60 * 60 * 1000 },
+  { name: RECORD_PURGE_JOB, opts: { removeOnComplete: 24, removeOnFail: 24 } }
+);
+
 worker.on("failed", (job, error) => logger.error({ jobId: job?.id, err: error }, "job failed"));
 worker.on("error", (error) => logger.error({ err: error }, "worker error"));
 
@@ -98,4 +116,4 @@ const shutdown = async (signal: string) => {
 process.once("SIGINT", () => void shutdown("SIGINT"));
 process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
-logger.info({ queue: systemQueueName, scheduled: ESCALATION_JOB }, "worker ready");
+logger.info({ queue: systemQueueName, scheduled: [ESCALATION_JOB, RECORD_PURGE_JOB] }, "worker ready");

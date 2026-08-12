@@ -74,6 +74,41 @@ class FakeRepository {
     this.health.push({ status: outcome.status, errorCode: outcome.errorCode });
     return Promise.resolve();
   }
+
+  readonly stored: { operation: string; shape: string; externalIds: string[]; seenAt: Date }[] = [];
+  readonly state = new Map<string, { cursor: string | null; ranAt: Date; succeeded: boolean }>();
+
+  upsertRecords(
+    _context: TenantContext,
+    input: { operation: string; shape: string; records: readonly { externalId: string }[]; seenAt: Date }
+  ) {
+    this.stored.push({
+      operation: input.operation,
+      shape: input.shape,
+      externalIds: input.records.map((record) => record.externalId),
+      seenAt: input.seenAt
+    });
+    return Promise.resolve({ inserted: input.records.length, updated: 0 });
+  }
+
+  readOperationState(_context: TenantContext, instanceId: string, operation: string) {
+    const found = this.state.get(`${instanceId}:${operation}`);
+    return Promise.resolve(
+      found ? { instanceId, operation, cursor: found.cursor, lastRunAt: null, lastSuccessAt: null } : null
+    );
+  }
+
+  saveOperationState(
+    _context: TenantContext,
+    input: { instanceId: string; operation: string; cursor: string | null; ranAt: Date; succeeded: boolean }
+  ) {
+    this.state.set(`${input.instanceId}:${input.operation}`, {
+      cursor: input.cursor,
+      ranAt: input.ranAt,
+      succeeded: input.succeeded
+    });
+    return Promise.resolve();
+  }
 }
 
 class FakeSecrets {
@@ -142,6 +177,7 @@ beforeEach(() => {
     { externalId: "b", data: {} }
   ];
   connector = {
+    capabilities: { egress: null, operations: { pull: { shape: "state" } }, ingress: false },
     run: vi.fn<RegisteredConnector["run"]>().mockResolvedValue({ records, cursor: "next" }),
     health: vi.fn<RegisteredConnector["health"]>().mockResolvedValue({ status: "ok" })
   };
@@ -152,6 +188,44 @@ describe("a run that works", () => {
     const verdict = await build().run(context, request());
     expect(verdict).toMatchObject({ status: "succeeded", itemsProcessed: 2, cursor: "next" });
     expect(repository.runs[0]).toMatchObject({ status: "succeeded", itemsProcessed: 2 });
+  });
+
+  it("stores what the operation returned, under the shape the manifest declares", async () => {
+    await build().run(context, request());
+    expect(repository.stored).toEqual([
+      {
+        operation: "pull",
+        shape: "state",
+        externalIds: ["a", "b"],
+        seenAt: new Date("2026-08-11T10:00:00.000Z")
+      }
+    ]);
+  });
+
+  it("keeps the cursor, and hands it back when the next job carries none", async () => {
+    const runtime = build();
+    await runtime.run(context, request());
+    expect(repository.state.get(`${instanceId}:pull`)).toMatchObject({ cursor: "next", succeeded: true });
+
+    await runtime.run(context, request({ jobId: "job-2" }));
+    // The scheduler of A3 enqueues a bare job: where an operation got to is the platform's to
+    // remember, not something a queue payload should be carrying around for hours.
+    expect(connector.run.mock.calls[1]?.[2]).toEqual({ cursor: "next" });
+  });
+
+  it("prefers the cursor the job carries, because a replay names its own starting point", async () => {
+    const runtime = build();
+    await runtime.run(context, request());
+    await runtime.run(context, request({ jobId: "job-3" }));
+    connector.run.mockClear();
+    await runtime.run(context, { ...request({ jobId: "job-4" }), cursor: "from-the-job" });
+    expect(connector.run.mock.calls[0]?.[2]).toEqual({ cursor: "from-the-job" });
+  });
+
+  it("does not store records for a health check, which fetches nothing", async () => {
+    await build().run(context, request({ operation: healthOperation }));
+    expect(repository.stored).toEqual([]);
+    expect(repository.state.size).toBe(0);
   });
 
   it("runs the operation against the version of the configuration it read", async () => {
@@ -217,6 +291,17 @@ describe("a failure the provider might recover from", () => {
     const before = Date.now();
     await build().run(context, request());
     expect(Date.now() - before).toBeLessThan(200);
+  });
+});
+
+describe("what a failed operation leaves behind", () => {
+  it("records the attempt without claiming the operation succeeded", async () => {
+    connector.run.mockRejectedValue(new ConnectorRunError("server_error"));
+    await build().run(context, request());
+    // `succeeded: false` is what stops `last_success_at` from moving. A connector broken since
+    // yesterday must not read as answered a moment ago on the screen.
+    expect(repository.state.get(`${instanceId}:pull`)).toMatchObject({ succeeded: false, cursor: null });
+    expect(repository.stored).toEqual([]);
   });
 });
 

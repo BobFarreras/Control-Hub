@@ -84,7 +84,7 @@ export const genericWebhook = defineConnector<GenericWebhookConfig>({
   capabilities: {
     egress: { schemes: ["https"], destination: "configured_base_url" },
     /** No outbound operations: this connector receives, it does not go and fetch. */
-    operations: [],
+    operations: {},
     ingress: true
   },
   async health(context) {

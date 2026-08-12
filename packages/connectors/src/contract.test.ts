@@ -28,7 +28,7 @@ const echo = defineConnector<z.infer<typeof echoSchema>>({
   contractVersion: connectorContractVersion,
   configSchema: echoSchema,
   credentialKinds: [],
-  capabilities: { egress: null, operations: ["pull"], ingress: false },
+  capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
   health: () => Promise.resolve({ status: "ok" }),
   operations: {
     pull: (context) => Promise.resolve({ records: [{ externalId: context.config.label, data: {} }], cursor: null })
@@ -51,7 +51,7 @@ describe("defining a connector", () => {
     expect(() =>
       defineConnector({
         ...base,
-        capabilities: { egress: null, operations: ["pull"], ingress: false },
+        capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
         operations: {}
       })
     ).toThrow("OPERATION_NOT_IMPLEMENTED");
@@ -61,7 +61,7 @@ describe("defining a connector", () => {
     expect(() =>
       defineConnector({
         ...base,
-        capabilities: { egress: null, operations: [], ingress: false },
+        capabilities: { egress: null, operations: {}, ingress: false },
         operations: { pull: () => Promise.resolve({ records: [], cursor: null }) }
       })
     ).toThrow("OPERATION_NOT_DECLARED");
@@ -71,7 +71,7 @@ describe("defining a connector", () => {
     expect(() =>
       defineConnector({
         ...base,
-        capabilities: { egress: null, operations: [], ingress: true },
+        capabilities: { egress: null, operations: {}, ingress: true },
         operations: {}
       })
     ).toThrow("INGRESS_MISDECLARED");
@@ -82,6 +82,13 @@ describe("the capability manifest limits what runs", () => {
   it("dispatches an operation the manifest declares", async () => {
     const result = await echo.run("pull", contextWith({ label: "hello" }), { cursor: null });
     expect(result.records[0]?.externalId).toBe("hello");
+  });
+
+  it("carries the shape of what an operation returns, because retention depends on it", () => {
+    // `state` is overwritten by the next pass and expires from disuse; `event` never comes back
+    // and expires by age. A purge that had to guess between them would either lose an execution
+    // history or keep every metric sample forever.
+    expect(echo.capabilities.operations["pull"]?.shape).toBe("event");
   });
 
   it("refuses an operation nobody declared, rather than looking for a handler", async () => {
@@ -113,7 +120,7 @@ describe("configuration", () => {
       contractVersion: connectorContractVersion,
       configSchema: schema,
       credentialKinds: [],
-      capabilities: { egress: null, operations: [], ingress: false },
+      capabilities: { egress: null, operations: {}, ingress: false },
       health: () => Promise.resolve({ status: "ok" }),
       operations: {}
     });

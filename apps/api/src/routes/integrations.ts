@@ -103,7 +103,7 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
     credentialKinds: entry.credentialKinds,
     capabilities: {
       egress: entry.capabilities.egress,
-      operations: entry.capabilities.operations,
+      operations: Object.keys(entry.capabilities.operations),
       ingress: entry.capabilities.ingress
     }
   };

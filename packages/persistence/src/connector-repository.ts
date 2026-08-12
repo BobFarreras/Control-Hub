@@ -4,6 +4,7 @@ import {
   type ConnectorConfig,
   type ConnectorInstanceRecord,
   type ConnectorInstanceStatus,
+  type ConnectorOperationStateRecord,
   type ConnectorRepository,
   type CreateInstanceInput,
   type CreatedWebhookEndpoint,
@@ -11,16 +12,21 @@ import {
   type HealthOutcome,
   type InboxOutcome,
   type InboxRecord,
+  type PurgeRecordsInput,
+  type PurgeRecordsResult,
   type PutCredentialInput,
   type RecordInboxInput,
   type RecordInboxResult,
   type ResolvedWebhookEndpoint,
   type RunOutcome,
   type RunPage,
+  type SaveOperationStateInput,
   type SealedCredential,
   type StartRunInput,
   type StartRunResult,
   type SyncRunRecord,
+  type UpsertRecordsInput,
+  type UpsertRecordsResult,
   type WebhookEndpointRecord
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
@@ -43,6 +49,27 @@ const runColumns = `id, instance_id as "instanceId", operation, job_id as "jobId
   error_code as "errorCode", items_processed as "itemsProcessed"`;
 
 const endpointColumns = `id, instance_id as "instanceId", created_at as "createdAt", revoked_at as "revokedAt"`;
+
+const operationStateColumns = `instance_id as "instanceId", operation, cursor,
+  last_run_at as "lastRunAt", last_success_at as "lastSuccessAt"`;
+
+/**
+ * The columns of a bulk record insert, as one list rather than spread arguments.
+ *
+ * The driver accepts either form, but only this one typechecks: spread names infer to a
+ * `readonly` tuple, and its own `Helper<any, any[]>` wants a mutable array.
+ */
+const recordInsertColumns = [
+  "id",
+  "tenant_id",
+  "instance_id",
+  "operation",
+  "external_id",
+  "shape",
+  "data",
+  "first_seen_at",
+  "last_seen_at"
+] as const;
 
 const inboxColumns = `id, endpoint_id as "endpointId", provider_event_id as "providerEventId",
   payload_hash as "payloadHash", payload, received_at as "receivedAt", status, attempts,
@@ -205,7 +232,11 @@ export class PostgresConnectorRepository implements ConnectorRepository {
    * secondary — finds nothing, and answers null instead of revoking the credential the first one
    * just promoted and leaving the instance with none.
    */
-  async promoteCredential(context: TenantContext, instanceId: string, kind: string): Promise<CredentialMetadata | null> {
+  async promoteCredential(
+    context: TenantContext,
+    instanceId: string,
+    kind: string
+  ): Promise<CredentialMetadata | null> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const [secondary] = await tx<{ id: string }[]>`
         select id from connector_credentials
@@ -334,6 +365,92 @@ export class PostgresConnectorRepository implements ConnectorRepository {
         connector_type as "connectorType", status
       from resolve_connector_webhook_endpoint(${publicId})`;
     return endpoint ?? null;
+  }
+
+  /**
+   * Writes what an operation returned, in one statement.
+   *
+   * `xmax = 0` is how PostgreSQL answers "was this row inserted or updated" from an upsert: a
+   * freshly inserted row has no deleting transaction, an updated one carries the id of the
+   * transaction that locked it. The two counts are worth separating because they answer
+   * different questions -- how much is new, and whether a pass that claimed work changed
+   * anything at all.
+   */
+  async upsertRecords(context: TenantContext, input: UpsertRecordsInput): Promise<UpsertRecordsResult> {
+    if (input.records.length === 0) return { inserted: 0, updated: 0 };
+
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = input.records.map((record) => ({
+        id: randomUUID(),
+        tenant_id: context.tenantId,
+        instance_id: input.instanceId,
+        operation: input.operation,
+        external_id: record.externalId,
+        shape: input.shape,
+        data: tx.json(record.data) as unknown as string,
+        first_seen_at: input.seenAt,
+        last_seen_at: input.seenAt
+      }));
+
+      const written = await tx<{ inserted: boolean }[]>`
+        insert into connector_records ${tx(rows, recordInsertColumns)}
+        on conflict (tenant_id, instance_id, operation, external_id) do update
+          set data = excluded.data,
+              last_seen_at = excluded.last_seen_at,
+              -- The shape follows the manifest that wrote it last, so a release that changes one
+              -- does not leave rows expiring by a rule nobody can find any more.
+              shape = excluded.shape
+        returning (xmax = 0) as inserted`;
+
+      const inserted = written.filter((row) => row.inserted).length;
+      return { inserted, updated: written.length - inserted };
+    }).catch(mapConstraint);
+  }
+
+  async readOperationState(
+    context: TenantContext,
+    instanceId: string,
+    operation: string
+  ): Promise<ConnectorOperationStateRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [state] = await tx<ConnectorOperationStateRecord[]>`
+        select ${tx.unsafe(operationStateColumns)} from connector_operation_state
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId} and operation = ${operation}`;
+      return state ?? null;
+    });
+  }
+
+  /**
+   * Records where an operation got to, and when it last worked.
+   *
+   * `last_success_at` only moves on success, which is the whole point: it is the age a screen
+   * shows. A failed pass that refreshed it would make a connector that has been broken for a day
+   * look like it answered a moment ago.
+   */
+  async saveOperationState(context: TenantContext, input: SaveOperationStateInput): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into connector_operation_state
+          (id, tenant_id, instance_id, operation, cursor, last_run_at, last_success_at)
+        values (${randomUUID()}, ${context.tenantId}, ${input.instanceId}, ${input.operation},
+          ${input.cursor}, ${input.ranAt}, ${input.succeeded ? input.ranAt : null})
+        on conflict (tenant_id, instance_id, operation) do update
+          set cursor = excluded.cursor,
+              last_run_at = excluded.last_run_at,
+              last_success_at = coalesce(excluded.last_success_at, connector_operation_state.last_success_at),
+              updated_at = now()`;
+    }).catch(mapConstraint);
+  }
+
+  /**
+   * Retention. No tenant, and no delete privilege either: the function fixes the predicate in the
+   * schema and runs as its owner, so this call cannot become a delete of somebody's choosing.
+   */
+  async purgeRecords(input: PurgeRecordsInput): Promise<PurgeRecordsResult> {
+    const [result] = await this.database<{ purged: string; trimmed: string }[]>`
+      select purged, trimmed from purge_connector_records(
+        ${input.stateBefore}, ${input.eventBefore}, ${input.maxPerOperation}, ${input.batchLimit})`;
+    return { purged: Number(result?.purged ?? 0), trimmed: Number(result?.trimmed ?? 0) };
   }
 
   /**

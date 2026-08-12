@@ -98,12 +98,30 @@ export type EgressPolicy = {
 };
 
 /**
+ * The shape of what an operation returns, which is what decides how long it is kept.
+ *
+ * `state` is one row per thing observed, overwritten by the next pass: a host's memory, a
+ * workflow's enabled flag. It expires from disuse — a thing the provider stopped naming.
+ * `event` is one row per fact that never comes back: an execution that failed at 03:12. It
+ * expires by age.
+ *
+ * The connector declares it because the connector is the only place that knows. A purge left to
+ * guess would either drop an execution history somebody needs or keep every metric sample ever
+ * read, and the second one is only noticed when the table is too large to fix quietly.
+ */
+export type RecordShape = "state" | "event";
+
+export type OperationDeclaration = {
+  shape: RecordShape;
+};
+
+/**
  * What the runtime will let this connector do. Not documentation: an operation missing from
  * `operations` cannot be dispatched even when the code for it exists.
  */
 export type CapabilityManifest = {
   egress: EgressPolicy | null;
-  operations: readonly string[];
+  operations: Readonly<Record<string, OperationDeclaration>>;
   ingress: boolean;
 };
 
@@ -117,10 +135,20 @@ export type CapabilityManifest = {
 export type HealthReport =
   { status: "ok" } | { status: "failed"; failure: ConnectorFailureKind } | { status: "unverifiable" };
 
+/**
+ * What a record may carry: JSON, and nothing else.
+ *
+ * It used to be `unknown`, which was honest while records were counted and thrown away. Now they
+ * are stored as `jsonb`, so a connector returning a `Date`, a `Map` or a class instance is a bug
+ * that has to fail at the connector rather than at the insert, where the message would name a
+ * column instead of the handler that built the value.
+ */
+export type RecordValue = null | string | number | boolean | RecordValue[] | { [key: string]: RecordValue };
+
 /** One thing fetched from a provider, keyed by the identifier that makes a retry idempotent. */
 export type ConnectorRecord = {
   externalId: string;
-  data: Readonly<Record<string, unknown>>;
+  data: Readonly<Record<string, RecordValue>>;
 };
 
 export type OperationInput = { cursor: string | null };
@@ -227,7 +255,7 @@ function issuesOf(error: { issues: readonly { path: PropertyKey[]; code: string 
  * at module load, rather than on the day somebody triggers that operation.
  */
 export function defineConnector<Config>(definition: ConnectorDefinition<Config>): RegisteredConnector {
-  const declared = new Set(definition.capabilities.operations);
+  const declared = new Set(Object.keys(definition.capabilities.operations));
   const implemented = new Set(Object.keys(definition.operations));
   for (const name of declared) if (!implemented.has(name)) throw new ConnectorError("OPERATION_NOT_IMPLEMENTED");
   for (const name of implemented) if (!declared.has(name)) throw new ConnectorError("OPERATION_NOT_DECLARED");

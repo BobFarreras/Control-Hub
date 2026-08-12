@@ -24,9 +24,10 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A2 de la Fase 7.1**: el magatzem generic de registres (`0033`), que es el forat G1
-de la plataforma. Sense ell no hi ha res a dibuixar, perque avui el runtime compta els registres
-d'una operacio i els llenca.
+**L'increment A3 de la Fase 7.1**: els forats G2 i G3 — la cadencia declarada al manifest, la cua
+`connectors` amb el seu repartiment, el reconciliador que treu de Valkey el calendari d'una
+instancia deshabilitada o esborrada, i el confinament de `guarded-fetch` a la base configurada
+tambe sota `operator_allowlist`. Amb A2 tancat ja hi ha on aterrar; el que falta es qui ho encua.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -38,8 +39,20 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 - **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1 a B4). Depen de la
   7.1: sense magatzem ni programador no te on aterrar.
 
-**Fet fins ara: l'increment A1**, que registra la flag `infrastructure` apagada i deixa
-l'especificacio aprovada a l'index. Res mes no ha canviat de comportament.
+**Fet fins ara:**
+
+| # | Que hi ha | On |
+|---|---|---|
+| A1 | La flag `infrastructure` registrada i apagada, i l'especificacio aprovada a l'index | `packages/config/src/flags.ts`, `docs/specifications/infrastructure.md` |
+| A2 | G1 tapat: `connector_records` i `connector_operation_state` (`0033`), forma per operacio al manifest, cursor persistit i purga horaria | `packages/database/migrations/0033_connector_records.sql`, `packages/connectors/src/contract.ts`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/` |
+
+L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
+sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
+operacio. Els valors de retencio son a `docs/specifications/data-governance.md` i el que ha de
+saber qui escriu un connector, a `docs/development/writing-a-connector.md`.
+
+La purga corre cada hora i **deliberadament no mira la flag**: si es tanques amb files ja escrites,
+apagar la flag deixaria de fer-les caducar en comptes de deixar d'escriure'n de noves.
 
 **No confondre amb la "Fase 7B - Accions i credencials OAuth"** que hi ha proposada a
 `IMPLEMENTATION_PLAN.md`: es una fase diferent i posterior. Per aixo la particio d'aquesta va amb
@@ -50,7 +63,7 @@ propietari — s'arreglen a la plataforma, amb la seva prova, mai al connector:
 
 | # | Que falla | On |
 |---|---|---|
-| G1 | El runtime compta els `records` d'una operacio i els llenca; el cursor no el desa ningu | `apps/worker/src/connectors/runtime.ts:172` |
+| G1 | ~~El runtime compta els `records` d'una operacio i els llenca; el cursor no el desa ningu~~ **Tapat a l'A2** | `apps/worker/src/connectors/runtime.ts` |
 | G2 | L'unica operacio que algu encua es el health check: no es pot programar cap altra | `apps/worker/src/index.ts` |
 | G3 | Amb `operator_allowlist`, `guarded-fetch` no confina a la base configurada | `apps/worker/src/connectors/guarded-fetch.ts:141` |
 

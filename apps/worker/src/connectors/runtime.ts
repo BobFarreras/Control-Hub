@@ -141,16 +141,52 @@ export class ConnectorRuntime {
       clock: { now: () => this.now() }
     };
 
+    // Where the operation got to is the platform's to remember. A job that carried it would be
+    // handing a queue payload the authority over a cursor it may have been holding for an hour;
+    // one that names it explicitly is replaying on purpose, and that wins.
+    const cursor = request.cursor ?? (await this.storedCursor(context, instance.id, request.operation));
+
     try {
-      const result = await this.attempt(context, connector, connectorContext, instance.id, request);
+      const result = await this.attempt(context, connector, connectorContext, instance.id, {
+        ...request,
+        cursor
+      });
 
       await circuits.recordSuccess(context.tenantId, instance.id, request.operation);
+      if (request.operation !== healthOperation) {
+        await repository.saveOperationState(context, {
+          instanceId: instance.id,
+          operation: request.operation,
+          cursor: result.cursor,
+          ranAt: this.now(),
+          succeeded: true
+        });
+      }
       await repository.finishRun(context, run.id, { status: "succeeded", itemsProcessed: result.itemsProcessed });
       this.log(instance, request, run, "succeeded", startedAt, null);
       return { status: "succeeded", runId: run.id, itemsProcessed: result.itemsProcessed, cursor: result.cursor };
     } catch (error) {
+      if (request.operation !== healthOperation) {
+        // The cursor stays where it was: an attempt that failed advanced nothing. Only
+        // `last_run_at` moves, so the history says we tried and the age still says we have not
+        // succeeded since.
+        await repository.saveOperationState(context, {
+          instanceId: instance.id,
+          operation: request.operation,
+          cursor,
+          ranAt: this.now(),
+          succeeded: false
+        });
+      }
       return await this.recordFailure(context, instance, request, run, startedAt, error, secretsSeen);
     }
+  }
+
+  /** Null rather than a throw when nothing has run yet: a first pass starts from the beginning. */
+  private async storedCursor(context: TenantContext, instanceId: string, operation: string): Promise<string | null> {
+    if (operation === healthOperation) return null;
+    const state = await this.options.repository.readOperationState(context, instanceId, operation);
+    return state?.cursor ?? null;
   }
 
   /**
@@ -168,7 +204,22 @@ export class ConnectorRuntime {
     request: RunRequest
   ): Promise<{ itemsProcessed: number; cursor: string | null }> {
     if (request.operation !== healthOperation) {
+      // The manifest is what says how long the result lives, and `run` already refuses an
+      // operation it does not declare -- so this is a contradiction inside the connector, not a
+      // caller's mistake, and it fails before any call goes out.
+      const declaration = connector.capabilities.operations[request.operation];
+      if (!declaration) throw new ConnectorRunError("invalid_response", "OPERATION_NOT_DECLARED");
+
       const result = await connector.run(request.operation, connectorContext, { cursor: request.cursor });
+      // Stored, not counted and dropped. The API makes no outbound call, so a record that is not
+      // written here is a record no screen can ever show.
+      await this.options.repository.upsertRecords(context, {
+        instanceId,
+        operation: request.operation,
+        shape: declaration.shape,
+        records: result.records.map((record) => ({ externalId: record.externalId, data: record.data })),
+        seenAt: this.now()
+      });
       return { itemsProcessed: result.records.length, cursor: result.cursor };
     }
 

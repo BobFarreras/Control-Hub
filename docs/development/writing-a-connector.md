@@ -59,10 +59,18 @@ diuen el mateix.
 ```ts
 capabilities: {
   egress: { schemes: ["https"], destination: "configured_base_url" },
-  operations: ["pull_invoices"],
+  operations: { pull_invoices: { shape: "event" } },
   ingress: false
 }
 ```
+
+Cada operacio declara la **forma** del que retorna, i no es un adjectiu: es la regla per la qual
+els seus registres caducaran. `state` es el valor actual d'una cosa que perdura — un workflow que
+esta actiu o aturat — i caduca quan el proveidor deixa d'anomenar-la. `event` es una cosa que va
+passar i no canviara mai mes — una execucio — i caduca perque es vella. Declarar `state` el que
+en realitat es un `event` fa creixer la taula sense limit; declarar `event` el que es `state` fa
+desapareixer de la pantalla coses que el proveidor encara te. Les finestres de cada forma son a
+`docs/specifications/data-governance.md`.
 
 `destination` te dos valors i la tria importa: `configured_base_url` limita les crides a la
 configuracio de la propia instancia, i `operator_allowlist` a les adreces que l'operador ha
@@ -84,8 +92,10 @@ quan s'encunya l'adreca; el proveidor no ens en dona cap.
 - **`health`** ha de retornar `unverifiable` quan el connector no te res a qui preguntar. Dir
   `ok` sense evidencia es fabricar-la, i el domini es nega a comptar-la.
 - **Les operacions** retornen `records` amb un `externalId` per registre i un `cursor` opac. El
-  `externalId` es el que fa que un reintent no dupliqui res, i el `cursor` el guarda el runtime
-  sense llegir-lo.
+  `externalId` es el que fa que un reintent no dupliqui res: el runtime desa els registres amb
+  aquesta clau, aixi que dues passades deixen una fila per cosa observada, amb la data de la
+  primera vegada que la vam veure intacta. El `cursor` el guarda el runtime sense llegir-lo i te
+  l'entrega a la passada seguent encara que la feina la faci una altra replica.
 - **L'ingress** declara com signa el proveidor, pero **no verifica res**: la comprovacio la fa
   l'API, que es qui te els bytes crus i el secret. Una implementacio per revisar, no una per
   proveidor. El teu `handle` nomes llegeix l'event ja verificat i diu quin identificador te i si

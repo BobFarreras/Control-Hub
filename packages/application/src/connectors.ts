@@ -218,6 +218,83 @@ export type RecordInboxResult = { id: string; duplicate: boolean };
 
 export type InboxOutcome = { status: Exclude<InboxStatus, "pending">; processedAt: Date };
 
+/**
+ * The shape of what an operation returns, mirrored from the connector manifest.
+ *
+ * Declared again here rather than imported because `packages/application` does not depend on
+ * `packages/connectors` and must not start: the use cases coordinate ports, and a port that
+ * reached into the registry would make every connector a dependency of the core.
+ */
+export const connectorRecordShapes = ["state", "event"] as const;
+export type ConnectorRecordShape = (typeof connectorRecordShapes)[number];
+
+/** One thing a provider told us about, as it is stored. Never a credential, never a raw body. */
+export type ConnectorRecordRow = {
+  id: string;
+  instanceId: string;
+  operation: string;
+  externalId: string;
+  shape: ConnectorRecordShape;
+  data: ConnectorConfig;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+};
+
+export type UpsertRecordsInput = {
+  instanceId: string;
+  operation: string;
+  shape: ConnectorRecordShape;
+  /** What the connector returned. The order is the provider's and carries no meaning. */
+  records: readonly { externalId: string; data: ConnectorConfig }[];
+  seenAt: Date;
+};
+
+/**
+ * `inserted` and `updated` are counted apart because they answer different questions: how much is
+ * new, and whether a pass that reported work actually changed anything.
+ */
+export type UpsertRecordsResult = { inserted: number; updated: number };
+
+/**
+ * Where an operation left off.
+ *
+ * `lastSuccessAt` is not decoration: it is the age the screen shows and the freshness an alert
+ * rule is measured against. A rule that fires because we stopped looking is worse than no rule.
+ */
+export type ConnectorOperationStateRecord = {
+  instanceId: string;
+  operation: string;
+  cursor: string | null;
+  lastRunAt: Date | null;
+  lastSuccessAt: Date | null;
+};
+
+export type SaveOperationStateInput = {
+  instanceId: string;
+  operation: string;
+  /** Opaque. Stored and handed back unread, exactly as the connector returned it. */
+  cursor: string | null;
+  ranAt: Date;
+  succeeded: boolean;
+};
+
+/**
+ * How far back records are kept, decided by the caller and not by the schema.
+ *
+ * The windows are constants in code, so revising them once real traffic exists costs a release
+ * and not a migration. `maxPerOperation` is the hard ceiling that stops a provider we misread
+ * from filling the table quietly.
+ */
+export type PurgeRecordsInput = {
+  stateBefore: Date;
+  eventBefore: Date;
+  maxPerOperation: number;
+  /** Bounded so a purge cannot hold locks over a table somebody is reading. */
+  batchLimit: number;
+};
+
+export type PurgeRecordsResult = { purged: number; trimmed: number };
+
 export type ConnectorRepository = {
   createInstance(context: TenantContext, input: CreateInstanceInput): Promise<ConnectorInstanceRecord>;
   listInstances(context: TenantContext): Promise<ConnectorInstanceRecord[]>;
@@ -258,6 +335,30 @@ export type ConnectorRepository = {
   listEndpoints(context: TenantContext, instanceId: string): Promise<WebhookEndpointRecord[]>;
   revokeEndpoint(context: TenantContext, endpointId: string): Promise<boolean>;
   resolveEndpoint(publicId: string): Promise<ResolvedWebhookEndpoint | null>;
+
+  /**
+   * Stores what an operation returned, keyed by the identifier that makes a retry harmless.
+   *
+   * The unique key does the work: the same pass twice leaves one row per `externalId` with its
+   * `lastSeenAt` moved forward. Nothing here reads the data — the platform stores, the module
+   * that cares interprets.
+   */
+  upsertRecords(context: TenantContext, input: UpsertRecordsInput): Promise<UpsertRecordsResult>;
+  readOperationState(
+    context: TenantContext,
+    instanceId: string,
+    operation: string
+  ): Promise<ConnectorOperationStateRecord | null>;
+  saveOperationState(context: TenantContext, input: SaveOperationStateInput): Promise<void>;
+  /**
+   * Maintenance, and the only call on this port without a tenant.
+   *
+   * Retention is not a tenant's decision and walking every tenant to delete a handful of rows
+   * each would turn one bounded statement into hundreds. It runs through a database function
+   * whose predicate is fixed in the schema, so the application role still holds no delete
+   * privilege on the table.
+   */
+  purgeRecords(input: PurgeRecordsInput): Promise<PurgeRecordsResult>;
 
   recordInboxEvent(context: TenantContext, input: RecordInboxInput): Promise<RecordInboxResult>;
   listPendingInbox(context: TenantContext, limit: number): Promise<InboxRecord[]>;
