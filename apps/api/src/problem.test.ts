@@ -1,13 +1,19 @@
-import { ConnectorCredentialError, ConnectorServiceError, ConnectorStorageError } from "@control-hub/application";
+import {
+  ConnectorCredentialError,
+  ConnectorServiceError,
+  ConnectorStorageError,
+  InfrastructureServiceError
+} from "@control-hub/application";
 import { describe, expect, it } from "vitest";
 import { describeConnectorError, problemDetails, usesProblemDetails } from "./problem.js";
 import { ApiSecurityError } from "./security.js";
 
 describe("which routes answer in problem details", () => {
-  it("covers the connector surface and leaves the rest of the API alone", () => {
+  it("covers the connector and infrastructure surfaces, and leaves the rest of the API alone", () => {
     expect(usesProblemDetails("/api/v1/integrations")).toBe(true);
     expect(usesProblemDetails("/api/v1/integrations/abc/runs?page=2")).toBe(true);
     expect(usesProblemDetails("/api/v1/connectors")).toBe(true);
+    expect(usesProblemDetails("/api/v1/infrastructure/alerts")).toBe(true);
     expect(usesProblemDetails("/api/v1/crm/leads")).toBe(false);
     expect(usesProblemDetails("/health/ready")).toBe(false);
   });
@@ -92,5 +98,49 @@ describe("the document itself", () => {
     const document = problemDetails({ status: 500, code: "SOMETHING_NEW", instance: "/x", requestId: "req-1" });
     expect(document.title).toBe("Unexpected error");
     expect(document.type).toBe("https://control-hub.example/problems/something-new");
+  });
+});
+
+describe("the status an infrastructure failure deserves", () => {
+  const codeAndStatus = (error: unknown) => {
+    const described = describeConnectorError(error);
+    return described && [described.code, described.status];
+  };
+
+  /** Acceptance criterion 9: an Administrator reads and is refused everything that changes. */
+  it("answers 403 for a permission, and 404 for a row that is not this tenant's", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("FORBIDDEN"))).toEqual(["FORBIDDEN", 403]);
+    expect(codeAndStatus(new InfrastructureServiceError("RULE_NOT_FOUND"))).toEqual(["RULE_NOT_FOUND", 404]);
+    expect(codeAndStatus(new InfrastructureServiceError("ALERT_NOT_FOUND"))).toEqual(["ALERT_NOT_FOUND", 404]);
+  });
+
+  it("answers 409 when two people acted at once, and 422 for a rule the request broke", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("DUPLICATE_RULE_NAME"))).toEqual(["DUPLICATE_RULE_NAME", 409]);
+    expect(codeAndStatus(new InfrastructureServiceError("ALERT_ALREADY_HAS_INCIDENT"))).toEqual([
+      "ALERT_ALREADY_HAS_INCIDENT",
+      409
+    ]);
+    expect(codeAndStatus(new InfrastructureServiceError("INVALID_FRESHNESS"))).toEqual(["INVALID_FRESHNESS", 422]);
+    expect(codeAndStatus(new InfrastructureServiceError("TARGET_REQUIRED"))).toEqual(["TARGET_REQUIRED", 422]);
+  });
+
+  /**
+   * A body naming a client that is not there is 422 and not 404: the route exists and the request
+   * is well formed, and answering 404 would say the alert rule surface itself is missing.
+   */
+  it("keeps a missing reference in the body at 422, where a caller can act on it", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("REFERENCE_NOT_FOUND"))).toEqual(["REFERENCE_NOT_FOUND", 422]);
+  });
+
+  /** A code with no title of its own still gets a readable one rather than leaking the enum. */
+  it("gives every infrastructure code a title a person can read", () => {
+    const problem = problemDetails({
+      status: 422,
+      code: "INVALID_FRESHNESS",
+      instance: "/api/v1/infrastructure/alert-rules",
+      requestId: "req-1"
+    });
+    expect(problem.title).not.toBe("Unexpected error");
+    expect(problem.type).toBe("https://control-hub.example/problems/invalid-freshness");
   });
 });

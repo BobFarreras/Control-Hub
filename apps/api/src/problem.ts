@@ -1,4 +1,9 @@
-import { ConnectorCredentialError, ConnectorServiceError, ConnectorStorageError } from "@control-hub/application";
+import {
+  ConnectorCredentialError,
+  ConnectorServiceError,
+  ConnectorStorageError,
+  InfrastructureServiceError
+} from "@control-hub/application";
 import { ApiSecurityError } from "./security.js";
 
 /**
@@ -68,18 +73,31 @@ const titles: Record<string, string> = {
   SECRET_TOO_SHORT: "Secret too short",
   SECRET_TOO_LONG: "Secret too long",
   ALREADY_EXPIRED: "Expiry is in the past",
+  RULE_NOT_FOUND: "No such alert rule",
+  ALERT_NOT_FOUND: "No such alert",
+  DUPLICATE_RULE_NAME: "An alert rule already uses that name",
+  ALERT_ALREADY_HAS_INCIDENT: "That alert already opened an incident",
+  INVALID_FRESHNESS: "Freshness must be between a minute and a day",
+  TARGET_REQUIRED: "A rule watching one automation needs to say which",
+  TARGET_NOT_ALLOWED: "A rule watching the whole instance names no automation",
+  NOTES_TOO_LONG: "Note too long",
+  REFERENCE_NOT_FOUND: "Refers to something that does not exist",
   INTERNAL_ERROR: "Unexpected error"
 };
 
 /**
  * Which routes answer in problem details.
  *
- * A prefix rather than a per-route flag: the two connector surfaces are the ones written to the
+ * A prefix rather than a per-route flag: these are the surfaces written to the
  * error specification, and a route added under them later gets the same envelope without anybody
  * having to remember to ask for it.
  */
 export function usesProblemDetails(url: string): boolean {
-  return url.startsWith("/api/v1/integrations") || url.startsWith("/api/v1/connectors");
+  return (
+    url.startsWith("/api/v1/integrations") ||
+    url.startsWith("/api/v1/connectors") ||
+    url.startsWith("/api/v1/infrastructure")
+  );
 }
 
 export function problemDetails(input: {
@@ -123,6 +141,9 @@ export function describeConnectorError(
 
   if (error instanceof ConnectorStorageError) return { status: storageStatus(error.code), code: error.code };
 
+  if (error instanceof InfrastructureServiceError)
+    return { status: infrastructureStatus(error.code), code: error.code };
+
   // Fastify's own schema failure. Its message quotes the body, so only the code travels.
   if (typeof error === "object" && error !== null && "validation" in error)
     return { status: 400, code: "INVALID_INPUT" };
@@ -144,6 +165,22 @@ function credentialStatus(code: string): number {
   if (code === "FORBIDDEN" || code === "MFA_REQUIRED") return 403;
   if (code === "INSTANCE_NOT_FOUND") return 404;
   if (code === "ROTATION_ALREADY_OPEN" || code === "NO_ROTATION_IN_PROGRESS") return 409;
+  return 422;
+}
+
+/**
+ * The infrastructure module's own codes, on the same scale as the connector surface above.
+ *
+ * `ALERT_ALREADY_HAS_INCIDENT` is a 409 and not a 422: nothing about the request is wrong, the
+ * alert simply already opened one -- two people, or a sweep and a person, acting at once.
+ */
+function infrastructureStatus(code: string): number {
+  if (code === "FORBIDDEN") return 403;
+  // A body that names something absent is a 422: the route is there and the request is well
+  // formed. Only a row this tenant cannot see is a 404.
+  if (code === "REFERENCE_NOT_FOUND") return 422;
+  if (code.endsWith("NOT_FOUND")) return 404;
+  if (code.startsWith("DUPLICATE") || code === "ALERT_ALREADY_HAS_INCIDENT") return 409;
   return 422;
 }
 

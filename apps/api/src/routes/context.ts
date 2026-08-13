@@ -7,6 +7,7 @@ import type {
   ConnectorService,
   CustomerServicesService,
   CrmService,
+  InfrastructureService,
   ProjectsService,
   SupportService
 } from "@control-hub/application";
@@ -32,6 +33,7 @@ export type CrmContext = RouteContext & { crm: CrmService };
 export type CommerceContext = RouteContext & { commerce: CommerceService; customerServices: CustomerServicesService };
 export type CompanySubscriptionContext = RouteContext & { companySubscriptions: CompanySubscriptionService };
 export type SupportContext = RouteContext & { support: SupportService };
+export type InfrastructureContext = RouteContext & { infrastructure: InfrastructureService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type AttendanceContext = RouteContext & { attendance: AttendanceService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };

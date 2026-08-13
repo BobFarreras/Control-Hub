@@ -44,21 +44,27 @@ export type AlertRule = {
   /** The `externalId` of the one automation being watched, or null for all of them. */
   targetId: string | null;
   severity: AlertSeverity;
-  params: Readonly<Record<string, unknown>>;
+  params: Readonly<Record<string, JsonValue>>;
   /** How old the data may be before the rule stops claiming to know anything. */
   freshnessSeconds: number;
   opensIncident: boolean;
   enabled: boolean;
 };
 
-/** A JSON value as it comes back out of `connector_records`. */
-type RecordValue = null | string | number | boolean | RecordValue[] | { [key: string]: RecordValue };
+/**
+ * A JSON value, which is what both a stored record and a rule's parameters are.
+ *
+ * Not `unknown`. Both of these round-trip through a `jsonb` column, so a `Date`, a `Map` or a
+ * class instance is a bug that has to fail where it was built rather than at the insert, where
+ * the message would name a column instead of the code that made the value.
+ */
+export type JsonValue = null | string | number | boolean | JsonValue[] | { [key: string]: JsonValue };
 
 export type ObservedRecord = {
   instanceId: string;
   operation: string;
   externalId: string;
-  data: Readonly<Record<string, RecordValue>>;
+  data: Readonly<Record<string, JsonValue>>;
   firstSeenAt: Date;
   lastSeenAt: Date;
 };
@@ -110,7 +116,7 @@ function isFresh(rule: AlertRule, freshness: readonly OperationFreshness[], now:
   return now.getTime() - entry.lastSuccessAt.getTime() <= rule.freshnessSeconds * 1000;
 }
 
-const asString = (value: RecordValue | undefined): string | null => (typeof value === "string" ? value : null);
+const asString = (value: JsonValue | undefined): string | null => (typeof value === "string" ? value : null);
 
 /**
  * The failures inside the rule's window, grouped by the workflow they belong to.

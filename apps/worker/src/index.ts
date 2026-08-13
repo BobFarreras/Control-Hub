@@ -1,3 +1,4 @@
+import { AlertEngine } from "@control-hub/application";
 import {
   connectorKeyRingWarning,
   isFeatureEnabled,
@@ -8,7 +9,7 @@ import { connectorRegistry } from "@control-hub/connectors";
 import { connectorQueueName, systemQueueName } from "@control-hub/contracts/jobs";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
-import { PostgresConnectorRepository } from "@control-hub/persistence";
+import { PostgresConnectorRepository, PostgresInfrastructureRepository } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { CircuitStore } from "./connectors/circuit-store.js";
@@ -16,6 +17,8 @@ import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.
 import { purgeConnectorRecords } from "./connectors/purge.js";
 import { reconcileConnectorSchedules, schedulableInstances } from "./connectors/schedule.js";
 import { createConnectorRuntime } from "./connectors/wiring.js";
+import { sweepAlertsAcrossTenants } from "./infrastructure/alert-sweep.js";
+import { purgeResolvedAlerts } from "./infrastructure/purge.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
 
@@ -37,6 +40,7 @@ if (keyRingWarning) logger.warn(keyRingWarning);
 const ESCALATION_JOB = "support-escalation";
 const RECORD_PURGE_JOB = "connector-record-purge";
 const SCHEDULE_RECONCILE_JOB = "connector-schedule-reconcile";
+const ALERT_SWEEP_JOB = "infrastructure-alert-sweep";
 
 // Read once at boot, like every other flag decision in a composition root. Turning the phase
 // off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
@@ -52,6 +56,11 @@ const circuitClient = new Redis(environment.REDIS_URL, { maxRetriesPerRequest: 1
 circuitClient.on("error", (error) => logger.warn({ err: error }, "circuit breaker store unavailable"));
 
 const connectorRepository = new PostgresConnectorRepository(database);
+// The engine, not the service: a sweep has no session behind it, and the service is where the
+// permission checks live. Keeping them apart is what stops a background job from satisfying
+// one by accident.
+const infrastructureRepository = new PostgresInfrastructureRepository(database);
+const alertEngine = new AlertEngine(infrastructureRepository);
 // One breaker store, shared: the runtime asks it whether to attempt a call and the reconciler
 // asks it whether to slow the schedule down. Two stores would be two opinions.
 const circuits = new CircuitStore({ client: circuitClient });
@@ -69,8 +78,14 @@ const worker = new Worker(
   async (job) => {
     if (job.name === SCHEDULE_RECONCILE_JOB) return reconcileSchedules();
     if (job.name === RECORD_PURGE_JOB) {
-      return purgeConnectorRecords(connectorRepository, logger);
+      // The two retentions run together because they are the same hour of the same maintenance,
+      // and both are unconditional on the flag: rows written while it was open still have to
+      // expire after somebody closes it.
+      const records = await purgeConnectorRecords(connectorRepository, logger);
+      const alerts = await purgeResolvedAlerts(infrastructureRepository, logger);
+      return { ...records, alerts };
     }
+    if (job.name === ALERT_SWEEP_JOB) return sweepAlerts();
     if (job.name === ESCALATION_JOB) {
       const sweep = await sweepSupportEscalations(database);
       for (const failure of sweep.failed) {
@@ -138,6 +153,28 @@ async function reconcileSchedules() {
 }
 
 /**
+ * One pass of the alert engine over every tenant.
+ *
+ * Recomputed rather than accumulated, exactly like the escalation sweep above it: missing a pass
+ * loses nothing because the next one reaches the same conclusion, and running one twice changes
+ * nothing because the partial unique index makes the second write an update of the first.
+ */
+async function sweepAlerts() {
+  const sweep = await sweepAlertsAcrossTenants({
+    tenantIds: async () =>
+      (await database<{ id: string }[]>`select id from tenants order by created_at asc`).map((tenant) => tenant.id),
+    sweep: (context, at) => alertEngine.sweep(context, at)
+  });
+
+  for (const failure of sweep.failed) {
+    logger.error({ tenantId: failure.tenantId, err: failure.error }, "alert sweep failed for tenant");
+  }
+  // Quiet when nothing changed, which is what every pass over a healthy installation is.
+  if (sweep.firing > 0 || sweep.resolved > 0 || sweep.incidentsOpened > 0) logger.info(sweep, "alerts evaluated");
+  return sweep;
+}
+
+/**
  * The sweep is repeatable rather than driven by a timer in the process. BullMQ keeps one
  * schedule in Valkey, so two worker replicas do not each escalate the same ticket, and a
  * restart does not lose the schedule.
@@ -174,6 +211,22 @@ await queue.upsertJobScheduler(
   { name: SCHEDULE_RECONCILE_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
 );
 
+/**
+ * Every two minutes, and only with the flag open: unlike the reconciler, which has orphans to
+ * remove whether or not the module is on, an evaluation with no module behind it would write
+ * alerts nothing can show and no screen can acknowledge. The schedule the last release left
+ * behind is removed on the next line rather than left running.
+ */
+if (infrastructureEnabled) {
+  await queue.upsertJobScheduler(
+    ALERT_SWEEP_JOB,
+    { every: 2 * 60 * 1000 },
+    { name: ALERT_SWEEP_JOB, opts: { removeOnComplete: 30, removeOnFail: 30 } }
+  );
+} else {
+  await queue.removeJobScheduler(ALERT_SWEEP_JOB);
+}
+
 for (const [name, instance] of [
   ["system", worker],
   ["connectors", connectorWorker]
@@ -196,7 +249,12 @@ process.once("SIGTERM", () => void shutdown("SIGTERM"));
 logger.info(
   {
     queues: [systemQueueName, connectorQueueName],
-    scheduled: [ESCALATION_JOB, RECORD_PURGE_JOB, SCHEDULE_RECONCILE_JOB],
+    scheduled: [
+      ESCALATION_JOB,
+      RECORD_PURGE_JOB,
+      SCHEDULE_RECONCILE_JOB,
+      ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : [])
+    ],
     infrastructure: infrastructureEnabled
   },
   "worker ready"

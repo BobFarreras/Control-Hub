@@ -437,6 +437,12 @@ REST sota `/api/v1`, problem details RFC 9457, com la superficie de connectors.
 | `GET`, `POST /api/v1/infrastructure/hosts`, `GET`, `PATCH /:id` | read / operate | 7.2 |
 | `GET`, `POST /api/v1/infrastructure/services`, `PATCH`, `DELETE /:id` | read / operate | 7.2 |
 
+`overview` es un recompte fet de les dues mateixes lectures que la pantalla ja pot fer: quantes
+automatitzacions hi ha, quantes corren, quantes tenen client, i les alertes vives per gravetat i
+quantes ha vist algu. Porta `observedFrom`, que es **la lectura mes antiga** de les que hi ha
+al darrere i no la mes nova: un resum nomes es tan fresc com la cosa mes rancia que hi entra.
+Sense res a resumir es `null`, mai l'hora d'ara.
+
 Cap resposta porta una URL de proveidor, ni un token, ni el cos cru d'un event. Les respostes
 d'automatitzacions porten `externalId` i el que la pantalla necessita per **construir** l'enllac,
 no l'enllac. Tota xifra observada viatja amb la seva hora de lectura. OpenAPI es genera de les
@@ -512,7 +518,8 @@ al mateix commit.
 | A2 | G1: `0033`, magatzem de registres, cursor, forma i purga | `packages/database`, `packages/application/src/connectors.ts`, `packages/persistence`, `apps/worker` | Criteri 6 |
 | A3 | G2 i G3: cadencia al manifest, cua `connectors`, reconciliador, confinament a la base | `packages/connectors/src/contract.ts`, `packages/contracts`, `apps/worker` | Criteris 7 i 8 |
 | A4 | Connector `n8n`: operacions i ingress | **`packages/connectors/src/built-in/n8n.ts` i el seu test, i res mes** | Criteri 2, contract tests |
-| A5 | `0035`, associacions, motor d'alertes amb `workflow_failed`, casos d'us i API | `packages/domain`, `packages/application`, `apps/api`, `packages/database` | Criteris 5 i 9 |
+| A5 | `0035`, associacions, motor d'alertes amb `workflow_failed`, casos d'us, API i escombrada | `packages/domain`, `packages/application`, `packages/persistence`, `apps/api`, `apps/worker`, `packages/database` | Criteris 5 i 9 |
+| | *Partit en dos commits: dades i domini primer, casos d'us, adaptador, API i worker despres. Un sol commit de dues mil linies no el revisa ningu.* | | |
 | A6 | Pantalla, i18n `ca`/`es`/`en`, menu lateral, OpenAPI, runbook de l'error workflow | `apps/web`, `packages/i18n`, `docs/runbooks` | Criteris 1, 3 i 4, E2E |
 
 **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1–B4)

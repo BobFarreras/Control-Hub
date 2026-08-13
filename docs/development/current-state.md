@@ -24,12 +24,12 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**La segona meitat de l'increment A5**: els casos d'us, la persistencia i les rutes d'API que
-falten, mes l'escombrada d'alertes cada 2 minuts al worker i la purga de les resoltes. La primera
-meitat —la migracio `0035` i el motor de veredictes al domini— ja es a la branca.
+**L'increment A6**: la pantalla d'infraestructura, l'i18n a `ca`, `es` i `en`, l'entrada del menu
+darrere la flag, el constructor d'enllac extern validat a `apps/web/src/lib` i el runbook de
+l'error workflow d'n8n. L'A5 ja es sencer a la branca.
 
-A5 va en dos commits **a proposit**: un de sol amb migracio, domini, aplicacio, persistencia, API
-i worker no el pot revisar ningu. Cadascun passa `pnpm check` pel seu compte.
+A5 ha anat en dos commits **a proposit**: un de sol amb migracio, domini, aplicacio, persistencia,
+API i worker no el pot revisar ningu. Cadascun passa `pnpm check` pel seu compte.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -50,6 +50,7 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 | A3 | G2 i G3 tapats: cadencia al manifest amb minim de 60 s, cua `connectors` a part, reconciliador de calendari cada 2 minuts, una execucio alhora per operacio (`0034`) i confinament a la base sota `operator_allowlist` | `packages/connectors/src/contract.ts`, `packages/contracts/src/connector-jobs.ts`, `packages/database/migrations/0034_connector_run_lease.sql`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
 | A4 | Connector `n8n`: `pull_workflows` i `pull_executions` amb marca d'aigua, salut autenticada i entrada de l'error workflow signada. Del que n8n dona se'n desa una projeccio, mai el cos | `packages/connectors/src/built-in/n8n.ts` i el seu test |
 | A5 (1/2) | Migracio `0035` (`infra_automation_links`, `infra_alert_rules`, `infra_alert_events` amb l'index unic parcial i la purga de resoltes) i el motor de veredictes pur: `firing`, `resolved` i `starved` | `packages/database/migrations/0035_infrastructure_automations.sql`, `packages/domain/src/infrastructure.ts` |
+| A5 (2/2) | Casos d'us i motor d'alertes (`InfrastructureService` i `AlertEngine`), adaptador PostgreSQL, la superficie `/api/v1/infrastructure` darrere la flag amb problem details, i al worker l'escombrada d'alertes cada 2 minuts i la purga de resoltes a 180 dies | `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/worker/src/infrastructure/` |
 
 L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
 sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
@@ -271,11 +272,13 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   d'integracions ni de webhooks, la web no mostra l'entrada del menu i `/{locale}/integrations`
   respon 404. Obrir-la sense `CONNECTOR_KEY_RING` deixa la pantalla en peu pero sense credencials
   ni endpoints: aquelles rutes no existeixen en aquell desplegament.
-- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Des de
-  l'A3 ja mana sobre alguna cosa: **apagada, el reconciliador esborra tots els calendaris de
-  connector de Valkey i no en programa cap**. Encara no hi ha ni ruta ni pantalla; quan n'hi hagi,
-  tancada voldra dir tambe cap ruta declarada, cap entrada al menu i `/{locale}/infrastructure`
-  responent 404.
+- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Apagada:
+  **cap ruta `/api/v1/infrastructure` declarada** —l'API respon 404, que es la veritat—, el
+  reconciliador esborra tots els calendaris de connector de Valkey i no en programa cap, i el
+  worker treu del calendari l'escombrada d'alertes. La purga de les alertes resoltes, en canvi,
+  **no mira la flag**: files escrites amb la flag oberta han de caducar igual quan es tanqui.
+  Falta la pantalla (A6); llavors tancada voldra dir tambe cap entrada al menu i
+  `/{locale}/infrastructure` responent 404.
 
 ## Superficie executable
 

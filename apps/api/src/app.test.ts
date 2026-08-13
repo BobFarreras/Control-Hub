@@ -270,6 +270,44 @@ describe("feature flags", () => {
     expect(app.hasRoute({ method: "GET", url: "/api/v1/projects" })).toBe(false);
   });
 
+  const infrastructureRoutes = [
+    ["GET", "/api/v1/infrastructure/overview"],
+    ["GET", "/api/v1/infrastructure/automations"],
+    ["PUT", "/api/v1/infrastructure/automations/:instanceId/:externalId/link"],
+    ["GET", "/api/v1/infrastructure/alert-rules"],
+    ["POST", "/api/v1/infrastructure/alert-rules"],
+    ["PATCH", "/api/v1/infrastructure/alert-rules/:ruleId"],
+    ["DELETE", "/api/v1/infrastructure/alert-rules/:ruleId"],
+    ["GET", "/api/v1/infrastructure/alerts"],
+    ["POST", "/api/v1/infrastructure/alerts/:alertId/acknowledge"],
+    ["POST", "/api/v1/infrastructure/alerts/:alertId/resolve"]
+  ] as const;
+
+  /**
+   * Acceptance criterion of the phase: with the flag off there is no route declared, no menu
+   * entry and no scheduled work. Off means 404 -- there is nothing there -- rather than a route
+   * that exists and refuses everybody, which would announce a module the installation has not
+   * bought.
+   */
+  it("does not declare the infrastructure surface while its flag is off", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["connectors"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(infrastructureRoutes.filter(([method, url]) => app.hasRoute({ method, url }))).toEqual([]);
+    expect((await app.inject({ method: "GET", url: "/api/v1/infrastructure/overview" })).statusCode).toBe(404);
+  });
+
+  it("declares it once the flag is on", async () => {
+    const app = buildApp({ ...authenticated, featureFlags: new Set(["infrastructure"] as const) });
+    apps.push(app);
+    await app.ready();
+
+    expect(infrastructureRoutes.filter(([method, url]) => !app.hasRoute({ method, url }))).toEqual([]);
+    // The module reads what the connectors stored; it does not drag their surface in with it.
+    expect(app.hasRoute({ method: "GET", url: "/api/v1/integrations" })).toBe(false);
+  });
+
   const connectorRoutes = [
     ["GET", "/api/v1/connectors"],
     ["GET", "/api/v1/integrations"],
