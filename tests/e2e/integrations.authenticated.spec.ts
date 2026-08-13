@@ -5,14 +5,17 @@ import { selectFieldOption, waitForHydration } from "./support/fixture";
 /**
  * The integrations screen, driven the way an operator drives it.
  *
- * What this proves and unit tests cannot: that a refusal from the API arrives on screen as a
- * Catalan sentence rather than a code, that a configuration the connector does not accept names
- * the offending path without echoing what was typed, and that the state of an integration on the
- * screen is the state the API actually holds after the round trip.
+ * What this proves and unit tests cannot: that the form an operator fills in is **drawn from what
+ * the connector declares** rather than typed as JSON — pick n8n and the fields it asks for appear,
+ * and there is no free-text field left to get wrong — that a configuration the connector refuses
+ * complains **on the field that caused it**, in Catalan, without echoing what was typed, and that
+ * the state of an integration on the screen is the state the API actually holds after the round
+ * trip.
  *
- * It runs against a deployment without a key ring, which is the default: the credential and
+ * It runs against a deployment without a key ring, which is what CI provides: the credential and
  * endpoint routes are not declared there, so the panels that would drive them are absent by
- * design and this test does not go looking for them.
+ * design. The last assertion is that they really are absent, because "the vault is unavailable"
+ * has to look like a missing section rather than a form that fails on submit.
  */
 test.describe.configure({ timeout: 120_000 });
 
@@ -22,10 +25,11 @@ const t = {
   newIntegration: "Nova integracio",
   connectorType: "Tipus de connector",
   integrationName: "Nom de la integracio",
-  configuration: "Configuracio (JSON)",
+  baseUrl: "Adreca de la instancia",
   create: "Crear",
-  invalidJson: "La configuracio no es JSON valid.",
+  valueRefused: "Aquest valor no s'accepta.",
   refusedConfig: "La configuracio no la reconeix aquest connector.",
+  credentials: "Credencials",
   enable: "Activar",
   disable: "Aturar",
   checkHealth: "Comprovar salut",
@@ -35,7 +39,7 @@ const t = {
   runs: "Execucions"
 } as const;
 
-test("creates an integration, refuses a configuration in words, and enables it", async ({ page }) => {
+test("draws the form a connector asks for, refuses a value on its own field, and enables it", async ({ page }) => {
   const name = `Integracio E2E ${randomUUID().slice(0, 8)}`;
 
   await page.goto("/ca/integrations", { waitUntil: "domcontentloaded" });
@@ -46,29 +50,34 @@ test("creates an integration, refuses a configuration in words, and enables it",
   await open.click();
 
   const dialog = page.getByRole("dialog");
-  await selectFieldOption(dialog.getByLabel(t.connectorType, { exact: true }), { index: 0 });
-  await dialog.getByLabel(t.integrationName, { exact: true }).fill(name);
-
-  // Not JSON at all: refused in the browser, without spending a request on it.
-  await dialog.getByLabel(t.configuration, { exact: true }).fill("{");
-  await dialog.getByRole("button", { name: t.create }).click();
-  await expect(dialog.getByRole("alert")).toHaveText(t.invalidJson);
+  await selectFieldOption(dialog.getByLabel(t.connectorType, { exact: true }), { label: "n8n" });
 
   /**
-   * JSON the connector refuses. The screen must say so in Catalan and name the path — never the
-   * provider's own words, and never the value that was typed.
+   * The point of the whole mechanism: choosing a connector produced its own fields, and left
+   * nothing to type raw. A textarea here would mean the catalogue was not consulted.
    */
-  await dialog.getByLabel(t.configuration, { exact: true }).fill('{"healthUrl":"http://example.com/health"}');
+  await expect(dialog.getByLabel(t.baseUrl, { exact: true })).toBeVisible();
+  await expect(dialog.locator("textarea")).toHaveCount(0);
+
+  await dialog.getByLabel(t.integrationName, { exact: true }).fill(name);
+
+  /**
+   * A URL the browser is happy with and the connector is not: credentials in the base would be a
+   * second, unsealed way to authenticate. The refusal has to arrive on the field, and the value
+   * must not come back with it — what the API sends is a path and a code, never what was typed.
+   */
+  await dialog.getByLabel(t.baseUrl, { exact: true }).fill("https://intrus:secret@n8n.exemple.test");
   const refused = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/integrations") && response.request().method() === "POST"
   );
   await dialog.getByRole("button", { name: t.create }).click();
   expect((await refused).status()).toBe(422);
-  await expect(dialog.getByRole("alert")).toHaveText(t.refusedConfig);
-  // The path inside the configuration, which is all the API sends: never the URL that was typed.
-  await expect(dialog.getByText("healthUrl")).toBeVisible();
+  await expect(dialog.getByRole("alert").filter({ hasText: t.valueRefused })).toBeVisible();
+  await expect(dialog.getByRole("alert").filter({ hasText: t.refusedConfig })).toBeVisible();
+  await expect(dialog.getByText("intrus")).toHaveCount(0);
+  await expect(dialog.getByText("secret")).toHaveCount(0);
 
-  await dialog.getByLabel(t.configuration, { exact: true }).fill("{}");
+  await dialog.getByLabel(t.baseUrl, { exact: true }).fill("https://n8n.exemple.test");
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/integrations") && response.request().method() === "POST"
   );
@@ -83,7 +92,12 @@ test("creates an integration, refuses a configuration in words, and enables it",
 
   const panel = page.getByRole("region", { name });
   await expect(panel.getByRole("heading", { name })).toBeVisible();
+  // The stored configuration comes back into the same fields it was written in, not as a document.
+  await expect(panel.getByLabel(t.baseUrl, { exact: true })).toHaveValue("https://n8n.exemple.test");
   await expect(panel.getByRole("button", { name: t.checkHealth })).toBeDisabled();
+
+  // No key ring in this deployment: the section that would hold a secret is not there at all.
+  await expect(panel.getByRole("heading", { name: t.credentials })).toHaveCount(0);
 
   const enable = panel.getByRole("button", { name: t.enable });
   await waitForHydration(enable);

@@ -100,6 +100,13 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
   return {
     type: entry.type,
     contractVersion: entry.contractVersion,
+    // Written out field by field like every other response here, so a descriptor that grows a
+    // property later does not reach a client by existing.
+    configFields: entry.configFields.map((field) => ({
+      name: field.name,
+      kind: field.kind,
+      required: field.required
+    })),
     credentialKinds: entry.credentialKinds,
     capabilities: {
       egress: entry.capabilities.egress,

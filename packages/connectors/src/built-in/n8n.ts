@@ -327,6 +327,12 @@ export const n8n = defineConnector<N8nConfig>({
   type: "n8n",
   contractVersion: connectorContractVersion,
   configSchema,
+  /** The order an operator is asked: the address first, because nothing works without it. */
+  configFields: [
+    { name: "baseUrl", kind: "url" },
+    { name: "includeArchived", kind: "toggle" },
+    { name: "executionsWindowHours", kind: "number" }
+  ],
   /** The token is n8n's; the signing secret is ours, minted once when the endpoint is coined. */
   credentialKinds: ["api_token", "ingress_signing"],
   capabilities: {

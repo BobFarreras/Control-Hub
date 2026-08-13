@@ -1,5 +1,11 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { connectorKeyRingWarning, parseApiEnvironment } from "./index.js";
+import {
+  apiEnvironmentSchema,
+  connectorKeyRingWarning,
+  parseApiEnvironment,
+  workerEnvironmentSchema
+} from "./index.js";
 
 const base = {
   DATABASE_URL: "postgres://localhost/db",
@@ -67,5 +73,29 @@ describe("parseApiEnvironment", () => {
         BETTER_AUTH_SECRET: "development-only-secret-with-32-chars"
       })
     ).toThrow();
+  });
+});
+
+/**
+ * Every variable this package reads has to survive the task runner.
+ *
+ * Turbo runs tasks in strict env mode: a variable it was not told about is not passed on, and the
+ * process sees it as unset. Nothing fails — the schema simply takes the absent branch — so the
+ * symptom is a feature that quietly does not exist in development while the deployment that
+ * injects the same variable directly works fine. That is how `CONNECTOR_KEY_RING` went missing
+ * long enough for a credential form to be impossible to reach.
+ *
+ * The schema is read at runtime rather than listed here again, so a variable added tomorrow is
+ * covered by this test the moment it is declared.
+ */
+describe("the variables the task runner has to carry", () => {
+  it("declares in turbo.json every variable the environment schemas read", async () => {
+    const turbo = JSON.parse(await readFile(new URL("../../../turbo.json", import.meta.url), "utf8")) as {
+      globalEnv: string[];
+    };
+    const declared = new Set(turbo.globalEnv);
+    const read = [...Object.keys(apiEnvironmentSchema.shape), ...Object.keys(workerEnvironmentSchema.shape)];
+
+    expect(read.filter((name) => !declared.has(name))).toEqual([]);
   });
 });

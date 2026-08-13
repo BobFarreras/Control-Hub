@@ -588,9 +588,22 @@ export type ConnectorInstance = {
   updatedAt: string;
 };
 
+/**
+ * One thing an operator has to fill in for this connector, as the catalogue describes it.
+ *
+ * `required` is not the connector's opinion but its schema's, resolved when the connector was
+ * defined, so a form cannot disagree with what the server will accept.
+ */
+export type ConnectorConfigField = {
+  name: string;
+  kind: "url" | "text" | "number" | "toggle" | "list";
+  required: boolean;
+};
+
 export type ConnectorCatalogueEntry = {
   type: string;
   contractVersion: number;
+  configFields: ConnectorConfigField[];
   credentialKinds: string[];
   capabilities: {
     egress: { schemes: string[]; destination: string } | null;

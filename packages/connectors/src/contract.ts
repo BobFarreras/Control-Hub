@@ -219,11 +219,30 @@ export type IngressHandler<Config> = (
   request: IngressRequest
 ) => IngressResult | Promise<IngressResult>;
 
+/**
+ * How a configuration field is drawn.
+ *
+ * Presentation is a choice, so a connector declares it; a `text` and a `url` are both strings to
+ * the schema, and only the connector knows which one an operator is being asked for. What is
+ * *required* is not a choice but a fact about the schema, so it is read from there instead —
+ * see `configFieldsOf`. The split is the point: two declarations of the same truth drift, and the
+ * one that drifts is always the one a form was drawn from.
+ */
+export type ConfigFieldKind = "url" | "text" | "number" | "toggle" | "list";
+
+/** What a connector declares: a name, and how to draw it. */
+export type ConfigFieldDeclaration = { name: string; kind: ConfigFieldKind };
+
+/** What the platform hands to a screen, with the schema's own answer about necessity filled in. */
+export type ConfigField = ConfigFieldDeclaration & { required: boolean };
+
 export type ConnectorDefinition<Config> = {
   type: string;
   contractVersion: typeof connectorContractVersion;
   /** Allowlisted fields. Unknown keys are rejected, never stripped and silently ignored. */
   configSchema: ZodType<Config>;
+  /** Every key of `configSchema`, in the order a form should ask for them. */
+  configFields: readonly ConfigFieldDeclaration[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
@@ -245,6 +264,7 @@ export type ConfigResult = { ok: true; config: unknown } | { ok: false; issues: 
 export type RegisteredConnector = {
   type: string;
   contractVersion: number;
+  configFields: readonly ConfigField[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
   ingressSignature: IngressSignature | null;
@@ -263,6 +283,51 @@ export type RegisteredConnector = {
  */
 function issuesOf(error: { issues: readonly { path: PropertyKey[]; code: string }[] }): ConfigIssue[] {
   return error.issues.map((issue) => ({ path: issue.path.map(String).join("."), code: issue.code }));
+}
+
+/**
+ * The per-key schemas of an object schema, or null for a schema whose keys cannot be enumerated.
+ *
+ * Read through the public `shape` rather than through zod's internals, so that a zod release that
+ * rearranges its private fields does not quietly turn every field list into an empty one.
+ */
+function objectShape(schema: ZodType<unknown>): Record<string, ZodType<unknown>> | null {
+  const shape: unknown = (schema as { shape?: unknown }).shape;
+  return shape !== null && typeof shape === "object" ? (shape as Record<string, ZodType<unknown>>) : null;
+}
+
+/**
+ * Fills in what each declared field is, and refuses a declaration that has drifted from the
+ * schema in either direction.
+ *
+ * A field naming a key the schema does not have would draw an input whose value is thrown away
+ * on save. A schema key with no field is worse and is the defect this exists to prevent: a
+ * setting that cannot be reached from a screen at all, discovered by an operator who has to be
+ * told to use `curl` instead. Both are refused at module load, where the stack names the
+ * connector, rather than on the day somebody opens the form.
+ *
+ * Necessity is decided by asking the schema what it does with nothing — a key that accepts
+ * `undefined` is optional or has a default, and either way nobody has to fill it in.
+ */
+function configFieldsOf(
+  schema: ZodType<unknown>,
+  declarations: readonly ConfigFieldDeclaration[]
+): readonly ConfigField[] {
+  const shape = objectShape(schema);
+  if (!shape) {
+    if (declarations.length > 0) throw new ConnectorError("CONFIG_FIELDS_UNDERIVABLE");
+    return [];
+  }
+
+  const fields = declarations.map((declaration) => {
+    const key = shape[declaration.name];
+    if (!key) throw new ConnectorError("CONFIG_FIELD_UNKNOWN");
+    return { ...declaration, required: !key.safeParse(undefined).success };
+  });
+
+  const declared = new Set(fields.map((field) => field.name));
+  for (const name of Object.keys(shape)) if (!declared.has(name)) throw new ConnectorError("CONFIG_FIELD_MISSING");
+  return fields;
 }
 
 /**
@@ -285,6 +350,7 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   }
   if (definition.capabilities.ingress !== Boolean(definition.ingress)) throw new ConnectorError("INGRESS_MISDECLARED");
   if (definition.contractVersion !== connectorContractVersion) throw new ConnectorError("UNSUPPORTED_CONTRACT_VERSION");
+  const configFields = configFieldsOf(definition.configSchema, definition.configFields);
 
   const parseConfig = (value: unknown): ConfigResult => {
     const result = definition.configSchema.safeParse(value);
@@ -307,6 +373,7 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   return {
     type: definition.type,
     contractVersion: definition.contractVersion,
+    configFields,
     credentialKinds: definition.credentialKinds,
     capabilities: definition.capabilities,
     ingressSignature: definition.ingress?.signature ?? null,

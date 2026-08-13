@@ -9,6 +9,7 @@ const stub = (type: string): RegisteredConnector =>
     type,
     contractVersion: connectorContractVersion,
     configSchema: z.strictObject({}),
+    configFields: [],
     credentialKinds: [],
     capabilities: { egress: null, operations: {}, ingress: false },
     health: () => Promise.resolve({ status: "ok" }),

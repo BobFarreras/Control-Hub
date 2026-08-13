@@ -151,6 +151,7 @@ export type ConnectorDefinition<Config> = {
   type: string;                          // "generic-webhook"
   contractVersion: 1;
   configSchema: ZodType<Config>;         // camps allowlisted, sense secrets
+  configFields: ConfigFieldDeclaration[]; // que preguntar i com dibuixar-ho
   credentialKinds: readonly CredentialKind[];
   capabilities: CapabilityManifest;      // que pot fer i cap a on
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
@@ -359,9 +360,28 @@ La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de ge
 
 En un desplegament sense anell de claus, les seccions de credencials i d'adreces d'entrada no
 surten. No hi ha ruta que les serveixi, i un boto que encunya un secret alla on no se'n pot
-segellar cap es un boto que sempre falla. La configuracio de la instancia es un camp JSON: es
-l'unica forma que serveix per a un connector que aquesta versio encara no coneix, i el que es
-dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit.
+segellar cap es un boto que sempre falla.
+
+**La configuracio de la instancia es un formulari que dicta el connector.** El cataleg porta els
+camps declarats i la pantalla els dibuixa sense saber res del proveidor, de manera que un
+connector afegit en una release posterior no obliga a tocar la pantalla. Que un camp sigui
+obligatori no es una segona declaracio sino una lectura del seu esquema, i `defineConnector`
+refusa a la carrega del modul una llista que n'hagi divergit en qualsevol de les dues direccions.
+La direccio que importa mes es la segona: **una clau de configuracio sense camp declarat es una
+clau que ningu pot omplir des d'una pantalla**, i el simptoma no es un error sino una integracio
+que nomes es pot configurar per `curl` — que es on va acabar aquesta pantalla la primera vegada.
+El que es dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit: si el
+cami nomena un camp declarat, la queixa cau sobre aquell camp; si no, es llista a part.
+
+Un connector que la versio en curs ja no porta no te camps ni res que pugui acceptar una edicio:
+la seva configuracio **es mostra, no s'ofereix**.
+
+**La credencial s'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix
+`credentials:rotate` —que no es el permis que gestiona la integracio, perque qui pot canviar una
+adreca no ha de poder-hi posar el token— i el valor no torna: cap ruta d'aquesta API el llegeix,
+el formulari es buida en enviar-lo i el que queda a la llista son metadades. Escriure sobre un
+tipus que ja te valor **obre una rotacio** en comptes de substituir res, i la pantalla ho diu
+abans de fer-ho.
 
 ## Threat model
 

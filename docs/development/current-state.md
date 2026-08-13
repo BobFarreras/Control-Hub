@@ -213,8 +213,19 @@ no arrossega ni una configuracio a mig editar ni un secret encunyat. Qui nomes t
 un boto que falla en clicar-lo. El llistat s'ordena, es filtra i es pagina **a la pagina**, perque
 `GET /api/v1/integrations` respon amb totes les instancies del tenant i sense paginacio; el dia
 que aquesta llista deixi de cabre en una resposta, el fitxer que ha de canviar es la pagina. La
-configuracio es un camp JSON perque es l'unica forma que generalitza a connectors que aquesta
-versio encara no porta, i les incidencies es dibuixen amb cami i codi, mai amb el valor escrit.
+configuracio **es un formulari que dicta el connector**: el cataleg porta els camps que declara
+—el nom, com s'ha de dibuixar i si es obligatori— i la pantalla els dibuixa sense saber res del
+proveidor. Si un camp es obligatori no es una segona declaracio sino una lectura del seu propi
+esquema, i `defineConnector` refusa a la carrega del modul una llista que n'hagi divergit en
+qualsevol de les dues direccions. La que importa mes es la segona: **una clau de configuracio
+sense camp es una clau que ningu pot omplir des d'una pantalla**, i era exactament aixo el que
+obligava a configurar una integracio per `curl`. Les incidencies cauen sobre el camp que les ha
+provocat; les que no nomenen cap camp declarat es dibuixen amb cami i codi, mai amb el valor
+escrit. Un connector que aquesta versio ja no porta no te camps ni res que accepti una edicio: la
+seva configuracio **es mostra, no s'ofereix**. La credencial s'escriu des de la mateixa pantalla,
+en un camp que exigeix `credentials:rotate` —que no es el permis que gestiona la integracio— i
+que no es torna a llegir mai: cap ruta d'aquesta API en retorna el valor, i el formulari es buida
+en enviar-lo.
 
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i

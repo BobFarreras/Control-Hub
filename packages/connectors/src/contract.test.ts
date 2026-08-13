@@ -28,6 +28,7 @@ const echo = defineConnector<z.infer<typeof echoSchema>>({
   type: "test-echo",
   contractVersion: connectorContractVersion,
   configSchema: echoSchema,
+  configFields: [{ name: "label", kind: "text" }],
   credentialKinds: [],
   capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
   health: () => Promise.resolve({ status: "ok" }),
@@ -44,6 +45,7 @@ describe("defining a connector", () => {
     type: "test-broken",
     contractVersion: connectorContractVersion,
     configSchema: emptySchema,
+    configFields: [],
     credentialKinds: [],
     health: () => Promise.resolve({ status: "ok" as const })
   } satisfies Omit<ConnectorDefinition<EmptyConfig>, "capabilities" | "operations">;
@@ -160,6 +162,7 @@ describe("configuration", () => {
       type: "test-secretive",
       contractVersion: connectorContractVersion,
       configSchema: schema,
+      configFields: [{ name: "token", kind: "text" }],
       credentialKinds: [],
       capabilities: { egress: null, operations: {}, ingress: false },
       health: () => Promise.resolve({ status: "ok" }),
@@ -204,5 +207,87 @@ describe("failure for a response status", () => {
   it("treats any other client error as a response we cannot use", () => {
     expect(failureForStatus(400)).toBe("invalid_response");
     expect(failureForStatus(418)).toBe("invalid_response");
+  });
+});
+
+describe("declaring the fields an operator has to fill in", () => {
+  const fieldSchema = z.strictObject({
+    endpoint: z.url(),
+    verbose: z.boolean().default(false),
+    retries: z.number().int().default(3),
+    label: z.string().optional()
+  });
+
+  const withFields = (fields: ConnectorDefinition<z.infer<typeof fieldSchema>>["configFields"]) =>
+    defineConnector({
+      type: "test-fields",
+      contractVersion: connectorContractVersion,
+      configSchema: fieldSchema,
+      configFields: fields,
+      credentialKinds: [],
+      capabilities: { egress: null, operations: {}, ingress: false },
+      health: () => Promise.resolve({ status: "ok" as const }),
+      operations: {}
+    });
+
+  const complete = [
+    { name: "endpoint", kind: "url" },
+    { name: "verbose", kind: "toggle" },
+    { name: "retries", kind: "number" },
+    { name: "label", kind: "text" }
+  ] as const;
+
+  /**
+   * Whether a field is required is a fact about the schema, so it is read from the schema rather
+   * than declared beside it. Declaring it would be a second copy of the same truth, and the copy
+   * that drifts is always the one a form is drawn from.
+   */
+  it("reads what is required off the schema instead of believing a second declaration", () => {
+    const fields = withFields(complete).configFields;
+    expect(fields.map((field) => [field.name, field.required])).toEqual([
+      ["endpoint", true],
+      ["verbose", false],
+      ["retries", false],
+      ["label", false]
+    ]);
+  });
+
+  /** A form is drawn top to bottom, so the order a connector declares is the order it means. */
+  it("keeps the declared order, because that is the order of the form", () => {
+    const reversed = [...complete].reverse();
+    expect(withFields(reversed).configFields.map((field) => field.name)).toEqual([
+      "label",
+      "retries",
+      "verbose",
+      "endpoint"
+    ]);
+  });
+
+  it("refuses a field the configuration schema has never heard of", () => {
+    expect(() => withFields([...complete, { name: "nope", kind: "text" }])).toThrow("CONFIG_FIELD_UNKNOWN");
+  });
+
+  /**
+   * The direction that matters most: a configuration key nobody declared a field for is a key
+   * that cannot be filled in from a screen, which is the defect this whole mechanism exists to
+   * prevent. Caught at module load rather than by an operator finding a form with a piece missing.
+   */
+  it("refuses a configuration key that no field would ever let anyone set", () => {
+    expect(() => withFields(complete.filter((field) => field.name !== "retries"))).toThrow("CONFIG_FIELD_MISSING");
+  });
+
+  it("refuses fields on a schema whose keys cannot be read", () => {
+    expect(() =>
+      defineConnector({
+        type: "test-opaque",
+        contractVersion: connectorContractVersion,
+        configSchema: z.record(z.string(), z.string()),
+        configFields: [{ name: "anything", kind: "text" }],
+        credentialKinds: [],
+        capabilities: { egress: null, operations: {}, ingress: false },
+        health: () => Promise.resolve({ status: "ok" as const }),
+        operations: {}
+      })
+    ).toThrow("CONFIG_FIELDS_UNDERIVABLE");
   });
 });

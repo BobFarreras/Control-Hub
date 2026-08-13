@@ -1,4 +1,4 @@
-import type { CapabilityManifest, ConfigIssue, RegisteredConnector } from "@control-hub/connectors";
+import type { CapabilityManifest, ConfigField, ConfigIssue, RegisteredConnector } from "@control-hub/connectors";
 import { hasPermission, type TenantContext } from "@control-hub/domain";
 import type {
   ConfigValue,
@@ -36,6 +36,8 @@ export class ConnectorServiceError extends Error {
 export type ConnectorCatalogueEntry = {
   type: string;
   contractVersion: number;
+  /** What an operator has to fill in, so a screen can draw a form instead of asking for JSON. */
+  configFields: readonly ConfigField[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
 };
@@ -149,6 +151,7 @@ export class ConnectorService {
             {
               type: connector.type,
               contractVersion: connector.contractVersion,
+              configFields: connector.configFields,
               credentialKinds: connector.credentialKinds,
               capabilities: connector.capabilities
             }

@@ -23,8 +23,10 @@ els seus tokens a dins: no ens el volem quedar.
 
 ## Abans de comencar
 
-1. La integracio `n8n` ha d'existir a Control Hub, **activa**, amb la credencial `api_token`
-   desada i amb `baseUrl` apuntant a la instancia.
+1. La integracio `n8n` ha d'existir a Control Hub, **activa**. Es crea a **Integracions** →
+   **Nova integracio**: tria `n8n`, posa-hi un nom i omple **Adreca de la instancia**. Despres,
+   al panell de la integracio, escriu la credencial **Token de l'API** —la que generes a n8n a
+   **Settings → API**— i comprova-ho amb **Comprovar la connexio**.
 2. Has de poder editar workflows a aquella instancia d'n8n.
 3. Tingues obert el gestor de contrasenyes: el secret de firma es veu **un sol cop**.
 
@@ -139,9 +141,10 @@ La peticio ha de ser `application/json` i com a molt **1 MiB**. Un cos mes gran 
 ## Rotar el secret
 
 La credencial de firma te dues ranures, de manera que una rotacio no te finestra de tall. La
-pantalla d'integracions **nomes ensenya metadades** —el valor no surt mai de la caixa forta i cap
-ruta d'aquesta API el torna a llegir—, aixi que escriure el valor nou es una crida a l'API amb un
-compte que tingui `credentials:rotate`, que es un rol que el segon factor guarda.
+llista de credencials de la pantalla **nomes ensenya metadades** —el valor no surt mai de la
+caixa forta i cap ruta d'aquesta API el torna a llegir—, pero escriure'n un de nou si que es fa
+des d'alli, amb un compte que tingui `credentials:rotate`, que es un rol que el segon factor
+guarda.
 
 1. Genera el secret nou i guarda'l al gestor de contrasenyes abans de fer res mes:
 
@@ -149,17 +152,14 @@ compte que tingui `credentials:rotate`, que es un rol que el segon factor guarda
    openssl rand -hex 32
    ```
 
-2. Escriu-lo a la integracio. Com que la ranura primaria ja esta ocupada, el valor nou va a la
-   secundaria i aixo **obre una rotacio**: durant la rotacio les dues ranures accepten firmes.
-
-   ```bash
-   curl -X PUT https://<el-teu-control-hub>/api/v1/integrations/<instanceId>/credentials/ingress_signing \
-     -H 'content-type: application/json' -d '{"secret":"<el-secret-nou>"}'
-   ```
+2. Escriu-lo a **Integracions** → la integracio → **Credencials** → tipus **Secret de firma
+   d'entrada**. Com que la ranura primaria ja esta ocupada, el valor nou va a la secundaria i
+   aixo **obre una rotacio**: durant la rotacio les dues ranures accepten firmes.
 
 3. Canvia `CONTROL_HUB_SIGNING_SECRET` a n8n i reinicia la instancia.
 4. Comprova que arriba un event nou, signat ja amb el secret nou (pas 4 de mes amunt).
 5. Tanca la rotacio: la secundaria passa a primaria i la vella es revoca, totes dues alhora.
+   Encara no hi ha boto, aixi que es una crida amb el mateix compte:
 
    ```bash
    curl -X POST https://<el-teu-control-hub>/api/v1/integrations/<instanceId>/credentials/ingress_signing/promote

@@ -40,6 +40,7 @@ const technical = asRole("technical");
 const demo = {
   type: "demo",
   contractVersion: 1,
+  configFields: [{ name: "baseUrl", kind: "url", required: false }],
   credentialKinds: ["api_key"],
   capabilities: {
     egress: { schemes: ["https"], destination: "configured_base_url" },
@@ -241,6 +242,15 @@ describe("who may change an integration", () => {
     await expect(service.get(administrator, instanceId)).resolves.toMatchObject({ id: instanceId });
     await expect(service.runs(administrator, instanceId, 1, 20)).resolves.toMatchObject({ total: 0 });
     expect(service.catalogueEntries(administrator).map((entry) => entry.type)).toEqual(["demo"]);
+  });
+
+  /**
+   * The type alone tells a screen nothing about what to ask for, which is how a form ends up
+   * being a JSON textarea. The catalogue carries the fields so the screen can draw them.
+   */
+  it("carries the fields a form has to draw, not just the name of the connector", () => {
+    const [entry] = service.catalogueEntries(owner);
+    expect(entry!.configFields).toEqual([{ name: "baseUrl", kind: "url", required: false }]);
   });
 
   it("lets owner and technical manage, which is the matrix the specification fixed", async () => {

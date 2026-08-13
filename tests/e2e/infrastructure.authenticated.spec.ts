@@ -13,6 +13,11 @@ import { readFixture, waitForHydration } from "./support/fixture";
  * The rows come from `apps/api/src/seed-e2e.ts`. They cannot be created through this screen: an
  * automation exists because a connector pulled it, and there is no provider here to pull from.
  *
+ * **The fixture ages.** The fresh reading is seeded two minutes old and turns stale after
+ * forty-five, so a run against a database seeded hours ago fails on the assertion below that the
+ * fresh row carries no age warning -- correctly, because by then it does. CI seeds immediately
+ * before running and never sees it; locally, re-run `pnpm db:seed:verify` first.
+ *
  * Acceptance criteria 1, 3 and 4 of `docs/specifications/infrastructure.md`.
  */
 test.describe.configure({ timeout: 120_000 });

@@ -1,4 +1,5 @@
 import type {
+  ConnectorCatalogueEntry,
   ConnectorInstanceRecord,
   CredentialMetadata,
   SyncRunRecord,
@@ -7,6 +8,7 @@ import type {
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import {
+  catalogueResponse,
   credentialResponse,
   endpointResponse,
   idempotencyKeyOf,
@@ -169,5 +171,41 @@ describe("what an endpoint response says", () => {
    */
   it("gives the path a provider posts to, for the screen to compose against its own origin", () => {
     expect(webhookPath("an-address")).toBe("/api/v1/webhooks/an-address");
+  });
+});
+
+describe("offering a connector to a screen", () => {
+  const entry: ConnectorCatalogueEntry = {
+    type: "n8n",
+    contractVersion: 1,
+    configFields: [
+      { name: "baseUrl", kind: "url", required: true },
+      { name: "includeArchived", kind: "toggle", required: false }
+    ],
+    credentialKinds: ["api_token", "ingress_signing"],
+    capabilities: {
+      egress: { schemes: ["https"], destination: "configured_base_url" },
+      operations: { pull_workflows: { shape: "state", everySeconds: 900 } },
+      ingress: true
+    }
+  };
+
+  /**
+   * The fields travel, because without them a screen has nothing to draw a form from and falls
+   * back to asking for raw JSON -- which is how an integration ends up being configured over
+   * `curl` by whoever knows the key names.
+   */
+  it("says what to ask for, and whether it can be left blank", () => {
+    expect(catalogueResponse(entry).configFields).toEqual([
+      { name: "baseUrl", kind: "url", required: true },
+      { name: "includeArchived", kind: "toggle", required: false }
+    ]);
+  });
+
+  /** Operations travel as names: a cadence is the installation's business, not a tenant's. */
+  it("names the operations without publishing how often they run", () => {
+    const response = catalogueResponse(entry);
+    expect(response.capabilities.operations).toEqual(["pull_workflows"]);
+    expect(JSON.stringify(response)).not.toContain("everySeconds");
   });
 });

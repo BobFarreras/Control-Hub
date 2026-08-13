@@ -51,11 +51,18 @@ async function loadPreference(): Promise<TablePreference> {
   return (await readJson<TablePreferenceResponse>(response)).preference;
 }
 
-async function canManage(): Promise<boolean> {
+/**
+ * The two permissions this screen distinguishes.
+ *
+ * Managing an integration and holding its secrets are separate grants, so they are read
+ * separately: whoever may point an instance at a different host is not thereby allowed to write
+ * the token it authenticates with. Read together in one call because it is one answer.
+ */
+async function permissions(): Promise<{ manage: boolean; rotate: boolean }> {
   const response = await apiFetch("/api/v1/me");
-  if (!response.ok) return false;
-  const payload = await readJson<{ context: { permissions: string[] } }>(response);
-  return payload.context.permissions.includes("integrations:manage");
+  if (!response.ok) return { manage: false, rotate: false };
+  const granted = (await readJson<{ context: { permissions: string[] } }>(response)).context.permissions;
+  return { manage: granted.includes("integrations:manage"), rotate: granted.includes("credentials:rotate") };
 }
 
 /**
@@ -87,28 +94,37 @@ async function load(): Promise<{
   catalogue: ConnectorCatalogueEntry[];
   preference: TablePreference;
   manage: boolean;
+  rotate: boolean;
   loadError: boolean;
 }> {
   try {
-    const [preference, manage, response, catalogueResponse] = await Promise.all([
+    const [preference, { manage, rotate }, response, catalogueResponse] = await Promise.all([
       loadPreference(),
-      canManage(),
+      permissions(),
       apiFetch("/api/v1/integrations"),
       apiFetch("/api/v1/connectors")
     ]);
     const catalogue = catalogueResponse.ok
       ? (await readJson<ConnectorCatalogueResponse>(catalogueResponse)).connectors
       : [];
-    if (!response.ok) return { integrations: [], catalogue, preference, manage, loadError: true };
+    if (!response.ok) return { integrations: [], catalogue, preference, manage, rotate, loadError: true };
     return {
       integrations: (await readJson<IntegrationsResponse>(response)).integrations,
       catalogue,
       preference,
       manage,
+      rotate,
       loadError: false
     };
   } catch {
-    return { integrations: [], catalogue: [], preference: defaultPreference, manage: false, loadError: true };
+    return {
+      integrations: [],
+      catalogue: [],
+      preference: defaultPreference,
+      manage: false,
+      rotate: false,
+      loadError: true
+    };
   }
 }
 
@@ -173,6 +189,7 @@ export default async function IntegrationsPage({
             catalogue={data.catalogue}
             detail={detail}
             canManage={data.manage}
+            canRotate={data.rotate}
             labels={labels}
             locale={locale}
             loadError={data.loadError}
