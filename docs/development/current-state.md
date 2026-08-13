@@ -24,12 +24,13 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A6**: la pantalla d'infraestructura, l'i18n a `ca`, `es` i `en`, l'entrada del menu
-darrere la flag, el constructor d'enllac extern validat a `apps/web/src/lib` i el runbook de
-l'error workflow d'n8n. L'A5 ja es sencer a la branca.
+**L'entrega 7.2**, que comenca per l'increment B1. La 7.1 es sencera a la branca
+`feature/phase-7-1-infrastructure-n8n`: els sis increments A1 a A6 hi son, amb la pantalla
+`/{locale}/infrastructure` i el runbook de l'error workflow d'n8n.
 
-A5 ha anat en dos commits **a proposit**: un de sol amb migracio, domini, aplicacio, persistencia,
-API i worker no el pot revisar ningu. Cadascun passa `pnpm check` pel seu compte.
+A5 i A6 han anat en dos commits cadascun **a proposit**: un de sol amb migracio, domini,
+aplicacio, persistencia, API i worker no el pot revisar ningu, i el mateix val per un que barregi
+el constructor d'enllac amb la pantalla sencera. Cadascun passa `pnpm check` pel seu compte.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -51,6 +52,8 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 | A4 | Connector `n8n`: `pull_workflows` i `pull_executions` amb marca d'aigua, salut autenticada i entrada de l'error workflow signada. Del que n8n dona se'n desa una projeccio, mai el cos | `packages/connectors/src/built-in/n8n.ts` i el seu test |
 | A5 (1/2) | Migracio `0035` (`infra_automation_links`, `infra_alert_rules`, `infra_alert_events` amb l'index unic parcial i la purga de resoltes) i el motor de veredictes pur: `firing`, `resolved` i `starved` | `packages/database/migrations/0035_infrastructure_automations.sql`, `packages/domain/src/infrastructure.ts` |
 | A5 (2/2) | Casos d'us i motor d'alertes (`InfrastructureService` i `AlertEngine`), adaptador PostgreSQL, la superficie `/api/v1/infrastructure` darrere la flag amb problem details, i al worker l'escombrada d'alertes cada 2 minuts i la purga de resoltes a 180 dies | `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/worker/src/infrastructure/` |
+| A6 (1/2) | El constructor d'enllac extern validat, la lectura de l'edat i l'estat d'una alerta, i el diccionari `ca`/`es`/`en` | `apps/web/src/lib/infrastructure-link.ts`, `apps/web/src/lib/infrastructure.ts`, `packages/i18n/src/index.ts` |
+| A6 (2/2) | La pantalla `/{locale}/infrastructure` (resum, automatitzacions amb la seva edat, alertes vives i regles), l'entrada del menu darrere la flag, l'OpenAPI del modul i el runbook de l'error workflow | `apps/web/src/app/[locale]/infrastructure/page.tsx`, `apps/web/src/components/infrastructure-workspace.tsx`, `apps/api/src/openapi.test.ts`, `docs/runbooks/n8n-error-workflow.md` |
 
 L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
 sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
@@ -254,11 +257,14 @@ El detall i els checks dels increments de consolidacio previs son a
   navegable amb teclat, pero el patro ARIA d'un desplegable d'aquest tipus vol
   `role="combobox"` al boto. Afegir-l'hi obliga a repassar els localitzadors de tres suites E2E
   a la vegada, aixi que es una feina propia, no un afegit a una altra.
-- L'entrada **Infraestructura** del menu lateral segueix sent un `href="#"` que no porta enlloc
-  (`apps/web/src/components/app-sidebar.tsx`). **Ja te especificacio aprovada**
-  (`docs/specifications/infrastructure.md`) i la pantalla arriba a l'increment A6; fins llavors es
-  queda com esta. No s'ha de confondre amb **Integracions**, que si que existeix i viu darrere el
-  flag `connectors`.
+- La pantalla d'**Infraestructura** ensenya l'**estat actual amb l'edat de la lectura**, i cap
+  grafic historic: `connector_records` guarda l'ultim valor de cada cosa observada, no la serie.
+  Una serie temporal entraria com una consulta a demanda al connector, sense passar pel magatzem
+  (decisio 3 de `docs/specifications/infrastructure.md`).
+- L'enllac cap a n8n **el construeix el servidor**, no el navegador: la resposta
+  d'infraestructura no porta cap adreca de proveidor, i la base surt de la superficie
+  d'integracions, que demana el seu propi permis. Sense aquell permis no hi ha enllacos i els
+  noms es dibuixen com a text, que es el mateix resultat que una base que ningu ha configurat.
 
 ## Feature flags
 
@@ -277,15 +283,18 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   reconciliador esborra tots els calendaris de connector de Valkey i no en programa cap, i el
   worker treu del calendari l'escombrada d'alertes. La purga de les alertes resoltes, en canvi,
   **no mira la flag**: files escrites amb la flag oberta han de caducar igual quan es tanqui.
-  Falta la pantalla (A6); llavors tancada voldra dir tambe cap entrada al menu i
-  `/{locale}/infrastructure` responent 404.
+  A la web, tancada vol dir **cap entrada al menu lateral i `/{locale}/infrastructure` responent
+  404**; oberta, la pantalla i l'entrada hi son. La suite E2E corre amb la flag oberta
+  (`.github/workflows/ci.yml`), i el 404 amb la flag tancada el prova `apps/api/src/app.test.ts`
+  a l'API i la guarda de la pagina a la web.
 
 ## Superficie executable
 
 - Web canonica: `http://localhost:3001`.
 - API interna: `http://127.0.0.1:4000`; el navegador usa exclusivament `/api/*` via Next.js.
 - Rutes operatives: dashboard, CRM, detall de client, productes, serveis de clients, eines i
-  despeses recurrents, suport, projectes, barems, jornada i seguretat.
+  despeses recurrents, suport, projectes, barems, jornada, integracions, infraestructura i
+  seguretat. Projectes, jornada, integracions i infraestructura, nomes amb la seva flag oberta.
 - `/{locale}/commerce` es una redireccio de compatibilitat cap a `/{locale}/products`.
 - Locales obligatoris: `ca`, `es` i `en`; temes obligatoris: light i dark.
 

@@ -71,3 +71,22 @@ export function readingAge(observedAt: string | null | undefined, now: Date): Re
   if (hours < 24) return { unit: "hour", count: hours, stale };
   return { unit: "day", count: Math.floor(hours / 24), stale };
 }
+
+const ageKey: Record<ReadingAge["unit"], string> = {
+  minute: "ageMinutes",
+  hour: "ageHours",
+  day: "ageDays"
+};
+
+/**
+ * An age in the words of the dictionary.
+ *
+ * Zero minutes is "just now" and not "0 min ago", which is the one case where the number is
+ * worse than the word. No reading at all is the fallback the caller chose: an age we do not have
+ * is never drawn as an age of zero.
+ */
+export function ageLabel(labels: Record<string, string>, age: ReadingAge | null, fallback: string): string {
+  if (!age) return fallback;
+  if (age.unit === "minute" && age.count === 0) return labels.ageNow ?? "";
+  return (labels[ageKey[age.unit]] ?? "").replace("{count}", String(age.count));
+}

@@ -449,6 +449,23 @@ no l'enllac. Tota xifra observada viatja amb la seva hora de lectura. OpenAPI es
 rutes, amb `tags`, `summary` i `description`, i sense response schema, per la mateixa rao que a la
 Fase 6.
 
+## La pantalla
+
+`/{locale}/infrastructure`, darrere la flag i amb sessio. Quatre parts: el resum, les alertes
+—vives per defecte, amb un enllac per incloure-hi les resoltes—, les automatitzacions i les
+regles. Qui no te `infrastructure:operate` la veu sencera i sense cap boto.
+
+**L'enllac i l'edat es calculen al servidor, no al navegador.** La resposta d'infraestructura no
+porta cap adreca de proveidor; la base surt de la superficie d'integracions, que demana el seu
+propi permis, i per aixo la pagina es l'unic lloc que te les dues meitats. Sense aquell permis no
+hi ha enllacos i els noms es dibuixen com a text: el mateix resultat que una base que ningu ha
+configurat, i no un error. L'edat es calcula contra un sol instant per la mateixa rao practica
+que teorica —una fila no pot dir una cosa al servidor i una altra despres d'hidratar-se— i una
+lectura mes vella que tres passades de `pull_workflows` es dibuixa com a antiga.
+
+**Res del proveidor arriba en paraules seves.** Una negativa de l'API viatja com a `code` i la
+pantalla n'ensenya la nostra frase, com a la superficie de connectors.
+
 ## Auditoria i observabilitat
 
 Auditades, i tambe quan es deneguen: associar un workflow a un client, crear, editar i esborrar
@@ -520,7 +537,8 @@ al mateix commit.
 | A4 | Connector `n8n`: operacions i ingress | **`packages/connectors/src/built-in/n8n.ts` i el seu test, i res mes** | Criteri 2, contract tests |
 | A5 | `0035`, associacions, motor d'alertes amb `workflow_failed`, casos d'us, API i escombrada | `packages/domain`, `packages/application`, `packages/persistence`, `apps/api`, `apps/worker`, `packages/database` | Criteris 5 i 9 |
 | | *Partit en dos commits: dades i domini primer, casos d'us, adaptador, API i worker despres. Un sol commit de dues mil linies no el revisa ningu.* | | |
-| A6 | Pantalla, i18n `ca`/`es`/`en`, menu lateral, OpenAPI, runbook de l'error workflow | `apps/web`, `packages/i18n`, `docs/runbooks` | Criteris 1, 3 i 4, E2E |
+| A6 | Pantalla, i18n `ca`/`es`/`en`, menu lateral, OpenAPI, runbook de l'error workflow | `apps/web`, `packages/i18n`, `apps/api/src/openapi.test.ts`, `apps/api/src/seed-e2e.ts`, `tests/e2e`, `docs/runbooks` | Criteris 1, 3 i 4, E2E |
+| | *Partit en dos commits: primer el que la pantalla decideix —l'enllac, l'edat, l'estat i les paraules—, i despres la pantalla. El primer es on son les proves que importen.* | | |
 
 **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1–B4)
 

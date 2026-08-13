@@ -15,7 +15,8 @@
 - `security/`: amenaces i controls.
 - `runbooks/`: operacio i resposta. `runbooks/installation.md` (instal·lacio i actualitzacions),
   `runbooks/disaster-recovery.md` (recuperacio) i `runbooks/connector-key-rotation.md` (rotar
-  l'anell de claus dels connectors, segons `adr/0008-connector-credential-vault.md`).
+  l'anell de claus dels connectors, segons `adr/0008-connector-credential-vault.md`) i
+  `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 

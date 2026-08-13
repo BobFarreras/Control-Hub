@@ -3444,6 +3444,7 @@ const infrastructureDictionaries = {
     title: "Infraestructura",
     description: "Que corre, de qui es, i que val la pena que ens diguin.",
     loadError: "No s'ha pogut carregar la infraestructura.",
+    readOnlyNotice: "Nomes pots mirar: canviar res d'aqui demana un altre permis.",
 
     overviewAutomations: "Automatitzacions",
     overviewActive: "Actives",
@@ -3489,6 +3490,7 @@ const infrastructureDictionaries = {
 
     alertsEmpty: "Cap alerta viva.",
     showResolved: "Incloure les resoltes",
+    onlyFiring: "Nomes les vives",
     rule: "Regla",
     severity: "Gravetat",
     startedAt: "Des de",
@@ -3554,6 +3556,7 @@ const infrastructureDictionaries = {
     title: "Infraestructura",
     description: "Que corre, de quien es, y que vale la pena que nos cuenten.",
     loadError: "No se ha podido cargar la infraestructura.",
+    readOnlyNotice: "Solo puedes mirar: cambiar algo de aqui pide otro permiso.",
 
     overviewAutomations: "Automatizaciones",
     overviewActive: "Activas",
@@ -3599,6 +3602,7 @@ const infrastructureDictionaries = {
 
     alertsEmpty: "Ninguna alerta viva.",
     showResolved: "Incluir las resueltas",
+    onlyFiring: "Solo las vivas",
     rule: "Regla",
     severity: "Gravedad",
     startedAt: "Desde",
@@ -3664,6 +3668,7 @@ const infrastructureDictionaries = {
     title: "Infrastructure",
     description: "What runs, who it belongs to, and what is worth being told about.",
     loadError: "Infrastructure could not be loaded.",
+    readOnlyNotice: "You can only look: changing anything here needs another permission.",
 
     overviewAutomations: "Automations",
     overviewActive: "Running",
@@ -3709,6 +3714,7 @@ const infrastructureDictionaries = {
 
     alertsEmpty: "No live alerts.",
     showResolved: "Include resolved ones",
+    onlyFiring: "Only the live ones",
     rule: "Rule",
     severity: "Severity",
     startedAt: "Since",

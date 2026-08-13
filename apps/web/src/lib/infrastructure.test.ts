@@ -1,6 +1,7 @@
+import { getInfrastructureDictionary, locales } from "@control-hub/i18n";
 import { describe, expect, it } from "vitest";
 import type { InfrastructureAlert } from "./api-types";
-import { alertState, alertStateTone, readingAge, severityTone, staleAfterMinutes } from "./infrastructure";
+import { ageLabel, alertState, alertStateTone, readingAge, severityTone, staleAfterMinutes } from "./infrastructure";
 
 const at = (iso: string) => new Date(iso);
 const now = at("2026-08-13T12:00:00.000Z");
@@ -97,5 +98,33 @@ describe("what an alert looks like", () => {
     expect(Object.values(alertStateTone).every(Boolean)).toBe(true);
     expect(severityTone.critical).toBe("danger");
     expect(alertStateTone.resolved).toBe("done");
+  });
+});
+
+describe("an age in words", () => {
+  const labels = getInfrastructureDictionary("ca") as unknown as Record<string, string>;
+
+  it("reads a fresh reading as a word rather than as a zero", () => {
+    expect(ageLabel(labels, readingAge("2026-08-13T11:59:40.000Z", now), "-")).toBe(labels.ageNow);
+  });
+
+  it("puts the count into the sentence of each unit", () => {
+    expect(ageLabel(labels, readingAge("2026-08-13T11:53:00.000Z", now), "-")).toContain("7");
+    expect(ageLabel(labels, readingAge("2026-08-13T09:00:00.000Z", now), "-")).toContain("3");
+    expect(ageLabel(labels, readingAge("2026-08-10T12:00:00.000Z", now), "-")).toContain("3");
+  });
+
+  /** An age we do not have is never drawn as an age of zero. */
+  it("hands back the caller's fallback when there is no reading", () => {
+    expect(ageLabel(labels, null, "no reading")).toBe("no reading");
+  });
+
+  it("leaves no placeholder on screen, in any language", () => {
+    for (const locale of locales) {
+      const dictionary = getInfrastructureDictionary(locale) as unknown as Record<string, string>;
+      for (const iso of ["2026-08-13T11:53:00.000Z", "2026-08-13T09:00:00.000Z", "2026-08-10T12:00:00.000Z"]) {
+        expect(ageLabel(dictionary, readingAge(iso, now), "-"), locale).not.toContain("{count}");
+      }
+    }
   });
 });

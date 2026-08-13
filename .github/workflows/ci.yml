@@ -265,7 +265,9 @@ jobs:
       # and projects.authenticated.spec.ts would be testing a 404. Same for `connectors` and
       # integrations.authenticated.spec.ts — which runs without `CONNECTOR_KEY_RING` on purpose,
       # so it exercises the deployment that cannot hold a secret.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors
+      # `infrastructure` opens the module infrastructure.authenticated.spec.ts drives; with it
+      # closed there is no route, no menu entry and no screen, which is the point of the flag.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
