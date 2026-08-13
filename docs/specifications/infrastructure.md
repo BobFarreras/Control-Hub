@@ -318,13 +318,22 @@ del merge**, mai despres d'haver-les aplicat enlloc. Totes les taules amb `tenan
 
 - `infra_automation_links` — `(instance_id, external_id)` cap a `customer_id` i notes. **Es
   l'associacio empresarial**; el workflow en si viu a `connector_records` i no es copia.
-- `infra_alert_rules` — `name`, `kind`, `target_type`, `target_id`, `params jsonb` acotat,
-  `severity`, `freshness_seconds`, `opens_incident`, `enabled`.
-- `infra_alert_events` — `rule_id`, `dedup_key`, `status` (`firing|resolved`), `started_at`,
-  `last_seen_at`, `occurrences`, `resolved_at`, `acknowledged_at`,
-  `acknowledged_by_membership_id`, `incident_id`. Index unic parcial
+- `infra_alert_rules` — `name`, `kind`, **`instance_id`**, `target_type`, `target_id`,
+  `params jsonb` acotat, `severity`, `freshness_seconds`, `opens_incident`, `enabled`.
+  `instance_id` no era a la revisio 2 i cal: una regla llegeix **una** instancia, i sense la
+  columna la frescor d'un proveidor es podria confondre amb la d'un altre. `target_id` es un
+  `external_id` i per tant text, no uuid — n8n bateja els seus workflows.
+- `infra_alert_events` — `rule_id`, `dedup_key`, `status` (`firing|resolved`), `severity`,
+  `summary jsonb` acotat, `started_at`, `last_seen_at`, `occurrences`, `resolved_at`,
+  `acknowledged_at`, `acknowledged_by_membership_id`, `incident_id`. Index unic parcial
   `(tenant_id, rule_id, dedup_key) where status = 'firing'`. Les resoltes es guarden 180 dies:
-  son evidencia.
+  son evidencia, i les treu `purge_alert_events(p_resolved_before, p_batch_limit)`, amb la
+  mateixa forma que la purga de registres — finestra per argument i `security definer`.
+
+**Que es pot esborrar i que no.** `infra_automation_links` i `infra_alert_rules` tenen `delete`:
+desassociar un workflow i esborrar una regla son actes ordinaris i auditats. `infra_alert_events`
+**no en te**: un esdeveniment es la constancia que va passar una cosa, i l'unic que en treu cap es
+la purga de retencio.
 
 **`0036_infrastructure_hosts.sql` — modul (7.2)**
 

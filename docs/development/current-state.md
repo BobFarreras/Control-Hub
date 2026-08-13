@@ -24,10 +24,12 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A5 de la Fase 7.1**: la migracio `0035`, l'associacio d'un workflow amb un client,
-el motor d'alertes amb la regla `workflow_failed`, i els casos d'us i les rutes d'API que hi van.
-Es el primer increment de la fase que toca `packages/domain`, `packages/application` i `apps/api`,
-i el primer que fa servir de debo el que A2, A3 i A4 han deixat escrit a `connector_records`.
+**La segona meitat de l'increment A5**: els casos d'us, la persistencia i les rutes d'API que
+falten, mes l'escombrada d'alertes cada 2 minuts al worker i la purga de les resoltes. La primera
+meitat —la migracio `0035` i el motor de veredictes al domini— ja es a la branca.
+
+A5 va en dos commits **a proposit**: un de sol amb migracio, domini, aplicacio, persistencia, API
+i worker no el pot revisar ningu. Cadascun passa `pnpm check` pel seu compte.
 
 La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 `docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
@@ -47,6 +49,7 @@ La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
 | A2 | G1 tapat: `connector_records` i `connector_operation_state` (`0033`), forma per operacio al manifest, cursor persistit i purga horaria | `packages/database/migrations/0033_connector_records.sql`, `packages/connectors/src/contract.ts`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/` |
 | A3 | G2 i G3 tapats: cadencia al manifest amb minim de 60 s, cua `connectors` a part, reconciliador de calendari cada 2 minuts, una execucio alhora per operacio (`0034`) i confinament a la base sota `operator_allowlist` | `packages/connectors/src/contract.ts`, `packages/contracts/src/connector-jobs.ts`, `packages/database/migrations/0034_connector_run_lease.sql`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
 | A4 | Connector `n8n`: `pull_workflows` i `pull_executions` amb marca d'aigua, salut autenticada i entrada de l'error workflow signada. Del que n8n dona se'n desa una projeccio, mai el cos | `packages/connectors/src/built-in/n8n.ts` i el seu test |
+| A5 (1/2) | Migracio `0035` (`infra_automation_links`, `infra_alert_rules`, `infra_alert_events` amb l'index unic parcial i la purga de resoltes) i el motor de veredictes pur: `firing`, `resolved` i `starved` | `packages/database/migrations/0035_infrastructure_automations.sql`, `packages/domain/src/infrastructure.ts` |
 
 L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
 sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
@@ -62,6 +65,12 @@ nomes evites programar de nou deixaria els calendaris antics sondejant proveidor
 d'aturar-los que no fos un desplegament. Tambe seu: les operacions no van per la cua `system` sino
 per una de propia, `connectors`, amb concurrencia 4, i la migracio `0034` posa un sostre d'una
 execucio alhora per `(instancia, operacio)` amb un arrendament de 10 minuts.
+
+**El motor d'alertes es pur i encara no el crida ningu**: viu a
+`packages/domain/src/infrastructure.ts`, entren regles, registres i rellotge, i surten veredictes.
+La decisio que mes hi pesa es que **frescor va abans que veredicte**: una regla amb dades mes
+velles que el seu pressupost queda `starved`, i llavors **no resol el que ja estava disparat** —
+perdre de vista n8n no ha de semblar que tots els workflows s'han arreglat alhora.
 
 **El connector `n8n` ja es al registre, pero encara no el fa servir ningu**: cal una instancia
 creada per la pantalla d'integracions, amb la seva `api_token` desada a la caixa forta, i la flag
