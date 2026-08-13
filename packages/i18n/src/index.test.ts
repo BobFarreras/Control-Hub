@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getAttendanceDictionary, getDictionary, getIntegrationsDictionary, locales } from "./index.js";
+import {
+  getAttendanceDictionary,
+  getDictionary,
+  getInfrastructureDictionary,
+  getIntegrationsDictionary,
+  locales
+} from "./index.js";
 
 /**
  * A key added to one locale and forgotten in the others renders the key name at somebody, or
@@ -25,5 +31,9 @@ describe("dictionaries", () => {
 
   it("does the same for the connector platform", () => {
     expectSameShapeInEveryLocale(getIntegrationsDictionary);
+  });
+
+  it("does the same for the infrastructure module", () => {
+    expectSameShapeInEveryLocale(getInfrastructureDictionary);
   });
 });
