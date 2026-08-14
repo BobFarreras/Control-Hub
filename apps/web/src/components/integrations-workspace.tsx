@@ -52,7 +52,6 @@ import { errorMessage, healthReason, healthTone, instanceStatusTone } from "@/li
  * Specification: `docs/specifications/connectors.md`.
  */
 
-
 const instanceStatuses: ConnectorInstanceStatus[] = ["draft", "enabled", "disabled", "error"];
 
 export function IntegrationsWorkspace({

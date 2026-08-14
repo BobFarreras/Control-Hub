@@ -234,7 +234,6 @@ export function ConfigForm({
   );
 }
 
-
 /**
  * The complaints no field claimed.
  *

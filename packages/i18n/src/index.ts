@@ -3373,7 +3373,8 @@ const integrationDictionaries = {
     instanceDisabled: "Integracion detenida y credenciales revocadas.",
     healthQueued: "Comprobacion solicitada. El resultado aparecera en las ejecuciones.",
     readOnlyNotice: "Puedes consultar las integraciones, pero no modificarlas.",
-    detailDescription: "Como esta configurada, por donde entran sus eventos, con que credencial y que ha estado haciendo.",
+    detailDescription:
+      "Como esta configurada, por donde entran sus eventos, con que credencial y que ha estado haciendo.",
     instanceDeleted: "{name} borrada.",
     dangerZone: "Borrar esta integracion",
     deleteExplanation:
@@ -3582,7 +3583,8 @@ const integrationDictionaries = {
     instanceDisabled: "Integration stopped and credentials revoked.",
     healthQueued: "Check requested. The result will appear under runs.",
     readOnlyNotice: "You can read the integrations, but not change them.",
-    detailDescription: "How it is configured, where its events come in, what it authenticates with, and what it has been doing.",
+    detailDescription:
+      "How it is configured, where its events come in, what it authenticates with, and what it has been doing.",
     instanceDeleted: "{name} has been deleted.",
     dangerZone: "Delete this integration",
     deleteExplanation:

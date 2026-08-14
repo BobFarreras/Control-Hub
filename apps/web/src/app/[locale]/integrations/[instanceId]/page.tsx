@@ -77,11 +77,7 @@ async function loadCatalogue(): Promise<ConnectorCatalogueEntry[]> {
   return (await readJson<ConnectorCatalogueResponse>(response)).connectors;
 }
 
-export default async function IntegrationPage({
-  params
-}: {
-  params: Promise<{ locale: string; instanceId: string }>;
-}) {
+export default async function IntegrationPage({ params }: { params: Promise<{ locale: string; instanceId: string }> }) {
   const { locale, instanceId } = await params;
   if (!isLocale(locale)) notFound();
   // The flag decides whether the module is deployed at all. Without it the API serves no such

@@ -214,7 +214,8 @@ test("refuses to delete until the name is typed, and then the integration is gon
   await expect(confirm).toBeEnabled();
 
   const deleted = page.waitForResponse(
-    (response) => /\/api\/v1\/integrations\/[0-9a-f-]{36}$/.test(response.url()) && response.request().method() === "DELETE"
+    (response) =>
+      /\/api\/v1\/integrations\/[0-9a-f-]{36}$/.test(response.url()) && response.request().method() === "DELETE"
   );
   await confirm.click();
   expect((await deleted).status()).toBe(200);
