@@ -28,7 +28,7 @@ const echo = defineConnector<z.infer<typeof echoSchema>>({
   type: "test-echo",
   contractVersion: connectorContractVersion,
   configSchema: echoSchema,
-  configFields: [{ name: "label", kind: "text" }],
+  configFields: [{ name: "label", kind: "text", group: "connection" }],
   credentialKinds: [],
   capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
   health: () => Promise.resolve({ status: "ok" }),
@@ -162,7 +162,7 @@ describe("configuration", () => {
       type: "test-secretive",
       contractVersion: connectorContractVersion,
       configSchema: schema,
-      configFields: [{ name: "token", kind: "text" }],
+      configFields: [{ name: "token", kind: "text", group: "connection" }],
       credentialKinds: [],
       capabilities: { egress: null, operations: {}, ingress: false },
       health: () => Promise.resolve({ status: "ok" }),
@@ -231,10 +231,10 @@ describe("declaring the fields an operator has to fill in", () => {
     });
 
   const complete = [
-    { name: "endpoint", kind: "url" },
-    { name: "verbose", kind: "toggle" },
-    { name: "retries", kind: "number" },
-    { name: "label", kind: "text" }
+    { name: "endpoint", kind: "url", group: "connection" },
+    { name: "verbose", kind: "toggle", group: "behaviour" },
+    { name: "retries", kind: "number", group: "behaviour" },
+    { name: "label", kind: "text", group: "behaviour" }
   ] as const;
 
   /**
@@ -264,7 +264,65 @@ describe("declaring the fields an operator has to fill in", () => {
   });
 
   it("refuses a field the configuration schema has never heard of", () => {
-    expect(() => withFields([...complete, { name: "nope", kind: "text" }])).toThrow("CONFIG_FIELD_UNKNOWN");
+    expect(() => withFields([...complete, { name: "nope", kind: "text", group: "connection" }])).toThrow(
+      "CONFIG_FIELD_UNKNOWN"
+    );
+  });
+
+  /**
+   * The same question the schema answers about necessity also answers what to put in the input,
+   * so a form can open already filled in the way the connector would have behaved anyway. A
+   * field with no default is left alone: an invented one would be a value nobody chose.
+   */
+  it("takes each default from the schema rather than from a second declaration", () => {
+    const fields = withFields(complete).configFields;
+    expect(fields.map((field) => [field.name, field.defaultValue])).toEqual([
+      ["endpoint", null],
+      ["verbose", false],
+      ["retries", 3],
+      ["label", null]
+    ]);
+  });
+
+  /**
+   * A default only helps if somebody could have typed it. Anything else is left null so the form
+   * shows an empty input instead of a rendering of an object nobody can meaningfully edit.
+   */
+  it("ignores a default no input could hold", () => {
+    const connector = defineConnector({
+      type: "test-rich-default",
+      contractVersion: connectorContractVersion,
+      configSchema: z.strictObject({
+        tags: z.array(z.string()).default(["a", "b"]),
+        window: z.object({ from: z.string() }).default({ from: "now" })
+      }),
+      configFields: [
+        { name: "tags", kind: "list", group: "behaviour" },
+        { name: "window", kind: "text", group: "behaviour" }
+      ],
+      credentialKinds: [],
+      capabilities: { egress: null, operations: {}, ingress: false },
+      health: () => Promise.resolve({ status: "ok" as const }),
+      operations: {}
+    });
+
+    expect(connector.configFields.map((field) => field.defaultValue)).toEqual([["a", "b"], null]);
+  });
+
+  /**
+   * Behaviour fields are the ones a form is entitled to fold away, so declaring a required field
+   * as behaviour would hide something and then refuse the submit over it, complaining about a
+   * field the operator was never shown.
+   */
+  it("refuses to fold away a field somebody still has to fill in", () => {
+    expect(() =>
+      withFields([
+        { name: "endpoint", kind: "url", group: "behaviour" },
+        { name: "verbose", kind: "toggle", group: "behaviour" },
+        { name: "retries", kind: "number", group: "behaviour" },
+        { name: "label", kind: "text", group: "behaviour" }
+      ])
+    ).toThrow("CONFIG_FIELD_NOT_OPTIONAL");
   });
 
   /**
@@ -282,7 +340,7 @@ describe("declaring the fields an operator has to fill in", () => {
         type: "test-opaque",
         contractVersion: connectorContractVersion,
         configSchema: z.record(z.string(), z.string()),
-        configFields: [{ name: "anything", kind: "text" }],
+        configFields: [{ name: "anything", kind: "text", group: "connection" }],
         credentialKinds: [],
         capabilities: { egress: null, operations: {}, ingress: false },
         health: () => Promise.resolve({ status: "ok" as const }),

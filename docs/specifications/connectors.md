@@ -362,26 +362,79 @@ En un desplegament sense anell de claus, les seccions de credencials i d'adreces
 surten. No hi ha ruta que les serveixi, i un boto que encunya un secret alla on no se'n pot
 segellar cap es un boto que sempre falla.
 
-**La configuracio de la instancia es un formulari que dicta el connector.** El cataleg porta els
-camps declarats i la pantalla els dibuixa sense saber res del proveidor, de manera que un
-connector afegit en una release posterior no obliga a tocar la pantalla. Que un camp sigui
-obligatori no es una segona declaracio sino una lectura del seu esquema, i `defineConnector`
-refusa a la carrega del modul una llista que n'hagi divergit en qualsevol de les dues direccions.
-La direccio que importa mes es la segona: **una clau de configuracio sense camp declarat es una
+### Connectar una plataforma
+
+**Primer es tria la plataforma, despres es respon el que aquella plataforma demana.** El cataleg
+es un conjunt de targetes amb marca i una frase, no una llista desplegable, i no n'hi ha cap de
+preseleccionada: un connector triat per nosaltres posa les preguntes d'un proveidor que no es el
+que l'operador tenia al cap. Les marques son dibuixos nostres amb el color de cada proveidor, no
+els seus logotips: un logotip reproduit de memoria es una marca registrada mal copiada, i un de
+carregat en temps de render es una peticio al servidor d'algu altre des d'una pantalla que ha de
+funcionar en una xarxa aillada.
+
+**El formulari el dicta el connector.** El cataleg porta els camps declarats i la pantalla els
+dibuixa sense saber res del proveidor, de manera que un connector afegit en una release posterior
+no obliga a tocar la pantalla. D'aquests camps, **el connector nomes tria dues coses**: com es
+dibuixen i per a que son. La resta es llegeix del seu esquema, amb una sola pregunta: que fa
+aquesta clau si no li dones res? Refusa, i llavors es obligatoria; respon amb un valor, i aquell
+valor es el que el formulari ha de mostrar ja escrit; o respon buit, i el camp comenca en blanc.
+Preguntar-ho un sol cop es el que impedeix que les dues respostes es contradiguin, i fa que
+canviar un valor per defecte al connector canvii el que ofereix el formulari sense que ningu
+editi cap formulari.
+
+Per a que serveix un camp decideix on va. Els de **connexio** son el que cal per arribar al
+proveidor i es pregunten obertament; els de **comportament** son quant se n'ha de llegir un cop
+s'hi arriba, i es plegan darrere un `<details>`, perque tots ells ja es responen sols i un
+formulari que obre amb cinc preguntes que ningu ha de contestar es llegeix com cinc preguntes que
+algu ha d'anar a investigar. Plegar nomes es honest si l'esquema pot continuar sense el camp:
+`defineConnector` refusa a la carrega del modul un camp obligatori declarat com a comportament,
+perque seria un camp amagat i despres refusat en enviar, queixant-se d'una cosa que l'operador no
+ha vist mai.
+
+`defineConnector` tambe refusa una llista que hagi divergit de l'esquema en qualsevol de les dues
+direccions. La direccio que importa mes: **una clau de configuracio sense camp declarat es una
 clau que ningu pot omplir des d'una pantalla**, i el simptoma no es un error sino una integracio
 que nomes es pot configurar per `curl` — que es on va acabar aquesta pantalla la primera vegada.
+
 El que es dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit: si el
-cami nomena un camp declarat, la queixa cau sobre aquell camp; si no, es llista a part.
+cami nomena un camp declarat, la queixa cau sobre aquell camp; si no, es llista a part. Una
+queixa sobre un camp plegat **obre el desplegable**, perque si no seria invisible.
 
 Un connector que la versio en curs ja no porta no te camps ni res que pugui acceptar una edicio:
 la seva configuracio **es mostra, no s'ofereix**.
 
-**La credencial s'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix
-`credentials:rotate` —que no es el permis que gestiona la integracio, perque qui pot canviar una
-adreca no ha de poder-hi posar el token— i el valor no torna: cap ruta d'aquesta API el llegeix,
-el formulari es buida en enviar-lo i el que queda a la llista son metadades. Escriure sobre un
-tipus que ja te valor **obre una rotacio** en comptes de substituir res, i la pantalla ho diu
-abans de fer-ho.
+**Els noms surten del diccionari per tipus de connector, i el tipus no es una clau.** Els tipus
+son kebab-case i les claus no poden ser-ho, aixi que una consulta feta directament amb el tipus
+no falla: erra, i cau al valor per defecte, que es el tipus mateix. Aixi es com `generic-webhook`
+va arribar a una pantalla que per la resta estava traduida. La conversio viu en un sol lloc i hi
+ha una prova que recorre el registre i exigeix, per a cada connector, cada camp i cada tipus de
+credencial, que hi hagi paraules a les tres llengues.
+
+### La credencial
+
+**S'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix `credentials:rotate`
+—que no es el permis que gestiona la integracio, perque qui pot canviar una adreca no ha de
+poder-hi posar el token— i el valor no torna: cap ruta d'aquesta API el llegeix, el formulari es
+buida en enviar-lo i el que queda a la llista son metadades. Escriure sobre un tipus que ja te
+valor **obre una rotacio** en comptes de substituir res, i la pantalla ho diu abans de fer-ho.
+
+**El formulari de creacio tambe la demana**, quan n'hi ha una que tingui sentit demanar: la que
+autentica les crides que fem nosaltres. Un connector sense egress no en te cap — nomes rep, i el
+secret amb que verifica s'encunya amb la seva adreca en comptes d'escriure'l ningu— i oferir-li
+un camp seria convidar algu a enganxar un token que no s'enviaria mai enlloc.
+
+Son dues crides, perque un secret no viatja per la ruta que crea una instancia: la caixa forta
+te la seva propia ruta i el seu propi permis, i posar un token al cos d'una creacio el deixaria a
+qualsevol log que registri aquella ruta. Aixo vol dir que hi ha un moment on la instancia existeix
+i el secret no. **No s'amaga i no es desfa**: esborrar una integracio perfectament bona perque ha
+fallat una segona crida convertiria un tall de xarxa en feina perduda. El dialeg es tanca, la
+pantalla obre la integracio nova i el missatge diu exactament que hi falta — el formulari de la
+credencial es alli mateix, i la instancia es un esborrany que no arriba enlloc fins que algu
+l'activa.
+
+En un desplegament sense anell de claus el camp no hi es, ni al dialeg ni al panell. La pantalla
+ho sap abans de tenir cap instancia a qui preguntar-ho, perque el cataleg mateix diu si aquesta
+instal·lacio pot guardar un secret.
 
 ## Threat model
 

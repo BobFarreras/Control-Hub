@@ -369,6 +369,9 @@ importers:
 
   packages/i18n:
     devDependencies:
+      '@control-hub/connectors':
+        specifier: workspace:*
+        version: link:../connectors
       typescript:
         specifier: ^5.9.0
         version: 5.9.3

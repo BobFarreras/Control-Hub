@@ -597,7 +597,11 @@ export type ConnectorInstance = {
 export type ConnectorConfigField = {
   name: string;
   kind: "url" | "text" | "number" | "toggle" | "list";
+  /** `connection` is what it takes to reach the provider; `behaviour` is what to do once there. */
+  group: "connection" | "behaviour";
   required: boolean;
+  /** What the connector already answers for this field, or `null` when it answers nothing. */
+  defaultValue: string | number | boolean | string[] | null;
 };
 
 export type ConnectorCatalogueEntry = {
@@ -639,7 +643,11 @@ export type ConnectorRun = {
 
 export type IntegrationsResponse = { integrations: ConnectorInstance[] };
 export type IntegrationResponse = { integration: ConnectorInstance };
-export type ConnectorCatalogueResponse = { connectors: ConnectorCatalogueEntry[] };
+export type ConnectorCatalogueResponse = {
+  connectors: ConnectorCatalogueEntry[];
+  /** False on an installation with no key ring: nothing here can accept a secret. */
+  vaultAvailable: boolean;
+};
 export type ConnectorCredentialsResponse = { credentials: ConnectorCredential[] };
 export type ConnectorEndpointsResponse = { endpoints: ConnectorEndpoint[] };
 export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page: number; pageSize: number };

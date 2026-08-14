@@ -230,11 +230,29 @@ export type IngressHandler<Config> = (
  */
 export type ConfigFieldKind = "url" | "text" | "number" | "toggle" | "list";
 
-/** What a connector declares: a name, and how to draw it. */
-export type ConfigFieldDeclaration = { name: string; kind: ConfigFieldKind };
+/**
+ * What the field is for, which decides where a form puts it.
+ *
+ * `connection` is what it takes to reach the provider at all: get one wrong and nothing works.
+ * `behaviour` is how much to read once reached, and every such field answers for itself, so a
+ * form can fold them away and still be complete. The schema cannot tell the two apart — both are
+ * ordinary keys to it — so the connector says which is which, and the schema is then asked
+ * whether it meant it.
+ */
+export type ConfigFieldGroup = "connection" | "behaviour";
 
-/** What the platform hands to a screen, with the schema's own answer about necessity filled in. */
-export type ConfigField = ConfigFieldDeclaration & { required: boolean };
+/** What a connector declares: a name, how to draw it, and what it is for. */
+export type ConfigFieldDeclaration = { name: string; kind: ConfigFieldKind; group: ConfigFieldGroup };
+
+/** A default a form can put in an input. Anything richer is not something a person types. */
+export type ConfigFieldDefault = string | number | boolean | readonly string[];
+
+/** What the platform hands to a screen, with the schema's own answers filled in. */
+export type ConfigField = ConfigFieldDeclaration & {
+  required: boolean;
+  /** The schema's own default, or `null` when it has none: not every optional field has one. */
+  defaultValue: ConfigFieldDefault | null;
+};
 
 export type ConnectorDefinition<Config> = {
   type: string;
@@ -306,9 +324,24 @@ function objectShape(schema: ZodType<unknown>): Record<string, ZodType<unknown>>
  * told to use `curl` instead. Both are refused at module load, where the stack names the
  * connector, rather than on the day somebody opens the form.
  *
- * Necessity is decided by asking the schema what it does with nothing — a key that accepts
- * `undefined` is optional or has a default, and either way nobody has to fill it in.
+ * Necessity and the default are one question asked once: what does this key do with nothing? It
+ * refuses, so somebody has to fill it in; it answers with a value, which is the default a form
+ * should already be showing; or it answers with nothing, so the field is optional and starts
+ * empty. Asking once means the two answers cannot contradict each other, and a connector that
+ * changes a default changes what the form offers without anybody editing a form.
  */
+function defaultOf(key: ZodType<unknown>): ConfigFieldDefault | null {
+  const result = key.safeParse(undefined);
+  if (!result.success) return null;
+
+  const value: unknown = result.data;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  // Anything else is not a default an input can hold, and a form is better off empty than showing
+  // `[object Object]` and inviting somebody to edit it.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value;
+  return null;
+}
+
 function configFieldsOf(
   schema: ZodType<unknown>,
   declarations: readonly ConfigFieldDeclaration[]
@@ -322,7 +355,12 @@ function configFieldsOf(
   const fields = declarations.map((declaration) => {
     const key = shape[declaration.name];
     if (!key) throw new ConnectorError("CONFIG_FIELD_UNKNOWN");
-    return { ...declaration, required: !key.safeParse(undefined).success };
+    const required = !key.safeParse(undefined).success;
+    // Folding a field away is only honest if the schema can proceed without it. A required field
+    // declared as behaviour would be hidden behind a disclosure and then refused on submit, with
+    // the complaint pointing at something the operator was never shown.
+    if (declaration.group === "behaviour" && required) throw new ConnectorError("CONFIG_FIELD_NOT_OPTIONAL");
+    return { ...declaration, required, defaultValue: defaultOf(key) };
   });
 
   const declared = new Set(fields.map((field) => field.name));

@@ -179,8 +179,8 @@ describe("offering a connector to a screen", () => {
     type: "n8n",
     contractVersion: 1,
     configFields: [
-      { name: "baseUrl", kind: "url", required: true },
-      { name: "includeArchived", kind: "toggle", required: false }
+      { name: "baseUrl", kind: "url", group: "connection", required: true, defaultValue: null },
+      { name: "includeArchived", kind: "toggle", group: "behaviour", required: false, defaultValue: false }
     ],
     credentialKinds: ["api_token", "ingress_signing"],
     capabilities: {
@@ -195,10 +195,10 @@ describe("offering a connector to a screen", () => {
    * back to asking for raw JSON -- which is how an integration ends up being configured over
    * `curl` by whoever knows the key names.
    */
-  it("says what to ask for, and whether it can be left blank", () => {
+  it("says what to ask for, what it is for, and what it already answers", () => {
     expect(catalogueResponse(entry).configFields).toEqual([
-      { name: "baseUrl", kind: "url", required: true },
-      { name: "includeArchived", kind: "toggle", required: false }
+      { name: "baseUrl", kind: "url", group: "connection", required: true, defaultValue: null },
+      { name: "includeArchived", kind: "toggle", group: "behaviour", required: false, defaultValue: false }
     ]);
   });
 

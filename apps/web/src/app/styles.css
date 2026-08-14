@@ -1104,6 +1104,9 @@ main {
 }
 .crm-dialog h2 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
 }
 .crm-form {
@@ -5434,6 +5437,63 @@ main {
     ui-monospace,
     monospace;
   white-space: pre;
+}
+/* The catalogue of platforms. Cards rather than a list, because choosing what to connect to is
+   recognising a thing you already use, and a name in a dropdown is something you have to read. */
+.connector-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.connector-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.connector-card:hover,
+.connector-card:focus-visible {
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+}
+.connector-card strong {
+  font-size: 14px;
+  color: var(--text);
+}
+.connector-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+/* The fields a connector already answers for itself. Folded away by default: five questions
+   nobody has to answer read as five questions somebody has to go and research. */
+.config-advanced {
+  margin: 4px 0 2px;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.config-advanced > summary {
+  padding: 10px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.config-advanced > summary:hover {
+  color: var(--text);
+}
+.config-advanced-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 8px 0 4px;
 }
 .integration-issues {
   margin: 8px 0 0;

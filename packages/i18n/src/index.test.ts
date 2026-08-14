@@ -1,3 +1,4 @@
+import { connectorRegistry } from "@control-hub/connectors";
 import { describe, expect, it } from "vitest";
 import {
   getAttendanceDictionary,
@@ -35,5 +36,57 @@ describe("dictionaries", () => {
 
   it("does the same for the infrastructure module", () => {
     expectSameShapeInEveryLocale(getInfrastructureDictionary);
+  });
+});
+
+/**
+ * Every connector this build ships has words in every language.
+ *
+ * Read off the registry rather than from a list kept here, because a list kept here is a list
+ * somebody forgets to extend, and the failure is silent: a lookup that misses falls back to the
+ * identifier, so an untranslated connector reaches an operator as `generic-webhook` in the middle
+ * of a screen that is otherwise Catalan. That is not hypothetical — it shipped, because the key
+ * was written with an underscore and looked up with the hyphen the type actually has.
+ *
+ * The conversion is asserted here too, so this test fails for the same reason the screen did.
+ */
+describe("the words for the connectors this build ships", () => {
+  const key = (type: string) => type.replace(/-/g, "_");
+
+  it("has a name and a description for every connector, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const type of connectorRegistry.types()) {
+        expect(dictionary[`connector_${key(type)}`], `connector_${key(type)} in ${locale}`).toBeTruthy();
+        expect(dictionary[`connectorAbout_${key(type)}`], `connectorAbout_${key(type)} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
+  /**
+   * A field with no wording draws an input labelled with the key its schema uses, which is a form
+   * asking for `executionsWindowHours` in a screen that is otherwise in somebody's language.
+   */
+  it("has a label for every field every connector asks for, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const type of connectorRegistry.types()) {
+        for (const field of connectorRegistry.require(type).configFields) {
+          const own = dictionary[`field_${key(type)}_${field.name}`];
+          expect(own ?? dictionary[`field_${field.name}`], `${type}.${field.name} in ${locale}`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it("has a name for every kind of credential a connector accepts, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const type of connectorRegistry.types()) {
+        for (const kind of connectorRegistry.require(type).credentialKinds) {
+          expect(dictionary[`credentialKind_${kind}`], `credentialKind_${kind} in ${locale}`).toBeTruthy();
+        }
+      }
+    }
   });
 });

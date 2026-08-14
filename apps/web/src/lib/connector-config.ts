@@ -1,4 +1,4 @@
-import type { ConnectorConfigField } from "@/lib/api-types";
+import type { ConnectorCatalogueEntry, ConnectorConfigField } from "@/lib/api-types";
 
 /**
  * Turning a connector's declared fields into a form, and a filled-in form back into a
@@ -41,9 +41,21 @@ function scalar(value: unknown): string {
   return "";
 }
 
-/** What the stored configuration holds for a field, as the control for its kind wants it. */
-export function fieldValue(field: ConnectorConfigField, config: Record<string, unknown>): string {
+/**
+ * What a control starts out holding: the configured value, or failing that the connector's own
+ * default, so a form for something nobody has set up yet opens showing what it would do anyway.
+ *
+ * The fallback is only reached when the configuration has nothing at all for the field. A stored
+ * value wins even when it is falsy — `0`, `false`, an empty string — because somebody chose it.
+ */
+function startingValue(field: ConnectorConfigField, config: Record<string, unknown>): unknown {
   const value = config[field.name];
+  return value === undefined || value === null ? field.defaultValue : value;
+}
+
+/** What the form holds for a field, as the control for its kind wants it. */
+export function fieldValue(field: ConnectorConfigField, config: Record<string, unknown>): string {
+  const value = startingValue(field, config);
   if (value === undefined || value === null) return "";
   if (Array.isArray(value)) {
     return value
@@ -54,9 +66,9 @@ export function fieldValue(field: ConnectorConfigField, config: Record<string, u
   return scalar(value);
 }
 
-/** Whether a toggle starts on. A key the configuration never had is off, not undefined. */
+/** Whether a toggle starts on. A key neither the configuration nor the connector answers is off. */
 export function isChecked(field: ConnectorConfigField, config: Record<string, unknown>): boolean {
-  return config[field.name] === true;
+  return startingValue(field, config) === true;
 }
 
 export function configFromForm(fields: readonly ConnectorConfigField[], read: FormReader): Record<string, unknown> {
@@ -90,4 +102,22 @@ export function configFromForm(fields: readonly ConnectorConfigField[], read: Fo
     config[field.name] = value;
   }
   return config;
+}
+
+/**
+ * The one secret a create form should ask for, or nothing.
+ *
+ * Connecting a provider means pasting the token our calls authenticate with, so a connector that
+ * makes no calls has nothing to ask for at this point: an inbound-only connector receives, and
+ * the secret it verifies with is minted along with its endpoint rather than typed by anybody.
+ * Offering a field for it would invite an operator to paste a token that nothing would ever send.
+ *
+ * Where a connector declares several kinds, the first is the one that connects — declared order
+ * carries meaning here in the same way it does for fields, where it is the order of the form.
+ */
+export function connectCredentialKind(
+  entry: Pick<ConnectorCatalogueEntry, "credentialKinds" | "capabilities"> | undefined
+): string | null {
+  if (!entry || !entry.capabilities.egress) return null;
+  return entry.credentialKinds[0] ?? null;
 }

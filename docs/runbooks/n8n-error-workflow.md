@@ -24,9 +24,9 @@ els seus tokens a dins: no ens el volem quedar.
 ## Abans de comencar
 
 1. La integracio `n8n` ha d'existir a Control Hub, **activa**. Es crea a **Integracions** →
-   **Nova integracio**: tria `n8n`, posa-hi un nom i omple **Adreca de la instancia**. Despres,
-   al panell de la integracio, escriu la credencial **Token de l'API** —la que generes a n8n a
-   **Settings → API**— i comprova-ho amb **Comprovar la connexio**.
+   **Nova integracio**: tria la targeta d'n8n, posa-hi un nom, omple **Adreca de la instancia**
+   i enganxa el **Token de l'API** —el que generes a la teva instancia a **Settings → API**—
+   al mateix dialeg. Despres, **Activar** i **Comprovar salut**.
 2. Has de poder editar workflows a aquella instancia d'n8n.
 3. Tingues obert el gestor de contrasenyes: el secret de firma es veu **un sol cop**.
 

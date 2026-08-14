@@ -92,6 +92,7 @@ async function loadDetail(instance: ConnectorInstance): Promise<IntegrationDetai
 async function load(): Promise<{
   integrations: ConnectorInstance[];
   catalogue: ConnectorCatalogueEntry[];
+  vault: boolean;
   preference: TablePreference;
   manage: boolean;
   rotate: boolean;
@@ -104,13 +105,18 @@ async function load(): Promise<{
       apiFetch("/api/v1/integrations"),
       apiFetch("/api/v1/connectors")
     ]);
-    const catalogue = catalogueResponse.ok
-      ? (await readJson<ConnectorCatalogueResponse>(catalogueResponse)).connectors
-      : [];
-    if (!response.ok) return { integrations: [], catalogue, preference, manage, rotate, loadError: true };
+    // One read for both: the catalogue says what can be created, and whether this installation can
+    // hold a secret for it. A screen needs the second answer before it has any instance to ask about.
+    const offered = catalogueResponse.ok
+      ? await readJson<ConnectorCatalogueResponse>(catalogueResponse)
+      : { connectors: [], vaultAvailable: false };
+    const catalogue = offered.connectors;
+    const vault = offered.vaultAvailable;
+    if (!response.ok) return { integrations: [], catalogue, vault, preference, manage, rotate, loadError: true };
     return {
       integrations: (await readJson<IntegrationsResponse>(response)).integrations,
       catalogue,
+      vault,
       preference,
       manage,
       rotate,
@@ -120,6 +126,7 @@ async function load(): Promise<{
     return {
       integrations: [],
       catalogue: [],
+      vault: false,
       preference: defaultPreference,
       manage: false,
       rotate: false,
@@ -187,6 +194,7 @@ export default async function IntegrationsPage({
             page={page}
             preference={preference}
             catalogue={data.catalogue}
+            vaultAvailable={data.vault}
             detail={detail}
             canManage={data.manage}
             canRotate={data.rotate}

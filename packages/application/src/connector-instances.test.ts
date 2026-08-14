@@ -40,7 +40,7 @@ const technical = asRole("technical");
 const demo = {
   type: "demo",
   contractVersion: 1,
-  configFields: [{ name: "baseUrl", kind: "url", required: false }],
+  configFields: [{ name: "baseUrl", kind: "url", group: "connection", required: false, defaultValue: null }],
   credentialKinds: ["api_key"],
   capabilities: {
     egress: { schemes: ["https"], destination: "configured_base_url" },
@@ -250,7 +250,9 @@ describe("who may change an integration", () => {
    */
   it("carries the fields a form has to draw, not just the name of the connector", () => {
     const [entry] = service.catalogueEntries(owner);
-    expect(entry!.configFields).toEqual([{ name: "baseUrl", kind: "url", required: false }]);
+    expect(entry!.configFields).toEqual([
+      { name: "baseUrl", kind: "url", group: "connection", required: false, defaultValue: null }
+    ]);
   });
 
   it("lets owner and technical manage, which is the matrix the specification fixed", async () => {

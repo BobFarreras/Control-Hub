@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { ConnectorMark } from "@/components/connector-mark";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
 import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
 import { StatusPill, type StatusTone } from "@/components/status-pill";
@@ -30,7 +31,17 @@ import type {
   IntegrationDetail,
   TablePreference
 } from "@/lib/api-types";
-import { configFromForm, fieldValue, isChecked, type FormReader } from "@/lib/connector-config";
+import { configFromForm, connectCredentialKind, fieldValue, isChecked, type FormReader } from "@/lib/connector-config";
+import {
+  connectorLabel,
+  connectorSummary,
+  credentialKindHint,
+  credentialKindLabel,
+  fieldHint,
+  fieldLabel,
+  issueMessage,
+  type Labels
+} from "@/lib/connector-labels";
 import { formValue } from "@/lib/form";
 import { eventHandler } from "@/lib/handlers";
 import { errorMessage, healthTone, instanceStatusTone, problemCode, webhookUrl } from "@/lib/integrations";
@@ -48,8 +59,6 @@ import { errorMessage, healthTone, instanceStatusTone, problemCode, webhookUrl }
  *
  * Specification: `docs/specifications/connectors.md`.
  */
-
-type Labels = Record<string, string>;
 
 /** What the API says is wrong with a configuration: a path inside it and a code, never a value. */
 type ConfigIssue = { path: string; code: string };
@@ -108,6 +117,7 @@ export function IntegrationsWorkspace({
   page,
   preference,
   catalogue,
+  vaultAvailable,
   detail,
   canManage,
   canRotate,
@@ -121,6 +131,7 @@ export function IntegrationsWorkspace({
   page: number;
   preference: TablePreference;
   catalogue: ConnectorCatalogueEntry[];
+  vaultAvailable: boolean;
   detail: IntegrationDetail | null;
   canManage: boolean;
   canRotate: boolean;
@@ -138,10 +149,21 @@ export function IntegrationsWorkspace({
   const [issues, setIssues] = useState<ConfigIssue[]>([]);
   /**
    * Which connector is being created, held here rather than read off the form on submit: the
-   * fields below it change with it, so the choice has to drive a render.
+   * fields below it change with it, so the choice has to drive a render. Empty until somebody
+   * picks — a preselected connector would put an unrelated provider's questions in front of
+   * whoever opened the dialog, and the first one alphabetically is nobody's likely answer.
    */
-  const [type, setType] = useState(catalogue[0]?.type ?? "");
+  const [type, setType] = useState("");
   const chosen = catalogue.find((connector) => connector.type === type);
+  /** The secret this connector is connected with, if it is the sort that connects with one. */
+  const secretKind = vaultAvailable ? connectCredentialKind(chosen) : null;
+
+  function closeDialog() {
+    setDialog(false);
+    setType("");
+    setIssues([]);
+    setFormError("");
+  }
 
   /** The selection lives in the query string, so a selected integration is a link somebody can send. */
   function href(changes: Record<string, string | null>) {
@@ -154,26 +176,58 @@ export function IntegrationsWorkspace({
     return query ? `?${query}` : `/${locale}/integrations`;
   }
 
+  /**
+   * Creating an integration, and giving it its secret, as one gesture.
+   *
+   * Two calls, because a secret does not travel through the route that creates an instance: the
+   * vault is written by its own endpoint under its own permission, and putting a token in a
+   * creation body would place it in whatever logs that route.
+   *
+   * Which means there is a moment where the instance exists and the secret does not. That is not
+   * hidden and it is not undone: deleting a perfectly good integration because a second call
+   * failed would turn a network blip into lost work. The dialog closes, the screen opens the new
+   * integration, and the message says exactly what is missing — the credential form is right
+   * there, and the instance is a draft that reaches nothing until somebody enables it.
+   */
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const config = configFromForm(chosen?.configFields ?? [], configReader(data));
+    const secret = formValue(data, "secret");
     setBusy(true);
     setFormError("");
     setIssues([]);
-    const result = await request<unknown>("/api/v1/integrations", {
+    const result = await request<{ integration: ConnectorInstance }>("/api/v1/integrations", {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify({ connectorType: type, name: formValue(data, "name"), config })
     });
-    setBusy(false);
     if (!result.ok) {
+      setBusy(false);
       setIssues(result.issues);
       return setFormError(errorMessage(t, result.code));
     }
-    setDialog(false);
+
+    const created = result.data.integration;
+    if (secretKind && secret !== "") {
+      const written = await request<unknown>(
+        `/api/v1/integrations/${created.id}/credentials/${encodeURIComponent(secretKind)}`,
+        { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ secret }) }
+      );
+      if (!written.ok) {
+        setBusy(false);
+        closeDialog();
+        toast("error", t.createdWithoutCredential ?? "");
+        return router.push(`/${locale}/integrations?selected=${created.id}`);
+      }
+    }
+
+    setBusy(false);
+    closeDialog();
     toast("success", t.created ?? "");
-    router.refresh();
+    // Absolute rather than a bare query string: this is a navigation, and the screen it lands on
+    // is the one holding the credential form and the enable button.
+    router.push(`/${locale}/integrations?selected=${created.id}`);
   }
 
   const columns: SmartColumn<ConnectorInstance>[] = [
@@ -295,63 +349,78 @@ export function IntegrationsWorkspace({
           className="dialog-backdrop"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setDialog(false);
+            if (event.target === event.currentTarget) closeDialog();
           }}
         >
           <section className="crm-dialog" role="dialog" aria-modal="true">
             <header>
-              <h2>{t.newIntegration}</h2>
-              <button className="icon-button" onClick={() => setDialog(false)} aria-label={t.cancel}>
+              <h2>
+                {chosen && <ConnectorMark type={chosen.type} size={20} />}
+                {chosen ? connectorLabel(t, chosen.type) : t.newIntegration}
+              </h2>
+              <button className="icon-button" onClick={closeDialog} aria-label={t.cancel}>
                 <X size={18} />
               </button>
             </header>
-            <form className="dialog-form" onSubmit={eventHandler(create, () => setBusy(false))}>
-              <SelectField
-                label={t.connectorType!}
-                name="connectorType"
-                required
-                disabled={busy}
-                value={type}
-                onChange={(event) => {
-                  setType(event.currentTarget.value);
-                  setIssues([]);
-                }}
-                options={catalogue.map((connector) => ({
-                  value: connector.type,
-                  label: connectorLabel(t, connector.type)
-                }))}
-              />
-              <TextField
-                label={t.integrationName!}
-                name="name"
-                required
-                minLength={2}
-                maxLength={120}
-                disabled={busy}
-              />
-              <ConfigFields
-                fields={chosen?.configFields ?? []}
-                config={{}}
-                issues={issues}
-                busy={busy}
-                version={type}
-                labels={t}
-              />
-              <ConfigIssues issues={issues} fields={chosen?.configFields ?? []} />
-              {formError && (
-                <p className="form-error wide" role="alert">
-                  {formError}
-                </p>
-              )}
-              <footer>
-                <button type="button" className="secondary-button" onClick={() => setDialog(false)} disabled={busy}>
-                  {t.cancel}
-                </button>
-                <button className="primary-button" disabled={busy}>
-                  {t.create}
-                </button>
-              </footer>
-            </form>
+            {/* Two steps, not two dialogs: pick the platform, then answer only what that platform
+                asks. A single form would have to hold every connector's questions at once. */}
+            {!chosen ? (
+              <div className="dialog-form">
+                <p className="field-help wide">{t.pickConnector}</p>
+                <ConnectorPicker catalogue={catalogue} labels={t} onPick={setType} />
+              </div>
+            ) : (
+              <form className="dialog-form" onSubmit={eventHandler(create, () => setBusy(false))}>
+                <TextField
+                  label={t.integrationName!}
+                  name="name"
+                  required
+                  minLength={2}
+                  maxLength={120}
+                  disabled={busy}
+                />
+                <ConfigForm
+                  type={chosen.type}
+                  fields={chosen.configFields}
+                  config={{}}
+                  issues={issues}
+                  busy={busy}
+                  version={type}
+                  labels={t}
+                />
+                {/* Optional on purpose: somebody who has not been given the token yet should still
+                    be able to create the integration and come back to it. */}
+                {secretKind && (
+                  <TextField
+                    label={credentialKindLabel(t, secretKind)}
+                    name="secret"
+                    type="password"
+                    maxLength={8192}
+                    disabled={busy}
+                    wide
+                    autoComplete="off"
+                    spellCheck={false}
+                    {...(credentialKindHint(t, chosen.type, secretKind)
+                      ? { hint: credentialKindHint(t, chosen.type, secretKind) }
+                      : {})}
+                  />
+                )}
+                <ConfigIssues issues={issues} fields={chosen.configFields} />
+                {formError && (
+                  <p className="form-error wide" role="alert">
+                    {formError}
+                  </p>
+                )}
+                <footer>
+                  <button type="button" className="secondary-button" onClick={() => setType("")} disabled={busy}>
+                    {t.back}
+                  </button>
+                  <button className="primary-button" disabled={busy}>
+                    {t.create}
+                  </button>
+                </footer>
+              </form>
+            )}
           </section>
         </div>
       )}
@@ -376,20 +445,6 @@ const configReader =
     return typeof value === "string" ? value : null;
   };
 
-/** A connector nobody has translated is still usable: its own key is a worse label, not no label. */
-const fieldLabel = (t: Labels, name: string) => t[`field_${name}`] ?? name;
-
-/** The connector's name as a person says it, falling back to the type the registry uses. */
-export const connectorLabel = (t: Labels, type: string) => t[`connector_${type}`] ?? type;
-
-/**
- * What the schema said is wrong, in words.
- *
- * The API sends a zod code and never the value, so this is a fixed vocabulary rather than a
- * message somebody wrote about one field. An unrecognised code still says something useful.
- */
-const issueMessage = (t: Labels, code: string) => t[`issue_${code}`] ?? t.issueInvalid ?? "";
-
 const inputType: Record<ConnectorConfigField["kind"], string> = {
   url: "url",
   text: "text",
@@ -411,6 +466,7 @@ const inputType: Record<ConnectorConfigField["kind"], string> = {
  * would keep showing what was typed rather than what the server stored.
  */
 function ConfigFields({
+  type,
   fields,
   config,
   issues,
@@ -418,6 +474,7 @@ function ConfigFields({
   version,
   labels: t
 }: {
+  type: string;
   fields: readonly ConnectorConfigField[];
   config: Record<string, unknown>;
   issues: ConfigIssue[];
@@ -429,8 +486,8 @@ function ConfigFields({
     <>
       {fields.map((field) => {
         const key = `${version}:${field.name}`;
-        const label = fieldLabel(t, field.name);
-        const hint = t[`fieldHint_${field.name}`];
+        const label = fieldLabel(t, type, field.name);
+        const hint = fieldHint(t, type, field.name);
         const issue = issues.find((candidate) => candidate.path === field.name);
 
         if (field.kind === "toggle") {
@@ -463,6 +520,98 @@ function ConfigFields({
         );
       })}
     </>
+  );
+}
+
+/**
+ * A connector's whole configuration, in the two halves it comes in.
+ *
+ * What it takes to reach the provider is asked outright; how much to read once reached is folded
+ * away, because every one of those fields already answers for itself and a form that opens with
+ * five questions nobody has to answer reads as five questions somebody has to research. The
+ * disclosure is a plain `<details>`: it opens with the keyboard, it prints open, and it is one
+ * element rather than a widget with its own idea of what focus means.
+ */
+function ConfigForm({
+  type,
+  fields,
+  config,
+  issues,
+  busy,
+  version,
+  labels: t
+}: {
+  type: string;
+  fields: readonly ConnectorConfigField[];
+  config: Record<string, unknown>;
+  issues: ConfigIssue[];
+  busy: boolean;
+  version: string;
+  labels: Labels;
+}) {
+  const connection = fields.filter((field) => field.group === "connection");
+  const behaviour = fields.filter((field) => field.group === "behaviour");
+  // A complaint about a folded-away field would otherwise be invisible, so the disclosure opens
+  // itself rather than hiding the reason a submit was refused.
+  const refused = behaviour.some((field) => issues.some((issue) => issue.path === field.name));
+
+  return (
+    <>
+      <ConfigFields
+        type={type}
+        fields={connection}
+        config={config}
+        issues={issues}
+        busy={busy}
+        version={version}
+        labels={t}
+      />
+      {/* Spread rather than `open={refused}`: a literal `false` makes React own the attribute and
+          slam the disclosure shut on the next render, throwing away the operator's own click. */}
+      {behaviour.length > 0 && (
+        <details className="config-advanced wide" {...(refused ? { open: true } : {})}>
+          <summary>{t.advancedOptions}</summary>
+          <div className="config-advanced-fields">
+            <ConfigFields
+              type={type}
+              fields={behaviour}
+              config={config}
+              issues={issues}
+              busy={busy}
+              version={version}
+              labels={t}
+            />
+          </div>
+        </details>
+      )}
+    </>
+  );
+}
+
+/**
+ * The catalogue: what this build can connect to, as a thing to point at rather than a list to
+ * read. Choosing is a separate step from filling anything in, so the form that follows belongs to
+ * one provider and asks only what that provider needs.
+ */
+function ConnectorPicker({
+  catalogue,
+  labels: t,
+  onPick
+}: {
+  catalogue: ConnectorCatalogueEntry[];
+  labels: Labels;
+  onPick: (type: string) => void;
+}) {
+  return (
+    <div className="connector-picker wide">
+      {catalogue.map((connector) => (
+        <button type="button" key={connector.type} className="connector-card" onClick={() => onPick(connector.type)}>
+          <ConnectorMark type={connector.type} />
+          <strong>{connectorLabel(t, connector.type)}</strong>
+          <small>{connectorSummary(t, connector.type)}</small>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -504,13 +653,16 @@ function ConfigIssues({ issues, fields }: { issues: ConfigIssue[]; fields: reado
  */
 function CredentialForm({
   instanceId,
+  type,
   kinds,
   labels: t
 }: {
   instanceId: string;
+  type: string;
   kinds: readonly string[];
   labels: Labels;
 }) {
+  const [kind, setKind] = useState(kinds[0] ?? "");
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -541,11 +693,15 @@ function CredentialForm({
           name="kind"
           required
           disabled={busy}
-          options={kinds.map((kind) => ({ value: kind, label: t[`credentialKind_${kind}`] ?? kind }))}
+          value={kind}
+          onChange={(event) => setKind(event.currentTarget.value)}
+          options={kinds.map((option) => ({ value: option, label: credentialKindLabel(t, option) }))}
         />
       ) : (
-        <input type="hidden" name="kind" value={kinds[0]} />
+        <input type="hidden" name="kind" value={kind} />
       )}
+      {/* Where this particular secret comes from, which is the one thing the operator has to go
+          and find. The kind drives it, so switching kinds switches the instructions. */}
       <TextField
         label={t.credentialSecret!}
         name="secret"
@@ -557,7 +713,7 @@ function CredentialForm({
         wide
         autoComplete="off"
         spellCheck={false}
-        hint={t.credentialSecretHint}
+        hint={[credentialKindHint(t, type, kind), t.credentialSecretHint].filter(Boolean).join(" ")}
       />
       <button className="primary-button" disabled={busy}>
         <KeyRound size={16} aria-hidden="true" />
@@ -738,7 +894,8 @@ function IntegrationPanel({
             accept an edit, so its configuration is shown rather than offered. */}
         {canManage && entry ? (
           <form className="dialog-form" onSubmit={eventHandler(saveConfig, crashed)}>
-            <ConfigFields
+            <ConfigForm
+              type={instance.connectorType}
               fields={entry.configFields}
               config={instance.config}
               issues={issues}
@@ -850,7 +1007,7 @@ function IntegrationPanel({
                 <span>
                   {/* The same words the form above offers: a list naming `api_token` beside a
                       field offering "Token de l'API" reads as two different things. */}
-                  <strong>{t[`credentialKind_${credential.kind}`] ?? credential.kind}</strong>
+                  <strong>{credentialKindLabel(t, credential.kind)}</strong>
                   <small>
                     {t.credentialSlot}: {credential.slot === "primary" ? t.slotPrimary : t.slotSecondary}
                   </small>
@@ -869,7 +1026,12 @@ function IntegrationPanel({
           {/* Writing needs `credentials:rotate`, which is not the permission that manages an
               integration: whoever may change a base URL may not thereby hold its token. */}
           {canRotate && entry && entry.credentialKinds.length > 0 && (
-            <CredentialForm instanceId={instance.id} kinds={entry.credentialKinds} labels={t} />
+            <CredentialForm
+              instanceId={instance.id}
+              type={instance.connectorType}
+              kinds={entry.credentialKinds}
+              labels={t}
+            />
           )}
         </article>
       )}

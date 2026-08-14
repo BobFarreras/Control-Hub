@@ -105,7 +105,9 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
     configFields: entry.configFields.map((field) => ({
       name: field.name,
       kind: field.kind,
-      required: field.required
+      group: field.group,
+      required: field.required,
+      defaultValue: field.defaultValue
     })),
     credentialKinds: entry.credentialKinds,
     capabilities: {
@@ -192,13 +194,19 @@ export function registerIntegrationRoutes({
         tags: ["connectors"],
         summary: "What this release can connect to",
         description:
-          "The connectors compiled into this build, with the operations and credential kinds each declares. A type absent here cannot be installed: the registry is resolved at build time, not from the database."
+          "The connectors compiled into this build, with the operations and credential kinds each declares. A type absent here cannot be installed: the registry is resolved at build time, not from the database. `vaultAvailable` says whether this installation can hold a secret at all, so a screen knows before it offers to take one."
       }
     },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "integrations:read");
-      return { connectors: connectors.catalogueEntries(context).map(catalogueResponse) };
+      return {
+        connectors: connectors.catalogueEntries(context).map(catalogueResponse),
+        // Whether a secret can be stored is a property of the installation, not of a connector or
+        // of any one instance — and a screen has to know it before it draws a field to take one,
+        // which is earlier than it has any instance to ask about.
+        vaultAvailable: credentials !== null
+      };
     }
   );
 
