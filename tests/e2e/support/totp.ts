@@ -45,12 +45,17 @@ export function generateTotp(
   const period = options.period ?? 30;
   const counter = Math.floor((options.at ?? Date.now()) / (period * 1000));
   const digest = createHmac("sha1", decodeBase32(base32Secret)).update(counterBytes(counter)).digest();
-  const offset = digest[digest.length - 1] & 0x0f;
-  const truncated =
-    ((digest[offset] & 0x7f) << 24) |
-    ((digest[offset + 1] & 0xff) << 16) |
-    ((digest[offset + 2] & 0xff) << 8) |
-    (digest[offset + 3] & 0xff);
+  /**
+   * RFC 4226 dynamic truncation: the low nibble of the last byte picks where to read, and four
+   * big endian bytes from there become the number, with the sign bit cleared.
+   *
+   * Read through `Buffer`'s accessors rather than by index. An HMAC-SHA1 digest is always twenty
+   * bytes and `offset` is at most fifteen, so `offset + 3` is always in range — but indexing says
+   * that in a comment while these say it in the type, and they bounds-check at runtime instead of
+   * quietly producing `undefined` if either assumption ever stopped holding.
+   */
+  const offset = digest.readUInt8(digest.length - 1) & 0x0f;
+  const truncated = digest.readUInt32BE(offset) & 0x7fffffff;
   return (truncated % 10 ** digits).toString().padStart(digits, "0");
 }
 
