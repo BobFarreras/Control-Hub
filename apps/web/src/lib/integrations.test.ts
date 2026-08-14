@@ -7,6 +7,7 @@ import {
   instanceStatusTone,
   problemCode,
   runErrorMessage,
+  selectedInstancePath,
   webhookUrl
 } from "./integrations";
 
@@ -122,6 +123,36 @@ describe("what a state looks like", () => {
    */
   it("has a tone for each of the five health readings the domain defines", () => {
     expect(Object.keys(healthTone).sort()).toEqual(["degraded", "disabled", "failing", "healthy", "unknown"]);
+  });
+});
+
+describe("an old link that selected an integration", () => {
+  it("sends a well-formed identifier to the page that integration now has", () => {
+    expect(selectedInstancePath("ca", "0b8a1f2c-3d4e-4f50-8a1b-2c3d4e5f6071")).toBe(
+      "/ca/integrations/0b8a1f2c-3d4e-4f50-8a1b-2c3d4e5f6071"
+    );
+  });
+
+  it("does not redirect when nothing was selected", () => {
+    expect(selectedInstancePath("ca", undefined)).toBeNull();
+    expect(selectedInstancePath("ca", "")).toBeNull();
+  });
+
+  /**
+   * The value ends up in a path, so the shape is the whole defence. Escaping would not do: an
+   * escaped traversal is still somebody trying, and there is no legitimate one to preserve.
+   */
+  it("refuses anything that is not an identifier, rather than escaping it", () => {
+    for (const attempt of [
+      "../../admin",
+      "..%2f..%2fadmin",
+      "0b8a1f2c-3d4e-4f50-8a1b-2c3d4e5f6071/../../admin",
+      "0b8a1f2c-3d4e-4f50-8a1b-2c3d4e5f6071?next=https://evil.example",
+      "https://evil.example",
+      "not-an-identifier"
+    ]) {
+      expect(selectedInstancePath("ca", attempt), attempt).toBeNull();
+    }
   });
 });
 

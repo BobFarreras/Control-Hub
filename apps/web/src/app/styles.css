@@ -5398,23 +5398,58 @@ main {
   }
 }
 
-/* The integrations screen: a listing that gives half its width to whatever is selected. The
-   detail column collapses under the table on a narrow screen rather than shrinking to a strip. */
-.integrations-layout {
+/* A cell with nothing to report, said quietly rather than left blank. Scoped to the table because
+   `.muted` is a modifier elsewhere and a bare rule would repaint those too. */
+.crm-table .muted {
+  color: var(--muted);
+}
+
+/* One integration's own page. Two columns where there is room, because the panels are short and a
+   single stack of them on a wide screen is mostly whitespace with a very long line of text. */
+.integration-detail {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+  align-content: start;
   align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.integrations-layout.selected {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-}
-@media (width < 1200px) {
-  .integrations-layout.selected {
+@media (width < 1000px) {
+  .integration-detail {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.integrations-layout .muted {
-  color: var(--muted);
+
+/* What cannot be undone, kept apart from what can. It spans both columns and sits last, so
+   deleting is never the button next to the one that merely stops an integration. */
+.integration-detail .danger-zone {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.integration-detail .danger-zone h2 {
+  color: var(--danger);
+}
+
+/* The run history is the one list on this screen with no natural end — a healthy integration
+   polls every few minutes, so it grows all day. Capped and scrollable rather than left to push
+   the danger zone down the page, with its own compact pager instead of the full table footer. */
+.integration-detail .runs-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.integration-detail .runs-pagination {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  justify-content: space-between;
+}
+
+.primary-button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.primary-button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
 }
 .integration-states {
   display: flex;

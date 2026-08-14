@@ -357,10 +357,28 @@ propietat del handler, no del fet de no documentar-la.
 
 ## UX, i18n i accessibilitat
 
-Una pantalla, `/{locale}/integrations`, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com
-la resta: aquesta fase no inventa primitives. Estat de salut amb text a mes de color, perque un
-punt verd sol no es accessible. Missatges d'error traduits des del `code`, mai el text del
-proveidor. Claus `ca`, `es` i `en` al mateix commit que el component.
+Dues pantalles, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com la resta: aquesta fase no
+inventa primitives. Estat de salut amb text a mes de color, perque un punt verd sol no es
+accessible. Missatges d'error traduits des del `code`, mai el text del proveidor. Claus `ca`, `es`
+i `en` al mateix commit que el component.
+
+**La llista respon "quina d'aquestes te un problema"; la fitxa respon "que es aixo i que ha
+estat fent".** `/{locale}/integrations` es la llista, i `/{locale}/integrations/[instanceId]` es
+una integracio sola: configuracio, adreca d'entrada, credencials, execucions i la zona d'esborrat.
+Fins a l'A9b la fitxa era un panell al costat de la taula, i les dues preguntes es repartien mitja
+pantalla i una barra de desplacament que no li servia a cap. Ser una ruta li dona tres coses que
+un panell no pot tenir: una adreca que algu pot enviar, la navegacio de tornada que ja tenen totes
+les altres fitxes del producte, i l'amplada sencera per a la taula.
+
+Els enllacos antics eren `?selected=<id>`, i encara circulen: la llista els redirigeix a la fitxa,
+**pero nomes si el valor te forma d'identificador**. Aquell valor acaba dins d'un cami, aixi que es
+comprova la forma en comptes d'escapar-la — un `../..` escapat continua sent un intent, i no hi ha
+cap cas legitim a preservar. El que no te la forma s'ignora i es queda a la llista.
+
+El formulari de configuracio es el mateix component al dialeg de creacio i a la fitxa. No per
+estalviar linies, sino perque un formulari que divergeix entre les dues pantalles es exactament la
+mena de deriva que no es veu: es descobreix el dia que un camp accepta una cosa en un lloc i una
+altra a l'altre.
 
 La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de generar-lo.
 

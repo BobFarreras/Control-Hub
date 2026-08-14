@@ -95,6 +95,22 @@ export function problemCode(payload: unknown): string | null {
 }
 
 /**
+ * Where an old `?selected=` link should land, if anywhere.
+ *
+ * One integration used to be a selection on the listing and is now a route, so those links are
+ * out in the world and are worth honouring. What is not worth honouring is whatever else somebody
+ * puts in that parameter: it would be pasted straight into a path, so anything that is not shaped
+ * like an identifier gets no redirect at all. The shape is checked rather than escaped — an
+ * escaped `../..` is still an attempt, and there is no legitimate one to preserve.
+ */
+const instanceId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function selectedInstancePath(locale: string, selected: string | undefined): string | null {
+  if (!selected || !instanceId.test(selected)) return null;
+  return `/${locale}/integrations/${selected}`;
+}
+
+/**
  * The absolute address a provider posts to.
  *
  * The API answers with a path, because the only thing it knows about its own public address is a

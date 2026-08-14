@@ -660,6 +660,8 @@ export type IntegrationDetail = {
   endpoints: ConnectorEndpoint[];
   credentials: ConnectorCredential[];
   runs: ConnectorRun[];
+  /** How many runs exist in total, so the panel knows whether there is a second page to fetch. */
+  runsTotal: number;
   /**
    * Whether this deployment has a key ring at all.
    *

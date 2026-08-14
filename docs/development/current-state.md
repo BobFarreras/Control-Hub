@@ -24,8 +24,9 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A9b (2/3)**: la fitxa `/{locale}/integrations/[instanceId]` i el dialeg d'esborrat,
-i despres l'A9b (3/3), que fa que la taula digui l'estat sense obrir res. Llavors ja si,
+**L'increment A9b (3/3)**: que la taula digui l'estat sense obrir res —marca i nom del proveidor
+en comptes del tipus en kebab-case, salut amb el motiu via `runErrorMessage`, i l'antiguitat de la
+lectura en comptes d'una marca de temps crua. No cal cap camp nou a l'API. Llavors ja si,
 **l'entrega 7.2**, que comenca per l'increment B1.
 
 Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
@@ -267,6 +268,35 @@ anat: es tot el que una investigacio tindra. **Sense precondicio d'estat**: es p
 instancia activa, perque el reconciliador ja treu el calendari que no vol i el runtime ja deixa
 caure una feina d'una instancia que no troba. El que no podem fer es revocar la credencial al
 proveidor, i la pantalla ho ha de dir.
+
+**L'A9b (2/3) treu la fitxa d'una integracio del panell i li dona ruta propia.** Configuracio,
+adreca d'entrada, credencials i execucions ja no comparteixen mig ecran amb la taula:
+`/{locale}/integrations/[instanceId]` es una pagina, amb la mateixa navegacio de tornada que
+qualsevol altra fitxa del producte, i la llista recupera l'amplada sencera. El formulari de
+configuracio viu en un sol component (`connector-forms.tsx`) que usen alhora el dialeg de creacio
+i la fitxa, perque un formulari que divergeix entre les dues pantalles es la mena de deriva que
+no es descobreix fins que un camp accepta una cosa en un lloc i una altra a l'altre. Els enllacos
+antics amb `?selected=<id>` es redirigeixen a la fitxa **nomes si el valor te forma
+d'identificador**; qualsevol altra cosa s'ignora en comptes d'escapar-se, perque aquell valor
+acaba dins d'un cami i no hi ha cap `../..` legitim a preservar.
+
+El dialeg d'esborrat exigeix escriure el nom exacte abans d'activar el boto de confirmar —friccio
+deliberada, no el control que decideix, que es el permis comprovat a l'API— i llista que se
+n'emporta abans de deixar fer res. Provat contra la pila de verificacio (port 3002): les tres
+proves d'`integrations.authenticated.spec.ts` (connectar, refusar un valor, esborrar) passen amb
+un usuari real i base neta.
+
+**Les execucions no tenen final natural, i la pantalla ho havia de saber.** Un connector sa fa
+`pull_executions` cada cinc minuts i `pull_workflows` cada quinze —es la cadencia que declara
+`n8n.ts`, no un simptoma—, aixi que una integracio oberta un dia sol ja te centenars de files. La
+llista es pagina contra la mateixa ruta `GET /runs` que ja paginava, amb el seu propi peu de
+pagina en comptes del de la taula, i queda capada en alcada amb desplacament propi perque no
+empenyi la zona de perill avall de la pantalla. Dos defectes visuals van sortir de fer-la servir
+de debo, no de cap prova: les files d'execucio posaven un `StatusPill` sencer a la columna de 14px
+que `.timeline` reserva per a un punt, i es solapava amb el text —arreglat amb l'estructura
+`.timeline-mark`/`.timeline-body` que ja fa servir `project-detail.tsx`—; i la graella de dues
+columnes estirava cada panell a l'alcada del mes alt de la seva fila, aixi que un panell curt
+("Cap credencial") es veia amb un buit enorme sota el text —arreglat amb `align-items: start`.
 
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i

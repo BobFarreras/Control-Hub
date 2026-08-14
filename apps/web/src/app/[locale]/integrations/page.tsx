@@ -1,5 +1,5 @@
 import { getDictionary, getIntegrationsDictionary, isLocale } from "@control-hub/i18n";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { IntegrationsWorkspace } from "@/components/integrations-workspace";
 import { PageTopbar } from "@/components/page-topbar";
@@ -7,17 +7,14 @@ import { apiFetch, readJson } from "@/lib/api";
 import type {
   ConnectorCatalogueEntry,
   ConnectorCatalogueResponse,
-  ConnectorCredentialsResponse,
-  ConnectorEndpointsResponse,
   ConnectorInstance,
   ConnectorInstanceStatus,
-  ConnectorRunsResponse,
-  IntegrationDetail,
   IntegrationsResponse,
   TablePreference,
   TablePreferenceResponse
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
+import { selectedInstancePath } from "@/lib/integrations";
 import { requireSession } from "@/lib/require-session";
 
 /**
@@ -52,41 +49,16 @@ async function loadPreference(): Promise<TablePreference> {
 }
 
 /**
- * The two permissions this screen distinguishes.
+ * Whether this listing offers anything beyond reading.
  *
- * Managing an integration and holding its secrets are separate grants, so they are read
- * separately: whoever may point an instance at a different host is not thereby allowed to write
- * the token it authenticates with. Read together in one call because it is one answer.
+ * Only the one permission: creating is all this screen does, and holding a secret is asked about
+ * on the integration itself, where the credential form lives.
  */
-async function permissions(): Promise<{ manage: boolean; rotate: boolean }> {
+async function canManage(): Promise<boolean> {
   const response = await apiFetch("/api/v1/me");
-  if (!response.ok) return { manage: false, rotate: false };
+  if (!response.ok) return false;
   const granted = (await readJson<{ context: { permissions: string[] } }>(response)).context.permissions;
-  return { manage: granted.includes("integrations:manage"), rotate: granted.includes("credentials:rotate") };
-}
-
-/**
- * The three lists that hang off one integration.
- *
- * Endpoints and credentials are absent on an installation without a key ring: the API declares no
- * such route there, and a 404 means "this deployment cannot hold a secret", not "something broke".
- * An empty section says exactly that, which is truer than an error banner would be.
- */
-async function loadDetail(instance: ConnectorInstance): Promise<IntegrationDetail> {
-  const [endpoints, credentials, runs] = await Promise.all([
-    apiFetch(`/api/v1/integrations/${instance.id}/endpoints`),
-    apiFetch(`/api/v1/integrations/${instance.id}/credentials`),
-    apiFetch(`/api/v1/integrations/${instance.id}/runs?page=1&pageSize=20`)
-  ]);
-  return {
-    instance,
-    endpoints: endpoints.ok ? (await readJson<ConnectorEndpointsResponse>(endpoints)).endpoints : [],
-    credentials: credentials.ok ? (await readJson<ConnectorCredentialsResponse>(credentials)).credentials : [],
-    runs: runs.ok ? (await readJson<ConnectorRunsResponse>(runs)).runs : [],
-    // The instance came from the listing, so it exists: a 404 here is the route missing, not the
-    // integration.
-    vaultAvailable: endpoints.status !== 404
-  };
+  return granted.includes("integrations:manage");
 }
 
 async function load(): Promise<{
@@ -95,13 +67,12 @@ async function load(): Promise<{
   vault: boolean;
   preference: TablePreference;
   manage: boolean;
-  rotate: boolean;
   loadError: boolean;
 }> {
   try {
-    const [preference, { manage, rotate }, response, catalogueResponse] = await Promise.all([
+    const [preference, manage, response, catalogueResponse] = await Promise.all([
       loadPreference(),
-      permissions(),
+      canManage(),
       apiFetch("/api/v1/integrations"),
       apiFetch("/api/v1/connectors")
     ]);
@@ -112,14 +83,13 @@ async function load(): Promise<{
       : { connectors: [], vaultAvailable: false };
     const catalogue = offered.connectors;
     const vault = offered.vaultAvailable;
-    if (!response.ok) return { integrations: [], catalogue, vault, preference, manage, rotate, loadError: true };
+    if (!response.ok) return { integrations: [], catalogue, vault, preference, manage, loadError: true };
     return {
       integrations: (await readJson<IntegrationsResponse>(response)).integrations,
       catalogue,
       vault,
       preference,
       manage,
-      rotate,
       loadError: false
     };
   } catch {
@@ -129,7 +99,6 @@ async function load(): Promise<{
       vault: false,
       preference: defaultPreference,
       manage: false,
-      rotate: false,
       loadError: true
     };
   }
@@ -153,6 +122,11 @@ export default async function IntegrationsPage({
   const labels = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
   const query = await searchParams;
 
+  // An integration used to be selected here with `?selected=`, and those links are out in the
+  // world. Anything that is not shaped like an identifier is ignored rather than followed.
+  const selected = selectedInstancePath(locale, query.selected);
+  if (selected) redirect(selected);
+
   const sort: IntegrationSort = sorts.includes(query.sort as IntegrationSort)
     ? (query.sort as IntegrationSort)
     : "created_desc";
@@ -172,11 +146,6 @@ export default async function IntegrationsPage({
   const page = Math.min(Math.max(1, Number(query.page) || 1), pages);
   const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  // The selection is read from the whole list rather than fetched again: it is already here, and a
-  // second request would only be a second chance for the two answers to disagree.
-  const selected = data.integrations.find((instance) => instance.id === query.selected);
-  const detail = selected ? await loadDetail(selected) : null;
-
   return (
     <div className="app-shell">
       <AppSidebar locale={locale} labels={t.navigation} />
@@ -195,9 +164,7 @@ export default async function IntegrationsPage({
             preference={preference}
             catalogue={data.catalogue}
             vaultAvailable={data.vault}
-            detail={detail}
             canManage={data.manage}
-            canRotate={data.rotate}
             labels={labels}
             locale={locale}
             loadError={data.loadError}
