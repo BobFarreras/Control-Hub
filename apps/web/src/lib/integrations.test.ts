@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   errorLabelKey,
   errorMessage,
+  healthReason,
   healthTone,
   instanceStatusTone,
   problemCode,
@@ -108,6 +109,40 @@ describe("reading why a run failed", () => {
         expect(runErrorMessage(dictionary, code), `${locale} ${code}`).not.toBe(dictionary.errorUnknown);
       }
     }
+  });
+});
+
+describe("what a row says about health without being opened", () => {
+  const dictionary = getIntegrationsDictionary("ca") as unknown as Record<string, string>;
+
+  it("turns the code a failed check stored into the sentence for it", () => {
+    expect(healthReason(dictionary, "CONNECT_TIMEOUT")).toBe(dictionary.runErrorConnectTimeout);
+  });
+
+  /**
+   * A healthy reading carries no code — `recordHealth` overwrites `last_error_code` on every
+   * check, success included — so an empty string here is the absence of a reason, not a missing
+   * translation. The table draws nothing rather than a stale explanation of a failure that is over.
+   */
+  it("says nothing at all when there is no code", () => {
+    expect(healthReason(dictionary, null)).toBe("");
+    expect(healthReason(dictionary, undefined)).toBe("");
+    expect(healthReason(dictionary, "")).toBe("");
+  });
+
+  /**
+   * The collision that matters. `FORBIDDEN` from this API means the reader lacks a permission;
+   * `FORBIDDEN` on a health reading means the provider refused the credential we sent. A row that
+   * borrowed the first sentence would send somebody to check their own permissions when the
+   * answer is at the far end.
+   */
+  it("reads the code as a run's vocabulary, never as the API's", () => {
+    expect(healthReason(dictionary, "FORBIDDEN")).toBe(dictionary.runErrorForbidden);
+    expect(healthReason(dictionary, "FORBIDDEN")).not.toBe(dictionary.errorForbidden);
+  });
+
+  it("never shows a bare code, even for one this build does not know", () => {
+    expect(healthReason(dictionary, "SOMETHING_A_LATER_RELEASE_ADDED")).toBe(dictionary.errorUnknown);
   });
 });
 

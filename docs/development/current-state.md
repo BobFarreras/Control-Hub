@@ -24,10 +24,14 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'increment A9b (3/3)**: que la taula digui l'estat sense obrir res —marca i nom del proveidor
-en comptes del tipus en kebab-case, salut amb el motiu via `runErrorMessage`, i l'antiguitat de la
-lectura en comptes d'una marca de temps crua. No cal cap camp nou a l'API. Llavors ja si,
+**Tancar la branca.** L'A9b esta sencer: la 7.1 planificada (A1-A6) i els A7-A9 que van sortir
+d'usar-la. Queda passar `pnpm check` i `pnpm check:e2e` sencers —no han corregut complets des de
+l'A9a— i fusionar la `feature/phase-7-1-infrastructure-n8n` a `develop`. Llavors ja si,
 **l'entrega 7.2**, que comenca per l'increment B1.
+
+**Atencio en arribar al B2:** l'especificacio li assigna la migracio `0036`, pero l'A9b-1 ja la va
+gastar per al permis d'esborrat. El B2 es la `0037`. Es renumera al pla abans de comencar-lo, mai
+despres d'aplicar-la.
 
 Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
 sencera, amb la pantalla `/{locale}/infrastructure` i el runbook de l'error workflow d'n8n. Els
@@ -297,6 +301,20 @@ que `.timeline` reserva per a un punt, i es solapava amb el text —arreglat amb
 `.timeline-mark`/`.timeline-body` que ja fa servir `project-detail.tsx`—; i la graella de dues
 columnes estirava cada panell a l'alcada del mes alt de la seva fila, aixi que un panell curt
 ("Cap credencial") es veia amb un buit enorme sota el text —arreglat amb `align-items: start`.
+
+**L'A9b (3/3) fa que la taula respongui sense que ningu hi entri.** La fila duu la marca i el nom
+del proveidor en comptes del tipus en kebab-case, la salut amb el seu motiu llegit del vocabulari
+de les execucions (`runError*`, mai el de l'API: `FORBIDDEN` vol dir coses diferents als dos), i
+**l'antiguitat** de la lectura en comptes d'una marca de temps —amb avis explicit quan es massa
+vella, perque una fila que digui «sana» de fa tres hores no es sana, es que ningu l'ha mirada. Cap
+camp nou a l'API: el llistat ja portava `health.lastErrorCode` i `health.checkedAt`. L'edat es
+calcula al servidor i baixa per props, com ja feia infraestructura, perque el "ara" del client no
+es el del servidor i la diferencia es una discrepancia d'hidratacio.
+
+`readingAge` i `ageLabel` es reaprofiten de `lib/infrastructure` en comptes de duplicar-se: el
+llindar de 45 minuts hi te el mateix sentit (tres passades de `pull_workflows` que no han passat).
+Les paraules de l'edat si que es repeteixen al diccionari d'integracions, perque els dos espais de
+noms son deliberadament independents.
 
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i

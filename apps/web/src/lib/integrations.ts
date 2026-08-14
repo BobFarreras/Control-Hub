@@ -95,6 +95,22 @@ export function problemCode(payload: unknown): string | null {
 }
 
 /**
+ * Why a health reading is what it is, for a row that has not been opened.
+ *
+ * Empty when there is nothing to explain, so a caller draws the state on its own rather than a
+ * gap where a sentence was expected. A healthy reading genuinely carries no code: `recordHealth`
+ * writes `last_error_code` on every check, success included, so there is no stale reason to guard
+ * against here.
+ *
+ * It reads the **run** vocabulary, not the API's. The two collide on words and mean different
+ * things — see `runErrorLabelKey` above — and a listing is exactly where the wrong one would go
+ * unnoticed longest.
+ */
+export function healthReason(labels: Record<string, string>, code: string | null | undefined): string {
+  return code ? runErrorMessage(labels, code) : "";
+}
+
+/**
  * Where an old `?selected=` link should land, if anywhere.
  *
  * One integration used to be a selection on the listing and is now a route, so those links are

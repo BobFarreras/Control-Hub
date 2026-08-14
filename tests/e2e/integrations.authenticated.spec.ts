@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { waitForHydration } from "./support/fixture";
 
 /**
@@ -51,6 +51,7 @@ const t = {
   draft: "Esborrany",
   healthQueued: "Comprovacio demanada. El resultat apareixera a les execucions.",
   runs: "Execucions",
+  never: "Mai",
   deleteIntegration: "Esborrar",
   deleteConfirm: "Esborrar per sempre",
   confirmLabel: (name: string) => `Escriu ${name} per confirmar`,
@@ -58,7 +59,7 @@ const t = {
 } as const;
 
 /** Connecting one, up to the point where its own page is open. Both tests start here. */
-async function connect(page: import("@playwright/test").Page, name: string) {
+async function connect(page: Page, name: string) {
   await page.goto("/ca/integrations", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: t.title, level: 1 })).toBeVisible();
 
@@ -175,9 +176,17 @@ test("draws the form a connector asks for, refuses a value on its own field, and
   await expect(page.getByText(t.healthQueued)).toBeVisible();
   await expect(page.getByRole("heading", { name: t.runs })).toBeVisible();
 
-  // And the listing knows about it without being opened.
+  /**
+   * And the listing says the state without being opened. The last-check cell is the assertion
+   * that matters: it holds the **age** of the reading, so an integration nothing has checked yet
+   * reads "Mai" rather than a date. A raw timestamp there makes the reader do the subtraction,
+   * and "is this current?" is the only question the column exists to answer.
+   */
   await page.goto("/ca/integrations", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("row").filter({ hasText: name })).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: name });
+  await expect(row).toBeVisible();
+  await expect(row.getByText(t.never, { exact: true })).toBeVisible();
+  await expect(row.getByText(t.enabled)).toBeVisible();
 });
 
 test("refuses to delete until the name is typed, and then the integration is gone", async ({ page }) => {

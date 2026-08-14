@@ -33,7 +33,8 @@ import {
 } from "@/lib/connector-labels";
 import { formValue } from "@/lib/form";
 import { eventHandler } from "@/lib/handlers";
-import { errorMessage, healthTone, instanceStatusTone } from "@/lib/integrations";
+import { ageLabel, type ReadingAge } from "@/lib/infrastructure";
+import { errorMessage, healthReason, healthTone, instanceStatusTone } from "@/lib/integrations";
 
 /**
  * The integrations listing, and the dialog that connects a new one.
@@ -62,6 +63,7 @@ export function IntegrationsWorkspace({
   catalogue,
   vaultAvailable,
   canManage,
+  ages,
   labels: t,
   locale,
   loadError,
@@ -74,6 +76,14 @@ export function IntegrationsWorkspace({
   catalogue: ConnectorCatalogueEntry[];
   vaultAvailable: boolean;
   canManage: boolean;
+  /**
+   * How old each reading is, measured on the server and keyed by instance.
+   *
+   * Not computed here: "now" during a client render is a different instant from "now" during the
+   * server render, and React calls that a hydration mismatch. The infrastructure screen already
+   * settled this the same way.
+   */
+  ages: Record<string, ReadingAge | null>;
   labels: Labels;
   locale: string;
   loadError: boolean;
@@ -173,7 +183,14 @@ export function IntegrationsWorkspace({
     {
       id: "type",
       label: t.type!,
-      render: (instance) => <span className="ticket-reference">{instance.connectorType}</span>
+      // The mark and the provider's own name, not the registry's kebab-case: `generic-webhook` is
+      // what a URL wants, and it is not what anybody calls the thing they connected.
+      render: (instance) => (
+        <span className="cell-connector">
+          <ConnectorMark type={instance.connectorType} size={17} />
+          {connectorLabel(t, instance.connectorType)}
+        </span>
+      )
     },
     {
       id: "status",
@@ -189,19 +206,40 @@ export function IntegrationsWorkspace({
     {
       id: "health",
       label: t.health!,
-      render: (instance) => (
-        <StatusPill tone={healthTone[instance.health.status]} label={stateLabel(t, "health", instance.health.status)} />
-      )
+      // The state and, when there is one, why. "Failing" on its own sends somebody into the
+      // integration to find out what this line already knows.
+      render: (instance) => {
+        const reason = healthReason(t, instance.health.lastErrorCode);
+        return (
+          <span className="cell-health">
+            <StatusPill
+              tone={healthTone[instance.health.status]}
+              label={stateLabel(t, "health", instance.health.status)}
+            />
+            {reason && <small>{reason}</small>}
+          </span>
+        );
+      }
     },
     {
       id: "lastCheck",
       label: t.lastCheck!,
-      render: (instance) =>
-        instance.health.checkedAt ? (
-          <time dateTime={instance.health.checkedAt}>{new Date(instance.health.checkedAt).toLocaleString(locale)}</time>
-        ) : (
-          <span className="muted">{t.never}</span>
-        )
+      /**
+       * How old the reading is, not when it was taken. A timestamp makes the reader do the
+       * subtraction, and the answer to "is this current?" is the whole reason the column exists.
+       * A reading too old to trust says so: a row reading "healthy" from three hours ago is not
+       * healthy, it is unobserved, and those two look identical without this.
+       */
+      render: (instance) => {
+        const age = ages[instance.id];
+        if (!age) return <span className="muted">{t.never}</span>;
+        return (
+          <time dateTime={instance.health.checkedAt!} className={age.stale ? "reading-stale" : undefined}>
+            {ageLabel(t, age, t.never ?? "")}
+            {age.stale && <small>{t.readingStale}</small>}
+          </time>
+        );
+      }
     }
   ];
 

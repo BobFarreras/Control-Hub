@@ -14,6 +14,7 @@ import type {
   TablePreferenceResponse
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
+import { readingAge } from "@/lib/infrastructure";
 import { selectedInstancePath } from "@/lib/integrations";
 import { requireSession } from "@/lib/require-session";
 
@@ -146,6 +147,12 @@ export default async function IntegrationsPage({
   const page = Math.min(Math.max(1, Number(query.page) || 1), pages);
   const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
+  // Measured here rather than in the table: "now" on the client is a different instant from "now"
+  // on the server, and a row that renders one age and hydrates into another is a mismatch React
+  // reports as a bug. Only the rows on screen, because only those are drawn.
+  const now = new Date();
+  const ages = Object.fromEntries(rows.map((instance) => [instance.id, readingAge(instance.health.checkedAt, now)]));
+
   return (
     <div className="app-shell">
       <AppSidebar locale={locale} labels={t.navigation} />
@@ -165,6 +172,7 @@ export default async function IntegrationsPage({
             catalogue={data.catalogue}
             vaultAvailable={data.vault}
             canManage={data.manage}
+            ages={ages}
             labels={labels}
             locale={locale}
             loadError={data.loadError}

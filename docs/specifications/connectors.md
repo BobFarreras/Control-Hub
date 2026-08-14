@@ -380,6 +380,36 @@ estalviar linies, sino perque un formulari que divergeix entre les dues pantalle
 mena de deriva que no es veu: es descobreix el dia que un camp accepta una cosa en un lloc i una
 altra a l'altre.
 
+### La taula diu l'estat sense obrir res
+
+Una fila ha de respondre "aquesta va be?" sense que ningu hi entri. Tres decisions, i cap demana
+cap camp nou a l'API: el llistat ja porta el que cal.
+
+**El nom del proveidor, no el que fa servir el registre.** El tipus es kebab-case perque aixo es
+el que volen una URL i un registre; ningu anomena `generic-webhook` el que ha connectat. La fila
+duu la marca i el nom traduit, amb la mateixa conversio de clau que ja governa les targetes —i pel
+mateix motiu, que es l'unic error d'aquesta familia que ja ha arribat a un operador.
+
+**La salut amb el seu motiu.** «Fallant» tot sol obliga a entrar a la integracio per saber que ha
+fallat, i la fila ja ho sap: `health.lastErrorCode` viatja amb cada instancia. Es llegeix amb el
+vocabulari de **les execucions** (`runError*`), mai amb el de l'API: `FORBIDDEN` de l'API vol dir
+que et falta un permis i `FORBIDDEN` d'una lectura de salut vol dir que el proveidor ha refusat la
+credencial, i una llista es exactament on la frase equivocada duraria mes sense que ningu ho noti.
+Quan no hi ha codi no es dibuixa res: `recordHealth` reescriu `last_error_code` a cada comprovacio,
+exit inclos, aixi que una lectura sana no en porta cap i no cal defensar-se de cap motiu resse.
+
+**L'antiguitat de la lectura, no quan es va prendre.** Una marca de temps fa que el lector resti, i
+"aixo es actual?" es tota la rao per la qual la columna existeix. Es reaprofita `readingAge` de la
+pantalla d'infraestructura en comptes de duplicar-la, amb el mateix llindar de 45 minuts —tres
+passades de `pull_workflows` que podien haver passat i no han passat—, i **una lectura massa vella
+ho diu amb paraules**, no nomes amb color: una fila que digui «sana» de fa tres hores no es sana,
+es que ningu l'ha mirada, i sense aixo les dues es veuen igual.
+
+L'edat es calcula **al servidor**, no a la taula. El "ara" del client es un instant diferent del
+"ara" del servidor, i una fila que es dibuixa amb una edat i s'hidrata amb una altra es una
+discrepancia que React denuncia com un defecte. La pantalla d'infraestructura ja ho havia resolt
+aixi.
+
 La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de generar-lo.
 
 En un desplegament sense anell de claus, les seccions de credencials i d'adreces d'entrada no
