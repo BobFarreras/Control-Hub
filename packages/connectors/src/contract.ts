@@ -98,12 +98,48 @@ export type EgressPolicy = {
 };
 
 /**
+ * The shape of what an operation returns, which is what decides how long it is kept.
+ *
+ * `state` is one row per thing observed, overwritten by the next pass: a host's memory, a
+ * workflow's enabled flag. It expires from disuse — a thing the provider stopped naming.
+ * `event` is one row per fact that never comes back: an execution that failed at 03:12. It
+ * expires by age.
+ *
+ * The connector declares it because the connector is the only place that knows. A purge left to
+ * guess would either drop an execution history somebody needs or keep every metric sample ever
+ * read, and the second one is only noticed when the table is too large to fix quietly.
+ */
+export type RecordShape = "state" | "event";
+
+/**
+ * The floor the platform puts under a declared cadence.
+ *
+ * A connector that could ask to be polled every second would be helping itself to a share of
+ * every other tenant's worker time, and that is not a decision that belongs inside a connector.
+ * Refused at module load rather than clamped: a manifest that asks for five seconds and silently
+ * gets sixty is a manifest that lies to whoever reads it next.
+ */
+export const minimumCadenceSeconds = 60;
+
+export type OperationDeclaration = {
+  shape: RecordShape;
+  /**
+   * How often the platform polls this operation.
+   *
+   * Absent means nothing schedules it: it runs when something asks for it and not otherwise. The
+   * number lives in the manifest and not in a tenant's configuration because the cost of a poll
+   * is paid by the installation, not by the tenant who would be choosing it.
+   */
+  everySeconds?: number;
+};
+
+/**
  * What the runtime will let this connector do. Not documentation: an operation missing from
  * `operations` cannot be dispatched even when the code for it exists.
  */
 export type CapabilityManifest = {
   egress: EgressPolicy | null;
-  operations: readonly string[];
+  operations: Readonly<Record<string, OperationDeclaration>>;
   ingress: boolean;
 };
 
@@ -117,10 +153,20 @@ export type CapabilityManifest = {
 export type HealthReport =
   { status: "ok" } | { status: "failed"; failure: ConnectorFailureKind } | { status: "unverifiable" };
 
+/**
+ * What a record may carry: JSON, and nothing else.
+ *
+ * It used to be `unknown`, which was honest while records were counted and thrown away. Now they
+ * are stored as `jsonb`, so a connector returning a `Date`, a `Map` or a class instance is a bug
+ * that has to fail at the connector rather than at the insert, where the message would name a
+ * column instead of the handler that built the value.
+ */
+export type RecordValue = null | string | number | boolean | RecordValue[] | { [key: string]: RecordValue };
+
 /** One thing fetched from a provider, keyed by the identifier that makes a retry idempotent. */
 export type ConnectorRecord = {
   externalId: string;
-  data: Readonly<Record<string, unknown>>;
+  data: Readonly<Record<string, RecordValue>>;
 };
 
 export type OperationInput = { cursor: string | null };
@@ -173,11 +219,48 @@ export type IngressHandler<Config> = (
   request: IngressRequest
 ) => IngressResult | Promise<IngressResult>;
 
+/**
+ * How a configuration field is drawn.
+ *
+ * Presentation is a choice, so a connector declares it; a `text` and a `url` are both strings to
+ * the schema, and only the connector knows which one an operator is being asked for. What is
+ * *required* is not a choice but a fact about the schema, so it is read from there instead —
+ * see `configFieldsOf`. The split is the point: two declarations of the same truth drift, and the
+ * one that drifts is always the one a form was drawn from.
+ */
+export type ConfigFieldKind = "url" | "text" | "number" | "toggle" | "list";
+
+/**
+ * What the field is for, which decides where a form puts it.
+ *
+ * `connection` is what it takes to reach the provider at all: get one wrong and nothing works.
+ * `behaviour` is how much to read once reached, and every such field answers for itself, so a
+ * form can fold them away and still be complete. The schema cannot tell the two apart — both are
+ * ordinary keys to it — so the connector says which is which, and the schema is then asked
+ * whether it meant it.
+ */
+export type ConfigFieldGroup = "connection" | "behaviour";
+
+/** What a connector declares: a name, how to draw it, and what it is for. */
+export type ConfigFieldDeclaration = { name: string; kind: ConfigFieldKind; group: ConfigFieldGroup };
+
+/** A default a form can put in an input. Anything richer is not something a person types. */
+export type ConfigFieldDefault = string | number | boolean | readonly string[];
+
+/** What the platform hands to a screen, with the schema's own answers filled in. */
+export type ConfigField = ConfigFieldDeclaration & {
+  required: boolean;
+  /** The schema's own default, or `null` when it has none: not every optional field has one. */
+  defaultValue: ConfigFieldDefault | null;
+};
+
 export type ConnectorDefinition<Config> = {
   type: string;
   contractVersion: typeof connectorContractVersion;
   /** Allowlisted fields. Unknown keys are rejected, never stripped and silently ignored. */
   configSchema: ZodType<Config>;
+  /** Every key of `configSchema`, in the order a form should ask for them. */
+  configFields: readonly ConfigFieldDeclaration[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
@@ -199,6 +282,7 @@ export type ConfigResult = { ok: true; config: unknown } | { ok: false; issues: 
 export type RegisteredConnector = {
   type: string;
   contractVersion: number;
+  configFields: readonly ConfigField[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
   ingressSignature: IngressSignature | null;
@@ -220,6 +304,71 @@ function issuesOf(error: { issues: readonly { path: PropertyKey[]; code: string 
 }
 
 /**
+ * The per-key schemas of an object schema, or null for a schema whose keys cannot be enumerated.
+ *
+ * Read through the public `shape` rather than through zod's internals, so that a zod release that
+ * rearranges its private fields does not quietly turn every field list into an empty one.
+ */
+function objectShape(schema: ZodType<unknown>): Record<string, ZodType<unknown>> | null {
+  const shape: unknown = (schema as { shape?: unknown }).shape;
+  return shape !== null && typeof shape === "object" ? (shape as Record<string, ZodType<unknown>>) : null;
+}
+
+/**
+ * Fills in what each declared field is, and refuses a declaration that has drifted from the
+ * schema in either direction.
+ *
+ * A field naming a key the schema does not have would draw an input whose value is thrown away
+ * on save. A schema key with no field is worse and is the defect this exists to prevent: a
+ * setting that cannot be reached from a screen at all, discovered by an operator who has to be
+ * told to use `curl` instead. Both are refused at module load, where the stack names the
+ * connector, rather than on the day somebody opens the form.
+ *
+ * Necessity and the default are one question asked once: what does this key do with nothing? It
+ * refuses, so somebody has to fill it in; it answers with a value, which is the default a form
+ * should already be showing; or it answers with nothing, so the field is optional and starts
+ * empty. Asking once means the two answers cannot contradict each other, and a connector that
+ * changes a default changes what the form offers without anybody editing a form.
+ */
+function defaultOf(key: ZodType<unknown>): ConfigFieldDefault | null {
+  const result = key.safeParse(undefined);
+  if (!result.success) return null;
+
+  const value: unknown = result.data;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  // Anything else is not a default an input can hold, and a form is better off empty than showing
+  // `[object Object]` and inviting somebody to edit it.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value;
+  return null;
+}
+
+function configFieldsOf(
+  schema: ZodType<unknown>,
+  declarations: readonly ConfigFieldDeclaration[]
+): readonly ConfigField[] {
+  const shape = objectShape(schema);
+  if (!shape) {
+    if (declarations.length > 0) throw new ConnectorError("CONFIG_FIELDS_UNDERIVABLE");
+    return [];
+  }
+
+  const fields = declarations.map((declaration) => {
+    const key = shape[declaration.name];
+    if (!key) throw new ConnectorError("CONFIG_FIELD_UNKNOWN");
+    const required = !key.safeParse(undefined).success;
+    // Folding a field away is only honest if the schema can proceed without it. A required field
+    // declared as behaviour would be hidden behind a disclosure and then refused on submit, with
+    // the complaint pointing at something the operator was never shown.
+    if (declaration.group === "behaviour" && required) throw new ConnectorError("CONFIG_FIELD_NOT_OPTIONAL");
+    return { ...declaration, required, defaultValue: defaultOf(key) };
+  });
+
+  const declared = new Set(fields.map((field) => field.name));
+  for (const name of Object.keys(shape)) if (!declared.has(name)) throw new ConnectorError("CONFIG_FIELD_MISSING");
+  return fields;
+}
+
+/**
  * Registers a connector, checking the invariants a manifest can drift away from.
  *
  * A handler the manifest does not list would be reachable code nobody declared; a name the
@@ -227,12 +376,19 @@ function issuesOf(error: { issues: readonly { path: PropertyKey[]; code: string 
  * at module load, rather than on the day somebody triggers that operation.
  */
 export function defineConnector<Config>(definition: ConnectorDefinition<Config>): RegisteredConnector {
-  const declared = new Set(definition.capabilities.operations);
+  const declared = new Set(Object.keys(definition.capabilities.operations));
   const implemented = new Set(Object.keys(definition.operations));
   for (const name of declared) if (!implemented.has(name)) throw new ConnectorError("OPERATION_NOT_IMPLEMENTED");
   for (const name of implemented) if (!declared.has(name)) throw new ConnectorError("OPERATION_NOT_DECLARED");
+  for (const declaration of Object.values(definition.capabilities.operations)) {
+    const every = declaration.everySeconds;
+    if (every === undefined) continue;
+    if (!Number.isSafeInteger(every)) throw new ConnectorError("CADENCE_NOT_A_WHOLE_SECOND");
+    if (every < minimumCadenceSeconds) throw new ConnectorError("CADENCE_TOO_FREQUENT");
+  }
   if (definition.capabilities.ingress !== Boolean(definition.ingress)) throw new ConnectorError("INGRESS_MISDECLARED");
   if (definition.contractVersion !== connectorContractVersion) throw new ConnectorError("UNSUPPORTED_CONTRACT_VERSION");
+  const configFields = configFieldsOf(definition.configSchema, definition.configFields);
 
   const parseConfig = (value: unknown): ConfigResult => {
     const result = definition.configSchema.safeParse(value);
@@ -255,6 +411,7 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   return {
     type: definition.type,
     contractVersion: definition.contractVersion,
+    configFields,
     credentialKinds: definition.credentialKinds,
     capabilities: definition.capabilities,
     ingressSignature: definition.ingress?.signature ?? null,

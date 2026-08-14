@@ -4,7 +4,7 @@ import type { AllowedDestination, KeyRing } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { HttpPort } from "@control-hub/connectors";
 import { CredentialVault } from "@control-hub/persistence";
-import { CircuitStore, type CircuitClient } from "./circuit-store.js";
+import type { CircuitStore } from "./circuit-store.js";
 import { createGuardedHttp } from "./guarded-fetch.js";
 import { ConnectorRuntime, type RuntimeLogger } from "./runtime.js";
 
@@ -21,7 +21,8 @@ export type ConnectorWiringOptions = {
   repository: ConnectorRepository;
   keyRing: KeyRing | null;
   allowlist: readonly AllowedDestination[];
-  circuitClient: CircuitClient;
+  /** Shared with the schedule reconciler, which asks the same breaker whether to slow a poll. */
+  circuits: CircuitStore;
   logger: RuntimeLogger;
 };
 
@@ -33,7 +34,7 @@ export function createConnectorRuntime(options: ConnectorWiringOptions): Connect
   return new ConnectorRuntime(connectorRegistry, {
     repository: options.repository,
     secrets,
-    circuits: new CircuitStore({ client: options.circuitClient }),
+    circuits: options.circuits,
     logger: options.logger,
     http: (instance) => httpFor(instance, options.allowlist)
   });

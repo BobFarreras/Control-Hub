@@ -588,9 +588,26 @@ export type ConnectorInstance = {
   updatedAt: string;
 };
 
+/**
+ * One thing an operator has to fill in for this connector, as the catalogue describes it.
+ *
+ * `required` is not the connector's opinion but its schema's, resolved when the connector was
+ * defined, so a form cannot disagree with what the server will accept.
+ */
+export type ConnectorConfigField = {
+  name: string;
+  kind: "url" | "text" | "number" | "toggle" | "list";
+  /** `connection` is what it takes to reach the provider; `behaviour` is what to do once there. */
+  group: "connection" | "behaviour";
+  required: boolean;
+  /** What the connector already answers for this field, or `null` when it answers nothing. */
+  defaultValue: string | number | boolean | string[] | null;
+};
+
 export type ConnectorCatalogueEntry = {
   type: string;
   contractVersion: number;
+  configFields: ConnectorConfigField[];
   credentialKinds: string[];
   capabilities: {
     egress: { schemes: string[]; destination: string } | null;
@@ -626,7 +643,11 @@ export type ConnectorRun = {
 
 export type IntegrationsResponse = { integrations: ConnectorInstance[] };
 export type IntegrationResponse = { integration: ConnectorInstance };
-export type ConnectorCatalogueResponse = { connectors: ConnectorCatalogueEntry[] };
+export type ConnectorCatalogueResponse = {
+  connectors: ConnectorCatalogueEntry[];
+  /** False on an installation with no key ring: nothing here can accept a secret. */
+  vaultAvailable: boolean;
+};
 export type ConnectorCredentialsResponse = { credentials: ConnectorCredential[] };
 export type ConnectorEndpointsResponse = { endpoints: ConnectorEndpoint[] };
 export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page: number; pageSize: number };
@@ -639,6 +660,8 @@ export type IntegrationDetail = {
   endpoints: ConnectorEndpoint[];
   credentials: ConnectorCredential[];
   runs: ConnectorRun[];
+  /** How many runs exist in total, so the panel knows whether there is a second page to fetch. */
+  runsTotal: number;
   /**
    * Whether this deployment has a key ring at all.
    *
@@ -648,3 +671,76 @@ export type IntegrationDetail = {
    */
   vaultAvailable: boolean;
 };
+
+/**
+ * The infrastructure module.
+ *
+ * An automation carries `instanceId` and `externalId` and no address: the link to the provider is
+ * built here from the base an operator configured, never received. See `lib/infrastructure-link`.
+ */
+export type AlertSeverity = "critical" | "high" | "normal" | "low";
+
+export type InfrastructureAutomation = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  active: boolean;
+  archived: boolean;
+  tags: string[];
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
+export type InfrastructureAlert = {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  dedupKey: string;
+  status: "firing" | "resolved";
+  severity: AlertSeverity;
+  /** Small, flat and ours: identifiers and counts the domain built, never a provider payload. */
+  summary: Record<string, string>;
+  startedAt: string;
+  lastSeenAt: string;
+  occurrences: number;
+  resolvedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByMembershipId: string | null;
+  incidentId: string | null;
+};
+
+export type InfrastructureOverview = {
+  automations: { total: number; active: number; linked: number };
+  alerts: { total: number; acknowledged: number; bySeverity: Record<AlertSeverity, number> };
+  /** The oldest reading behind the counts, or null when there is nothing to summarise. */
+  observedFrom: string | null;
+};
+
+/** The one kind of rule phase 7.1 ships. A union, so a kind the API adds is a compile error here. */
+export type AlertRuleKind = "workflow_failed";
+
+export type InfrastructureAlertRule = {
+  id: string;
+  name: string;
+  kind: AlertRuleKind;
+  instanceId: string;
+  targetType: "instance" | "automation";
+  /** The `externalId` of the one automation being watched, or null for all of them. */
+  targetId: string | null;
+  severity: AlertSeverity;
+  params: Record<string, unknown>;
+  /** How old the data may be before the rule stops claiming to know anything. */
+  freshnessSeconds: number;
+  opensIncident: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[] };
+
+export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
+export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
+export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };

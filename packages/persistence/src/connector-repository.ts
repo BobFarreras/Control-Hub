@@ -1,26 +1,34 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   ConnectorStorageError,
+  runLeaseMs,
   type ConnectorConfig,
   type ConnectorInstanceRecord,
   type ConnectorInstanceStatus,
+  type ConnectorOperationStateRecord,
   type ConnectorRepository,
   type CreateInstanceInput,
   type CreatedWebhookEndpoint,
   type CredentialMetadata,
+  type DeletedInstanceSummary,
   type HealthOutcome,
   type InboxOutcome,
   type InboxRecord,
+  type PurgeRecordsInput,
+  type PurgeRecordsResult,
   type PutCredentialInput,
   type RecordInboxInput,
   type RecordInboxResult,
   type ResolvedWebhookEndpoint,
   type RunOutcome,
   type RunPage,
+  type SaveOperationStateInput,
   type SealedCredential,
   type StartRunInput,
   type StartRunResult,
   type SyncRunRecord,
+  type UpsertRecordsInput,
+  type UpsertRecordsResult,
   type WebhookEndpointRecord
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
@@ -43,6 +51,27 @@ const runColumns = `id, instance_id as "instanceId", operation, job_id as "jobId
   error_code as "errorCode", items_processed as "itemsProcessed"`;
 
 const endpointColumns = `id, instance_id as "instanceId", created_at as "createdAt", revoked_at as "revokedAt"`;
+
+const operationStateColumns = `instance_id as "instanceId", operation, cursor,
+  last_run_at as "lastRunAt", last_success_at as "lastSuccessAt"`;
+
+/**
+ * The columns of a bulk record insert, as one list rather than spread arguments.
+ *
+ * The driver accepts either form, but only this one typechecks: spread names infer to a
+ * `readonly` tuple, and its own `Helper<any, any[]>` wants a mutable array.
+ */
+const recordInsertColumns = [
+  "id",
+  "tenant_id",
+  "instance_id",
+  "operation",
+  "external_id",
+  "shape",
+  "data",
+  "first_seen_at",
+  "last_seen_at"
+] as const;
 
 const inboxColumns = `id, endpoint_id as "endpointId", provider_event_id as "providerEventId",
   payload_hash as "payloadHash", payload, received_at as "receivedAt", status, attempts,
@@ -129,6 +158,42 @@ export class PostgresConnectorRepository implements ConnectorRepository {
     }).catch(mapConstraint);
   }
 
+  /**
+   * Removes an instance, and with it everything the schema hangs off one.
+   *
+   * The counts are taken in the same transaction as the delete, before it: after it there is
+   * nothing left to count, and a count taken in a separate call would describe a moment that had
+   * already passed. They exist so the audit line can say what went rather than only that
+   * something did.
+   *
+   * There is no list of tables here. Seven of them cascade — credentials, runs, endpoints and
+   * with them the inbox, records, operation state, and the infrastructure module's automation
+   * links and alert rules and their events. Writing that list out in TypeScript would be a second
+   * copy of a decision the migrations already carry, and the copy that quietly stops matching.
+   */
+  async deleteInstance(context: TenantContext, instanceId: string): Promise<DeletedInstanceSummary | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [instance] = await tx<ConnectorInstanceRecord[]>`
+        select ${tx.unsafe(instanceColumns)} from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+      if (!instance) return null;
+
+      const [counts] = await tx<{ credentials: number; runs: number; endpoints: number }[]>`
+        select
+          (select count(*) from connector_credentials
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as credentials,
+          (select count(*) from connector_sync_runs
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as runs,
+          (select count(*) from connector_webhook_endpoints
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as endpoints`;
+
+      await tx`delete from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      return { instance, removed: counts! };
+    }).catch(mapConstraint);
+  }
+
   async recordHealth(context: TenantContext, instanceId: string, outcome: HealthOutcome): Promise<void> {
     await withTenant(this.database, context.tenantId, async (tx) => {
       await tx`
@@ -205,7 +270,11 @@ export class PostgresConnectorRepository implements ConnectorRepository {
    * secondary — finds nothing, and answers null instead of revoking the credential the first one
    * just promoted and leaving the instance with none.
    */
-  async promoteCredential(context: TenantContext, instanceId: string, kind: string): Promise<CredentialMetadata | null> {
+  async promoteCredential(
+    context: TenantContext,
+    instanceId: string,
+    kind: string
+  ): Promise<CredentialMetadata | null> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const [secondary] = await tx<{ id: string }[]>`
         select id from connector_credentials
@@ -228,14 +297,24 @@ export class PostgresConnectorRepository implements ConnectorRepository {
   }
 
   /**
-   * Opens a run, or reports that this exact attempt already has one.
+   * Opens a run, or says why it could not.
    *
-   * The queue delivers at least once, so the same attempt can arrive twice — after a crash, or
-   * after a lease expired while the work was still running. `on conflict do nothing` lets the
-   * database be the one that decides, which two workers racing cannot both win.
+   * Three things happen here in one transaction, and the order matters. First a run whose lease
+   * has expired is written off, because a worker killed mid-run would otherwise hold its
+   * operation shut for ever. Then the insert, where `on conflict do nothing` answers the
+   * at-least-once question the database is the only one able to answer -- two workers racing
+   * cannot both win it. Last, the partial unique index answers the other question: if a previous
+   * pass is genuinely still running, the insert violates it and this pass stands down.
    */
   async startRun(context: TenantContext, input: StartRunInput): Promise<StartRunResult> {
     return withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        update connector_sync_runs
+        set status = 'dead_letter', finished_at = now(), error_code = 'RUN_ABANDONED'
+        where tenant_id = ${context.tenantId} and instance_id = ${input.instanceId}
+          and operation = ${input.operation} and status = 'running'
+          and started_at < now() - ${`${runLeaseMs} milliseconds`}::interval`;
+
       const [inserted] = await tx<SyncRunRecord[]>`
         insert into connector_sync_runs
           (id, tenant_id, instance_id, operation, job_id, attempt, config_version)
@@ -243,13 +322,20 @@ export class PostgresConnectorRepository implements ConnectorRepository {
           ${input.jobId}, ${input.attempt}, ${input.configVersion})
         on conflict (tenant_id, job_id, attempt) do nothing
         returning ${tx.unsafe(runColumns)}`;
-      if (inserted) return { run: inserted, started: true };
+      if (inserted) return { outcome: "started" as const, run: inserted };
 
       const [existing] = await tx<SyncRunRecord[]>`
         select ${tx.unsafe(runColumns)} from connector_sync_runs
         where tenant_id = ${context.tenantId} and job_id = ${input.jobId} and attempt = ${input.attempt}`;
-      return { run: existing!, started: false };
-    }).catch(mapConstraint);
+      return { outcome: "already_attempted" as const, run: existing! };
+    }).catch((error) => {
+      // The one violation that is an ordinary answer rather than a fault: a pass arrived while
+      // the previous one was still going, and standing down is the correct behaviour.
+      if (isUniqueViolation(error, "connector_sync_runs_one_running_idx")) {
+        return { outcome: "already_running" as const };
+      }
+      return mapConstraint(error);
+    });
   }
 
   /**
@@ -337,6 +423,92 @@ export class PostgresConnectorRepository implements ConnectorRepository {
   }
 
   /**
+   * Writes what an operation returned, in one statement.
+   *
+   * `xmax = 0` is how PostgreSQL answers "was this row inserted or updated" from an upsert: a
+   * freshly inserted row has no deleting transaction, an updated one carries the id of the
+   * transaction that locked it. The two counts are worth separating because they answer
+   * different questions -- how much is new, and whether a pass that claimed work changed
+   * anything at all.
+   */
+  async upsertRecords(context: TenantContext, input: UpsertRecordsInput): Promise<UpsertRecordsResult> {
+    if (input.records.length === 0) return { inserted: 0, updated: 0 };
+
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = input.records.map((record) => ({
+        id: randomUUID(),
+        tenant_id: context.tenantId,
+        instance_id: input.instanceId,
+        operation: input.operation,
+        external_id: record.externalId,
+        shape: input.shape,
+        data: tx.json(record.data) as unknown as string,
+        first_seen_at: input.seenAt,
+        last_seen_at: input.seenAt
+      }));
+
+      const written = await tx<{ inserted: boolean }[]>`
+        insert into connector_records ${tx(rows, recordInsertColumns)}
+        on conflict (tenant_id, instance_id, operation, external_id) do update
+          set data = excluded.data,
+              last_seen_at = excluded.last_seen_at,
+              -- The shape follows the manifest that wrote it last, so a release that changes one
+              -- does not leave rows expiring by a rule nobody can find any more.
+              shape = excluded.shape
+        returning (xmax = 0) as inserted`;
+
+      const inserted = written.filter((row) => row.inserted).length;
+      return { inserted, updated: written.length - inserted };
+    }).catch(mapConstraint);
+  }
+
+  async readOperationState(
+    context: TenantContext,
+    instanceId: string,
+    operation: string
+  ): Promise<ConnectorOperationStateRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [state] = await tx<ConnectorOperationStateRecord[]>`
+        select ${tx.unsafe(operationStateColumns)} from connector_operation_state
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId} and operation = ${operation}`;
+      return state ?? null;
+    });
+  }
+
+  /**
+   * Records where an operation got to, and when it last worked.
+   *
+   * `last_success_at` only moves on success, which is the whole point: it is the age a screen
+   * shows. A failed pass that refreshed it would make a connector that has been broken for a day
+   * look like it answered a moment ago.
+   */
+  async saveOperationState(context: TenantContext, input: SaveOperationStateInput): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into connector_operation_state
+          (id, tenant_id, instance_id, operation, cursor, last_run_at, last_success_at)
+        values (${randomUUID()}, ${context.tenantId}, ${input.instanceId}, ${input.operation},
+          ${input.cursor}, ${input.ranAt}, ${input.succeeded ? input.ranAt : null})
+        on conflict (tenant_id, instance_id, operation) do update
+          set cursor = excluded.cursor,
+              last_run_at = excluded.last_run_at,
+              last_success_at = coalesce(excluded.last_success_at, connector_operation_state.last_success_at),
+              updated_at = now()`;
+    }).catch(mapConstraint);
+  }
+
+  /**
+   * Retention. No tenant, and no delete privilege either: the function fixes the predicate in the
+   * schema and runs as its owner, so this call cannot become a delete of somebody's choosing.
+   */
+  async purgeRecords(input: PurgeRecordsInput): Promise<PurgeRecordsResult> {
+    const [result] = await this.database<{ purged: string; trimmed: string }[]>`
+      select purged, trimmed from purge_connector_records(
+        ${input.stateBefore}, ${input.eventBefore}, ${input.maxPerOperation}, ${input.batchLimit})`;
+    return { purged: Number(result?.purged ?? 0), trimmed: Number(result?.trimmed ?? 0) };
+  }
+
+  /**
    * Writes an event, or reports that it is one we already hold.
    *
    * The verdict comes from the unique constraint. A read followed by a write would let two
@@ -395,6 +567,12 @@ export class PostgresConnectorRepository implements ConnectorRepository {
  * taken: the first is a form error, the second means a rotation is already open and finishing it
  * is a different operation from starting one.
  */
+/** Narrow enough to be a fact about one index, rather than "some uniqueness was violated". */
+function isUniqueViolation(error: unknown, indexName: string): boolean {
+  const databaseError = error as DatabaseError;
+  return databaseError.code === "23505" && databaseError.constraint_name === indexName;
+}
+
 function mapConstraint(error: unknown): never {
   const databaseError = error as DatabaseError;
   if (databaseError.code === "23505" && databaseError.constraint_name?.includes("live_slot")) {

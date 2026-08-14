@@ -12,6 +12,16 @@
 
 export const systemQueueName = "control-hub-system";
 
+/**
+ * Connector work has a queue of its own, and that is a guarantee rather than tidiness.
+ *
+ * A connector call waits on somebody else's server. Four instances hanging on a thirty-second
+ * budget would hold four slots of a shared queue, and the support escalation sweep -- which has
+ * a service level attached to it -- would wait behind a provider nobody here controls. Separate
+ * queues make that impossible by construction instead of by choosing the right concurrency.
+ */
+export const connectorQueueName = "control-hub-connectors";
+
 /** Every connector run travels under one job name; the payload says which operation it is. */
 export const connectorJobName = "connector-run";
 

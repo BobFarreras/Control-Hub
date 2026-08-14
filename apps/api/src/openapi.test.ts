@@ -62,7 +62,22 @@ const documented = [
   ["post", "/api/v1/webhooks/{publicId}"]
 ] as const;
 
+/** The infrastructure module, behind its own flag and so generated into its own document. */
+const documentedInfrastructure = [
+  ["get", "/api/v1/infrastructure/overview"],
+  ["get", "/api/v1/infrastructure/automations"],
+  ["put", "/api/v1/infrastructure/automations/{instanceId}/{externalId}/link"],
+  ["get", "/api/v1/infrastructure/alert-rules"],
+  ["post", "/api/v1/infrastructure/alert-rules"],
+  ["patch", "/api/v1/infrastructure/alert-rules/{ruleId}"],
+  ["delete", "/api/v1/infrastructure/alert-rules/{ruleId}"],
+  ["get", "/api/v1/infrastructure/alerts"],
+  ["post", "/api/v1/infrastructure/alerts/{alertId}/acknowledge"],
+  ["post", "/api/v1/infrastructure/alerts/{alertId}/resolve"]
+] as const;
+
 const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const), connectorKeyRing: keyRing() };
+const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
 
 describe("openapi document", () => {
   it("describes every connector route with a tag and a summary", async () => {
@@ -118,6 +133,36 @@ describe("openapi document", () => {
     const document = await documentOf({ ...base, featureFlags: new Set() });
 
     const present = documented.filter(([method, path]) => document.paths[path]?.[method]);
+    expect(present).toEqual([]);
+  });
+  /**
+   * The same two properties for the infrastructure surface, and one that is only about it: with
+   * the flag off there is no route to describe, so an operator reading the document of a
+   * deployment that does not carry the module is never sent to one of these addresses.
+   */
+  it("describes every infrastructure route with a tag and a summary", async () => {
+    const document = await documentOf(withInfrastructure);
+
+    const undescribed = documentedInfrastructure.filter(([method, path]) => {
+      const operation = document.paths[path]?.[method];
+      return !operation?.tags?.length || !operation.summary;
+    });
+    expect(undescribed).toEqual([]);
+  });
+
+  it("declares no response body schema on the infrastructure routes either", async () => {
+    const document = await documentOf(withInfrastructure);
+
+    const serialised = documentedInfrastructure.filter(([method, path]) =>
+      Object.values(document.paths[path]?.[method]?.responses ?? {}).some((response) => response.content)
+    );
+    expect(serialised).toEqual([]);
+  });
+
+  it("omits the infrastructure surface while its flag is off", async () => {
+    const document = await documentOf(withConnectors);
+
+    const present = documentedInfrastructure.filter(([method, path]) => document.paths[path]?.[method]);
     expect(present).toEqual([]);
   });
 });

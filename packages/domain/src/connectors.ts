@@ -28,6 +28,71 @@ export const connectorFailureKinds = [
 ] as const;
 export type ConnectorFailureKind = (typeof connectorFailureKinds)[number];
 
+/**
+ * Every code a failed run may store, and the whole of it.
+ *
+ * A run that fails writes a code, and a screen turns that code into a sentence in the reader's
+ * language. Three places produce one — the egress guard when it refuses or gives up on an
+ * address, the runtime when the run cannot even be attempted, and a connector reporting about the
+ * provider, which contributes the kinds of failure above uppercased. Nothing that reads them can
+ * see all three, so the agreement lives here.
+
+ * Being a closed list is the point. A code invented at a throw site is a code with no sentence,
+ * and the failure is silent: the screen falls back to "the operation could not be completed",
+ * which is what an operator was told when the real answer was that the address was not on the
+ * allowlist — a minute's work, had anybody said so. With the list here, `apps/worker` cannot
+ * throw a code that is not a member, and `packages/i18n` is asked in a test to have words for
+ * every member in every language.
+ *
+ * The provider's own words are never among them. What comes back from a far end is
+ * attacker-influenced text, and it would end up in a log, in a ticket and in a translation key.
+ */
+export const connectorErrorCodes = [
+  // What a connector reported about the provider: the kinds above, uppercased.
+  "TIMEOUT",
+  "CONNECTION_RESET",
+  "RATE_LIMITED",
+  "SERVER_ERROR",
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "INVALID_CONFIG",
+  "INVALID_RESPONSE",
+  "RESPONSE_TOO_LARGE",
+  "BLOCKED_DESTINATION",
+  // What the egress guard refused, before anything left the process.
+  "SCHEME_NOT_ALLOWED",
+  "URL_NOT_PARSEABLE",
+  "URL_HAS_CREDENTIALS",
+  "DESTINATION_NOT_ALLOWLISTED",
+  "DESTINATION_OUTSIDE_BASE_URL",
+  "NO_BASE_URL_CONFIGURED",
+  "ADDRESS_NOT_ROUTABLE",
+  "DNS_RESOLUTION_FAILED",
+  // What the egress guard gave up on, once the call was under way.
+  "CONNECT_TIMEOUT",
+  "HEADERS_TIMEOUT",
+  "TOTAL_TIMEOUT",
+  "BUDGET_EXHAUSTED",
+  "CONNECTION_FAILED",
+  "RESPONSE_FAILED",
+  "TOO_MANY_REDIRECTS",
+  // What the runtime found missing before it could ask the connector to do anything.
+  "CREDENTIAL_MISSING",
+  "OPERATION_NOT_DECLARED"
+] as const;
+export type ConnectorErrorCode = (typeof connectorErrorCodes)[number];
+
+/**
+ * The code for a kind of failure. Uppercasing, and a test that the result is in the vocabulary.
+ *
+ * The assertion is what `toUpperCase` costs: it is typed as returning `string`, so without it the
+ * call site would widen and a code with no sentence would stop being a compile error.
+ */
+export function failureCode(kind: ConnectorFailureKind): ConnectorErrorCode {
+  return kind.toUpperCase() as ConnectorErrorCode;
+}
+
 const transientKinds = new Set<ConnectorFailureKind>(["timeout", "connection_reset", "rate_limited", "server_error"]);
 
 /**

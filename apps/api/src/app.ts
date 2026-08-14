@@ -12,6 +12,7 @@ import {
   CustomerServicesService,
   CrmError,
   CrmService,
+  InfrastructureService,
   ProjectsError,
   ProjectsService,
   SupportError,
@@ -20,7 +21,7 @@ import {
 import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet, type KeyRing } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
-import { systemQueueName } from "@control-hub/contracts/jobs";
+import { connectorQueueName } from "@control-hub/contracts/jobs";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
@@ -34,6 +35,7 @@ import {
   IdentityInvariantError,
   nodeIngressCrypto,
   InvitationError,
+  PostgresInfrastructureRepository,
   PostgresProjectsRepository,
   PostgresSupportRepository
 } from "@control-hub/persistence";
@@ -56,6 +58,7 @@ import { registerCompanySubscriptionRoutes } from "./routes/company-subscription
 import type { RouteContext } from "./routes/context.js";
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
+import { registerInfrastructureRoutes } from "./routes/infrastructure.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
@@ -347,6 +350,13 @@ export function buildApp(options: BuildAppOptions) {
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
+      // Reads what the connectors stored, and nothing more: the module has its own flag
+      // because the schema and the code ship before anybody has an n8n to point it at.
+      if (isFeatureEnabled(featureFlags, "infrastructure"))
+        registerInfrastructureRoutes({
+          ...context,
+          infrastructure: new InfrastructureService(new PostgresInfrastructureRepository(database))
+        });
     }
 
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
@@ -377,7 +387,7 @@ export function buildApp(options: BuildAppOptions) {
    */
   function registerConnectorRoutes(context: RouteContext) {
     const repository = new PostgresConnectorRepository(database);
-    connectorQueue = new Queue(systemQueueName, { connection: queueConnection(options.redisUrl) });
+    connectorQueue = new Queue(connectorQueueName, { connection: queueConnection(options.redisUrl) });
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
     const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;

@@ -151,6 +151,7 @@ export type ConnectorDefinition<Config> = {
   type: string;                          // "generic-webhook"
   contractVersion: 1;
   configSchema: ZodType<Config>;         // camps allowlisted, sense secrets
+  configFields: ConfigFieldDeclaration[]; // que preguntar i com dibuixar-ho
   credentialKinds: readonly CredentialKind[];
   capabilities: CapabilityManifest;      // que pot fer i cap a on
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
@@ -188,6 +189,11 @@ queda `revoked_at`. Aixi rotar no exigeix parar el proveidor.
 
 **Desactivacio.** L'instancia passa a `disabled`, les credencials es revoquen, els schedulers
 s'aturen i l'ingress respon com si l'endpoint no existis.
+
+**Desaparicio.** Una instancia s'esborra i no torna. Es una sola sentencia contra
+`connector_instances`; la cascada de l'esquema s'emporta credencials, execucions, adreces
+d'entrada i el seu inbox, registres, estat d'operacio, i els enllacos i regles d'alerta
+d'infraestructura amb els seus events. El que queda es la fila d'auditoria.
 
 **Ingress.** El proveidor firma i envia. L'API verifica, escriu inbox, respon `202`. El worker
 processa. Un duplicat es descarta a la clau unica i torna `202` igual.
@@ -312,6 +318,7 @@ REST sota `/api/v1`, problem details RFC 9457 amb `code` estable, segons
 | `GET /api/v1/integrations/:id` | `integrations:read` | Una instancia; `404` si no es d'aquest tenant |
 | `POST /api/v1/integrations` | `integrations:manage` | Valida config; `422` si no passa |
 | `PATCH /api/v1/integrations/:id` | `integrations:manage` | Revalida i puja `config_version` |
+| `DELETE /api/v1/integrations/:id` | `integrations:manage` | Esborra la instancia i tot el que hi penja; retorna quantes credencials, execucions i adreces se n'han anat |
 | `POST /api/v1/integrations/:id/enable` i `/disable` | `integrations:manage` | Enable revalida; disable revoca credencials |
 | `POST /api/v1/integrations/:id/health-checks` | `integrations:manage` | Encua; `202` amb l'identificador de la peticio |
 | `GET /api/v1/integrations/:id/runs` | `integrations:read` | Historial paginat |
@@ -350,18 +357,211 @@ propietat del handler, no del fet de no documentar-la.
 
 ## UX, i18n i accessibilitat
 
-Una pantalla, `/{locale}/integrations`, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com
-la resta: aquesta fase no inventa primitives. Estat de salut amb text a mes de color, perque un
-punt verd sol no es accessible. Missatges d'error traduits des del `code`, mai el text del
-proveidor. Claus `ca`, `es` i `en` al mateix commit que el component.
+Dues pantalles, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com la resta: aquesta fase no
+inventa primitives. Estat de salut amb text a mes de color, perque un punt verd sol no es
+accessible. Missatges d'error traduits des del `code`, mai el text del proveidor. Claus `ca`, `es`
+i `en` al mateix commit que el component.
+
+**La llista respon "quina d'aquestes te un problema"; la fitxa respon "que es aixo i que ha
+estat fent".** `/{locale}/integrations` es la llista, i `/{locale}/integrations/[instanceId]` es
+una integracio sola: configuracio, adreca d'entrada, credencials, execucions i la zona d'esborrat.
+Fins a l'A9b la fitxa era un panell al costat de la taula, i les dues preguntes es repartien mitja
+pantalla i una barra de desplacament que no li servia a cap. Ser una ruta li dona tres coses que
+un panell no pot tenir: una adreca que algu pot enviar, la navegacio de tornada que ja tenen totes
+les altres fitxes del producte, i l'amplada sencera per a la taula.
+
+Els enllacos antics eren `?selected=<id>`, i encara circulen: la llista els redirigeix a la fitxa,
+**pero nomes si el valor te forma d'identificador**. Aquell valor acaba dins d'un cami, aixi que es
+comprova la forma en comptes d'escapar-la — un `../..` escapat continua sent un intent, i no hi ha
+cap cas legitim a preservar. El que no te la forma s'ignora i es queda a la llista.
+
+El formulari de configuracio es el mateix component al dialeg de creacio i a la fitxa. No per
+estalviar linies, sino perque un formulari que divergeix entre les dues pantalles es exactament la
+mena de deriva que no es veu: es descobreix el dia que un camp accepta una cosa en un lloc i una
+altra a l'altre.
+
+### La taula diu l'estat sense obrir res
+
+Una fila ha de respondre "aquesta va be?" sense que ningu hi entri. Tres decisions, i cap demana
+cap camp nou a l'API: el llistat ja porta el que cal.
+
+**El nom del proveidor, no el que fa servir el registre.** El tipus es kebab-case perque aixo es
+el que volen una URL i un registre; ningu anomena `generic-webhook` el que ha connectat. La fila
+duu la marca i el nom traduit, amb la mateixa conversio de clau que ja governa les targetes —i pel
+mateix motiu, que es l'unic error d'aquesta familia que ja ha arribat a un operador.
+
+**La salut amb el seu motiu.** «Fallant» tot sol obliga a entrar a la integracio per saber que ha
+fallat, i la fila ja ho sap: `health.lastErrorCode` viatja amb cada instancia. Es llegeix amb el
+vocabulari de **les execucions** (`runError*`), mai amb el de l'API: `FORBIDDEN` de l'API vol dir
+que et falta un permis i `FORBIDDEN` d'una lectura de salut vol dir que el proveidor ha refusat la
+credencial, i una llista es exactament on la frase equivocada duraria mes sense que ningu ho noti.
+Quan no hi ha codi no es dibuixa res: `recordHealth` reescriu `last_error_code` a cada comprovacio,
+exit inclos, aixi que una lectura sana no en porta cap i no cal defensar-se de cap motiu resse.
+
+**L'antiguitat de la lectura, no quan es va prendre.** Una marca de temps fa que el lector resti, i
+"aixo es actual?" es tota la rao per la qual la columna existeix. Es reaprofita `readingAge` de la
+pantalla d'infraestructura en comptes de duplicar-la, amb el mateix llindar de 45 minuts —tres
+passades de `pull_workflows` que podien haver passat i no han passat—, i **una lectura massa vella
+ho diu amb paraules**, no nomes amb color: una fila que digui «sana» de fa tres hores no es sana,
+es que ningu l'ha mirada, i sense aixo les dues es veuen igual.
+
+L'edat es calcula **al servidor**, no a la taula. El "ara" del client es un instant diferent del
+"ara" del servidor, i una fila que es dibuixa amb una edat i s'hidrata amb una altra es una
+discrepancia que React denuncia com un defecte. La pantalla d'infraestructura ja ho havia resolt
+aixi.
 
 La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de generar-lo.
 
 En un desplegament sense anell de claus, les seccions de credencials i d'adreces d'entrada no
 surten. No hi ha ruta que les serveixi, i un boto que encunya un secret alla on no se'n pot
-segellar cap es un boto que sempre falla. La configuracio de la instancia es un camp JSON: es
-l'unica forma que serveix per a un connector que aquesta versio encara no coneix, i el que es
-dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit.
+segellar cap es un boto que sempre falla.
+
+### Connectar una plataforma
+
+**Primer es tria la plataforma, despres es respon el que aquella plataforma demana.** El cataleg
+es un conjunt de targetes amb marca i una frase, no una llista desplegable, i no n'hi ha cap de
+preseleccionada: un connector triat per nosaltres posa les preguntes d'un proveidor que no es el
+que l'operador tenia al cap. Les marques son dibuixos nostres amb el color de cada proveidor, no
+els seus logotips: un logotip reproduit de memoria es una marca registrada mal copiada, i un de
+carregat en temps de render es una peticio al servidor d'algu altre des d'una pantalla que ha de
+funcionar en una xarxa aillada.
+
+**El formulari el dicta el connector.** El cataleg porta els camps declarats i la pantalla els
+dibuixa sense saber res del proveidor, de manera que un connector afegit en una release posterior
+no obliga a tocar la pantalla. D'aquests camps, **el connector nomes tria dues coses**: com es
+dibuixen i per a que son. La resta es llegeix del seu esquema, amb una sola pregunta: que fa
+aquesta clau si no li dones res? Refusa, i llavors es obligatoria; respon amb un valor, i aquell
+valor es el que el formulari ha de mostrar ja escrit; o respon buit, i el camp comenca en blanc.
+Preguntar-ho un sol cop es el que impedeix que les dues respostes es contradiguin, i fa que
+canviar un valor per defecte al connector canvii el que ofereix el formulari sense que ningu
+editi cap formulari.
+
+Per a que serveix un camp decideix on va. Els de **connexio** son el que cal per arribar al
+proveidor i es pregunten obertament; els de **comportament** son quant se n'ha de llegir un cop
+s'hi arriba, i es plegan darrere un `<details>`, perque tots ells ja es responen sols i un
+formulari que obre amb cinc preguntes que ningu ha de contestar es llegeix com cinc preguntes que
+algu ha d'anar a investigar. Plegar nomes es honest si l'esquema pot continuar sense el camp:
+`defineConnector` refusa a la carrega del modul un camp obligatori declarat com a comportament,
+perque seria un camp amagat i despres refusat en enviar, queixant-se d'una cosa que l'operador no
+ha vist mai.
+
+`defineConnector` tambe refusa una llista que hagi divergit de l'esquema en qualsevol de les dues
+direccions. La direccio que importa mes: **una clau de configuracio sense camp declarat es una
+clau que ningu pot omplir des d'una pantalla**, i el simptoma no es un error sino una integracio
+que nomes es pot configurar per `curl` — que es on va acabar aquesta pantalla la primera vegada.
+
+El que es dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit: si el
+cami nomena un camp declarat, la queixa cau sobre aquell camp; si no, es llista a part. Una
+queixa sobre un camp plegat **obre el desplegable**, perque si no seria invisible.
+
+Un connector que la versio en curs ja no porta no te camps ni res que pugui acceptar una edicio:
+la seva configuracio **es mostra, no s'ofereix**.
+
+**Els noms surten del diccionari per tipus de connector, i el tipus no es una clau.** Els tipus
+son kebab-case i les claus no poden ser-ho, aixi que una consulta feta directament amb el tipus
+no falla: erra, i cau al valor per defecte, que es el tipus mateix. Aixi es com `generic-webhook`
+va arribar a una pantalla que per la resta estava traduida. La conversio viu en un sol lloc i hi
+ha una prova que recorre el registre i exigeix, per a cada connector, cada camp i cada tipus de
+credencial, que hi hagi paraules a les tres llengues.
+
+### Per que ha fallat
+
+**Una execucio que falla desa un codi, i la pantalla el converteix en una frase.** El conjunt de
+codis es tancat i viu a `@control-hub/domain`, no alli on es llencen: hi ha tres llocs que en
+produeixen —la guarda d'eixida quan refusa una adreca o es rendeix amb ella, el runtime quan la
+crida ni tan sols es pot intentar, i un connector informant del proveidor, que hi aporta els tipus
+de fallada en majuscules— i cap dels que els llegeixen els veu tots tres. El que hi viu es
+l'acord.
+
+Que sigui tancat es el que el fa comprovable. `apps/worker` no pot llencar un codi que no en sigui
+membre —ho impedeix el tipus, no una revisio— i `packages/i18n` te una prova que recorre el
+vocabulari i exigeix una frase a cada llengua per a cada codi, amb una segona condicio: **que la
+frase no sigui la generica**. Una clau que existeix pero conte "no s'ha pogut completar
+l'operacio" passa una prova d'existencia i no diu res, que es exactament el que va passar: una
+adreca que faltava a la llista de destins permesos es va llegir com una operacio que no s'havia
+pogut completar, quan dir-ho era un minut de feina per a qui ho llegia.
+
+Les frases van a un espai propi, `runError*`, separat dels codis que retorna aquesta API. Les dues
+llistes topen a les paraules i el xoc no es cosmetic: `FORBIDDEN` d'aquesta API vol dir que a qui
+mira li falta un permis, i `FORBIDDEN` d'una execucio vol dir que el proveidor ha refusat la
+credencial que li hem enviat. Una sola clau posaria una de les dues frases sota el codi de
+l'altra, i **una frase equivocada amb aplom es pitjor que una de vaga**: envia algu a mirar-se els
+seus permisos quan la resposta es a l'altra punta.
+
+El recurs a la frase generica es queda, perque una execucio es historia: un registre escrit per
+una versio que coneixia un codi que aquesta ja no ha de poder-se dibuixar igualment. El que no pot
+passar es que sigui la resposta per a un codi que si que portem.
+
+Cap frase anomena un proveidor. La que anomenes n'anomena el que no es per a tots els altres
+connectors, i hi ha una prova que ho comprova.
+
+### La credencial
+
+**S'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix `credentials:rotate`
+—que no es el permis que gestiona la integracio, perque qui pot canviar una adreca no ha de
+poder-hi posar el token— i el valor no torna: cap ruta d'aquesta API el llegeix, el formulari es
+buida en enviar-lo i el que queda a la llista son metadades. Escriure sobre un tipus que ja te
+valor **obre una rotacio** en comptes de substituir res, i la pantalla ho diu abans de fer-ho.
+
+**El formulari de creacio tambe la demana**, quan n'hi ha una que tingui sentit demanar: la que
+autentica les crides que fem nosaltres. Un connector sense egress no en te cap — nomes rep, i el
+secret amb que verifica s'encunya amb la seva adreca en comptes d'escriure'l ningu— i oferir-li
+un camp seria convidar algu a enganxar un token que no s'enviaria mai enlloc.
+
+Son dues crides, perque un secret no viatja per la ruta que crea una instancia: la caixa forta
+te la seva propia ruta i el seu propi permis, i posar un token al cos d'una creacio el deixaria a
+qualsevol log que registri aquella ruta. Aixo vol dir que hi ha un moment on la instancia existeix
+i el secret no. **No s'amaga i no es desfa**: esborrar una integracio perfectament bona perque ha
+fallat una segona crida convertiria un tall de xarxa en feina perduda. El dialeg es tanca, la
+pantalla obre la integracio nova i el missatge diu exactament que hi falta — el formulari de la
+credencial es alli mateix, i la instancia es un esborrany que no arriba enlloc fins que algu
+l'activa.
+
+En un desplegament sense anell de claus el camp no hi es, ni al dialeg ni al panell. La pantalla
+ho sap abans de tenir cap instancia a qui preguntar-ho, perque el cataleg mateix diu si aquesta
+instal·lacio pot guardar un secret.
+
+### Esborrar una integracio
+
+**Desactivar ja es l'arxiu, aixi que esborrar vol dir que no hi es.** Desactivar conserva la
+configuracio, l'historial i els enllacos mentre atura la feina, que es exactament el que vol qui
+nomes vol que pari. El que no existia era la manera de dir que una integracio ja no ha de ser-hi,
+i l'unic cami era `psql`. Un tercer estat entre `disabled` i "fora" no el sabria explicar ningu,
+i a mes `unique (tenant_id, name)` faria que una integracio arxivada es quedes el nom per sempre.
+
+**Es una sola sentencia, no una llista de taules.** La cascada ja es a les migracions i una
+segona copia escrita a ma en TypeScript es la copia que un dia deixa de quadrar. Se'n van
+credencials, execucions, adreces d'entrada i el seu inbox, registres, estat d'operacio, i els
+enllacos amb clients i les regles d'alerta d'infraestructura amb els seus events. La prova
+d'integracio les compta abans i despres, contra PostgreSQL, perque dues de les respostes que aixo
+depen no son al text del SQL: **una cascada no necessita privilegi de `delete` a les taules que
+referencien** —s'executa amb els privilegis del propietari— **i no la barra la RLS forçada**.
+Cap de les dues es cosa de creure-se-la d'un manual.
+
+**La `0036` obre exactament un privilegi**, `delete` sobre `connector_instances`, i cap mes. Les
+files de sota segueixen sent inabastables d'una en una: se'n van nomes com a consequencia que
+se'n vagi la instancia. Aquesta es la diferencia entre "un operador pot retirar una integracio" i
+"una peticio pot esborrar l'evidencia del que una integracio va fer".
+
+**L'historial d'execucions se'n va i l'auditoria es queda.** Una execucio es el registre d'un
+intent nostre —operacio, estat, intent, codi d'error— i nomes es llegeix des de la fitxa de la
+seva integracio: sense instancia no hi ha pantalla ni abast de tenant que hi arribi, i les files
+quedarien on ningu les pot veure. Ja caduquen soles per `data-governance.md`. El que ha de
+sobreviure es qui va decidir que, i aixo es `audit_log`, que te `target_id` en text sense clau
+forana i per tant sobreviu perfectament a la instancia que anomena. Per aixo la fila
+`connector_instance.deleted` porta el nom, el tipus, l'estat en que era i quantes credencials,
+execucions i adreces se n'han anat: es tot el que una investigacio tindra.
+
+**Sense precondicio d'estat.** Es pot esborrar una instancia activa. L'aturada que fa `disable`
+son files que aixo treu de cop dins la mateixa transaccio, i les dues coses que viuen fora de
+PostgreSQL es curen soles: el reconciliador esborra tot calendari que ja no vol i el runtime
+deixa caure una feina d'una instancia que no troba. Exigir "desactiva-la primer" seria una norma
+que fa complir una pantalla en comptes del sistema, i el resultat previsible es una integracio
+mig esborrada.
+
+**El que no podem fer i la pantalla ha de dir:** revocar la credencial al proveidor. Nosaltres
+n'oblidem el sobre; el token segueix valid alla fins que algu el retiri. Mateixa lliço que el
+runbook de rotacio.
 
 ## Threat model
 

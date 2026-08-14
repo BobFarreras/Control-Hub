@@ -315,31 +315,21 @@ el watcher i la cache de disc de Turbopack.
 
 ### `pnpm format:check` falla en fitxers que no has tocat
 
-**Causa.** `core.autocrlf=true` fa el checkout amb CRLF i Prettier espera LF. Falla per a tot
-el repositori, hagis tocat el que hagis tocat.
+**Resolt el 12 d'agost de 2026.** Es deixa escrit perque el que el va causar es facil de tornar a
+fer sense adonar-se.
 
-**Solucio.** No executis `prettier --write .`: generaries un diff de centenars de fitxers. Per
-comprovar els teus, compara ignorant els finals de linia:
+**Causa.** Els finals de linia tenien dos amos que no es posaven d'acord. `.gitattributes` diu
+`text=auto`, aixi que el repositori guarda LF i un checkout de Windows escriu CRLF; i
+`prettier.config.mjs` deia `endOfLine: "lf"`. Resultat: `format:check` vermell **a tots els
+fitxers del repositori**, haguessis tocat el que haguessis tocat.
 
-```bash
-diff <(pnpm exec prettier "$f" | tr -d '\r') <(cat "$f" | tr -d '\r')
-```
+**Que es va fer.** `endOfLine: "auto"` a `prettier.config.mjs`. Git ja normalitza els finals de
+linia i es qui te aquesta feina; Prettier hi tornava a opinar amb una altra resposta. De 305
+fitxers en vermell es va passar a 10 violacions reals -- una llista amb tres-cents falsos positius
+no la mira ningu, i aquelles deu van viure amagades tota la Fase 6.
 
-CI corre sobre Linux i es l'autoritat sobre el format.
-
-**Comparar nomes els fitxers que tens modificats ara no n'hi ha prou.** Un fitxer que has creat en
-un commit anterior de la mateixa sessio ja no surt a `git diff`, i CI el continua veient. La
-comprovacio local equivalent a la de CI es intersecar les dues llistes: agafar tot el que Prettier
-marca i quedar-te nomes amb el que tambe difereix ignorant els finals de linia.
-
-```bash
-pnpm exec prettier --list-different . | tr -d '' | while read -r f; do
-  diff -q <(pnpm exec prettier "$f" | tr -d '') <(tr -d '' < "$f") >/dev/null || echo "$f"
-done
-```
-
-Sobre aquest repositori, la primera llista te 71 fitxers i la segona n'hauria de tenir zero. Aixo va
-costar un CI en vermell despres d'haver dit que estava en verd.
+**No hi tornis a posar `lf`.** Si algun dia es vol LF tambe al working tree de Windows, el lloc es
+`.gitattributes` (`* text=auto eol=lf`) i cal renormalitzar el checkout; no el formatador.
 
 ### Totes les pagines responen 500 amb `ECONNREFUSED` i sembla que el codi estigui trencat
 
@@ -533,3 +523,33 @@ depenia del pla d'execucio, no del sistema operatiu.
 **Solucio.** Les proves seleccionen la dada que han creat mitjancant una identitat o propietat
 estable i relacionen el pla pel seu `planId`. Mai s'utilitza la primera fila d'una consulta sense
 `ORDER BY` com si fos part del contracte.
+
+### Una accio nova respon «La operacio no s'ha pogut completar» a la base de desenvolupament
+
+**Simptoma.** L'esborrat d'una integracio fallava a `control_hub` amb el missatge generic, mentre
+que el test d'integracio i l'E2E passaven tots dos.
+
+**Causa.** Les tres bases locals no van al mateix ritme. `pnpm db:migrate:verify` migra la de
+verificacio i les suites d'integracio migren `control_hub_test`, pero **cap de les dues toca
+`control_hub`**, que es la que fa servir `pnpm dev`. La `0036` obre l'unic privilegi de `delete`
+sobre `connector_instances`; sense aplicar-la, PostgreSQL refusa la sentencia, l'API respon 500 i
+la pantalla mostra la frase generica —que es el que ha de fer: no filtra que ha dit la base.
+
+**Que enganya.** Que les proves passin **no diu res** sobre la base de desenvolupament. Son bases
+diferents i el migrador no es global. El recompte de `schema_migrations` es el que ho desmenteix:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc "select name from schema_migrations order by name desc limit 1;"
+```
+
+**Solucio.** `pnpm db:migrate` (sense sufix) i tornar a aixecar `pnpm dev`. La comprovacio que
+tanca el diagnostic, i que val per a qualsevol migracio que nomes reparteixi privilegis, es
+preguntar-los directament en comptes de deduir-los del fitxer:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc "select has_table_privilege('control_hub_app','connector_instances','delete');"
+```
+
+**La regla.** Quan una migracio nova nomes canvia permisos, afegir-la al repositori no la fa
+efectiva enlloc. Despres d'escriure-la, migra les tres bases o assumeix que la de desenvolupament
+et mentira a la primera prova manual.

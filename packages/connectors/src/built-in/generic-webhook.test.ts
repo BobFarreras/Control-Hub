@@ -127,7 +127,7 @@ describe("what the provider signs", () => {
 
 describe("capabilities", () => {
   it("declares no outbound operations, so none can be dispatched", async () => {
-    expect(genericWebhook.capabilities.operations).toEqual([]);
+    expect(genericWebhook.capabilities.operations).toEqual({});
     await expect(genericWebhook.run("pull", contextWith(defaults), { cursor: null })).rejects.toThrow(
       "UNKNOWN_OPERATION"
     );

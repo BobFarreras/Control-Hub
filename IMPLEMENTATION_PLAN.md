@@ -439,6 +439,59 @@ Es pot afegir un nou proveidor implementant el contracte sense modificar el domi
 
 Control Hub mostra l'estat real de la infraestructura i n8n sense assumir-ne el control intern.
 
+## Fase 7B - Accions i credencials OAuth
+
+**Estat: proposta, pendent d'aprovacio.**
+
+**Objectiu:** que un connector pugui **escriure** al proveidor, i que una credencial que caduca es
+renovi sola, sense obrir cap via alternativa d'autoritzacio.
+
+Fins aqui la plataforma nomes sap dues coses: **estirar** dades i **rebre** events. Crear un
+workflow a n8n, enviar un correu o publicar a un canal son la tercera, i no hi caben. Va abans de
+la Fase 8 perque Gmail i Microsoft Graph son OAuth, no un token que s'enganxa un cop.
+
+Es numera 7B, com la 5B, per no renumerar les fases posteriors.
+
+### Implementacio
+
+- Capacitat `actions` al manifest del connector: nom, esquema d'entrada validat, permis exigit i
+  si es reversible.
+- Tota accio s'executa a la cua, mai dins la peticio HTTP. L'API accepta, encua i respon `202`.
+- Clau d'idempotencia obligatoria: un reintent no crea dos objectes al proveidor.
+- Confirmacio humana explicita, i segon factor per a les accions declarades irreversibles.
+- Auditoria de qui, que, contra quina instancia i amb quin resultat, amb el cos enviat redactat.
+- Tipus de credencial `oauth2`: authorization code amb PKCE, refresh al vault, renovacio
+  programada abans de caducar i revocacio.
+- Estat de credencial visible: valida, a punt de caducar, caducada, revocada.
+- Quota d'accions per instancia i per tenant.
+
+### Entregables
+
+- Contracte d'accions documentat a `docs/development/writing-a-connector.md`.
+- Connexio OAuth des de la pantalla d'integracions, amb estat i caducitat visibles.
+- Historial d'accions executades.
+- Primera accio real: activar i desactivar un workflow d'n8n.
+
+### Proves minimes
+
+- Una accio sense clau d'idempotencia es rebutjada; la mateixa clau dues vegades executa un cop.
+- Cap refresh token surt per l'API ni per cap log.
+- Una credencial caducada atura les operacions i ho diu, en comptes de repetir `401`.
+- Un rol sense el permis de l'accio rep `403`, i la denegacio queda auditada.
+- Una accio irreversible sense segon factor es rebutjada.
+- Revocar l'autoritzacio al proveidor deixa la instancia en un estat coherent.
+
+### Revisio del propietari
+
+- Autoritzar un proveidor real amb OAuth i veure'n la caducitat.
+- Executar una accio i comprovar-la al proveidor.
+- Aprovar una a una quines accions poden existir.
+
+### Criteri de sortida
+
+Un connector pot escriure al proveidor amb confirmacio, idempotencia i auditoria, i una credencial
+que caduca es renova sense que ningu hi intervingui.
+
 ## Fase 8 - Correu, IA i costos variables
 
 **Objectiu:** integrar comunicacions i calcular el cost real per client i producte.
@@ -476,6 +529,55 @@ Control Hub mostra l'estat real de la infraestructura i n8n sense assumir-ne el 
 ### Criteri de sortida
 
 Els costos mostrats son reproduibles, tenen font i es poden reconciliar.
+
+## Fase 8B - Xarxes socials i publicacio
+
+**Estat: proposta, pendent d'aprovacio.**
+
+**Objectiu:** planificar, aprovar i publicar el contingut dels canals dels clients des d'un sol
+lloc, i tornar-ne el resultat.
+
+Depen **nomes de la 7B**: sense accions ni OAuth no hi ha publicacio possible. Es numera 8B per
+ordre de valor, no per dependencia — si interessa abans que el correu i la IA, es pot avancar
+sense tocar res mes.
+
+### Implementacio
+
+- Connectors Meta (pagines de Facebook i comptes d'Instagram professionals), LinkedIn i TikTok,
+  cadascun amb les seves operacions de lectura i les seves accions de publicacio.
+- Comptes socials com a actiu d'un client: qui els ha autoritzat, quan caduca l'autoritzacio i
+  qui de l'equip hi pot publicar en nom seu.
+- Calendari editorial amb esborrany, revisio, aprovacio i publicacio programada.
+- La publicacio es una accio de la 7B: encuada, idempotent, confirmada i auditada.
+- Biblioteca de mitjans amb els fitxers que es publiquen, amb tenant scope i caducitat.
+- Recollida de resultats (abast, interaccions) com a operacio de lectura ordinaria.
+- Vincle amb el CRM: cada compte i cada publicacio pengen d'un client.
+
+### Entregables
+
+- Calendari editorial i cua d'aprovacio.
+- Historial de publicacions amb enllac al post real, construit i validat per nosaltres.
+- Informe per client del que s'ha publicat i com ha anat.
+- Estat d'autoritzacio de cada canal, amb avis abans de caducar.
+
+### Proves minimes
+
+- Una publicacio programada no surt dues vegades encara que el worker es reinicii.
+- Un token caducat atura la cua i avisa; la publicacio no es perd ni s'envia a mitges.
+- Una publicacio rebutjada a l'aprovacio no arriba mai al proveidor.
+- Un fitxer de la biblioteca no es visible des d'un altre tenant.
+- El limit de l'API d'un proveidor no bloqueja els altres canals.
+
+### Revisio del propietari
+
+- Publicar de veritat a un compte de proves de cada xarxa.
+- Aprovar el circuit d'aprovacio i qui pot publicar en nom d'un client.
+- Confirmar que cada client autoritza els seus propis comptes, amb les seves condicions d'us.
+
+### Criteri de sortida
+
+Una publicacio passa d'esborrany a publicada amb aprovacio sense sortir de Control Hub, i el seu
+resultat es veu al mateix lloc.
 
 ## Fase 9 - Operacio comercial i distribucio
 

@@ -1104,6 +1104,9 @@ main {
 }
 .crm-dialog h2 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
 }
 .crm-form {
@@ -5395,23 +5398,97 @@ main {
   }
 }
 
-/* The integrations screen: a listing that gives half its width to whatever is selected. The
-   detail column collapses under the table on a narrow screen rather than shrinking to a strip. */
-.integrations-layout {
+/* A cell with nothing to report, said quietly rather than left blank. Scoped to the table because
+   `.muted` is a modifier elsewhere and a bare rule would repaint those too. */
+.crm-table .muted {
+  color: var(--muted);
+}
+
+/* One integration's own page. Two columns where there is room, because the panels are short and a
+   single stack of them on a wide screen is mostly whitespace with a very long line of text. */
+.integration-detail {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+  align-content: start;
   align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.integrations-layout.selected {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-}
-@media (width < 1200px) {
-  .integrations-layout.selected {
+@media (width < 1000px) {
+  .integration-detail {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.integrations-layout .muted {
+
+/* What cannot be undone, kept apart from what can. It spans both columns and sits last, so
+   deleting is never the button next to the one that merely stops an integration. */
+.integration-detail .danger-zone {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.integration-detail .danger-zone h2 {
+  color: var(--danger);
+}
+
+/* The integrations table, saying the state without being opened.
+   The provider's mark beside its name, and a health reading with its reason under it: both are
+   two things in one cell, so both need the cell to stack rather than run on. */
+.cell-connector {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.cell-health {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+.cell-health small {
   color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+/* A reading old enough to distrust. The word beside it carries the same meaning, so the colour is
+   never the only thing saying it. */
+.reading-stale {
+  display: grid;
+  gap: 2px;
+  color: var(--warning);
+}
+.reading-stale small {
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
+/* "Nothing here yet" is a line of text, not a section. `.crm-empty` reserves 72px above and below
+   because inside a full-width table that space is the table; inside a panel a third the size it is
+   just a hole under one sentence, which is what made the credentials panel as tall as the runs. */
+.integration-detail .crm-empty {
+  padding: 4px 0 0;
+  text-align: start;
+}
+
+/* The run history is the one list on this screen with no natural end — a healthy integration
+   polls every few minutes, so it grows all day. Capped and scrollable rather than left to push
+   the danger zone down the page, with its own compact pager instead of the full table footer. */
+.integration-detail .runs-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.integration-detail .runs-pagination {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  justify-content: space-between;
+}
+
+.primary-button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.primary-button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
 }
 .integration-states {
   display: flex;
@@ -5429,8 +5506,68 @@ main {
   border-radius: 8px;
   background: var(--surface-subtle);
   color: var(--text);
-  font: 400 12px/1.6 "JetBrains Mono", ui-monospace, monospace;
+  font:
+    400 12px/1.6 "JetBrains Mono",
+    ui-monospace,
+    monospace;
   white-space: pre;
+}
+/* The catalogue of platforms. Cards rather than a list, because choosing what to connect to is
+   recognising a thing you already use, and a name in a dropdown is something you have to read. */
+.connector-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.connector-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.connector-card:hover,
+.connector-card:focus-visible {
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+}
+.connector-card strong {
+  font-size: 14px;
+  color: var(--text);
+}
+.connector-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+/* The fields a connector already answers for itself. Folded away by default: five questions
+   nobody has to answer read as five questions somebody has to go and research. */
+.config-advanced {
+  margin: 4px 0 2px;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.config-advanced > summary {
+  padding: 10px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.config-advanced > summary:hover {
+  color: var(--text);
+}
+.config-advanced-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 8px 0 4px;
 }
 .integration-issues {
   margin: 8px 0 0;
@@ -5468,7 +5605,10 @@ main {
 }
 .integration-secret code {
   overflow-wrap: anywhere;
-  font: 400 12px/1.5 "JetBrains Mono", ui-monospace, monospace;
+  font:
+    400 12px/1.5 "JetBrains Mono",
+    ui-monospace,
+    monospace;
 }
 .integration-secret .primary-button {
   justify-self: start;

@@ -4,9 +4,11 @@ import { connectorHealthOperation } from "@control-hub/contracts/jobs";
 import {
   backoffDelayMs,
   defaultBackoff,
+  failureCode,
   isTransientFailure,
   redact,
   type BackoffPolicy,
+  type ConnectorErrorCode,
   type ConnectorFailureKind,
   type TenantContext
 } from "@control-hub/domain";
@@ -29,7 +31,7 @@ import { EgressError } from "./guarded-fetch.js";
  */
 
 export type RunVerdict =
-  | { status: "skipped"; reason: "circuit_open" | "instance_unavailable" | "already_attempted" }
+  | { status: "skipped"; reason: "circuit_open" | "instance_unavailable" | "already_attempted" | "already_running" }
   | { status: "succeeded"; runId: string; itemsProcessed: number; cursor: string | null }
   | { status: "retry"; runId: string; errorCode: string; delayMs: number }
   | { status: "failed"; runId: string; errorCode: string }
@@ -106,16 +108,21 @@ export class ConnectorRuntime {
       return { status: "skipped", reason: "circuit_open" };
     }
 
-    const { run, started } = await repository.startRun(context, {
+    const start = await repository.startRun(context, {
       instanceId: instance.id,
       operation: request.operation,
       jobId: request.jobId,
       attempt: request.attempt,
       configVersion: instance.configVersion
     });
+    // A pass that arrives while the previous one is still going stands down, and says so rather
+    // than reporting success. The ceiling on a slow instance is one worker slot however often it
+    // is scheduled -- otherwise a provider that got slower would take the whole queue.
+    if (start.outcome === "already_running") return { status: "skipped", reason: "already_running" };
     // The queue delivers at least once. A row that already exists for this exact attempt means
     // the work was already carried out, or is being carried out right now by somebody else.
-    if (!started) return { status: "skipped", reason: "already_attempted" };
+    if (start.outcome === "already_attempted") return { status: "skipped", reason: "already_attempted" };
+    const run = start.run;
 
     const secretsSeen = new Set<string>();
     const startedAt = this.now();
@@ -141,16 +148,52 @@ export class ConnectorRuntime {
       clock: { now: () => this.now() }
     };
 
+    // Where the operation got to is the platform's to remember. A job that carried it would be
+    // handing a queue payload the authority over a cursor it may have been holding for an hour;
+    // one that names it explicitly is replaying on purpose, and that wins.
+    const cursor = request.cursor ?? (await this.storedCursor(context, instance.id, request.operation));
+
     try {
-      const result = await this.attempt(context, connector, connectorContext, instance.id, request);
+      const result = await this.attempt(context, connector, connectorContext, instance.id, {
+        ...request,
+        cursor
+      });
 
       await circuits.recordSuccess(context.tenantId, instance.id, request.operation);
+      if (request.operation !== healthOperation) {
+        await repository.saveOperationState(context, {
+          instanceId: instance.id,
+          operation: request.operation,
+          cursor: result.cursor,
+          ranAt: this.now(),
+          succeeded: true
+        });
+      }
       await repository.finishRun(context, run.id, { status: "succeeded", itemsProcessed: result.itemsProcessed });
       this.log(instance, request, run, "succeeded", startedAt, null);
       return { status: "succeeded", runId: run.id, itemsProcessed: result.itemsProcessed, cursor: result.cursor };
     } catch (error) {
+      if (request.operation !== healthOperation) {
+        // The cursor stays where it was: an attempt that failed advanced nothing. Only
+        // `last_run_at` moves, so the history says we tried and the age still says we have not
+        // succeeded since.
+        await repository.saveOperationState(context, {
+          instanceId: instance.id,
+          operation: request.operation,
+          cursor,
+          ranAt: this.now(),
+          succeeded: false
+        });
+      }
       return await this.recordFailure(context, instance, request, run, startedAt, error, secretsSeen);
     }
+  }
+
+  /** Null rather than a throw when nothing has run yet: a first pass starts from the beginning. */
+  private async storedCursor(context: TenantContext, instanceId: string, operation: string): Promise<string | null> {
+    if (operation === healthOperation) return null;
+    const state = await this.options.repository.readOperationState(context, instanceId, operation);
+    return state?.cursor ?? null;
   }
 
   /**
@@ -168,7 +211,22 @@ export class ConnectorRuntime {
     request: RunRequest
   ): Promise<{ itemsProcessed: number; cursor: string | null }> {
     if (request.operation !== healthOperation) {
+      // The manifest is what says how long the result lives, and `run` already refuses an
+      // operation it does not declare -- so this is a contradiction inside the connector, not a
+      // caller's mistake, and it fails before any call goes out.
+      const declaration = connector.capabilities.operations[request.operation];
+      if (!declaration) throw new ConnectorRunError("invalid_response", "OPERATION_NOT_DECLARED");
+
       const result = await connector.run(request.operation, connectorContext, { cursor: request.cursor });
+      // Stored, not counted and dropped. The API makes no outbound call, so a record that is not
+      // written here is a record no screen can ever show.
+      await this.options.repository.upsertRecords(context, {
+        instanceId,
+        operation: request.operation,
+        shape: declaration.shape,
+        records: result.records.map((record) => ({ externalId: record.externalId, data: record.data })),
+        seenAt: this.now()
+      });
       return { itemsProcessed: result.records.length, cursor: result.cursor };
     }
 
@@ -290,7 +348,7 @@ export class ConnectorRuntime {
 export class ConnectorRunError extends Error {
   constructor(
     public readonly failure: ConnectorFailureKind,
-    public readonly code?: string
+    public readonly code?: ConnectorErrorCode
   ) {
     super(code ?? failure);
   }
@@ -313,11 +371,15 @@ function failureKindOf(error: unknown): ConnectorFailureKind {
 /**
  * A stable code for the history and the screen. Never the provider's own words: those are
  * attacker-influenced text that would end up in a log, a ticket and a translation key.
+ *
+ * The return type is the vocabulary rather than `string`, which is what keeps this honest: a new
+ * code thrown anywhere upstream has to be declared in `@control-hub/domain` before it compiles,
+ * and declaring it is what a test then requires words for in all three languages.
  */
-function errorCodeOf(error: unknown, failure: ConnectorFailureKind): string {
+function errorCodeOf(error: unknown, failure: ConnectorFailureKind): ConnectorErrorCode {
   if (error instanceof EgressError) return error.code;
   if (error instanceof ConnectorRunError && error.code) return error.code;
-  return failure.toUpperCase();
+  return failureCode(failure);
 }
 
 function messageOf(error: unknown): string {

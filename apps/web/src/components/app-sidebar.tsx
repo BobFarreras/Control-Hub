@@ -47,6 +47,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const projectsEnabled = useFeature("projects_and_time");
   const attendanceEnabled = useFeature("attendance");
   const connectorsEnabled = useFeature("connectors");
+  const infrastructureEnabled = useFeature("infrastructure");
   const attendanceStatus = useAttendanceStatus();
   const attendanceMonth = searchParams.get("month");
   const monthQuery = attendanceMonth ? `&month=${attendanceMonth}` : "";
@@ -131,7 +132,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
             </div>
           </details>
         )}
-        {item("#", labels.infrastructure, CloudCog)}
+        {infrastructureEnabled && item(`/${locale}/infrastructure`, labels.infrastructure, CloudCog)}
         {connectorsEnabled && item(`/${locale}/integrations`, labels.integrations, Boxes)}
         {item(`/${locale}/security`, labels.settings, Settings)}
       </nav>

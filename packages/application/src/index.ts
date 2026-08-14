@@ -4,6 +4,7 @@ export * from "./connector-credentials.js";
 export * from "./connector-ingress.js";
 export * from "./connector-instances.js";
 export * from "./connectors.js";
+export * from "./infrastructure.js";
 export * from "./customer-services.js";
 export * from "./company-subscriptions.js";
 export * from "./support.js";

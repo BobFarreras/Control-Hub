@@ -33,6 +33,17 @@ export const featureFlags = {
     description: "Connector contract, credential vault, outbound calls and signed webhooks (Phase 6).",
     owner: "owner",
     retireOn: "2027-06-30"
+  },
+  /**
+   * Off by default, and it gates more than a screen: with it closed the worker schedules no
+   * connector operation at all and removes any schedule it finds. A phase that polls a provider
+   * every five minutes has to be switchable off from the outside, or the only way to stop it is a
+   * deploy. See `docs/specifications/infrastructure.md`.
+   */
+  infrastructure: {
+    description: "Infrastructure and n8n: pulled records, scheduled operations, alerts (Phase 7).",
+    owner: "owner",
+    retireOn: "2027-12-31"
   }
 } as const;
 

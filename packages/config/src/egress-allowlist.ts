@@ -71,7 +71,5 @@ export function isAllowlistedDestination(allowlist: readonly AllowedDestination[
   const port = url.port ? Number(url.port) : defaultPorts[url.protocol];
   if (port === undefined) return false;
   const hostname = normalizeHostname(url.hostname);
-  return allowlist.some(
-    (entry) => entry.scheme === url.protocol && entry.hostname === hostname && entry.port === port
-  );
+  return allowlist.some((entry) => entry.scheme === url.protocol && entry.hostname === hostname && entry.port === port);
 }

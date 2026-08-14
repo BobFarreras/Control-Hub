@@ -97,9 +97,7 @@ export function TicketDetail({
               </span>
             )}
           </div>
-          {ticket.description && (
-            <p className="ticket-identity-description">{ticket.description}</p>
-          )}
+          {ticket.description && <p className="ticket-identity-description">{ticket.description}</p>}
         </div>
       </section>
 

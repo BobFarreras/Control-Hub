@@ -1,10 +1,11 @@
-import type { CapabilityManifest, ConfigIssue, RegisteredConnector } from "@control-hub/connectors";
+import type { CapabilityManifest, ConfigField, ConfigIssue, RegisteredConnector } from "@control-hub/connectors";
 import { hasPermission, type TenantContext } from "@control-hub/domain";
 import type {
   ConfigValue,
   ConnectorConfig,
   ConnectorInstanceRecord,
   ConnectorRepository,
+  DeletedInstanceSummary,
   RunPage
 } from "./connectors.js";
 
@@ -36,6 +37,8 @@ export class ConnectorServiceError extends Error {
 export type ConnectorCatalogueEntry = {
   type: string;
   contractVersion: number;
+  /** What an operator has to fill in, so a screen can draw a form instead of asking for JSON. */
+  configFields: readonly ConfigField[];
   credentialKinds: readonly string[];
   capabilities: CapabilityManifest;
 };
@@ -149,6 +152,7 @@ export class ConnectorService {
             {
               type: connector.type,
               contractVersion: connector.contractVersion,
+              configFields: connector.configFields,
               credentialKinds: connector.credentialKinds,
               capabilities: connector.capabilities
             }
@@ -225,6 +229,31 @@ export class ConnectorService {
     const instance = await this.setStatus(context, instanceId, "disabled");
     const revokedCredentials = await this.repository.revokeCredentials(context, instanceId);
     return { instance, revokedCredentials };
+  }
+
+  /**
+   * Removes an integration and everything the schema hangs off it.
+   *
+   * Distinct from disabling, and deliberately so: disabling keeps the configuration, the history
+   * and the links while stopping the work, which is what somebody who only wants it to stop
+   * actually wants. This is for the other case, and it does not come back.
+   *
+   * There is no precondition of state. The stopping that `disable` performs — revoking, closing
+   * the ingress, ending the schedules — is rows that this removes outright in the same
+   * transaction, and the two pieces of state that live outside PostgreSQL heal themselves: the
+   * reconciler drops any schedule it no longer wants, and the runtime skips a job whose instance
+   * it cannot find. Demanding "disable it first" would be a rule a screen enforces rather than
+   * the system, and its predictable outcome is an integration half removed.
+   *
+   * What it cannot do is revoke the credential at the provider. We forget the envelope; the token
+   * stays valid over there until somebody withdraws it, which is the same lesson as the key
+   * rotation runbook and which the screen has to say out loud.
+   */
+  async delete(context: TenantContext, instanceId: string): Promise<DeletedInstanceSummary> {
+    requireManage(context);
+    const deleted = await this.repository.deleteInstance(context, instanceId);
+    if (!deleted) throw new ConnectorServiceError("INSTANCE_NOT_FOUND");
+    return deleted;
   }
 
   /**

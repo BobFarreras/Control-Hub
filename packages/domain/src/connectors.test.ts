@@ -4,8 +4,11 @@ import {
   backoffDelayMs,
   circuitAllows,
   closedCircuit,
+  connectorErrorCodes,
+  connectorFailureKinds,
   connectorHealth,
   defaultBackoff,
+  failureCode,
   defaultCircuitPolicy,
   isTransientFailure,
   recordCircuitFailure,
@@ -270,5 +273,43 @@ describe("urls in logs", () => {
   it("censors anything it cannot parse rather than echoing it into the log", () => {
     expect(safeUrlForLog("not a url at all")).toBe("[REDACTED]");
     expect(safeUrlForLog("")).toBe("[REDACTED]");
+  });
+});
+
+/**
+ * The vocabulary of failure.
+ *
+ * A run that fails stores a code, and a screen turns that code into a sentence. Both ends have to
+ * agree on the same closed list, or the screen quietly falls back to "the operation could not be
+ * completed" — which is what an operator was told when the real answer was that the address was
+ * not on the allowlist, a thing they could have fixed in a minute.
+ *
+ * The list lives here rather than where the codes are thrown because there are three throwers and
+ * one reader. What this file owns is the agreement; `apps/worker` may only use a member of it, and
+ * `packages/i18n` has to have words for every member.
+ */
+describe("the vocabulary of failure", () => {
+  it("has a code for every kind of failure a run can end in", () => {
+    for (const kind of connectorFailureKinds) {
+      expect(connectorErrorCodes, kind).toContain(kind.toUpperCase());
+    }
+  });
+
+  it("names each code once, so a sentence cannot be written for it twice", () => {
+    expect(new Set(connectorErrorCodes).size).toBe(connectorErrorCodes.length);
+  });
+
+  /**
+   * The conversion is uppercasing and nothing else. It is a function rather than a call site so
+   * the type of the result is a member of the vocabulary instead of `string`, which is what makes
+   * a code with no sentence a compile error rather than a fallback nobody notices.
+   */
+  it("turns a kind of failure into its code", () => {
+    expect(failureCode("blocked_destination")).toBe("BLOCKED_DESTINATION");
+    expect(failureCode("timeout")).toBe("TIMEOUT");
+  });
+
+  it("says nothing about codes it does not know", () => {
+    expect(connectorErrorCodes).not.toContain("PROVIDER_SAID_NO");
   });
 });

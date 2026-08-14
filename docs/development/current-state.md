@@ -24,8 +24,90 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**La Fase 7 (infraestructura i connector n8n), que encara no te ni branca ni disseny aprovat.**
-Comenca com totes: especificacio curta primer, i implementacio despres.
+**Tancar la branca.** L'A9b esta sencer: la 7.1 planificada (A1-A6) i els A7-A9 que van sortir
+d'usar-la. Queda passar `pnpm check` i `pnpm check:e2e` sencers —no han corregut complets des de
+l'A9a— i fusionar la `feature/phase-7-1-infrastructure-n8n` a `develop`. Llavors ja si,
+**l'entrega 7.2**, que comenca per l'increment B1.
+
+El xoc de numeracio que aixo va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per al
+permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a
+`infrastructure.md` abans de comencar-lo i no despres d'aplicar-lo.
+
+Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
+sencera, amb la pantalla `/{locale}/infrastructure` i el runbook de l'error workflow d'n8n. Els
+increments **A7 a A9** no eren al pla: surten d'usar el producte de debo un cop l'n8n va quedar
+connectat, i tots toquen la pantalla d'integracions, per aixo el que decideixen queda documentat
+a la seccio de la Fase 6 i no en aquesta taula. **La integracio d'n8n funciona en real**: el
+connector s'activa, la comprovacio de salut passa i a Infraestructura es veuen els automatismes
+de la instancia.
+
+A5 i A6 han anat en dos commits cadascun **a proposit**: un de sol amb migracio, domini,
+aplicacio, persistencia, API i worker no el pot revisar ningu, i el mateix val per un que barregi
+el constructor d'enllac amb la pantalla sencera. Cadascun passa `pnpm check` pel seu compte.
+
+La **Fase 7 esta aprovada i partida en dues entregues**, especificades a
+`docs/specifications/infrastructure.md` (aprovada el 12 d'agost de 2026):
+
+- **7.1 — plataforma, n8n i pantalla** (increments A1 a A6), a la branca
+  `feature/phase-7-1-infrastructure-n8n`. Entregable tota sola: workflows d'n8n amb el seu estat,
+  execucions fallides, associacio amb el client, enllac extern validat i alertes que obren
+  incidencia.
+- **7.2 — Prometheus, inventari i alertes d'infraestructura** (increments B1 a B4). Depen de la
+  7.1: sense magatzem ni programador no te on aterrar.
+
+**Fet fins ara:**
+
+| # | Que hi ha | On |
+|---|---|---|
+| A1 | La flag `infrastructure` registrada i apagada, i l'especificacio aprovada a l'index | `packages/config/src/flags.ts`, `docs/specifications/infrastructure.md` |
+| A2 | G1 tapat: `connector_records` i `connector_operation_state` (`0033`), forma per operacio al manifest, cursor persistit i purga horaria | `packages/database/migrations/0033_connector_records.sql`, `packages/connectors/src/contract.ts`, `packages/application/src/connectors.ts`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/` |
+| A3 | G2 i G3 tapats: cadencia al manifest amb minim de 60 s, cua `connectors` a part, reconciliador de calendari cada 2 minuts, una execucio alhora per operacio (`0034`) i confinament a la base sota `operator_allowlist` | `packages/connectors/src/contract.ts`, `packages/contracts/src/connector-jobs.ts`, `packages/database/migrations/0034_connector_run_lease.sql`, `packages/persistence/src/connector-repository.ts`, `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
+| A4 | Connector `n8n`: `pull_workflows` i `pull_executions` amb marca d'aigua, salut autenticada i entrada de l'error workflow signada. Del que n8n dona se'n desa una projeccio, mai el cos | `packages/connectors/src/built-in/n8n.ts` i el seu test |
+| A5 (1/2) | Migracio `0035` (`infra_automation_links`, `infra_alert_rules`, `infra_alert_events` amb l'index unic parcial i la purga de resoltes) i el motor de veredictes pur: `firing`, `resolved` i `starved` | `packages/database/migrations/0035_infrastructure_automations.sql`, `packages/domain/src/infrastructure.ts` |
+| A5 (2/2) | Casos d'us i motor d'alertes (`InfrastructureService` i `AlertEngine`), adaptador PostgreSQL, la superficie `/api/v1/infrastructure` darrere la flag amb problem details, i al worker l'escombrada d'alertes cada 2 minuts i la purga de resoltes a 180 dies | `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/worker/src/infrastructure/` |
+| A6 (1/2) | El constructor d'enllac extern validat, la lectura de l'edat i l'estat d'una alerta, i el diccionari `ca`/`es`/`en` | `apps/web/src/lib/infrastructure-link.ts`, `apps/web/src/lib/infrastructure.ts`, `packages/i18n/src/index.ts` |
+| A6 (2/2) | La pantalla `/{locale}/infrastructure` (resum, automatitzacions amb la seva edat, alertes vives i regles), l'entrada del menu darrere la flag, l'OpenAPI del modul i el runbook de l'error workflow | `apps/web/src/app/[locale]/infrastructure/page.tsx`, `apps/web/src/components/infrastructure-workspace.tsx`, `apps/api/src/openapi.test.ts`, `docs/runbooks/n8n-error-workflow.md` |
+
+L'A2 canvia el contracte de connector: **`capabilities.operations` ja no es una llista de noms
+sino un registre `{ nom: { shape } }`**, i la forma decideix com caduquen els registres d'aquella
+operacio. Els valors de retencio son a `docs/specifications/data-governance.md` i el que ha de
+saber qui escriu un connector, a `docs/development/writing-a-connector.md`.
+
+La purga corre cada hora i **deliberadament no mira la flag**: si es tanques amb files ja escrites,
+apagar la flag deixaria de fer-les caducar en comptes de deixar d'escriure'n de noves.
+
+L'A3 fa el mateix amb el reconciliador de calendari, i pel mateix motiu: corre cada dos minuts
+passi el que passi, i **amb la flag apagada la seva feina es esborrar-los tots**. Una flag que
+nomes evites programar de nou deixaria els calendaris antics sondejant proveidors sense cap manera
+d'aturar-los que no fos un desplegament. Tambe seu: les operacions no van per la cua `system` sino
+per una de propia, `connectors`, amb concurrencia 4, i la migracio `0034` posa un sostre d'una
+execucio alhora per `(instancia, operacio)` amb un arrendament de 10 minuts.
+
+**El motor d'alertes es pur i encara no el crida ningu**: viu a
+`packages/domain/src/infrastructure.ts`, entren regles, registres i rellotge, i surten veredictes.
+La decisio que mes hi pesa es que **frescor va abans que veredicte**: una regla amb dades mes
+velles que el seu pressupost queda `starved`, i llavors **no resol el que ja estava disparat** —
+perdre de vista n8n no ha de semblar que tots els workflows s'han arreglat alhora.
+
+**El connector `n8n` ja es al registre, pero encara no el fa servir ningu**: cal una instancia
+creada per la pantalla d'integracions, amb la seva `api_token` desada a la caixa forta, i la flag
+`infrastructure` oberta perque el reconciliador li programi res. Els seus contract tests van contra
+fixtures escrites des del contracte public documentat de l'API v1, **no capturades d'una instancia
+real** — l'acces a produccio es fora d'abast d'aquesta fase. El dia que se sapiga la versio d'n8n
+de la VPS, les fixtures s'hi fixen i el test la nomena.
+
+**No confondre amb la "Fase 7B - Accions i credencials OAuth"** que hi ha proposada a
+`IMPLEMENTATION_PLAN.md`: es una fase diferent i posterior. Per aixo la particio d'aquesta va amb
+decimals i no amb lletres.
+
+**Els tres forats de la Fase 6 que la 7.1 ha de tapar**, verificats contra el codi i acceptats pel
+propietari — s'arreglen a la plataforma, amb la seva prova, mai al connector:
+
+| # | Que falla | On |
+|---|---|---|
+| G1 | ~~El runtime compta els `records` d'una operacio i els llenca; el cursor no el desa ningu~~ **Tapat a l'A2** | `apps/worker/src/connectors/runtime.ts` |
+| G2 | ~~L'unica operacio que algu encua es el health check: no es pot programar cap altra~~ **Tapat a l'A3** | `apps/worker/src/connectors/schedule.ts`, `apps/worker/src/index.ts` |
+| G3 | ~~Amb `operator_allowlist`, `guarded-fetch` no confina a la base configurada~~ **Tapat a l'A3**, i sense base configurada segueix funcionant com abans | `apps/worker/src/connectors/guarded-fetch.ts` |
 
 ## La Fase 6, tancada
 
@@ -144,8 +226,95 @@ no arrossega ni una configuracio a mig editar ni un secret encunyat. Qui nomes t
 un boto que falla en clicar-lo. El llistat s'ordena, es filtra i es pagina **a la pagina**, perque
 `GET /api/v1/integrations` respon amb totes les instancies del tenant i sense paginacio; el dia
 que aquesta llista deixi de cabre en una resposta, el fitxer que ha de canviar es la pagina. La
-configuracio es un camp JSON perque es l'unica forma que generalitza a connectors que aquesta
-versio encara no porta, i les incidencies es dibuixen amb cami i codi, mai amb el valor escrit.
+configuracio **es un formulari que dicta el connector**, i connectar una plataforma es triar-la
+d'un cataleg de targetes i respondre el que aquella plataforma demana. El connector nomes tria
+com es dibuixa cada camp i per a que serveix; si es obligatori i quin valor per defecte porta es
+llegeixen del seu propi esquema, amb una sola pregunta, de manera que les dues respostes no es
+poden contradir. Els camps de **connexio** es pregunten obertament i els de **comportament** es
+plegan, perque tots ells ja es responen sols — i `defineConnector` refusa a la carrega del modul
+tant un camp obligatori declarat com a plegable com una llista que hagi divergit de l'esquema en
+qualsevol direccio. La que importa mes: **una clau de configuracio sense camp es una clau que
+ningu pot omplir des d'una pantalla**, i era exactament aixo el que obligava a configurar una
+integracio per `curl`. Les incidencies cauen sobre el camp que les ha provocat i obren el
+desplegable si el camp hi era plegat; les que no nomenen cap camp declarat es dibuixen amb cami i
+codi, mai amb el valor escrit. Un connector que aquesta versio ja no porta no te camps ni res que
+accepti una edicio: la seva configuracio **es mostra, no s'ofereix**. La credencial s'escriu des
+del mateix dialeg que crea la integracio —quan el connector es dels que surten a buscar dades— i
+tambe des del panell, en un camp que exigeix `credentials:rotate` —que no es el permis que
+gestiona la integracio— i que no es torna a llegir mai: cap ruta d'aquesta API en retorna el
+valor, i el formulari es buida en enviar-lo.
+
+Quan una execucio falla, **la pantalla diu que ha fallat**, no que alguna cosa ha fallat. El
+conjunt de codis que una execucio pot desar es tancat i el declara `@control-hub/domain`, de
+manera que el worker no en pot llencar cap que no en sigui membre i una prova exigeix, per a cada
+codi i cada llengua, una frase que no sigui la generica. Van a un espai propi (`runError*`) perque
+`FORBIDDEN` de l'API vol dir que et falta un permis i `FORBIDDEN` d'una execucio vol dir que el
+proveidor ha refusat la credencial: una sola clau en diria una de les dues malament.
+
+**El que l'A9b deixa decidit i no s'ha de tornar a decidir.** Desactivar ja es l'arxiu —conserva
+tot i atura la feina—, aixi que esborrar vol dir que la integracio no hi es. Es **una sola
+sentencia** contra `connector_instances` i la cascada de l'esquema s'emporta la resta; no hi ha
+cap llista de taules escrita a ma, perque seria la copia que un dia deixa de quadrar. La `0036`
+obre **un sol privilegi**, `delete` sobre `connector_instances`: les files de sota segueixen sent
+inabastables d'una en una, i se'n van nomes com a consequencia. Una peticio no pot esborrar
+l'evidencia del que una integracio va fer; nomes pot retirar la integracio.
+
+Dues respostes que no son al text del SQL i que per tant es proven contra PostgreSQL a
+`connector-repository.integration.test.ts`, no es donen per bones: **una cascada no necessita
+privilegi de `delete` a les taules que referencien** (corre amb els privilegis del propietari) i
+**la RLS forçada no la barra**. La prova munta una instancia amb fila a les nou taules i n'exigeix
+zero despres.
+
+**L'historial d'execucions se'n va; l'auditoria es queda.** `audit_log.target_id` es text sense
+clau forana, de manera que `connector_instance.deleted` sobreviu a la instancia que anomena, i
+per aixo porta el nom, el tipus, l'estat i quantes credencials, execucions i adreces se n'han
+anat: es tot el que una investigacio tindra. **Sense precondicio d'estat**: es pot esborrar una
+instancia activa, perque el reconciliador ja treu el calendari que no vol i el runtime ja deixa
+caure una feina d'una instancia que no troba. El que no podem fer es revocar la credencial al
+proveidor, i la pantalla ho ha de dir.
+
+**L'A9b (2/3) treu la fitxa d'una integracio del panell i li dona ruta propia.** Configuracio,
+adreca d'entrada, credencials i execucions ja no comparteixen mig ecran amb la taula:
+`/{locale}/integrations/[instanceId]` es una pagina, amb la mateixa navegacio de tornada que
+qualsevol altra fitxa del producte, i la llista recupera l'amplada sencera. El formulari de
+configuracio viu en un sol component (`connector-forms.tsx`) que usen alhora el dialeg de creacio
+i la fitxa, perque un formulari que divergeix entre les dues pantalles es la mena de deriva que
+no es descobreix fins que un camp accepta una cosa en un lloc i una altra a l'altre. Els enllacos
+antics amb `?selected=<id>` es redirigeixen a la fitxa **nomes si el valor te forma
+d'identificador**; qualsevol altra cosa s'ignora en comptes d'escapar-se, perque aquell valor
+acaba dins d'un cami i no hi ha cap `../..` legitim a preservar.
+
+El dialeg d'esborrat exigeix escriure el nom exacte abans d'activar el boto de confirmar —friccio
+deliberada, no el control que decideix, que es el permis comprovat a l'API— i llista que se
+n'emporta abans de deixar fer res. Provat contra la pila de verificacio (port 3002): les tres
+proves d'`integrations.authenticated.spec.ts` (connectar, refusar un valor, esborrar) passen amb
+un usuari real i base neta.
+
+**Les execucions no tenen final natural, i la pantalla ho havia de saber.** Un connector sa fa
+`pull_executions` cada cinc minuts i `pull_workflows` cada quinze —es la cadencia que declara
+`n8n.ts`, no un simptoma—, aixi que una integracio oberta un dia sol ja te centenars de files. La
+llista es pagina contra la mateixa ruta `GET /runs` que ja paginava, amb el seu propi peu de
+pagina en comptes del de la taula, i queda capada en alcada amb desplacament propi perque no
+empenyi la zona de perill avall de la pantalla. Dos defectes visuals van sortir de fer-la servir
+de debo, no de cap prova: les files d'execucio posaven un `StatusPill` sencer a la columna de 14px
+que `.timeline` reserva per a un punt, i es solapava amb el text —arreglat amb l'estructura
+`.timeline-mark`/`.timeline-body` que ja fa servir `project-detail.tsx`—; i la graella de dues
+columnes estirava cada panell a l'alcada del mes alt de la seva fila, aixi que un panell curt
+("Cap credencial") es veia amb un buit enorme sota el text —arreglat amb `align-items: start`.
+
+**L'A9b (3/3) fa que la taula respongui sense que ningu hi entri.** La fila duu la marca i el nom
+del proveidor en comptes del tipus en kebab-case, la salut amb el seu motiu llegit del vocabulari
+de les execucions (`runError*`, mai el de l'API: `FORBIDDEN` vol dir coses diferents als dos), i
+**l'antiguitat** de la lectura en comptes d'una marca de temps —amb avis explicit quan es massa
+vella, perque una fila que digui «sana» de fa tres hores no es sana, es que ningu l'ha mirada. Cap
+camp nou a l'API: el llistat ja portava `health.lastErrorCode` i `health.checkedAt`. L'edat es
+calcula al servidor i baixa per props, com ja feia infraestructura, perque el "ara" del client no
+es el del servidor i la diferencia es una discrepancia d'hidratacio.
+
+`readingAge` i `ageLabel` es reaprofiten de `lib/infrastructure` en comptes de duplicar-se: el
+llindar de 45 minuts hi te el mateix sentit (tres passades de `pull_workflows` que no han passat).
+Les paraules de l'edat si que es repeteixen al diccionari d'integracions, perque els dos espais de
+noms son deliberadament independents.
 
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i
@@ -188,10 +357,14 @@ El detall i els checks dels increments de consolidacio previs son a
   navegable amb teclat, pero el patro ARIA d'un desplegable d'aquest tipus vol
   `role="combobox"` al boto. Afegir-l'hi obliga a repassar els localitzadors de tres suites E2E
   a la vegada, aixi que es una feina propia, no un afegit a una altra.
-- L'entrada **Infraestructura** del menu lateral es un `href="#"` que no porta enlloc
-  (`apps/web/src/components/app-sidebar.tsx`). Es deixa a posta, reservada per a la pantalla
-  d'infraestructura que encara no te especificacio; no s'ha de confondre amb **Integracions**,
-  que si que existeix i viu darrere el flag `connectors`.
+- La pantalla d'**Infraestructura** ensenya l'**estat actual amb l'edat de la lectura**, i cap
+  grafic historic: `connector_records` guarda l'ultim valor de cada cosa observada, no la serie.
+  Una serie temporal entraria com una consulta a demanda al connector, sense passar pel magatzem
+  (decisio 3 de `docs/specifications/infrastructure.md`).
+- L'enllac cap a n8n **el construeix el servidor**, no el navegador: la resposta
+  d'infraestructura no porta cap adreca de proveidor, i la base surt de la superficie
+  d'integracions, que demana el seu propi permis. Sense aquell permis no hi ha enllacos i els
+  noms es dibuixen com a text, que es el mateix resultat que una base que ningu ha configurat.
 
 ## Feature flags
 
@@ -205,13 +378,23 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   d'integracions ni de webhooks, la web no mostra l'entrada del menu i `/{locale}/integrations`
   respon 404. Obrir-la sense `CONNECTOR_KEY_RING` deixa la pantalla en peu pero sense credencials
   ni endpoints: aquelles rutes no existeixen en aquell desplegament.
+- `infrastructure` — apagada per defecte, registrada a l'increment A1 de la Fase 7.1. Apagada:
+  **cap ruta `/api/v1/infrastructure` declarada** —l'API respon 404, que es la veritat—, el
+  reconciliador esborra tots els calendaris de connector de Valkey i no en programa cap, i el
+  worker treu del calendari l'escombrada d'alertes. La purga de les alertes resoltes, en canvi,
+  **no mira la flag**: files escrites amb la flag oberta han de caducar igual quan es tanqui.
+  A la web, tancada vol dir **cap entrada al menu lateral i `/{locale}/infrastructure` responent
+  404**; oberta, la pantalla i l'entrada hi son. La suite E2E corre amb la flag oberta
+  (`.github/workflows/ci.yml`), i el 404 amb la flag tancada el prova `apps/api/src/app.test.ts`
+  a l'API i la guarda de la pagina a la web.
 
 ## Superficie executable
 
 - Web canonica: `http://localhost:3001`.
 - API interna: `http://127.0.0.1:4000`; el navegador usa exclusivament `/api/*` via Next.js.
 - Rutes operatives: dashboard, CRM, detall de client, productes, serveis de clients, eines i
-  despeses recurrents, suport, projectes, barems, jornada i seguretat.
+  despeses recurrents, suport, projectes, barems, jornada, integracions, infraestructura i
+  seguretat. Projectes, jornada, integracions i infraestructura, nomes amb la seva flag oberta.
 - `/{locale}/commerce` es una redireccio de compatibilitat cap a `/{locale}/products`.
 - Locales obligatoris: `ca`, `es` i `en`; temes obligatoris: light i dark.
 
@@ -284,6 +467,10 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   `(tenant_id, endpoint_id, provider_event_id)`, que es la idempotencia d'ingress feta complir
   per la base i no per una lectura que dos workers poden creuar. Cap permis nou: `integrations:read`,
   `integrations:manage` i `credentials:rotate` existeixen des de la `0003`.
+- `0036_connector_instance_delete.sql`: un sol `grant delete` sobre `connector_instances`, i cap
+  mes. Reverteix una linia de la `0030` —que no donava `delete` enlloc— nomes per a la instancia:
+  esborrar-ne una s'emporta el que hi penja per cascada, i les files de sota segueixen sense
+  poder-se esborrar d'una en una.
 - `pnpm db:seed:dev`: dades representatives locals, idempotents i sense esborrar dades. **Encara
   no sembra projectes ni imputacions.**
 

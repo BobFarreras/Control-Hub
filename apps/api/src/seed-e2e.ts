@@ -324,6 +324,104 @@ try {
     )
     where tenant_id = ${tenantId} and id = ${conversationId} and first_response_at is null`;
 
+  // -------------------------------------------------------------------- infrastructure fixture
+
+  /**
+   * An n8n integration nobody has to reach.
+   *
+   * The screen composes the address of a workflow out of the base configured here and the id the
+   * provider gave, and the suite asserts the address it composed rather than following it: what
+   * is under test is that we build the link, not that an n8n is listening on this machine. The
+   * base is a loopback address for that same reason -- a fixture naming a real host would be a
+   * fixture that could reach one.
+   *
+   * Two workflows, because one of them has to be old. A reading whose age the screen has to
+   * report as stale cannot be produced by a fresh seed; it has to be seeded stale.
+   */
+  const infrastructureFixture = {
+    instance: "n8n E2E",
+    baseUrl: "http://127.0.0.1:5678",
+    fresh: { externalId: "workflow:e2e-fresh", name: "E2E Sincronitzacio nocturna" },
+    stale: { externalId: "workflow:e2e-stale", name: "E2E Informe setmanal" },
+    rule: "E2E Automatitzacio que falla",
+    customer: customers[0][0]
+  } as const;
+
+  const connectorInstanceId = id(`${tenantId}:connector:n8n-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${connectorInstanceId}, ${tenantId}, 'n8n', ${infrastructureFixture.instance}, 'enabled',
+      ${database.json({ baseUrl: infrastructureFixture.baseUrl })}, 'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const workflows = [
+    { entry: infrastructureFixture.fresh, active: true, minutesAgo: 2 },
+    { entry: infrastructureFixture.stale, active: false, minutesAgo: 300 }
+  ] as const;
+  for (const workflow of workflows)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${workflow.entry.externalId}`)}, ${tenantId}, ${connectorInstanceId},
+        'pull_workflows', ${workflow.entry.externalId}, 'state',
+        ${database.json({ name: workflow.entry.name, active: workflow.active, archived: false, tags: ["e2e"] })},
+        now() - '2 days'::interval, now() - ${`${workflow.minutesAgo} minutes`}::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  const alertRuleId = id(`${tenantId}:infra-rule:workflow-failed`);
+  await database`
+    insert into infra_alert_rules (
+      id, tenant_id, name, kind, instance_id, target_type, target_id, params, severity,
+      freshness_seconds, opens_incident, enabled
+    )
+    values (
+      ${alertRuleId}, ${tenantId}, ${infrastructureFixture.rule}, 'workflow_failed', ${connectorInstanceId},
+      'instance', null, ${database.json({ withinMinutes: 60, minimumFailures: 1 })}, 'high', 900, false, true
+    )
+    on conflict (id) do update set enabled = true, severity = excluded.severity, updated_at = now()`;
+
+  /**
+   * One live alert, so the suite has something to acknowledge.
+   *
+   * Reset on every run, and for the same reason the tickets are: acknowledging is one way, and a
+   * Playwright retry happens inside a run, long after this seed. The sweep would be the other way
+   * to produce one, and it is not what this suite is testing.
+   */
+  await database`
+    insert into infra_alert_events (
+      id, tenant_id, rule_id, dedup_key, status, severity, summary, started_at, last_seen_at, occurrences
+    )
+    values (
+      ${id(`${tenantId}:infra-alert:workflow-failed`)}, ${tenantId}, ${alertRuleId},
+      ${infrastructureFixture.fresh.externalId}, 'firing', 'high',
+      ${database.json({ workflowId: "e2e-fresh", failures: "2" })},
+      now() - '30 minutes'::interval, now(), 2
+    )
+    on conflict (id) do update set
+      status = 'firing',
+      resolved_at = null,
+      acknowledged_at = null,
+      acknowledged_by_membership_id = null,
+      last_seen_at = now(),
+      occurrences = excluded.occurrences`;
+
+  // The association the screen shows in the client column, so the suite reads one it did not
+  // have to create first.
+  await database`
+    insert into infra_automation_links (id, tenant_id, instance_id, external_id, customer_id)
+    values (
+      ${id(`${tenantId}:infra-link:fresh`)}, ${tenantId}, ${connectorInstanceId},
+      ${infrastructureFixture.fresh.externalId}, ${id(`${tenantId}:customer:${customers[0][1]}`)}
+    )
+    on conflict (tenant_id, instance_id, external_id) do update
+      set customer_id = excluded.customer_id, updated_at = now()`;
+
   // ------------------------------------------------------------------------- hand over the keys
 
   await mkdir(dirname(credentialsPath), { recursive: true });
@@ -341,7 +439,8 @@ try {
         subjects: Object.fromEntries(tickets.map((ticket) => [ticket.key, ticket.subject])),
         internalNote: conversation.find((message) => message.visibility === "internal")!.body,
         customerReply: conversation.find((message) => message.visibility === "customer")!.body,
-        commerce: commerceFixture
+        commerce: commerceFixture,
+        infrastructure: infrastructureFixture
       },
       null,
       2

@@ -100,10 +100,19 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
   return {
     type: entry.type,
     contractVersion: entry.contractVersion,
+    // Written out field by field like every other response here, so a descriptor that grows a
+    // property later does not reach a client by existing.
+    configFields: entry.configFields.map((field) => ({
+      name: field.name,
+      kind: field.kind,
+      group: field.group,
+      required: field.required,
+      defaultValue: field.defaultValue
+    })),
     credentialKinds: entry.credentialKinds,
     capabilities: {
       egress: entry.capabilities.egress,
-      operations: entry.capabilities.operations,
+      operations: Object.keys(entry.capabilities.operations),
       ingress: entry.capabilities.ingress
     }
   };
@@ -185,13 +194,19 @@ export function registerIntegrationRoutes({
         tags: ["connectors"],
         summary: "What this release can connect to",
         description:
-          "The connectors compiled into this build, with the operations and credential kinds each declares. A type absent here cannot be installed: the registry is resolved at build time, not from the database."
+          "The connectors compiled into this build, with the operations and credential kinds each declares. A type absent here cannot be installed: the registry is resolved at build time, not from the database. `vaultAvailable` says whether this installation can hold a secret at all, so a screen knows before it offers to take one."
       }
     },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "integrations:read");
-      return { connectors: connectors.catalogueEntries(context).map(catalogueResponse) };
+      return {
+        connectors: connectors.catalogueEntries(context).map(catalogueResponse),
+        // Whether a secret can be stored is a property of the installation, not of a connector or
+        // of any one instance — and a screen has to know it before it draws a field to take one,
+        // which is earlier than it has any instance to ask about.
+        vaultAvailable: credentials !== null
+      };
     }
   );
 
@@ -357,6 +372,48 @@ export function registerIntegrationRoutes({
         metadata: { connectorType: instance.connectorType, revokedCredentials }
       });
       return { integration: instanceResponse(instance), revokedCredentials };
+    }
+  );
+
+  app.delete<{ Params: { instanceId: string } }>(
+    "/api/v1/integrations/:instanceId",
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["integrations"],
+        summary: "Remove an integration for good",
+        description:
+          "Removes the instance and, with it, its configuration, credentials, ingress address, run history, stored records and any infrastructure links and alert rules that read it. Not the same as disabling: `disable` stops the work and keeps all of that, and is what somebody who only wants it to stop should use. The response says how many credentials, runs and endpoints went. What this cannot do is withdraw the credential at the provider, which stays valid until somebody revokes it there."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId } = request.params;
+      await requireAudited(context, request, "integrations:manage", {
+        action: "connector_instance.deleted",
+        targetType: "connector_instance",
+        targetId: instanceId
+      });
+      const { instance, removed } = await connectors.delete(context, instanceId);
+      // Written after the row is gone, and it survives it: `audit_log.target_id` is text with no
+      // foreign key, so this line stays readable when the instance it names no longer exists.
+      // It is the whole of what a later investigation has, which is why it carries the counts and
+      // the name rather than only the identifier.
+      await writeAudit(database, context, request, {
+        action: "connector_instance.deleted",
+        targetType: "connector_instance",
+        targetId: instance.id,
+        outcome: "success",
+        metadata: {
+          connectorType: instance.connectorType,
+          name: instance.name,
+          status: instance.status,
+          revokedCredentials: removed.credentials,
+          removedRuns: removed.runs,
+          removedEndpoints: removed.endpoints
+        }
+      });
+      return { removed };
     }
   );
 
