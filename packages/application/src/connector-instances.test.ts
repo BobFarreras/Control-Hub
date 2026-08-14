@@ -7,6 +7,7 @@ import type {
   ConnectorInstanceRecord,
   ConnectorRepository,
   CreateInstanceInput,
+  DeletedInstanceSummary,
   RunPage
 } from "./connectors.js";
 
@@ -69,6 +70,7 @@ const catalogue = { types: () => ["demo"], find: (type: string) => (type === "de
 class FakeRepository {
   readonly instances = new Map<string, ConnectorInstanceRecord>();
   readonly revoked: string[] = [];
+  readonly deleted: string[] = [];
   private next = 0;
 
   constructor() {
@@ -141,6 +143,14 @@ class FakeRepository {
   revokeCredentials(_context: TenantContext, id: string): Promise<number> {
     this.revoked.push(id);
     return Promise.resolve(2);
+  }
+
+  deleteInstance(_context: TenantContext, id: string): Promise<DeletedInstanceSummary | null> {
+    const instance = this.instances.get(id);
+    if (!instance) return Promise.resolve(null);
+    this.instances.delete(id);
+    this.deleted.push(id);
+    return Promise.resolve({ instance, removed: { credentials: 2, runs: 7, endpoints: 1 } });
   }
 
   listRuns(_context: TenantContext, id: string, page: number, pageSize: number): Promise<RunPage> {
@@ -234,7 +244,13 @@ describe("who may change an integration", () => {
     await expect(service.updateConfig(administrator, instanceId, {})).rejects.toThrow("FORBIDDEN");
     await expect(service.enable(administrator, instanceId)).rejects.toThrow("FORBIDDEN");
     await expect(service.disable(administrator, instanceId)).rejects.toThrow("FORBIDDEN");
+    await expect(service.delete(administrator, instanceId)).rejects.toThrow("FORBIDDEN");
     await expect(service.requestHealthCheck(administrator, instanceId)).rejects.toThrow("FORBIDDEN");
+    // The refusal has to happen before anything is removed, so the assertion is on the repository
+    // and not only on the thrown code: a service that deleted and then checked would pass the
+    // line above and still have destroyed the row.
+    expect(repository.deleted).toEqual([]);
+    expect(repository.instances.has(instanceId)).toBe(true);
   });
 
   it("lets an administrator read state, which is the half of the job they do have", async () => {
@@ -296,6 +312,47 @@ describe("changing an integration", () => {
   });
 });
 
+describe("removing an integration", () => {
+  it("says what went with it, so the audit line is more than the word deleted", async () => {
+    const result = await service.delete(owner, instanceId);
+    expect(result.instance).toMatchObject({ id: instanceId, connectorType: "demo", name: "Provider" });
+    expect(result.removed).toEqual({ credentials: 2, runs: 7, endpoints: 1 });
+    expect(repository.instances.has(instanceId)).toBe(false);
+  });
+
+  /**
+   * Deleting is one statement, not a sequence.
+   *
+   * Every table that hangs off an instance goes with it in the same transaction, so revoking
+   * first would be ceremony over rows that are about to stop existing — and a sequence has an
+   * order somebody can get wrong, while a cascade declared in the schema has not.
+   */
+  it("does not revoke on the way out, because there is nothing left to revoke", async () => {
+    await service.delete(owner, instanceId);
+    expect(repository.revoked).toEqual([]);
+  });
+
+  /**
+   * No precondition of state, which is the decision of 14 August 2026.
+   *
+   * Requiring "disable it first" would be a rule enforced by a screen rather than by the system,
+   * and its predictable outcome is a half-removed integration nobody finished. The runtime
+   * already drops a job whose instance it cannot find, and the reconciler already removes a
+   * schedule it no longer wants, so an enabled instance is safe to remove.
+   */
+  it("removes an enabled instance without asking anybody to disable it first", async () => {
+    await service.enable(owner, instanceId);
+    await expect(service.delete(owner, instanceId)).resolves.toMatchObject({
+      instance: { status: "enabled" }
+    });
+    expect(repository.instances.has(instanceId)).toBe(false);
+  });
+
+  it("lets technical remove one too, because it is the same grant that creates one", async () => {
+    await expect(service.delete(technical, instanceId)).resolves.toMatchObject({ instance: { id: instanceId } });
+  });
+});
+
 describe("asking for a health check", () => {
   it("queues one for an enabled instance and says what it started", async () => {
     await service.enable(owner, instanceId);
@@ -322,8 +379,10 @@ describe("an identifier from another tenant", () => {
     await expect(service.updateConfig(owner, missingInstanceId, {})).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.enable(owner, missingInstanceId)).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.disable(owner, missingInstanceId)).rejects.toThrow("INSTANCE_NOT_FOUND");
+    await expect(service.delete(owner, missingInstanceId)).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.runs(owner, missingInstanceId, 1, 20)).rejects.toThrow("INSTANCE_NOT_FOUND");
     await expect(service.requestHealthCheck(owner, missingInstanceId)).rejects.toThrow("INSTANCE_NOT_FOUND");
     expect(repository.revoked).toEqual([]);
+    expect(repository.deleted).toEqual([]);
   });
 });

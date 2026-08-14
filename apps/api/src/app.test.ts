@@ -314,6 +314,9 @@ describe("feature flags", () => {
     ["POST", "/api/v1/integrations"],
     ["GET", "/api/v1/integrations/:instanceId"],
     ["PATCH", "/api/v1/integrations/:instanceId"],
+    // Removing an integration needs no key ring: it takes the sealed rows away rather than
+    // reading them, and an installation that cannot hold a secret can still retire a connector.
+    ["DELETE", "/api/v1/integrations/:instanceId"],
     ["POST", "/api/v1/integrations/:instanceId/enable"],
     ["POST", "/api/v1/integrations/:instanceId/disable"],
     ["POST", "/api/v1/integrations/:instanceId/health-checks"],

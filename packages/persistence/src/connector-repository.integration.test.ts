@@ -126,6 +126,137 @@ suite("PostgresConnectorRepository", () => {
     });
   });
 
+  /**
+   * Increment A9b: removing an integration takes everything that hangs off it.
+   *
+   * This is the test the whole design of the deletion rests on. The repository issues one delete
+   * against `connector_instances` and trusts the schema for the rest, which is only defensible if
+   * something checks that the schema really does the rest — and checks it against PostgreSQL,
+   * because two of the answers involved are not in the SQL text at all: whether a cascade needs
+   * its own delete privilege on the referencing tables (it does not, referential actions run as
+   * the owner) and whether forced row-level security blocks one (it does not, they run outside
+   * it). Neither is something to take on trust from a manual page.
+   *
+   * The rows are counted through `admin`, not through the repository: after the delete the
+   * repository would refuse to name the instance at all, so a read through it could report an
+   * empty list for a row that is still sitting in the table.
+   */
+  describe("removing an instance", () => {
+    /** Every table that hangs off an instance, directly or through one that does. */
+    const dependants = [
+      "connector_credentials",
+      "connector_sync_runs",
+      "connector_webhook_endpoints",
+      "connector_inbox",
+      "connector_records",
+      "connector_operation_state",
+      "infra_automation_links",
+      "infra_alert_rules",
+      "infra_alert_events"
+    ] as const;
+
+    /**
+     * An instance with a row in every one of those tables.
+     *
+     * Written through the repository where there is a method and through `admin` where the
+     * platform has none — the infrastructure module owns its own writes, and borrowing them here
+     * would tie this test to a module it is not testing.
+     */
+    async function populated() {
+      const instance = await newInstance(tenantA, membershipA);
+      await repository.putCredential(asA(), {
+        instanceId: instance.id,
+        kind: "api_key",
+        slot: "primary",
+        keyId: "ring-1",
+        ...envelope(7)
+      });
+      await repository.startRun(asA(), {
+        instanceId: instance.id,
+        operation: "health_check",
+        jobId: `job-${randomUUID()}`,
+        attempt: 1,
+        configVersion: 1
+      });
+      const endpoint = await repository.createEndpoint(asA(), instance.id);
+      await repository.recordInboxEvent(asA(), {
+        endpointId: endpoint.id,
+        providerEventId: `evt-${randomUUID()}`,
+        payloadHash: "b".repeat(64),
+        payload: '{"id":"evt_1"}'
+      });
+      await repository.upsertRecords(asA(), {
+        instanceId: instance.id,
+        operation: "workflows",
+        shape: "state",
+        records: [{ externalId: "wf_1", data: { active: true } }],
+        seenAt: new Date()
+      });
+      await repository.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "workflows",
+        cursor: "1",
+        ranAt: new Date(),
+        succeeded: true
+      });
+
+      const ruleId = randomUUID();
+      await admin`insert into infra_automation_links (id, tenant_id, instance_id, external_id)
+        values (${randomUUID()}, ${tenantA}, ${instance.id}, 'wf_1')`;
+      await admin`insert into infra_alert_rules
+        (id, tenant_id, name, kind, instance_id, target_type, severity, freshness_seconds)
+        values (${ruleId}, ${tenantA}, ${`rule ${ruleId}`}, 'workflow_failed', ${instance.id}, 'instance', 'high', 300)`;
+      await admin`insert into infra_alert_events (id, tenant_id, rule_id, dedup_key, status, severity)
+        values (${randomUUID()}, ${tenantA}, ${ruleId}, 'wf_1', 'firing', 'high')`;
+
+      return instance;
+    }
+
+    /** How many rows of a table belong to this instance, whether directly or through a parent. */
+    async function rowsFor(table: string, instanceId: string): Promise<number> {
+      const scoped =
+        table === "connector_inbox"
+          ? admin<{ count: number }[]>`select count(*)::int as count from connector_inbox i
+              join connector_webhook_endpoints e on e.id = i.endpoint_id
+              where e.instance_id = ${instanceId}`
+          : table === "infra_alert_events"
+            ? admin<{ count: number }[]>`select count(*)::int as count from infra_alert_events v
+                join infra_alert_rules r on r.id = v.rule_id
+                where r.instance_id = ${instanceId}`
+            : admin<{ count: number }[]>`select count(*)::int as count
+                from ${admin.unsafe(table)} where instance_id = ${instanceId}`;
+      return (await scoped)[0]!.count;
+    }
+
+    it("leaves no row behind in any table that hangs off it", async () => {
+      const instance = await populated();
+      for (const table of dependants) expect([table, await rowsFor(table, instance.id)]).toEqual([table, 1]);
+
+      await repository.deleteInstance(asA(), instance.id);
+
+      expect(await repository.getInstance(asA(), instance.id)).toBeNull();
+      for (const table of dependants) expect([table, await rowsFor(table, instance.id)]).toEqual([table, 0]);
+    });
+
+    it("counts what went before it goes, so an audit line can say more than deleted", async () => {
+      const instance = await populated();
+      const summary = await repository.deleteInstance(asA(), instance.id);
+      expect(summary?.instance).toMatchObject({ id: instance.id, name: instance.name });
+      expect(summary?.removed).toEqual({ credentials: 1, runs: 1, endpoints: 1 });
+    });
+
+    it("removes nothing for a tenant the instance does not belong to", async () => {
+      const instance = await populated();
+      expect(await repository.deleteInstance(asB(), instance.id)).toBeNull();
+      expect(await repository.getInstance(asA(), instance.id)).not.toBeNull();
+      for (const table of dependants) expect([table, await rowsFor(table, instance.id)]).toEqual([table, 1]);
+    });
+
+    it("is null for an instance that is not there, rather than a summary of nothing", async () => {
+      expect(await repository.deleteInstance(asA(), randomUUID())).toBeNull();
+    });
+  });
+
   describe("tenant isolation", () => {
     it("does not show one tenant's instance to another, nor list it", async () => {
       const instance = await newInstance(tenantA, membershipA);

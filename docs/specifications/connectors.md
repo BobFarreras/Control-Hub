@@ -190,6 +190,11 @@ queda `revoked_at`. Aixi rotar no exigeix parar el proveidor.
 **Desactivacio.** L'instancia passa a `disabled`, les credencials es revoquen, els schedulers
 s'aturen i l'ingress respon com si l'endpoint no existis.
 
+**Desaparicio.** Una instancia s'esborra i no torna. Es una sola sentencia contra
+`connector_instances`; la cascada de l'esquema s'emporta credencials, execucions, adreces
+d'entrada i el seu inbox, registres, estat d'operacio, i els enllacos i regles d'alerta
+d'infraestructura amb els seus events. El que queda es la fila d'auditoria.
+
 **Ingress.** El proveidor firma i envia. L'API verifica, escriu inbox, respon `202`. El worker
 processa. Un duplicat es descarta a la clau unica i torna `202` igual.
 
@@ -313,6 +318,7 @@ REST sota `/api/v1`, problem details RFC 9457 amb `code` estable, segons
 | `GET /api/v1/integrations/:id` | `integrations:read` | Una instancia; `404` si no es d'aquest tenant |
 | `POST /api/v1/integrations` | `integrations:manage` | Valida config; `422` si no passa |
 | `PATCH /api/v1/integrations/:id` | `integrations:manage` | Revalida i puja `config_version` |
+| `DELETE /api/v1/integrations/:id` | `integrations:manage` | Esborra la instancia i tot el que hi penja; retorna quantes credencials, execucions i adreces se n'han anat |
 | `POST /api/v1/integrations/:id/enable` i `/disable` | `integrations:manage` | Enable revalida; disable revoca credencials |
 | `POST /api/v1/integrations/:id/health-checks` | `integrations:manage` | Encua; `202` amb l'identificador de la peticio |
 | `GET /api/v1/integrations/:id/runs` | `integrations:read` | Historial paginat |
@@ -466,6 +472,48 @@ l'activa.
 En un desplegament sense anell de claus el camp no hi es, ni al dialeg ni al panell. La pantalla
 ho sap abans de tenir cap instancia a qui preguntar-ho, perque el cataleg mateix diu si aquesta
 instal·lacio pot guardar un secret.
+
+### Esborrar una integracio
+
+**Desactivar ja es l'arxiu, aixi que esborrar vol dir que no hi es.** Desactivar conserva la
+configuracio, l'historial i els enllacos mentre atura la feina, que es exactament el que vol qui
+nomes vol que pari. El que no existia era la manera de dir que una integracio ja no ha de ser-hi,
+i l'unic cami era `psql`. Un tercer estat entre `disabled` i "fora" no el sabria explicar ningu,
+i a mes `unique (tenant_id, name)` faria que una integracio arxivada es quedes el nom per sempre.
+
+**Es una sola sentencia, no una llista de taules.** La cascada ja es a les migracions i una
+segona copia escrita a ma en TypeScript es la copia que un dia deixa de quadrar. Se'n van
+credencials, execucions, adreces d'entrada i el seu inbox, registres, estat d'operacio, i els
+enllacos amb clients i les regles d'alerta d'infraestructura amb els seus events. La prova
+d'integracio les compta abans i despres, contra PostgreSQL, perque dues de les respostes que aixo
+depen no son al text del SQL: **una cascada no necessita privilegi de `delete` a les taules que
+referencien** —s'executa amb els privilegis del propietari— **i no la barra la RLS forçada**.
+Cap de les dues es cosa de creure-se-la d'un manual.
+
+**La `0036` obre exactament un privilegi**, `delete` sobre `connector_instances`, i cap mes. Les
+files de sota segueixen sent inabastables d'una en una: se'n van nomes com a consequencia que
+se'n vagi la instancia. Aquesta es la diferencia entre "un operador pot retirar una integracio" i
+"una peticio pot esborrar l'evidencia del que una integracio va fer".
+
+**L'historial d'execucions se'n va i l'auditoria es queda.** Una execucio es el registre d'un
+intent nostre —operacio, estat, intent, codi d'error— i nomes es llegeix des de la fitxa de la
+seva integracio: sense instancia no hi ha pantalla ni abast de tenant que hi arribi, i les files
+quedarien on ningu les pot veure. Ja caduquen soles per `data-governance.md`. El que ha de
+sobreviure es qui va decidir que, i aixo es `audit_log`, que te `target_id` en text sense clau
+forana i per tant sobreviu perfectament a la instancia que anomena. Per aixo la fila
+`connector_instance.deleted` porta el nom, el tipus, l'estat en que era i quantes credencials,
+execucions i adreces se n'han anat: es tot el que una investigacio tindra.
+
+**Sense precondicio d'estat.** Es pot esborrar una instancia activa. L'aturada que fa `disable`
+son files que aixo treu de cop dins la mateixa transaccio, i les dues coses que viuen fora de
+PostgreSQL es curen soles: el reconciliador esborra tot calendari que ja no vol i el runtime
+deixa caure una feina d'una instancia que no troba. Exigir "desactiva-la primer" seria una norma
+que fa complir una pantalla en comptes del sistema, i el resultat previsible es una integracio
+mig esborrada.
+
+**El que no podem fer i la pantalla ha de dir:** revocar la credencial al proveidor. Nosaltres
+n'oblidem el sobre; el token segueix valid alla fins que algu el retiri. Mateixa lliço que el
+runbook de rotacio.
 
 ## Threat model
 

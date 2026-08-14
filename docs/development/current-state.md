@@ -24,9 +24,17 @@ no cal per a res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**L'entrega 7.2**, que comenca per l'increment B1. La 7.1 es sencera a la branca
-`feature/phase-7-1-infrastructure-n8n`: els sis increments A1 a A6 hi son, amb la pantalla
-`/{locale}/infrastructure` i el runbook de l'error workflow d'n8n.
+**L'increment A9b (2/3)**: la fitxa `/{locale}/integrations/[instanceId]` i el dialeg d'esborrat,
+i despres l'A9b (3/3), que fa que la taula digui l'estat sense obrir res. Llavors ja si,
+**l'entrega 7.2**, que comenca per l'increment B1.
+
+Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
+sencera, amb la pantalla `/{locale}/infrastructure` i el runbook de l'error workflow d'n8n. Els
+increments **A7 a A9** no eren al pla: surten d'usar el producte de debo un cop l'n8n va quedar
+connectat, i tots toquen la pantalla d'integracions, per aixo el que decideixen queda documentat
+a la seccio de la Fase 6 i no en aquesta taula. **La integracio d'n8n funciona en real**: el
+connector s'activa, la comprovacio de salut passa i a Infraestructura es veuen els automatismes
+de la instancia.
 
 A5 i A6 han anat en dos commits cadascun **a proposit**: un de sol amb migracio, domini,
 aplicacio, persistencia, API i worker no el pot revisar ningu, i el mateix val per un que barregi
@@ -238,6 +246,28 @@ codi i cada llengua, una frase que no sigui la generica. Van a un espai propi (`
 `FORBIDDEN` de l'API vol dir que et falta un permis i `FORBIDDEN` d'una execucio vol dir que el
 proveidor ha refusat la credencial: una sola clau en diria una de les dues malament.
 
+**El que l'A9b deixa decidit i no s'ha de tornar a decidir.** Desactivar ja es l'arxiu —conserva
+tot i atura la feina—, aixi que esborrar vol dir que la integracio no hi es. Es **una sola
+sentencia** contra `connector_instances` i la cascada de l'esquema s'emporta la resta; no hi ha
+cap llista de taules escrita a ma, perque seria la copia que un dia deixa de quadrar. La `0036`
+obre **un sol privilegi**, `delete` sobre `connector_instances`: les files de sota segueixen sent
+inabastables d'una en una, i se'n van nomes com a consequencia. Una peticio no pot esborrar
+l'evidencia del que una integracio va fer; nomes pot retirar la integracio.
+
+Dues respostes que no son al text del SQL i que per tant es proven contra PostgreSQL a
+`connector-repository.integration.test.ts`, no es donen per bones: **una cascada no necessita
+privilegi de `delete` a les taules que referencien** (corre amb els privilegis del propietari) i
+**la RLS forçada no la barra**. La prova munta una instancia amb fila a les nou taules i n'exigeix
+zero despres.
+
+**L'historial d'execucions se'n va; l'auditoria es queda.** `audit_log.target_id` es text sense
+clau forana, de manera que `connector_instance.deleted` sobreviu a la instancia que anomena, i
+per aixo porta el nom, el tipus, l'estat i quantes credencials, execucions i adreces se n'han
+anat: es tot el que una investigacio tindra. **Sense precondicio d'estat**: es pot esborrar una
+instancia activa, perque el reconciliador ja treu el calendari que no vol i el runtime ja deixa
+caure una feina d'una instancia que no troba. El que no podem fer es revocar la credencial al
+proveidor, i la pantalla ho ha de dir.
+
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i
 `description` al seu propi `schema`, i `apps/api/src/openapi.test.ts` falla si alguna en surt
@@ -389,6 +419,10 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
   `(tenant_id, endpoint_id, provider_event_id)`, que es la idempotencia d'ingress feta complir
   per la base i no per una lectura que dos workers poden creuar. Cap permis nou: `integrations:read`,
   `integrations:manage` i `credentials:rotate` existeixen des de la `0003`.
+- `0036_connector_instance_delete.sql`: un sol `grant delete` sobre `connector_instances`, i cap
+  mes. Reverteix una linia de la `0030` —que no donava `delete` enlloc— nomes per a la instancia:
+  esborrar-ne una s'emporta el que hi penja per cascada, i les files de sota segueixen sense
+  poder-se esborrar d'una en una.
 - `pnpm db:seed:dev`: dades representatives locals, idempotents i sense esborrar dades. **Encara
   no sembra projectes ni imputacions.**
 

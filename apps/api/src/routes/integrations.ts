@@ -375,6 +375,48 @@ export function registerIntegrationRoutes({
     }
   );
 
+  app.delete<{ Params: { instanceId: string } }>(
+    "/api/v1/integrations/:instanceId",
+    {
+      schema: {
+        params: instanceParams,
+        tags: ["integrations"],
+        summary: "Remove an integration for good",
+        description:
+          "Removes the instance and, with it, its configuration, credentials, ingress address, run history, stored records and any infrastructure links and alert rules that read it. Not the same as disabling: `disable` stops the work and keeps all of that, and is what somebody who only wants it to stop should use. The response says how many credentials, runs and endpoints went. What this cannot do is withdraw the credential at the provider, which stays valid until somebody revokes it there."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId } = request.params;
+      await requireAudited(context, request, "integrations:manage", {
+        action: "connector_instance.deleted",
+        targetType: "connector_instance",
+        targetId: instanceId
+      });
+      const { instance, removed } = await connectors.delete(context, instanceId);
+      // Written after the row is gone, and it survives it: `audit_log.target_id` is text with no
+      // foreign key, so this line stays readable when the instance it names no longer exists.
+      // It is the whole of what a later investigation has, which is why it carries the counts and
+      // the name rather than only the identifier.
+      await writeAudit(database, context, request, {
+        action: "connector_instance.deleted",
+        targetType: "connector_instance",
+        targetId: instance.id,
+        outcome: "success",
+        metadata: {
+          connectorType: instance.connectorType,
+          name: instance.name,
+          status: instance.status,
+          revokedCredentials: removed.credentials,
+          removedRuns: removed.runs,
+          removedEndpoints: removed.endpoints
+        }
+      });
+      return { removed };
+    }
+  );
+
   app.post<{ Params: { instanceId: string } }>(
     "/api/v1/integrations/:instanceId/health-checks",
     {

@@ -10,6 +10,7 @@ import {
   type CreateInstanceInput,
   type CreatedWebhookEndpoint,
   type CredentialMetadata,
+  type DeletedInstanceSummary,
   type HealthOutcome,
   type InboxOutcome,
   type InboxRecord,
@@ -154,6 +155,42 @@ export class PostgresConnectorRepository implements ConnectorRepository {
         where tenant_id = ${context.tenantId} and id = ${instanceId}
         returning ${tx.unsafe(instanceColumns)}`;
       return instance ?? null;
+    }).catch(mapConstraint);
+  }
+
+  /**
+   * Removes an instance, and with it everything the schema hangs off one.
+   *
+   * The counts are taken in the same transaction as the delete, before it: after it there is
+   * nothing left to count, and a count taken in a separate call would describe a moment that had
+   * already passed. They exist so the audit line can say what went rather than only that
+   * something did.
+   *
+   * There is no list of tables here. Seven of them cascade — credentials, runs, endpoints and
+   * with them the inbox, records, operation state, and the infrastructure module's automation
+   * links and alert rules and their events. Writing that list out in TypeScript would be a second
+   * copy of a decision the migrations already carry, and the copy that quietly stops matching.
+   */
+  async deleteInstance(context: TenantContext, instanceId: string): Promise<DeletedInstanceSummary | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [instance] = await tx<ConnectorInstanceRecord[]>`
+        select ${tx.unsafe(instanceColumns)} from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+      if (!instance) return null;
+
+      const [counts] = await tx<{ credentials: number; runs: number; endpoints: number }[]>`
+        select
+          (select count(*) from connector_credentials
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as credentials,
+          (select count(*) from connector_sync_runs
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as runs,
+          (select count(*) from connector_webhook_endpoints
+             where tenant_id = ${context.tenantId} and instance_id = ${instanceId})::int as endpoints`;
+
+      await tx`delete from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      return { instance, removed: counts! };
     }).catch(mapConstraint);
   }
 

@@ -42,6 +42,19 @@ export type ConnectorInstanceRecord = {
   updatedAt: Date;
 };
 
+/**
+ * What an instance took with it, counted before it went.
+ *
+ * Only the tables this surface owns. Whatever else cascades — the infrastructure module's links
+ * and alert rules — belongs to a module that has its own screen and its own permission, and a
+ * count of it here would be this surface reading across a boundary it does not cross anywhere
+ * else. The screen that offers the deletion names those in words beforehand instead.
+ */
+export type DeletedInstanceSummary = {
+  instance: ConnectorInstanceRecord;
+  removed: { credentials: number; runs: number; endpoints: number };
+};
+
 export type CreateInstanceInput = {
   connectorType: string;
   name: string;
@@ -330,6 +343,14 @@ export type ConnectorRepository = {
     status: ConnectorInstanceStatus
   ): Promise<ConnectorInstanceRecord | null>;
   recordHealth(context: TenantContext, instanceId: string, outcome: HealthOutcome): Promise<void>;
+  /**
+   * Removes an instance and, by the schema's own cascade, everything that hangs off it.
+   *
+   * One statement rather than a list of tables written out here: the cascade is already declared
+   * in the migrations, and a second copy of it in TypeScript is the copy that goes stale the day
+   * somebody adds a table. Null when this tenant has no such instance.
+   */
+  deleteInstance(context: TenantContext, instanceId: string): Promise<DeletedInstanceSummary | null>;
 
   putCredential(context: TenantContext, input: PutCredentialInput): Promise<CredentialMetadata>;
   listCredentials(context: TenantContext, instanceId: string): Promise<CredentialMetadata[]>;
