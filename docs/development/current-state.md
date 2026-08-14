@@ -29,9 +29,9 @@ d'usar-la. Queda passar `pnpm check` i `pnpm check:e2e` sencers —no han correg
 l'A9a— i fusionar la `feature/phase-7-1-infrastructure-n8n` a `develop`. Llavors ja si,
 **l'entrega 7.2**, que comenca per l'increment B1.
 
-**Atencio en arribar al B2:** l'especificacio li assigna la migracio `0036`, pero l'A9b-1 ja la va
-gastar per al permis d'esborrat. El B2 es la `0037`. Es renumera al pla abans de comencar-lo, mai
-despres d'aplicar-la.
+El xoc de numeracio que aixo va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per al
+permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a
+`infrastructure.md` abans de comencar-lo i no despres d'aplicar-lo.
 
 Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
 sencera, amb la pantalla `/{locale}/infrastructure` i el runbook de l'error workflow d'n8n. Els

@@ -287,9 +287,13 @@ no tornar a escriure res.
 ## Model de dades
 
 Quatre migracions. Se'n van reservar tres i en va caldre una quarta, la `0034`, que la seccio de
-cua explica. Al moment d'escriure aixo el numero mes alt del repositori era `0032`; les d'aquesta
-fase han quedat de la `0033` a la `0036`, i si una altra sessio se'ns avanca es **renumeren abans
-del merge**, mai despres d'haver-les aplicat enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tenant_id, id)`.
+cua explica. Al moment d'escriure aixo el numero mes alt del repositori era `0032`; les de la 7.1
+han quedat de la `0033` a la `0035`.
+
+**La de la 7.2 ja s'ha hagut de renumerar.** Reservava la `0036`, pero l'increment A9b la va gastar
+per al `grant delete` de `connector_instances` i ja esta aplicada a les tres bases locals; per tant
+l'inventari de hosts es la `0037`. Es exactament el cas que preveia la regla d'aqui sota: es
+**renumera abans del merge**, mai despres d'haver-la aplicat enlloc. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique (tenant_id, id)`.
 
 **`0033_connector_records.sql` — plataforma, tanca G1 (7.1)**
 
@@ -335,7 +339,7 @@ desassociar un workflow i esborrar una regla son actes ordinaris i auditats. `in
 **no en te**: un esdeveniment es la constancia que va passar una cosa, i l'unic que en treu cap es
 la purga de retencio.
 
-**`0036_infrastructure_hosts.sql` — modul (7.2)**
+**`0037_infrastructure_hosts.sql` — modul (7.2)**
 
 - `infra_hosts` — `name`, `hostname` (l'etiqueta amb que Prometheus l'anomena), `environment`,
   `notes`. `unique (tenant_id, name)`.
@@ -545,7 +549,7 @@ al mateix commit.
 | # | Increment | Fitxers que toca | Tanca |
 |---|---|---|---|
 | B1 | Connector `prometheus`, amb `pull_probe_state` | **`packages/connectors/src/built-in/prometheus.ts` i el seu test, i res mes** | Contract tests |
-| B2 | `0036`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
+| B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
 
@@ -605,8 +609,9 @@ nosaltres, aquest dia, i ho va demanar aquesta persona".
 
 ## Riscos coneguts
 
-- **El numero de migracio pot xocar.** Les d'aquesta fase van de la `0033` a la `0036` i es
-  renumeren **abans del merge** si una altra sessio se'ns avanca, mai despres d'aplicar-les
+- **El numero de migracio pot xocar, i ja ha xocat un cop.** Les de la 7.1 van de la `0033` a la
+  `0035`; la `0036` se la va endur l'A9b i l'inventari de hosts de la 7.2 ha passat a la `0037`. La
+  regla es la mateixa la propera vegada: renumerar **abans del merge**, mai despres d'aplicar-les
   enlloc.
 - **La forma de l'API d'n8n canvia entre versions.** Es fixa la versio contra la qual s'han
   capturat les fixtures i el contract test la nomena; quan la VPS pugi de versio, el test es el
