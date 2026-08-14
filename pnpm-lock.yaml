@@ -372,6 +372,9 @@ importers:
       '@control-hub/connectors':
         specifier: workspace:*
         version: link:../connectors
+      '@control-hub/domain':
+        specifier: workspace:*
+        version: link:../domain
       typescript:
         specifier: ^5.9.0
         version: 5.9.3

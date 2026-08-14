@@ -30,23 +30,54 @@ export const healthTone: Record<ConnectorHealthStatus, StatusTone> = {
 };
 
 /**
- * The dictionary key an API error code becomes.
+ * The dictionary key an error code becomes, under a given namespace.
  *
  * The rule is mechanical — `INSTANCE_NOT_ENABLED` reads `errorInstanceNotEnabled` — so a code the
  * API adds has one predictable place to be translated, and nothing on this screen ever renders a
  * provider's own words: what arrives is a code, and what is shown is our sentence for it.
  */
-export function errorLabelKey(code: string): string {
+function labelKey(prefix: string, code: string): string {
   const parts = code
     .toLowerCase()
     .split("_")
     .filter((part) => part.length > 0);
-  return ["error", ...parts.map((part) => part[0]!.toUpperCase() + part.slice(1))].join("");
+  return [prefix, ...parts.map((part) => part[0]!.toUpperCase() + part.slice(1))].join("");
+}
+
+export function errorLabelKey(code: string): string {
+  return labelKey("error", code);
+}
+
+/**
+ * The key for a code a **failed run** stored, which is a different vocabulary.
+ *
+ * They collide on words, and the collision is not cosmetic. `FORBIDDEN` from this API means the
+ * reader lacks a permission; `FORBIDDEN` from a run means the provider refused the credential we
+ * sent. One key would put one of those sentences under the other's code, and a confidently wrong
+ * sentence is worse than a vague one: it sends somebody to check their own permissions when the
+ * answer is at the far end.
+ */
+export function runErrorLabelKey(code: string): string {
+  return labelKey("runError", code);
 }
 
 /** The sentence for a code, or the general one. An untranslated code is never shown raw. */
 export function errorMessage(labels: Record<string, string>, code: string | null | undefined): string {
   const translated = code ? labels[errorLabelKey(code)] : undefined;
+  return translated ?? labels.errorUnknown ?? "";
+}
+
+/**
+ * Why a run failed, in the reader's language.
+ *
+ * The fallback stays, because a run is history: a record written by a release that knew a code
+ * this one does not still has to render. What must not happen is the fallback being the answer
+ * for a code we do ship — that is how "the operation could not be completed" ended up standing in
+ * for "this address is not on the allowlist", which is a minute's work once somebody says it.
+ * `packages/i18n` walks the vocabulary the domain declares and refuses that silence.
+ */
+export function runErrorMessage(labels: Record<string, string>, code: string | null | undefined): string {
+  const translated = code ? labels[runErrorLabelKey(code)] : undefined;
   return translated ?? labels.errorUnknown ?? "";
 }
 

@@ -4,9 +4,11 @@ import { connectorHealthOperation } from "@control-hub/contracts/jobs";
 import {
   backoffDelayMs,
   defaultBackoff,
+  failureCode,
   isTransientFailure,
   redact,
   type BackoffPolicy,
+  type ConnectorErrorCode,
   type ConnectorFailureKind,
   type TenantContext
 } from "@control-hub/domain";
@@ -346,7 +348,7 @@ export class ConnectorRuntime {
 export class ConnectorRunError extends Error {
   constructor(
     public readonly failure: ConnectorFailureKind,
-    public readonly code?: string
+    public readonly code?: ConnectorErrorCode
   ) {
     super(code ?? failure);
   }
@@ -369,11 +371,15 @@ function failureKindOf(error: unknown): ConnectorFailureKind {
 /**
  * A stable code for the history and the screen. Never the provider's own words: those are
  * attacker-influenced text that would end up in a log, a ticket and a translation key.
+ *
+ * The return type is the vocabulary rather than `string`, which is what keeps this honest: a new
+ * code thrown anywhere upstream has to be declared in `@control-hub/domain` before it compiles,
+ * and declaring it is what a test then requires words for in all three languages.
  */
-function errorCodeOf(error: unknown, failure: ConnectorFailureKind): string {
+function errorCodeOf(error: unknown, failure: ConnectorFailureKind): ConnectorErrorCode {
   if (error instanceof EgressError) return error.code;
   if (error instanceof ConnectorRunError && error.code) return error.code;
-  return failure.toUpperCase();
+  return failureCode(failure);
 }
 
 function messageOf(error: unknown): string {

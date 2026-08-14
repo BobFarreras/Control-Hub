@@ -1,6 +1,14 @@
 import { getIntegrationsDictionary, locales } from "@control-hub/i18n";
 import { describe, expect, it } from "vitest";
-import { errorLabelKey, errorMessage, healthTone, instanceStatusTone, problemCode, webhookUrl } from "./integrations";
+import {
+  errorLabelKey,
+  errorMessage,
+  healthTone,
+  instanceStatusTone,
+  problemCode,
+  runErrorMessage,
+  webhookUrl
+} from "./integrations";
 
 describe("reading an API error", () => {
   it("turns a code into the key that translates it", () => {
@@ -49,6 +57,54 @@ describe("reading an API error", () => {
       const labels = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
       for (const code of codes) {
         expect(errorMessage(labels, code), `${locale} ${code}`).not.toBe(labels.errorUnknown);
+      }
+    }
+  });
+});
+
+/**
+ * A failed run is read from a different dictionary than a refused request, and it has to be.
+ *
+ * The two vocabularies collide on words. `FORBIDDEN` from this API means the reader lacks a
+ * permission; `FORBIDDEN` from a run means the provider refused the credential we sent. Sharing
+ * one key would put one of those sentences under the other's code, and the wrong one is worse
+ * than the generic one: it sends somebody to check their own permissions when the answer is at
+ * the far end.
+ */
+describe("reading why a run failed", () => {
+  const labels = getIntegrationsDictionary("ca") as unknown as Record<string, string>;
+
+  it("reads a run code from the run vocabulary, not from the request one", () => {
+    expect(runErrorMessage(labels, "FORBIDDEN")).toBe(labels.runErrorForbidden);
+    expect(runErrorMessage(labels, "FORBIDDEN")).not.toBe(labels.errorForbidden);
+  });
+
+  /**
+   * The one that sent an operator looking in the wrong place: the address was simply not on the
+   * allowlist, and the screen said the operation could not be completed.
+   */
+  it("says what actually went wrong instead of that something did", () => {
+    for (const code of ["DESTINATION_NOT_ALLOWLISTED", "CREDENTIAL_MISSING", "UNAUTHORIZED"]) {
+      expect(runErrorMessage(labels, code), code).not.toBe(labels.errorUnknown);
+    }
+  });
+
+  it("still says something when a run stores a code from a later release", () => {
+    expect(runErrorMessage(labels, "A_CODE_FROM_A_LATER_RELEASE")).toBe(labels.errorUnknown);
+    expect(runErrorMessage(labels, null)).toBe(labels.errorUnknown);
+  });
+
+  /**
+   * Exhaustiveness is asserted where the vocabulary is declared — `packages/i18n` walks
+   * `connectorErrorCodes` from the domain and demands words in all three languages. This screen
+   * deliberately does not depend on the domain, so what it checks is the mapping, in every
+   * language, for the codes it is most likely to draw.
+   */
+  it("reads the same way in every language", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const code of ["DESTINATION_NOT_ALLOWLISTED", "CREDENTIAL_MISSING", "TOTAL_TIMEOUT"]) {
+        expect(runErrorMessage(dictionary, code), `${locale} ${code}`).not.toBe(dictionary.errorUnknown);
       }
     }
   });

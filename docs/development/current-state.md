@@ -231,6 +231,13 @@ tambe des del panell, en un camp que exigeix `credentials:rotate` —que no es e
 gestiona la integracio— i que no es torna a llegir mai: cap ruta d'aquesta API en retorna el
 valor, i el formulari es buida en enviar-lo.
 
+Quan una execucio falla, **la pantalla diu que ha fallat**, no que alguna cosa ha fallat. El
+conjunt de codis que una execucio pot desar es tancat i el declara `@control-hub/domain`, de
+manera que el worker no en pot llencar cap que no en sigui membre i una prova exigeix, per a cada
+codi i cada llengua, una frase que no sigui la generica. Van a un espai propi (`runError*`) perque
+`FORBIDDEN` de l'API vol dir que et falta un permis i `FORBIDDEN` d'una execucio vol dir que el
+proveidor ha refusat la credencial: una sola clau en diria una de les dues malament.
+
 **El que l'increment 10 deixa decidit i no s'ha de tornar a decidir.** El document d'API es
 **genera del codi**, no s'escriu al costat: cada ruta de connectors porta `tags`, `summary` i
 `description` al seu propi `schema`, i `apps/api/src/openapi.test.ts` falla si alguna en surt

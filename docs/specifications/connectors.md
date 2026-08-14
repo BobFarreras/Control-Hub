@@ -410,6 +410,37 @@ va arribar a una pantalla que per la resta estava traduida. La conversio viu en 
 ha una prova que recorre el registre i exigeix, per a cada connector, cada camp i cada tipus de
 credencial, que hi hagi paraules a les tres llengues.
 
+### Per que ha fallat
+
+**Una execucio que falla desa un codi, i la pantalla el converteix en una frase.** El conjunt de
+codis es tancat i viu a `@control-hub/domain`, no alli on es llencen: hi ha tres llocs que en
+produeixen —la guarda d'eixida quan refusa una adreca o es rendeix amb ella, el runtime quan la
+crida ni tan sols es pot intentar, i un connector informant del proveidor, que hi aporta els tipus
+de fallada en majuscules— i cap dels que els llegeixen els veu tots tres. El que hi viu es
+l'acord.
+
+Que sigui tancat es el que el fa comprovable. `apps/worker` no pot llencar un codi que no en sigui
+membre —ho impedeix el tipus, no una revisio— i `packages/i18n` te una prova que recorre el
+vocabulari i exigeix una frase a cada llengua per a cada codi, amb una segona condicio: **que la
+frase no sigui la generica**. Una clau que existeix pero conte "no s'ha pogut completar
+l'operacio" passa una prova d'existencia i no diu res, que es exactament el que va passar: una
+adreca que faltava a la llista de destins permesos es va llegir com una operacio que no s'havia
+pogut completar, quan dir-ho era un minut de feina per a qui ho llegia.
+
+Les frases van a un espai propi, `runError*`, separat dels codis que retorna aquesta API. Les dues
+llistes topen a les paraules i el xoc no es cosmetic: `FORBIDDEN` d'aquesta API vol dir que a qui
+mira li falta un permis, i `FORBIDDEN` d'una execucio vol dir que el proveidor ha refusat la
+credencial que li hem enviat. Una sola clau posaria una de les dues frases sota el codi de
+l'altra, i **una frase equivocada amb aplom es pitjor que una de vaga**: envia algu a mirar-se els
+seus permisos quan la resposta es a l'altra punta.
+
+El recurs a la frase generica es queda, perque una execucio es historia: un registre escrit per
+una versio que coneixia un codi que aquesta ja no ha de poder-se dibuixar igualment. El que no pot
+passar es que sigui la resposta per a un codi que si que portem.
+
+Cap frase anomena un proveidor. La que anomenes n'anomena el que no es per a tots els altres
+connectors, i hi ha una prova que ho comprova.
+
 ### La credencial
 
 **S'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix `credentials:rotate`

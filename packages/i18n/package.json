@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@control-hub/connectors": "workspace:*",
+    "@control-hub/domain": "workspace:*",
     "typescript": "^5.9.0",
     "vitest": "^4.0.0"
   }

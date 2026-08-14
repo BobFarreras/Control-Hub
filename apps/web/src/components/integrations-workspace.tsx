@@ -44,7 +44,14 @@ import {
 } from "@/lib/connector-labels";
 import { formValue } from "@/lib/form";
 import { eventHandler } from "@/lib/handlers";
-import { errorMessage, healthTone, instanceStatusTone, problemCode, webhookUrl } from "@/lib/integrations";
+import {
+  errorMessage,
+  healthTone,
+  instanceStatusTone,
+  problemCode,
+  runErrorMessage,
+  webhookUrl
+} from "@/lib/integrations";
 
 /**
  * The integrations screen.
@@ -840,7 +847,9 @@ function IntegrationPanel({
         </div>
         <div className="detail-row">
           <span>{t.lastError}</span>
-          <strong>{instance.health.lastErrorCode ? errorMessage(t, instance.health.lastErrorCode) : t.noError}</strong>
+          <strong>
+            {instance.health.lastErrorCode ? runErrorMessage(t, instance.health.lastErrorCode) : t.noError}
+          </strong>
         </div>
         <div className="detail-row">
           <span>{t.configVersion}</span>
@@ -1055,7 +1064,7 @@ function IntegrationPanel({
                     <span>
                       {t.items} {run.itemsProcessed}
                     </span>
-                    {run.errorCode && <span>{errorMessage(t, run.errorCode)}</span>}
+                    {run.errorCode && <span>{runErrorMessage(t, run.errorCode)}</span>}
                   </p>
                 </div>
               </li>

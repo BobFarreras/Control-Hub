@@ -3228,7 +3228,39 @@ const integrationDictionaries = {
     errorEndpointAlreadyExists: "Aquesta integracio ja te una adreca activa.",
     errorEndpointNotFound: "Aquesta adreca ja no hi es.",
     errorRotationAlreadyOpen: "Hi ha una rotacio oberta: tanca-la abans.",
-    errorDuplicateInstanceName: "Ja hi ha una integracio amb aquest nom."
+    errorDuplicateInstanceName: "Ja hi ha una integracio amb aquest nom.",
+    // What a run stored when it failed. Its own namespace, because `FORBIDDEN` from this API means
+    // the reader lacks a permission and `FORBIDDEN` from a run means the provider refused us.
+    runErrorTimeout: "El proveidor no ha respost a temps.",
+    runErrorConnectionReset: "La connexio s'ha tallat mentre parlavem amb el proveidor.",
+    runErrorRateLimited: "El proveidor ens demana anar mes a poc a poc. Ho tornarem a provar.",
+    runErrorServerError: "El proveidor ha respost amb un error seu. Ho tornarem a provar.",
+    runErrorUnauthorized: "El proveidor no accepta la credencial. Revisa el token.",
+    runErrorForbidden: "La credencial es valida, pero no te permis per fer aixo al proveidor.",
+    runErrorNotFound: "El proveidor diu que el que demanem no existeix. Revisa l'adreca.",
+    runErrorInvalidConfig: "La configuracio d'aquesta integracio no permet fer la crida.",
+    runErrorInvalidResponse: "El proveidor ha respost una cosa que no sabem llegir.",
+    runErrorResponseTooLarge: "La resposta passa del limit de mida i s'ha tallat.",
+    runErrorBlockedDestination: "L'adreca on anavem no esta permesa.",
+    runErrorSchemeNotAllowed: "L'adreca ha de ser http o https.",
+    runErrorUrlNotParseable: "L'adreca no te forma d'adreca valida.",
+    runErrorUrlHasCredentials:
+      "L'adreca porta usuari i contrasenya a dins. Treu-los i posa el secret a les credencials.",
+    runErrorDestinationNotAllowlisted:
+      "Aquesta adreca no es a la llista que permet qui administra el servidor. Cal afegir-la-hi.",
+    runErrorDestinationOutsideBaseUrl: "La crida sortia de l'adreca de la instancia configurada.",
+    runErrorNoBaseUrlConfigured: "Falta l'adreca de la instancia a la configuracio.",
+    runErrorAddressNotRoutable: "El nom resol a una adreca de xarxa interna i no s'hi pot anar.",
+    runErrorDnsResolutionFailed: "No s'ha pogut resoldre el nom del servidor.",
+    runErrorConnectTimeout: "No s'ha pogut connectar amb el proveidor a temps.",
+    runErrorHeadersTimeout: "El proveidor ha acceptat la connexio, pero no ha comencat a respondre.",
+    runErrorTotalTimeout: "La crida ha passat del temps maxim total.",
+    runErrorBudgetExhausted: "S'ha esgotat el temps abans de poder fer aquesta crida.",
+    runErrorConnectionFailed: "No s'ha pogut establir la connexio amb el proveidor.",
+    runErrorResponseFailed: "La resposta s'ha tallat mentre la llegiem.",
+    runErrorTooManyRedirects: "El proveidor ens ha redirigit massa vegades.",
+    runErrorCredentialMissing: "Falta escriure la credencial d'aquesta integracio.",
+    runErrorOperationNotDeclared: "Aquesta versio del connector no fa aquesta operacio."
   },
   es: {
     eyebrow: "AUTOMATIZACIONES",
@@ -3376,7 +3408,40 @@ const integrationDictionaries = {
     errorEndpointAlreadyExists: "Esta integracion ya tiene una direccion activa.",
     errorEndpointNotFound: "Esta direccion ya no existe.",
     errorRotationAlreadyOpen: "Hay una rotacion abierta: cierrala antes.",
-    errorDuplicateInstanceName: "Ya hay una integracion con ese nombre."
+    errorDuplicateInstanceName: "Ya hay una integracion con ese nombre.",
+    // Lo que guardo una ejecucion al fallar. Espacio propio, porque `FORBIDDEN` de esta API
+    // significa que al lector le falta un permiso y `FORBIDDEN` de una ejecucion que el proveedor
+    // nos ha dicho que no.
+    runErrorTimeout: "El proveedor no ha respondido a tiempo.",
+    runErrorConnectionReset: "La conexion se ha cortado mientras hablabamos con el proveedor.",
+    runErrorRateLimited: "El proveedor nos pide ir mas despacio. Lo volveremos a intentar.",
+    runErrorServerError: "El proveedor ha respondido con un error suyo. Lo volveremos a intentar.",
+    runErrorUnauthorized: "El proveedor no acepta la credencial. Revisa el token.",
+    runErrorForbidden: "La credencial es valida, pero no tiene permiso para hacer esto en el proveedor.",
+    runErrorNotFound: "El proveedor dice que lo que pedimos no existe. Revisa la direccion.",
+    runErrorInvalidConfig: "La configuracion de esta integracion no permite hacer la llamada.",
+    runErrorInvalidResponse: "El proveedor ha respondido algo que no sabemos leer.",
+    runErrorResponseTooLarge: "La respuesta supera el limite de tamano y se ha cortado.",
+    runErrorBlockedDestination: "La direccion a la que ibamos no esta permitida.",
+    runErrorSchemeNotAllowed: "La direccion tiene que ser http o https.",
+    runErrorUrlNotParseable: "La direccion no tiene forma de direccion valida.",
+    runErrorUrlHasCredentials:
+      "La direccion lleva usuario y contrasena dentro. Quitalos y pon el secreto en las credenciales.",
+    runErrorDestinationNotAllowlisted:
+      "Esta direccion no esta en la lista que permite quien administra el servidor. Hay que agregarla.",
+    runErrorDestinationOutsideBaseUrl: "La llamada salia de la direccion de la instancia configurada.",
+    runErrorNoBaseUrlConfigured: "Falta la direccion de la instancia en la configuracion.",
+    runErrorAddressNotRoutable: "El nombre resuelve a una direccion de red interna y no se puede ir ahi.",
+    runErrorDnsResolutionFailed: "No se ha podido resolver el nombre del servidor.",
+    runErrorConnectTimeout: "No se ha podido conectar con el proveedor a tiempo.",
+    runErrorHeadersTimeout: "El proveedor ha aceptado la conexion, pero no ha empezado a responder.",
+    runErrorTotalTimeout: "La llamada ha superado el tiempo maximo total.",
+    runErrorBudgetExhausted: "Se ha agotado el tiempo antes de poder hacer esta llamada.",
+    runErrorConnectionFailed: "No se ha podido establecer la conexion con el proveedor.",
+    runErrorResponseFailed: "La respuesta se ha cortado mientras la leiamos.",
+    runErrorTooManyRedirects: "El proveedor nos ha redirigido demasiadas veces.",
+    runErrorCredentialMissing: "Falta escribir la credencial de esta integracion.",
+    runErrorOperationNotDeclared: "Esta version del conector no hace esa operacion."
   },
   en: {
     eyebrow: "AUTOMATION",
@@ -3524,7 +3589,39 @@ const integrationDictionaries = {
     errorEndpointAlreadyExists: "This integration already has a live address.",
     errorEndpointNotFound: "This address is no longer there.",
     errorRotationAlreadyOpen: "A rotation is already open: finish it first.",
-    errorDuplicateInstanceName: "An integration already uses that name."
+    errorDuplicateInstanceName: "An integration already uses that name.",
+    // What a run stored when it failed. Its own namespace, because `FORBIDDEN` from this API means
+    // the reader lacks a permission and `FORBIDDEN` from a run means the provider refused us.
+    runErrorTimeout: "The provider did not answer in time.",
+    runErrorConnectionReset: "The connection dropped while we were talking to the provider.",
+    runErrorRateLimited: "The provider asked us to slow down. We will try again.",
+    runErrorServerError: "The provider answered with an error of its own. We will try again.",
+    runErrorUnauthorized: "The provider does not accept the credential. Check the token.",
+    runErrorForbidden: "The credential is valid, but it is not allowed to do this at the provider.",
+    runErrorNotFound: "The provider says what we asked for does not exist. Check the address.",
+    runErrorInvalidConfig: "This integration's configuration does not allow the call to be made.",
+    runErrorInvalidResponse: "The provider answered with something we cannot read.",
+    runErrorResponseTooLarge: "The answer is over the size limit and was cut off.",
+    runErrorBlockedDestination: "The address we were going to is not allowed.",
+    runErrorSchemeNotAllowed: "The address has to be http or https.",
+    runErrorUrlNotParseable: "The address is not shaped like a valid address.",
+    runErrorUrlHasCredentials:
+      "The address carries a user and password inside. Take them out and put the secret in the credentials.",
+    runErrorDestinationNotAllowlisted:
+      "This address is not on the list whoever runs the server allows. It has to be added there.",
+    runErrorDestinationOutsideBaseUrl: "The call was leaving the configured instance address.",
+    runErrorNoBaseUrlConfigured: "The instance address is missing from the configuration.",
+    runErrorAddressNotRoutable: "The name resolves to an internal network address, which cannot be reached.",
+    runErrorDnsResolutionFailed: "The server name could not be resolved.",
+    runErrorConnectTimeout: "We could not connect to the provider in time.",
+    runErrorHeadersTimeout: "The provider accepted the connection but never started answering.",
+    runErrorTotalTimeout: "The call went over the total time limit.",
+    runErrorBudgetExhausted: "The time ran out before this call could be made.",
+    runErrorConnectionFailed: "The connection to the provider could not be established.",
+    runErrorResponseFailed: "The answer was cut off while we were reading it.",
+    runErrorTooManyRedirects: "The provider redirected us too many times.",
+    runErrorCredentialMissing: "The credential for this integration has not been written.",
+    runErrorOperationNotDeclared: "This release of the connector does not do that operation."
   }
 } as const;
 

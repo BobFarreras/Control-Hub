@@ -1,4 +1,5 @@
 import { connectorRegistry } from "@control-hub/connectors";
+import { connectorErrorCodes } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   getAttendanceDictionary,
@@ -86,6 +87,61 @@ describe("the words for the connectors this build ships", () => {
         for (const kind of connectorRegistry.require(type).credentialKinds) {
           expect(dictionary[`credentialKind_${kind}`], `credentialKind_${kind} in ${locale}`).toBeTruthy();
         }
+      }
+    }
+  });
+});
+
+/**
+ * Every way a run can fail says what failed, in every language.
+ *
+ * The vocabulary is closed and lives in `@control-hub/domain`, so this walks it rather than
+ * keeping a list here that somebody has to remember to extend. What it guards is a silence: a
+ * code with no sentence does not raise anything, it falls back to "the operation could not be
+ * completed" — which is what an operator saw when the real answer was that the address they had
+ * just typed was not on the allowlist.
+ *
+ * Hence the second assertion. A key that exists but holds the generic sentence passes a
+ * truthiness check and tells the reader exactly as little, so the fallback is banned as a value.
+ *
+ * These live in their own `runError` namespace on purpose. `FORBIDDEN` from this API means the
+ * reader lacks a permission; `FORBIDDEN` from a run means the provider refused us. One key
+ * cannot honestly say both.
+ */
+describe("the words for every way a run can fail", () => {
+  const key = (code: string) =>
+    [
+      "runError",
+      ...code
+        .toLowerCase()
+        .split("_")
+        .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    ].join("");
+
+  it("has a sentence for every code a failed run can store, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const code of connectorErrorCodes) {
+        expect(dictionary[key(code)], `${key(code)} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("never answers with the sentence that says nothing", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const code of connectorErrorCodes) {
+        expect(dictionary[key(code)], `${key(code)} in ${locale}`).not.toBe(dictionary.errorUnknown);
+      }
+    }
+  });
+
+  /** A sentence that names a provider names the wrong one for every connector but that provider. */
+  it("says what happened without naming anybody's product", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const code of connectorErrorCodes) {
+        expect(dictionary[key(code)]!.toLowerCase(), `${key(code)} in ${locale}`).not.toContain("n8n");
       }
     }
   });

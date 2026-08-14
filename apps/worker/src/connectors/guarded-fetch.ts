@@ -4,7 +4,12 @@ import { request as httpsRequest, type RequestOptions as HttpsRequestOptions } f
 import type { LookupFunction } from "node:net";
 import { isAllowlistedDestination, type AllowedDestination } from "@control-hub/config";
 import type { EgressPolicy, HttpPort, HttpRequest, HttpResponse } from "@control-hub/connectors";
-import { isAllowedEgressAddress, isOriginBoundHeader, type ConnectorFailureKind } from "@control-hub/domain";
+import {
+  isAllowedEgressAddress,
+  isOriginBoundHeader,
+  type ConnectorErrorCode,
+  type ConnectorFailureKind
+} from "@control-hub/domain";
 
 /**
  * The only way out of the process.
@@ -25,7 +30,7 @@ import { isAllowedEgressAddress, isOriginBoundHeader, type ConnectorFailureKind 
 
 export class EgressError extends Error {
   constructor(
-    public readonly code: string,
+    public readonly code: ConnectorErrorCode,
     public readonly failure: ConnectorFailureKind
   ) {
     super(code);
