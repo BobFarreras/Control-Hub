@@ -14,26 +14,32 @@ RBAC, MFA, CRM, cataleg comercial, serveis contractats pels clients, eines i des
 de l'empresa, suport amb tickets i SLA, projectes amb imputacio de temps i barems versionats, i
 registre de jornada, i la plataforma de connectors.
 
-Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **25/25** amb dos workers,
-base neta i sense reintents, i `pnpm check` sencer —`lint`, `typecheck`, `test`, `build`— tambe.
-L'error de `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb
-el redisseny de la jornada, que reescriu aquell fitxer.
+Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
+base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`
+(**609 proves**), `build`— tambe, sobre tretze paquets. L'error de
+`react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
+redisseny de la jornada, que reescriu aquell fitxer.
 
-**Fase 6 fusionada a `develop`** (`464ea5f`). La branca `feature/phase-6-connector-platform` ja
-no cal per a res. Res no s'ha empes ni desplegat.
+**Fase 6 fusionada a `develop`** (`464ea5f`) i **fase 7.1 tambe** (`7cc853b`). Les branques
+`feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
+res. Res no s'ha empes ni desplegat.
 
 ## El seguent pas
 
-**Tancar la branca.** L'A9b esta sencer: la 7.1 planificada (A1-A6) i els A7-A9 que van sortir
-d'usar-la. Queda passar `pnpm check` i `pnpm check:e2e` sencers —no han corregut complets des de
-l'A9a— i fusionar la `feature/phase-7-1-infrastructure-n8n` a `develop`. Llavors ja si,
-**l'entrega 7.2**, que comenca per l'increment B1.
+**L'entrega 7.2**, que comenca per l'increment B1. La 7.1 esta tancada: la planificada (A1-A6),
+els A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
 
-El xoc de numeracio que aixo va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per al
-permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a
-`infrastructure.md` abans de comencar-lo i no despres d'aplicar-lo.
+El xoc de numeracio que l'A9b va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per
+al permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a
+`infrastructure.md` abans de comencar-lo i no despres d'aplicar-lo. A `develop` les migracions van
+de la `0001` a la `0036` sense cap numero repetit.
 
-Tot a la branca `feature/phase-7-1-infrastructure-n8n`. La 7.1 planificada —A1 a A6— hi es
+**Les dues flags segueixen tancades.** Fusionar no encen res: sense `connectors` ni
+`infrastructure` declarades, cap de les dues rutes existeix i el modul respon 404. Encendre-les es
+una decisio a part, que ningu ha pres.
+
+Tot fusionat a `develop` des de `feature/phase-7-1-infrastructure-n8n`, en vint-i-un commits amb
+`--no-ff` per no aixafar els increments en un de sol. La 7.1 planificada —A1 a A6— hi es
 sencera, amb la pantalla `/{locale}/infrastructure` i el runbook de l'error workflow d'n8n. Els
 increments **A7 a A9** no eren al pla: surten d'usar el producte de debo un cop l'n8n va quedar
 connectat, i tots toquen la pantalla d'integracions, per aixo el que decideixen queda documentat
