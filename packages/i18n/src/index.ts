@@ -3181,6 +3181,10 @@ const integrationDictionaries = {
     noError: "Cap",
     endpoints: "Adreca d'entrada",
     endpointsDescription: "On el proveidor envia els seus events, signats amb el secret que generem aqui.",
+    endpointsAbout_n8n:
+      "Serveix per saber d'una execucio fallida a l'instant. Sense aixo no en perds cap —el sondeig les llegeix cada 5 minuts—, nomes les veus mes tard. Cal muntar l'error workflow a la instancia.",
+    endpointsAbout_generic_webhook:
+      "Es l'unica manera que aquest connector rep res: no va a buscar dades, espera que li arribin aqui signades.",
     endpointSecretWarning:
       "L'adreca i el secret nomes es veuran un cop, just despres de generar-los. No hi ha cap manera de tornar a mostrar-los: si es perden, cal revocar l'adreca i generar-ne una de nova.",
     generateEndpoint: "Generar adreca i secret",
@@ -3380,6 +3384,10 @@ const integrationDictionaries = {
     noError: "Ninguno",
     endpoints: "Direccion de entrada",
     endpointsDescription: "Donde el proveedor envia sus eventos, firmados con el secreto que generamos aqui.",
+    endpointsAbout_n8n:
+      "Sirve para enterarte de una ejecucion fallida al instante. Sin esto no pierdes ninguna —el sondeo las lee cada 5 minutos—, solo las ves mas tarde. Hay que montar el error workflow en la instancia.",
+    endpointsAbout_generic_webhook:
+      "Es la unica forma en que este conector recibe algo: no va a buscar datos, espera a que le lleguen aqui firmados.",
     endpointSecretWarning:
       "La direccion y el secreto solo se veran una vez, justo despues de generarlos. No hay forma de volver a mostrarlos: si se pierden, hay que revocar la direccion y generar una nueva.",
     generateEndpoint: "Generar direccion y secreto",
@@ -3580,6 +3588,10 @@ const integrationDictionaries = {
     noError: "None",
     endpoints: "Inbound address",
     endpointsDescription: "Where the provider posts its events, signed with the secret generated here.",
+    endpointsAbout_n8n:
+      "This is how you hear about a failed run the moment it fails. Without it you lose nothing — the poll reads them every 5 minutes — you just hear later. It needs the error workflow set up on the instance.",
+    endpointsAbout_generic_webhook:
+      "This is the only way this connector receives anything: it does not go and fetch, it waits for signed events to arrive here.",
     endpointSecretWarning:
       "The address and the secret are shown once, right after they are generated. There is no way to show them again: if they are lost, the address has to be revoked and a new one generated.",
     generateEndpoint: "Generate address and secret",

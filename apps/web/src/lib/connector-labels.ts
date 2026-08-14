@@ -26,6 +26,16 @@ export const connectorLabel = (t: Labels, type: string) => t[`connector_${labelK
 /** One line about what connecting this actually gets you. Absent is fine: a card still works. */
 export const connectorSummary = (t: Labels, type: string) => t[`connectorAbout_${labelKey(type)}`] ?? "";
 
+/**
+ * What the ingress address buys on this particular provider.
+ *
+ * The shared sentence only says what an ingress address *is*. That is not the question somebody
+ * looking at the panel is asking: for `n8n` the address buys immediacy over the five-minute poll
+ * and nothing else, which is worth saying where it is read rather than only in a runbook.
+ */
+export const ingressAbout = (t: Labels, type: string) =>
+  t[`endpointsAbout_${labelKey(type)}`] ?? t.endpointsDescription ?? "";
+
 /** A connector's own wording for a field, then the shared one, then the key itself. */
 export const fieldLabel = (t: Labels, type: string, name: string) =>
   t[`field_${labelKey(type)}_${name}`] ?? t[`field_${name}`] ?? name;

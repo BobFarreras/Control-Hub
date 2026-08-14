@@ -5429,6 +5429,14 @@ main {
   color: var(--danger);
 }
 
+/* "Nothing here yet" is a line of text, not a section. `.crm-empty` reserves 72px above and below
+   because inside a full-width table that space is the table; inside a panel a third the size it is
+   just a hole under one sentence, which is what made the credentials panel as tall as the runs. */
+.integration-detail .crm-empty {
+  padding: 4px 0 0;
+  text-align: start;
+}
+
 /* The run history is the one list on this screen with no natural end — a healthy integration
    polls every few minutes, so it grows all day. Capped and scrollable rather than left to push
    the danger zone down the page, with its own compact pager instead of the full table footer. */

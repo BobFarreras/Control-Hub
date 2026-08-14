@@ -523,3 +523,33 @@ depenia del pla d'execucio, no del sistema operatiu.
 **Solucio.** Les proves seleccionen la dada que han creat mitjancant una identitat o propietat
 estable i relacionen el pla pel seu `planId`. Mai s'utilitza la primera fila d'una consulta sense
 `ORDER BY` com si fos part del contracte.
+
+### Una accio nova respon «La operacio no s'ha pogut completar» a la base de desenvolupament
+
+**Simptoma.** L'esborrat d'una integracio fallava a `control_hub` amb el missatge generic, mentre
+que el test d'integracio i l'E2E passaven tots dos.
+
+**Causa.** Les tres bases locals no van al mateix ritme. `pnpm db:migrate:verify` migra la de
+verificacio i les suites d'integracio migren `control_hub_test`, pero **cap de les dues toca
+`control_hub`**, que es la que fa servir `pnpm dev`. La `0036` obre l'unic privilegi de `delete`
+sobre `connector_instances`; sense aplicar-la, PostgreSQL refusa la sentencia, l'API respon 500 i
+la pantalla mostra la frase generica —que es el que ha de fer: no filtra que ha dit la base.
+
+**Que enganya.** Que les proves passin **no diu res** sobre la base de desenvolupament. Son bases
+diferents i el migrador no es global. El recompte de `schema_migrations` es el que ho desmenteix:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc "select name from schema_migrations order by name desc limit 1;"
+```
+
+**Solucio.** `pnpm db:migrate` (sense sufix) i tornar a aixecar `pnpm dev`. La comprovacio que
+tanca el diagnostic, i que val per a qualsevol migracio que nomes reparteixi privilegis, es
+preguntar-los directament en comptes de deduir-los del fitxer:
+
+```bash
+docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc "select has_table_privilege('control_hub_app','connector_instances','delete');"
+```
+
+**La regla.** Quan una migracio nova nomes canvia permisos, afegir-la al repositori no la fa
+efectiva enlloc. Despres d'escriure-la, migra les tres bases o assumeix que la de desenvolupament
+et mentira a la primera prova manual.

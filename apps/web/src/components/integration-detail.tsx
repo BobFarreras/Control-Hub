@@ -11,7 +11,8 @@ import {
   ShieldAlert,
   Stethoscope,
   Trash2,
-  Webhook
+  Webhook,
+  X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -40,7 +41,7 @@ import type {
   IntegrationDetail
 } from "@/lib/api-types";
 import { configFromForm } from "@/lib/connector-config";
-import { credentialKindLabel, type Labels } from "@/lib/connector-labels";
+import { credentialKindLabel, ingressAbout, type Labels } from "@/lib/connector-labels";
 import { eventHandler } from "@/lib/handlers";
 import { errorMessage, healthTone, instanceStatusTone, runErrorMessage, webhookUrl } from "@/lib/integrations";
 
@@ -264,7 +265,7 @@ export function IntegrationDetailScreen({
         {entry?.capabilities.ingress && detail.vaultAvailable && (
           <article className="detail-panel">
             <h2>{t.endpoints}</h2>
-            <p className="field-help">{t.endpointsDescription}</p>
+            <p className="field-help">{ingressAbout(t, instance.connectorType)}</p>
             {minted ? (
               <div className="integration-secret">
                 <h3>{t.endpointSecretTitle}</h3>
@@ -551,51 +552,62 @@ function DeleteDialog({
   return (
     <div
       className="dialog-backdrop"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
     >
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={t.deleteIntegration}>
-        <h2>{t.deleteIntegration}</h2>
-        <p className="notice notice-warning">
-          <AlertTriangle size={17} aria-hidden="true" />
-          <span>{(t.deleteWarning ?? "").replace("{name}", name)}</span>
-        </p>
-        <ul className="integration-issues">
-          <li>{t.deleteTakesConfiguration}</li>
-          <li>{t.deleteTakesCredentials}</li>
-          <li>{t.deleteTakesEndpoints}</li>
-          <li>{t.deleteTakesRuns}</li>
-          <li>{t.deleteTakesInfrastructure}</li>
-        </ul>
-        {/* We forget the envelope; the provider does not forget the token. Saying so here is the
-            only place it can still be acted on. */}
-        <p className="field-help">{t.deleteRevokeAtProvider}</p>
-        <TextField
-          label={(t.deleteConfirmLabel ?? "").replace("{name}", name)}
-          name="confirmation"
-          value={typed}
-          onChange={(event) => setTyped(event.currentTarget.value)}
-          disabled={busy}
-          autoComplete="off"
-          spellCheck={false}
-          wide
-        />
-        <div className="dialog-actions">
-          <button type="button" className="secondary-button" onClick={onCancel} disabled={busy}>
-            {t.cancel}
+      <section className="crm-dialog" role="dialog" aria-modal="true" aria-label={t.deleteIntegration}>
+        <header>
+          <h2>
+            <Trash2 size={19} aria-hidden="true" />
+            {t.deleteIntegration}
+          </h2>
+          <button className="icon-button" onClick={onCancel} aria-label={t.cancel} disabled={busy}>
+            <X size={18} />
           </button>
-          <button
-            type="button"
-            className="primary-button danger"
-            disabled={busy || !matches}
-            onClick={eventHandler(onConfirm, onCrash)}
-          >
-            <Trash2 size={16} aria-hidden="true" />
-            {t.deleteConfirm}
-          </button>
+        </header>
+        <div className="dialog-form">
+          <p className="notice notice-warning wide">
+            <AlertTriangle size={17} aria-hidden="true" />
+            <span>{(t.deleteWarning ?? "").replace("{name}", name)}</span>
+          </p>
+          <ul className="integration-issues wide">
+            <li>{t.deleteTakesConfiguration}</li>
+            <li>{t.deleteTakesCredentials}</li>
+            <li>{t.deleteTakesEndpoints}</li>
+            <li>{t.deleteTakesRuns}</li>
+            <li>{t.deleteTakesInfrastructure}</li>
+          </ul>
+          {/* We forget the envelope; the provider does not forget the token. Saying so here is the
+              only place it can still be acted on. */}
+          <p className="field-help wide">{t.deleteRevokeAtProvider}</p>
+          <TextField
+            label={(t.deleteConfirmLabel ?? "").replace("{name}", name)}
+            name="confirmation"
+            value={typed}
+            onChange={(event) => setTyped(event.currentTarget.value)}
+            disabled={busy}
+            autoComplete="off"
+            spellCheck={false}
+            wide
+          />
+          <footer>
+            <button type="button" className="secondary-button" onClick={onCancel} disabled={busy}>
+              {t.cancel}
+            </button>
+            <button
+              type="button"
+              className="primary-button danger"
+              disabled={busy || !matches}
+              onClick={eventHandler(onConfirm, onCrash)}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              {t.deleteConfirm}
+            </button>
+          </footer>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
