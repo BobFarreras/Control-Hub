@@ -21,7 +21,7 @@
     "@control-hub/observability": "workspace:*",
     "@control-hub/persistence": "workspace:*",
     "bullmq": "^5.61.0",
-    "ioredis": "^5.8.0",
+    "ioredis": "^6.0.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.7",
     "prom-client": "^15.1.3",
