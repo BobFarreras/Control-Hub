@@ -337,9 +337,15 @@ function pinnedLookup(validated: { address: string; family: number }): LookupFun
  * A connector has no use for a cookie — it holds no session — and a value that arrives as an array
  * in one response and a string in another is a shape bug waiting for the first provider that sends
  * two.
+ *
+ * The map has no prototype. Every name here was chosen by whoever is on the other end of the
+ * socket, and writing a remote-chosen name onto an ordinary object makes `constructor` or
+ * `__proto__` mean something they were never meant to mean. Node happens to drop `__proto__` while
+ * parsing, but that is the parser's behaviour and not a promise it made to us: a header should be
+ * unable to reach anything but its own value, whoever sent it and whatever they called it.
  */
 function singleValueHeaders(headers: IncomingMessage["headers"]): Record<string, string> {
-  const result: Record<string, string> = {};
+  const result = Object.create(null) as Record<string, string>;
   for (const [name, value] of Object.entries(headers)) {
     if (value === undefined || name === "set-cookie") continue;
     result[name] = Array.isArray(value) ? value.join(", ") : value;

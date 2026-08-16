@@ -34,6 +34,9 @@ Dues fases senceres que la `v0.1.0` no tenia.
   n'hi havia dues, i una proposta que trencava la imatge de contenidor complia les regles.
 - Els minor i els patch de Dependabot es fusionen sols quan totes passen. Els major, mai.
 - `docs/development/dependency-log.md`, derivat de l'historial amb `pnpm deps:log`.
+- Les capcaleres que torna un proveidor s'acumulen en un mapa sense prototip. El nom d'una
+  capcalera el tria qui hi ha a l'altre extrem del socket, i escriure'l damunt d'un objecte
+  corrent fa que `constructor` o `__proto__` vulguin dir coses que no havien de voler dir.
 
 ### Nota d'activacio
 

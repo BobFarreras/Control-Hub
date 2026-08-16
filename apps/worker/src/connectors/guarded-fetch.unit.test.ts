@@ -17,8 +17,14 @@ let server: Server;
 let origin: string;
 let lastRequest = { method: "", url: "", headers: {} as Record<string, string | string[] | undefined>, body: "" };
 
-/** What the handler does next, set per test. */
-let respond: (path: string) => { status: number; headers?: Record<string, string>; body?: string } = () => ({
+/**
+ * What the handler does next, set per test.
+ *
+ * Headers may be given as a flat list rather than an object, because that is the only way to send
+ * a header whose name an object literal would swallow -- `__proto__` sets a prototype instead of
+ * a key, so an object could never express it.
+ */
+let respond: (path: string) => { status: number; headers?: Record<string, string> | string[]; body?: string } = () => ({
   status: 200
 });
 
@@ -217,6 +223,26 @@ describe("talking to a destination the operator allowed", () => {
     respond = () => ({ status: 200 });
     await allowlisted().send({ method: "GET", url: `${origin}/things` });
     expect(lastRequest.headers["user-agent"]).toBe("ControlHub-Connector/1.0");
+  });
+
+  /**
+   * Header names come from the other end of the socket and become property names on an object we
+   * then pass around. Node drops `__proto__` while parsing, so nothing escalates today -- but that
+   * is an implementation detail of the parser, not a guarantee of ours, and `constructor` goes
+   * straight through. The map is built without a prototype, so a header name can only ever mean a
+   * header, and reading one that was never sent answers nothing instead of answering a built-in.
+   */
+  it("lets a provider name a header after a built-in without it meaning anything more", async () => {
+    respond = () => ({
+      status: 200,
+      headers: ["__proto__", "polluted", "constructor", "not-a-constructor", "content-type", "application/json"]
+    });
+    const response = await allowlisted().send({ method: "GET", url: `${origin}/things` });
+
+    expect(response.headers["constructor"]).toBe("not-a-constructor");
+    expect(response.headers["toString"]).toBeUndefined();
+    expect(Object.getPrototypeOf(response.headers)).toBeNull();
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 
   it("stops reading a response that is larger than the budget", async () => {
