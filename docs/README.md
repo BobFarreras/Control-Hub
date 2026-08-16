@@ -47,3 +47,6 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   solucio. Consulta-l'ho abans de dedicar temps a un simptoma estrany.
 - `development/writing-a-connector.md`: com afegir un proveidor nou implementant el contracte de
   connector, sense tocar el domini ni l'API.
+- `development/dependency-log.md`: quines versions han entrat, quan, i si van entrar soles o
+  revisades. **Generat amb `pnpm deps:log`, no s'edita a ma.** El procediment es a
+  `BRANCHING.md`, seccio "Actualitzacions de dependencies".
