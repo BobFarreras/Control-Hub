@@ -20,6 +20,13 @@ base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `t
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
 
+**Les portes de `develop` han passat de dues a vuit** el 16 d'agost de 2026. Fins llavors nomes
+`Repository standards` i `Application checks` eren obligatories, i les altres sis —les dues
+suites end to end, la imatge de contenidor, gitleaks, `pnpm audit` i CodeQL— corrien pero no
+aturaven res. Amb Dependabot obrint propostes cada setmana, aixo volia dir que una que trencava
+la imatge complia les regles. Els minor i els patch ara es fusionen sols quan les vuit passen;
+els major no, mai. El procediment i el que costa son a `BRANCHING.md`.
+
 **Fase 6 fusionada a `develop`** (`464ea5f`) i **fase 7.1 tambe** (`7cc853b`). Les branques
 `feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
 res. Res no s'ha empes ni desplegat.

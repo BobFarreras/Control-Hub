@@ -1,0 +1,64 @@
+# The weekly reading of how far behind the dependencies are.
+#
+# It publishes the log to the run summary instead of committing it, and that is a limitation
+# worth stating rather than working around badly. A pull request opened with `GITHUB_TOKEN`
+# does not trigger workflows -- GitHub blocks that to stop a workflow feeding itself -- so a
+# pull request from here would never receive the eight required checks on `develop` and would
+# sit open forever waiting for them. A weekly stuck pull request is worse than no automation.
+#
+# If the committed copy is ever worth having updated automatically, the missing piece is a
+# personal access token in a secret: a pull request opened with one does run CI, and then this
+# job can commit, open and auto-merge like the Dependabot flow does. That is a new write
+# credential in the repository, so it is a decision to take deliberately and not a default.
+#
+# Until then: `pnpm deps:log` regenerates the file, and this tells you when that is worth doing.
+name: Dependency log
+
+on:
+  schedule:
+    # Monday morning, after Dependabot has opened whatever it is going to open that week.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.16.0"
+
+jobs:
+  report:
+    name: Publish the dependency log
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The log is derived from every dependency commit ever merged, so a shallow clone
+          # would silently report a shorter history as the whole truth.
+          fetch-depth: 0
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Regenerate the log
+        run: node scripts/dependency-log.mjs
+
+      - name: Publish it, and say whether the committed copy is stale
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat docs/development/dependency-log.md >> "$GITHUB_STEP_SUMMARY"
+          if ! git diff --quiet -- docs/development/dependency-log.md; then
+            {
+              echo
+              echo "---"
+              echo
+              echo "### The committed copy is behind"
+              echo
+              echo "Run \`pnpm deps:log\` and commit the result."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

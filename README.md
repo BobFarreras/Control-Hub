@@ -46,6 +46,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`docs/development/current-state.md`](docs/development/current-state.md): estat implementat i punt de continuacio.
 - [`docs/development/troubleshooting.md`](docs/development/troubleshooting.md): fallades ja diagnosticades, amb causa i solucio.
 - [`docs/development/writing-a-connector.md`](docs/development/writing-a-connector.md): afegir un proveidor nou implementant el contracte de connector.
+- [`docs/development/dependency-log.md`](docs/development/dependency-log.md): que ha entrat, quan i de quina mida era el salt. Generat amb `pnpm deps:log`.
 
 ## Arrencada local
 
