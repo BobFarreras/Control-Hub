@@ -12,7 +12,7 @@
   "devDependencies": {
     "@control-hub/connectors": "workspace:*",
     "@control-hub/domain": "workspace:*",
-    "typescript": "^5.9.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
 }

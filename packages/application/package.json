@@ -14,7 +14,7 @@
     "@control-hub/domain": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
 }
