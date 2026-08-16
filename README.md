@@ -4,7 +4,11 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`.
+Versio publicada: **v0.2.0**.
+
+La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`. La Fase 6 aporta la plataforma de connectors —contracte, vault de credencials i webhooks signats— i la Fase 7.1 el connector n8n amb la pantalla d'infraestructura.
+
+**Les fases 6 i 7.1 queden darrere les flags `connectors` i `infrastructure`, totes dues apagades.** Amb una flag tancada les seves rutes no es declaren i el modul respon 404: publicar-les no les activa.
 
 L'estat detallat i el punt de continuacio son a [`docs/development/current-state.md`](docs/development/current-state.md), que es el primer document a llegir en obrir una sessio.
 
@@ -27,6 +31,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 
 ## Documentacio
 
+- [`CHANGELOG.md`](CHANGELOG.md): que ha canviat a cada versio publicada.
 - [`Control_Hub_decisio_arquitectura.md`](Control_Hub_decisio_arquitectura.md): decisions aprovades i roadmap.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): arquitectura logica i fonaments tecnics.
 - [`AGENTS.md`](AGENTS.md): normes per als agents que modifiquin el repositori.
@@ -64,10 +69,11 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Fase 5B:** projectes i temps. Implementada, pendent de revisio del propietari.
-2. **Fase 5C:** registre de jornada. Especificacio aprovada; no s'activa en produccio sense confirmacio de la gestoria.
-3. **Fase 6:** plataforma de connectors, amb contracte, vault de credencials i webhooks signats.
-4. **Fase 7:** infraestructura i connector n8n.
+1. **Fase 7.2:** inventari de hosts i serveis, connector Prometheus, regles d'alerta d'infraestructura i tauler tecnic.
+2. **Encendre les flags `connectors` i `infrastructure`**, que es una decisio a part de publicar-les.
+3. **Els major de dependencies pendents**: `typescript 6`, `node 26`, `ioredis 6` i companyia, un per branca segons `BRANCHING.md`.
+
+Fases ja lliurades: 5B (projectes i temps), 5C (registre de jornada), 6 (plataforma de connectors) i 7.1 (infraestructura i connector n8n).
 
 Les fases i les seves portes d'aprovacio son a [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), que mana sobre aquest resum.
 

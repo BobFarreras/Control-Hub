@@ -179,8 +179,9 @@ proposta que trencava la imatge de contenidor complia les regles, perque el job 
 no comptava. Si alguna vegada s'activa l'auto-merge sobre unes portes incompletes, s'automatitza
 el forat, no la feina.
 
-**El cost es real i s'accepta a proposit**: cap proposta entra en menys d'un quart d'hora,
-perque `Container image` i `Static analysis` son lents. Es el preu de que "verd" vulgui dir
-alguna cosa.
+**El cost es real i s'accepta a proposit**, pero es menor del que sembla: els vuit jobs corren
+en paral·lel, aixi que mana el mes lent i no la suma. La primera tanda amb les vuit obligatories
+va trigar **menys de quatre minuts**, amb `Authenticated end to end` com a mes lent (3m56s). Es
+el preu de que "verd" vulgui dir alguna cosa, i es barat.
 
 Les rulesets es configuren al repositori GitHub; no es poden imposar nomes amb fitxers versionats.

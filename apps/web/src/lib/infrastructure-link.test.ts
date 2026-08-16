@@ -87,7 +87,11 @@ describe("building the link to a workflow", () => {
    * points at the configured origin and at nothing else.
    */
   it("refuses anything whose origin ends up different from the configured one", () => {
-    expect(automationLink(base, "workflow:42")?.startsWith(base)).toBe(true);
+    // The whole address, not a prefix of it. A prefix is satisfied by
+    // `https://n8n.internal.example.evil.test`, which is the family of hosts this file exists to
+    // refuse -- an assertion that a link merely starts with the base would pass on exactly the
+    // input it should catch.
+    expect(automationLink(base, "workflow:42")).toBe(`${base}/workflow/42`);
     expect(automationLink("https://n8n.internal.example", "workflow://evil.example")).toBeNull();
     expect(automationLink("https://n8n.internal.example", "workflow:\\evil.example")).toBeNull();
     expect(automationLink("https://n8n.internal.example", "workflow:%2F%2Fevil.example")).toBeNull();

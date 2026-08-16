@@ -29,7 +29,21 @@ els major no, mai. El procediment i el que costa son a `BRANCHING.md`.
 
 **Fase 6 fusionada a `develop`** (`464ea5f`) i **fase 7.1 tambe** (`7cc853b`). Les branques
 `feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
-res. Res no s'ha empes ni desplegat.
+res.
+
+**Publicada la `v0.2.0`** el 16 d'agost de 2026: `main` anava cinquanta-un commits i dues fases
+enrere, i ara hi es al dia amb el tag signat (`3a03a62`). **Publicar no encen res**: `connectors`
+i `infrastructure` segueixen darrere la seva flag, apagades, i amb la flag tancada les rutes no
+es declaren. **No s'ha desplegat res enlloc**; la release es un tag, no una instal·lacio.
+
+La comparacio contra un `main` tan endarrerit va fer que dues portes miressin historial que les
+propostes cap a `develop` no havien mirat mai, i van sortir tres coses. Gitleaks va parar en un
+fixture de proves, resolt amb el fingerprint historic tal com ja prescrivia
+`troubleshooting.md`. CodeQL en va marcar dues d'altes: una assercio de test que comprovava un
+prefix en comptes de l'adreca sencera —i que per tant hauria passat amb
+`n8n.internal.example.evil.test`, exactament el cas que el fitxer existeix per refusar—, i el
+mapa de capcaleres del `guarded-fetch`, que ara es sense prototip perque el nom d'una capcalera
+el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
