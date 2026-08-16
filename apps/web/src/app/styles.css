@@ -103,6 +103,7 @@ a {
 .brand {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 0 10px 28px;
 }
@@ -209,9 +210,33 @@ a {
   backdrop-filter: blur(16px);
 }
 .topbar-page-title {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   gap: 5px;
+}
+.topbar-back {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.topbar-back:hover,
+.topbar-back:focus-visible {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: var(--brand-subtle);
 }
 .topbar-page-title p {
   margin: 0;
@@ -1079,6 +1104,9 @@ main {
 }
 .crm-dialog h2 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
 }
 .crm-form {
@@ -2045,9 +2073,14 @@ main {
 .product-detail-hero {
   padding: 20px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px;
+}
+.product-detail-hero > div:first-child {
+  min-width: 210px;
+  flex: 1 1 320px;
 }
 .product-detail-hero h2 {
   margin: 5px 0 8px;
@@ -2062,21 +2095,26 @@ main {
   font: 500 11px/1 "JetBrains Mono";
 }
 .product-detail-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .product-detail-summary article {
-  padding: 14px 16px;
-  display: grid;
-  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .product-detail-summary strong {
-  font: 700 20px/1 "JetBrains Mono";
+  font: 700 17px/1 "JetBrains Mono";
 }
 .product-detail-summary span {
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 .product-offer-tree {
   padding: 18px;
@@ -2126,13 +2164,255 @@ main {
   flex-wrap: wrap;
   gap: 8px;
 }
+.catalog-table-product {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.catalog-table-product a {
+  width: fit-content;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+.catalog-table-product a:hover {
+  color: var(--brand);
+}
+.catalog-table-product small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-detail-actions {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.product-knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.product-knowledge-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.product-knowledge-panel > header,
+.product-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.product-knowledge-panel h2,
+.product-section-heading h2 {
+  margin: 3px 0 0;
+  font-size: 17px;
+}
+.product-knowledge-panel header span,
+.product-section-heading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.product-section-heading p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.product-resource-row,
+.product-customer-row {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+}
+.product-resource-row > div,
+.product-customer-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.product-resource-row span,
+.product-customer-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.product-resource-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--brand);
+  font-weight: 650;
+}
+.version-knowledge-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.version-knowledge-summary > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.version-knowledge-summary ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.version-knowledge-summary p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.product-detail-dialog {
+  width: min(660px, 100%);
+}
+.product-detail-form {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+.product-detail-form label {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.product-detail-form label:has(textarea),
+.product-detail-form > button {
+  grid-column: 1 / -1;
+}
+.product-detail-form input,
+.product-detail-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface-subtle);
+  font: inherit;
+}
+.product-detail-form input {
+  height: 42px;
+}
+.product-detail-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+.product-detail-form > button {
+  width: fit-content;
+  justify-self: end;
+}
+.product-detail-form .code-textarea {
+  min-height: 170px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
 @media (max-width: 680px) {
-  .product-detail-summary {
-    grid-template-columns: 1fr;
+  .topbar-back {
+    width: 38px;
+    padding: 0;
+  }
+  .topbar-back span {
+    display: none;
   }
   .product-detail-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+  .product-detail-summary {
+    width: 100%;
+  }
+  .product-detail-summary article {
+    flex: 1 1 130px;
+  }
+  .product-knowledge-grid,
+  .version-knowledge-summary {
+    grid-template-columns: 1fr;
+  }
+  .product-detail-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .product-detail-form {
+    grid-template-columns: 1fr;
+  }
+  .product-detail-form label,
+  .product-detail-form > button {
+    grid-column: 1;
+  }
+}
+
+.catalog-inline-kpis {
+  height: 38px;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.catalog-inline-kpis span {
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.catalog-inline-kpis span + span {
+  border-left: 1px solid var(--border);
+}
+.catalog-inline-kpis strong {
+  color: var(--text);
+  font: 700 13px/1 "JetBrains Mono";
+}
+.smart-table-primary:has(.catalog-inline-kpis) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.smart-table-primary:has(.catalog-inline-kpis) .primary-command {
+  min-height: 38px;
+  margin-left: auto;
+}
+@media (max-width: 1120px) {
+  .smart-table:has(.catalog-inline-kpis) .smart-table-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .smart-table:has(.catalog-inline-kpis) .smart-table-settings {
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 720px) {
+  .smart-table-primary:has(.catalog-inline-kpis) {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .smart-table-primary:has(.catalog-inline-kpis) .crm-search {
+    width: 100%;
+  }
+  .catalog-inline-kpis {
+    flex: 1 1 auto;
   }
 }
 .catalog-offer-details {
@@ -3100,16 +3380,34 @@ main {
 .ticket-identity-main {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
   min-width: 0;
 }
-.ticket-reference {
-  font-variant-numeric: tabular-nums;
+.ticket-identity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  font-size: 0.875rem;
   color: var(--text-muted);
-  font-size: 0.85rem;
 }
-.ticket-identity-customer {
+.ticket-identity-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.ticket-identity-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.ticket-identity-description {
   color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-top: 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ticket-project-link {
   display: inline-flex;
@@ -4703,17 +5001,173 @@ main {
   color: var(--muted);
 }
 
-/* Increment 10: Calendar view and view toggle */
+.attendance-table-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
 
-.attendance-view-toggle {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: 8px;
+.attendance-table-stack .project-panel,
+.attendance-table-stack .smart-table {
+  min-width: 0;
+  max-width: 100%;
 }
-.attendance-view-toggle .secondary-button.active {
-  background: var(--primary);
-  color: var(--primary-fg);
+
+.attendance-table-stack .smart-table .crm-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
+
+.attendance-table-stack .smart-table .crm-table {
+  width: 100%;
+  min-width: 620px;
+}
+
+.attendance-month-control {
+  min-width: 210px;
+  height: 40px;
+  padding: 3px;
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 1fr) 34px;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
+.attendance-month-control strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.attendance-month-arrow {
+  width: 34px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.attendance-month-arrow:hover {
+  color: var(--brand);
+  background: var(--surface);
+}
+
+.attendance-month-arrow:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.attendance-panel-head {
+  margin-bottom: 14px;
+}
+
+.attendance-table-stack .smart-table-primary {
+  min-width: 0;
+  flex: 1;
+}
+
+.attendance-table-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.attendance-table-heading h3,
+.attendance-table-title {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.attendance-team-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.attendance-pending-requests {
+  margin-bottom: 20px;
+}
+
+.attendance-team-summary .metric-row {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.attendance-team-summary .metric-tile {
+  min-height: 68px;
+  padding: 9px 12px;
+  gap: 3px;
+}
+
+.attendance-team-summary .metric-tile header {
+  font-size: 11px;
+}
+
+.attendance-team-summary .metric-value {
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.attendance-topbar-total {
+  min-width: 132px;
+  display: grid;
+  gap: 3px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.attendance-topbar-total span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.attendance-topbar-total strong {
+  font: 650 18px/1 "JetBrains Mono";
+}
+
+@media (max-width: 720px) {
+  .attendance-team-summary {
+    grid-template-columns: 1fr;
+  }
+  .attendance-team-summary .metric-row {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  .attendance-team-summary > .attendance-month-control {
+    justify-self: stretch;
+  }
+  .attendance-table-stack .smart-table-controls,
+  .attendance-table-stack .smart-table-settings {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .attendance-table-heading {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .attendance-month-control {
+    width: 100%;
+  }
+}
+
+/* Calendar view */
 
 .attendance-calendar-summary {
   display: flex;
@@ -4762,7 +5216,7 @@ main {
 
 .calendar-day-name {
   text-align: center;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--muted);
   padding: 4px 0;
@@ -4780,12 +5234,12 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 2px;
-  padding: 6px 3px;
-  border-radius: 4px;
+  gap: 5px;
+  padding: 9px 6px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
-  min-height: 56px;
+  min-height: 84px;
   transition: background-color 0.15s ease;
 }
 
@@ -4832,8 +5286,9 @@ main {
 }
 
 .calendar-day-number {
-  font-size: 0.75rem;
-  font-weight: 600;
+  align-self: flex-start;
+  font-size: 0.9rem;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -4841,18 +5296,20 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  align-items: flex-start;
+  width: 100%;
+  gap: 3px;
 }
 
 .calendar-hours {
-  font-size: 0.65rem;
-  font-weight: 500;
+  font-size: 0.82rem;
+  font-weight: 650;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
 .calendar-session-range {
-  font-size: 0.55rem;
+  font-size: 0.72rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -4862,7 +5319,8 @@ main {
 }
 
 .calendar-day-label {
-  font-size: 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   color: var(--muted);
   text-align: center;
   line-height: 1.1;
@@ -4938,4 +5396,221 @@ main {
   .calendar-cell {
     transition: none;
   }
+}
+
+/* A cell with nothing to report, said quietly rather than left blank. Scoped to the table because
+   `.muted` is a modifier elsewhere and a bare rule would repaint those too. */
+.crm-table .muted {
+  color: var(--muted);
+}
+
+/* One integration's own page. Two columns where there is room, because the panels are short and a
+   single stack of them on a wide screen is mostly whitespace with a very long line of text. */
+.integration-detail {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (width < 1000px) {
+  .integration-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* What cannot be undone, kept apart from what can. It spans both columns and sits last, so
+   deleting is never the button next to the one that merely stops an integration. */
+.integration-detail .danger-zone {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.integration-detail .danger-zone h2 {
+  color: var(--danger);
+}
+
+/* The integrations table, saying the state without being opened.
+   The provider's mark beside its name, and a health reading with its reason under it: both are
+   two things in one cell, so both need the cell to stack rather than run on. */
+.cell-connector {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.cell-health {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+.cell-health small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+/* A reading old enough to distrust. The word beside it carries the same meaning, so the colour is
+   never the only thing saying it. */
+.reading-stale {
+  display: grid;
+  gap: 2px;
+  color: var(--warning);
+}
+.reading-stale small {
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
+/* "Nothing here yet" is a line of text, not a section. `.crm-empty` reserves 72px above and below
+   because inside a full-width table that space is the table; inside a panel a third the size it is
+   just a hole under one sentence, which is what made the credentials panel as tall as the runs. */
+.integration-detail .crm-empty {
+  padding: 4px 0 0;
+  text-align: start;
+}
+
+/* The run history is the one list on this screen with no natural end — a healthy integration
+   polls every few minutes, so it grows all day. Capped and scrollable rather than left to push
+   the danger zone down the page, with its own compact pager instead of the full table footer. */
+.integration-detail .runs-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.integration-detail .runs-pagination {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  justify-content: space-between;
+}
+
+.primary-button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.primary-button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+}
+.integration-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.integration-config {
+  width: 100%;
+  min-height: 120px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font:
+    400 12px/1.6 "JetBrains Mono",
+    ui-monospace,
+    monospace;
+  white-space: pre;
+}
+/* The catalogue of platforms. Cards rather than a list, because choosing what to connect to is
+   recognising a thing you already use, and a name in a dropdown is something you have to read. */
+.connector-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.connector-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.connector-card:hover,
+.connector-card:focus-visible {
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+}
+.connector-card strong {
+  font-size: 14px;
+  color: var(--text);
+}
+.connector-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+/* The fields a connector already answers for itself. Folded away by default: five questions
+   nobody has to answer read as five questions somebody has to go and research. */
+.config-advanced {
+  margin: 4px 0 2px;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.config-advanced > summary {
+  padding: 10px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.config-advanced > summary:hover {
+  color: var(--text);
+}
+.config-advanced-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+.integration-issues {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--danger);
+  font-size: 12px;
+}
+.integration-issues code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+/* Shown once, and it has to look like it. The warning above it is a `.notice-warning`; this box
+   is the thing to copy out of, so the two never share a treatment. */
+.integration-secret {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-subtle);
+}
+.integration-secret h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.integration-secret > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.integration-secret code {
+  overflow-wrap: anywhere;
+  font:
+    400 12px/1.5 "JetBrains Mono",
+    ui-monospace,
+    monospace;
+}
+.integration-secret .primary-button {
+  justify-self: start;
+  margin-top: 6px;
 }

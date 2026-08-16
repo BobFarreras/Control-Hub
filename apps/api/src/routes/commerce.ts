@@ -248,6 +248,148 @@ export function registerCommerceRoutes({ app, database, auth, commerce, customer
     requirePermission(context, "products:manage");
     return commerce.productDetail(context, request.params.productId);
   });
+  app.patch<{
+    Params: { productId: string };
+    Body: { name: string; description?: string; status: "active" | "archived"; expectedUpdatedAt: string };
+  }>(
+    "/api/v1/commerce/products/:productId",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "status", "expectedUpdatedAt"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 160 },
+            description: { type: "string", maxLength: 2000 },
+            status: { type: "string", enum: ["active", "archived"] },
+            expectedUpdatedAt: { type: "string", format: "date-time" }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "products:manage");
+      const product = await commerce.updateProduct(context, request.params.productId, {
+        name: request.body.name,
+        ...(request.body.description ? { description: request.body.description } : {}),
+        status: request.body.status,
+        expectedUpdatedAt: new Date(request.body.expectedUpdatedAt)
+      });
+      await writeAudit(database, context, request, {
+        action: "product.updated",
+        targetType: "product",
+        targetId: product.id,
+        outcome: "success",
+        metadata: { status: product.status }
+      });
+      return { product };
+    }
+  );
+  app.patch<{
+    Params: { versionId: string };
+    Body: {
+      releaseNotes?: string;
+      features: string[];
+      contents: string[];
+      schemaDocument?: Record<string, unknown>;
+      expectedUpdatedAt: string;
+    };
+  }>(
+    "/api/v1/commerce/versions/:versionId/knowledge",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["features", "contents", "expectedUpdatedAt"],
+          properties: {
+            releaseNotes: { type: "string", maxLength: 10000 },
+            features: { type: "array", maxItems: 100, items: { type: "string", minLength: 1, maxLength: 500 } },
+            contents: { type: "array", maxItems: 100, items: { type: "string", minLength: 1, maxLength: 500 } },
+            schemaDocument: { type: "object", additionalProperties: true },
+            expectedUpdatedAt: { type: "string", format: "date-time" }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "products:manage");
+      const version = await commerce.updateVersionKnowledge(context, request.params.versionId, {
+        ...(request.body.releaseNotes ? { releaseNotes: request.body.releaseNotes } : {}),
+        features: request.body.features,
+        contents: request.body.contents,
+        ...(request.body.schemaDocument ? { schemaDocument: request.body.schemaDocument } : {}),
+        expectedUpdatedAt: new Date(request.body.expectedUpdatedAt)
+      });
+      await writeAudit(database, context, request, {
+        action: "product_version.documented",
+        targetType: "product_version",
+        targetId: version.id,
+        outcome: "success",
+        metadata: { featureCount: version.features.length, contentCount: version.contents.length }
+      });
+      return { version };
+    }
+  );
+  app.put<{
+    Params: { productId: string };
+    Body: {
+      resources: Array<{
+        productVersionId?: string;
+        kind: "information" | "documentation" | "diagram" | "repository" | "demo";
+        label: string;
+        url: string;
+      }>;
+    };
+  }>(
+    "/api/v1/commerce/products/:productId/resources",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["resources"],
+          properties: {
+            resources: {
+              type: "array",
+              maxItems: 50,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind", "label", "url"],
+                properties: {
+                  productVersionId: { type: "string", format: "uuid" },
+                  kind: { type: "string", enum: ["information", "documentation", "diagram", "repository", "demo"] },
+                  label: { type: "string", minLength: 1, maxLength: 160 },
+                  url: { type: "string", maxLength: 2048, pattern: "^https://" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "products:manage");
+      const resources = await commerce.replaceProductResources(
+        context,
+        request.params.productId,
+        request.body.resources
+      );
+      await writeAudit(database, context, request, {
+        action: "product.resources_replaced",
+        targetType: "product",
+        targetId: request.params.productId,
+        outcome: "success",
+        metadata: { count: resources.length }
+      });
+      return { resources };
+    }
+  );
   app.post<{ Body: { code: string; name: string; description?: string } }>(
     "/api/v1/commerce/products",
     {

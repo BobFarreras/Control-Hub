@@ -1,0 +1,26 @@
+-- Phase 7.1, increment A9b: removing an integration.
+-- Specification: docs/specifications/connectors.md
+--
+-- This reverses exactly one line of `0030`, which granted no delete on any connector table and
+-- said why: an instance is disabled, a credential is revoked, and a run is the record of what
+-- happened, so the runtime role could not remove any of them. That stance was right about the
+-- evidence and wrong about the instance. Disabling stops an integration and keeps everything,
+-- which is what somebody who wants it to stop actually wants; there was no way at all to say
+-- that an integration should no longer exist, and the only workaround was psql.
+--
+-- So the grant is on `connector_instances` and on nothing else. The rows underneath still cannot
+-- be reached by a request: deleting them one by one remains impossible, and they go only as the
+-- consequence of the instance going. That is the difference between "an operator may retire an
+-- integration" and "a request may erase the evidence of what an integration did", and it is a
+-- difference this file has to keep.
+--
+-- No grant is needed on the referencing tables. PostgreSQL performs a cascade as an internal
+-- referential action with the privileges of the table owner and outside row-level security, so
+-- `control_hub_app` needs no delete of its own on the seven tables that hang off an instance --
+-- and must not have one. `connector-repository.integration.test.ts` proves the cascade end to
+-- end rather than trusting that reading.
+--
+-- The isolation policies of `0030` carry no `for` clause, so they already cover `delete`: a
+-- statement outside the tenant context matches no row and removes nothing.
+
+grant delete on connector_instances to control_hub_app;

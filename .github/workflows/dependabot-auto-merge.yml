@@ -1,0 +1,65 @@
+# Minor and patch updates merge themselves once every gate is green. Majors never do.
+#
+# The reasoning is that a version bump is not a judgement call when the range is compatible: CI
+# builds every image, starts the stack, runs both end to end suites and reads the code with
+# CodeQL, and a human who reads the same diff adds nothing to that. What a human does add is
+# reading a changelog, and that is only worth doing when the author has declared a breaking
+# change -- which is what a major version is.
+#
+# So the split is drawn on the semver bump Dependabot reports, not on a list of packages anybody
+# has to maintain. A new dependency is covered the day it arrives.
+#
+# `pull_request_target` rather than `pull_request`: a workflow triggered by Dependabot on
+# `pull_request` gets a read only token by design, and enabling auto merge is a write. The usual
+# danger of `pull_request_target` is that it runs with a write token against code from the pull
+# request -- this one never checks that code out. It reads metadata and calls the API, nothing
+# else, so there is no step where a dependency's own contents could execute here.
+#
+# Nothing here bypasses a gate. `--auto` queues the merge; GitHub performs it only when every
+# required status check on `develop` has passed, and holds the pull request open forever if one
+# does not.
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    branches: [develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Merge compatible updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Read what Dependabot is proposing
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A grouped pull request reports the highest bump it contains, so a group that swept in a
+      # major is treated as a major and stops here with the rest of them.
+      - name: Queue the merge for a minor or a patch
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Say why a major was left alone
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          {
+            echo "### Left for a human"
+            echo
+            echo "\`${{ steps.metadata.outputs.dependency-names }}\` is a major update."
+            echo
+            echo "A green pipeline is the condition for testing it, not the verdict. The"
+            echo "procedure is in BRANCHING.md, section 'Actualitzacions de dependencies'."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -87,12 +87,14 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 | `pnpm lint` | Lint de tot el workspace |
 | `pnpm typecheck` | TypeScript estricte |
 | `pnpm test` | Tests unitaris |
+| `pnpm test:scripts` | Tests dels scripts de l'arrel, que `turbo test` no veu |
 | `pnpm test:integration` | Tests amb containers aillats |
 | `pnpm test:e2e` | Playwright |
 | `pnpm test:e2e:authenticated` | Playwright amb sessio iniciada (vegeu mes avall) |
 | `pnpm test:visual` | Captures light/dark i locales |
 | `pnpm build` | Build reproduible de totes les apps |
-| `pnpm check` | Lint + typecheck + tests + build |
+| `pnpm check` | Lint + format + typecheck + tests + tests dels scripts + build |
+| `pnpm deps:log` | Regenera `docs/development/dependency-log.md` des de l'historial de git |
 
 Cap script de test utilitza la base de dades manual del desenvolupador.
 

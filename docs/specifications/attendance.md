@@ -1,5 +1,19 @@
 # Especificacio de registre de jornada
 
+## Experiencia de consulta
+
+- La pantalla personal separa tres subseccions estables: **Calendari**, **Registre diari** i,
+  nomes per a qui te `attendance:manage`, **Equip**. El mes seleccionat es conserva entre
+  subseccions i forma part de la URL.
+- El calendari rep sempre el rang mensual complet (`from` i `to`) com a contracte explicit. No
+  dedueix el mes dels dies amb fitxatges: un mes sense cap moviment continua mostrant tots els
+  dies i permet consultar o sol·licitar vacances i absencies.
+- Les consultes de festius, vacances i absencies cobreixen tot el mes visible, inclosos els
+  extrems que no tenen fitxatges. El comportament es identic els dotze mesos i en canvis d'any.
+- Les taules de dies, moviments i equip reutilitzen la taula professional del producte, amb
+  ordre recent-primer per defecte, ordenacio, filtres, paginacio i preferencies per usuari i
+  tenant quan correspongui.
+
 **Estat:** aprovada pel propietari el 2026-08-04. Fase 5C, despres de projectes i temps.
 No s'activa en produccio sense confirmacio de la gestoria.
 

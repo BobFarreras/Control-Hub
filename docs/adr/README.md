@@ -9,5 +9,6 @@
 | 0005 | Secrets | Aprovada |
 | 0006 | Cues i jobs | Aprovada |
 | 0007 | Desplegament | Aprovada |
+| 0008 | Vault logic de credencials de connector | Aprovada |
 
 Una ADR acceptada no s'edita per canviar la decisio; es crea una ADR nova que la substitueix.

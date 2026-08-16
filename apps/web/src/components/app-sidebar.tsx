@@ -15,7 +15,8 @@ import {
   Users
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useAttendanceStatus } from "@/components/attendance-provider";
 import { useFeature } from "@/components/feature-provider";
 
 type Labels = {
@@ -30,6 +31,9 @@ type Labels = {
   projects: string;
   support: string;
   attendance: string;
+  attendanceCalendar: string;
+  attendanceRecords: string;
+  attendanceTeam: string;
   infrastructure: string;
   integrations: string;
   settings: string;
@@ -37,14 +41,20 @@ type Labels = {
 
 export function AppSidebar({ locale, labels, ready }: { locale: string; labels: Labels; ready?: string }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   // Resolved on the server by the root layout: a menu entry leading to a route the API does not
   // serve is worse than no entry at all, and the sidebar cannot read the environment itself.
   const projectsEnabled = useFeature("projects_and_time");
   const attendanceEnabled = useFeature("attendance");
-  const item = (href: string, label: string, Icon?: typeof Package, exact = false) => (
+  const connectorsEnabled = useFeature("connectors");
+  const infrastructureEnabled = useFeature("infrastructure");
+  const attendanceStatus = useAttendanceStatus();
+  const attendanceMonth = searchParams.get("month");
+  const monthQuery = attendanceMonth ? `&month=${attendanceMonth}` : "";
+  const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
     <Link
       className={
-        pathname === href || (!exact && href !== `/${locale}` && pathname.startsWith(`${href}/`))
+        (active ?? (pathname === href || (!exact && href !== `/${locale}` && pathname.startsWith(`${href}/`))))
           ? "nav-item active"
           : "nav-item"
       }
@@ -89,9 +99,41 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
         </details>
         {projectsEnabled && item(`/${locale}/projects`, labels.projects, FolderKanban)}
         {item(`/${locale}/support`, labels.support, Headphones)}
-        {attendanceEnabled && item(`/${locale}/attendance`, labels.attendance, Clock)}
-        {item("#", labels.infrastructure, CloudCog)}
-        {item("#", labels.integrations, Boxes)}
+        {attendanceEnabled && (
+          <details className="nav-group" open={pathname.startsWith(`/${locale}/attendance`)}>
+            <summary>
+              <Clock size={19} />
+              <span>{labels.attendance}</span>
+              <ChevronDown size={15} />
+            </summary>
+            <div>
+              {item(
+                `/${locale}/attendance?view=calendar${monthQuery}`,
+                labels.attendanceCalendar,
+                undefined,
+                true,
+                pathname === `/${locale}/attendance` && searchParams.get("view") !== "records"
+              )}
+              {item(
+                `/${locale}/attendance?view=records${monthQuery}`,
+                labels.attendanceRecords,
+                undefined,
+                true,
+                pathname === `/${locale}/attendance` && searchParams.get("view") === "records"
+              )}
+              {attendanceStatus?.canManage &&
+                item(
+                  `/${locale}/attendance/team${attendanceMonth ? `?month=${attendanceMonth}` : ""}`,
+                  labels.attendanceTeam,
+                  undefined,
+                  true,
+                  pathname === `/${locale}/attendance/team`
+                )}
+            </div>
+          </details>
+        )}
+        {infrastructureEnabled && item(`/${locale}/infrastructure`, labels.infrastructure, CloudCog)}
+        {connectorsEnabled && item(`/${locale}/integrations`, labels.integrations, Boxes)}
         {item(`/${locale}/security`, labels.settings, Settings)}
       </nav>
       {ready && (

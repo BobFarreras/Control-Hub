@@ -1,0 +1,658 @@
+# Especificacio de la plataforma de connectors
+
+**Fase 6.** Estat: **aprovada** pel propietari l'11 d'agost de 2026.
+
+Aquesta especificacio defineix com Control Hub parla amb sistemes de tercers sense que aquests
+sistemes entrin al nucli. No descriu cap proveidor concret: descriu el marc que la Fase 7 (n8n,
+Prometheus) i la Fase 8 (correu, IA) hauran de fer servir sense modificar-lo.
+
+Decisions prèvies que manen aqui: `ADR-0004` (connectors per ports i adaptadors), `ADR-0005`
+(secrets), `ADR-0008` (vault logic de credencials), `ADR-0006` (cues) i
+`docs/specifications/connector-security.md`, que es la norma de seguretat i **no es duplica
+aqui**: aquest document diu com s'implementa, no la torna a enunciar.
+
+## Problema i usuaris
+
+Control Hub ja te dades pròpies. El que no te es cap manera d'anar a buscar-ne a fora ni de
+rebre'n sense que cada proveidor deixi rastre al domini: una crida HTTP dins d'un cas d'us, un
+token a una taula qualsevol, un `if provider === "x"` que creix a cada integracio.
+
+Qui ho fa servir:
+
+- **`Owner`** dona d'alta integracions i decideix quines existeixen.
+- **`Technical`** les configura, les prova, en rota credencials i en diagnostica les fallades.
+- **`Administrator`** nomes en llegeix l'estat: veu si una integracio esta sana, no la toca.
+
+El valor de la fase no es cap pantalla: es que afegir el proveidor seguent sigui implementar un
+contracte i no negociar amb el nucli.
+
+## Abast
+
+- Contracte de connector versionat, amb configuracio, salut, operacions i webhooks.
+- Registre de connectors resolt en build-time.
+- Instancies de connector per tenant, amb estat i historial.
+- Vault de credencials xifrades, amb rotacio i revocacio.
+- Politica de crides sortints: timeouts, retries, rate limit, circuit breaker i guarda SSRF.
+- Webhooks entrants signats, amb finestra anti-replay i inbox idempotent.
+- Un unic connector implementat: **webhook generic**, que serveix de referencia i de prova viva
+  del contracte.
+- Pantalla d'integracions: alta, prova, desactivacio, rotacio i historial.
+
+## Fora d'abast
+
+- Connectors d'n8n, Prometheus, correu i IA. Son Fase 7 i Fase 8 i hauran de cabre en aquest
+  contracte sense eixamplar-lo.
+- Carrega de codi de connector en runtime. L'`ADR-0004` la descarta per a tot l'1.x.
+- Transformacions de dades configurables per l'usuari. Un connector mapa camps en codi revisat.
+- Exposar operacions de connector a MCP. Es Fase 10.
+
+## Decisions
+
+Les que canvien la forma del codi. Les que nomes afecten seguretat son a `connector-security.md`.
+
+1. **El connector no toca mai la base de dades.** Un handler rep un context amb ports (`http`,
+   `secrets`, `logger`, `clock`) i retorna dades normalitzades. Qui persisteix es la capa
+   d'aplicacio, que ja esta dins del tenant scope. Aixi la promesa de l'`ADR-0004` — "un
+   connector defectuos no pot saltar limits de tenant" — deixa de dependre de la disciplina de
+   qui escriu el connector i passa a ser estructural: no te cap handle amb què saltar-los.
+
+2. **Tota la sortida a internet passa pel worker.** L'API no fa cap crida externa, ni tan sols
+   per provar una connexio. "Provar" encua un health check i la pantalla en llegeix el resultat.
+   Aixo evita que un formulari d'administrador es converteixi en un proxy SSRF amb la sessio de
+   qui l'omple, i manté l'API amb latencia previsible.
+
+3. **Els webhooks entren per l'API i no s'executen alli.** L'API verifica la firma sobre el cos
+   cru, escriu a un inbox i respon. El worker processa. Un proveidor que dispara mil events no
+   pot fer caure el panell, i un event que falla es pot reintentar sense demanar-lo al proveidor.
+
+4. **Els hosts interns els declara l'operador, no el tenant.** Un administrador de tenant no pot
+   apuntar un connector a `127.0.0.1` ni a la xarxa privada de la VPS. Els destins interns
+   legitims (n8n, Prometheus) viuran en una allowlist d'entorn, `CONNECTOR_INTERNAL_ALLOWLIST`,
+   que es configuracio d'instal·lacio. Sense aquesta separacio, "URL configurable" i "SSRF
+   autoritzat" son la mateixa cosa.
+
+5. **L'estat del circuit viu a Valkey; l'evidencia, a PostgreSQL.** El comptador d'un circuit
+   breaker es operacio efimera i reconstruible. El que ha de sobreviure a un reinici es el
+   registre de què es va intentar i què va fallar, i aixo va a `connector_sync_runs`. Es el que
+   diu l'`ADR-0006`: Redis no es font de veritat.
+
+6. **Els secrets de verificacio d'ingress es mostren una sola vegada.** La regla "credencials mai
+   retornades per l'API" es refereix a les credencials *del proveidor*. El secret amb que
+   signarà els webhooks el generem nosaltres i algu l'ha de copiar al proveidor: es retorna
+   nomes al cos de la resposta que el crea, queda segellat, i cap endpoint de lectura el torna a
+   ensenyar mai. Rotar-lo vol dir generar-ne un de nou amb el mateix cami.
+
+7. **La configuracio es revalida abans de cada execucio, no nomes en desar.** Un schema pot
+   canviar de versio amb una release mentre una instancia porta configuracio antiga desada.
+   Executar-la sense revalidar es la manera d'arribar a produccio amb un camp que ja no vol dir
+   el que deia.
+
+## Arquitectura
+
+```text
+                    navegador
+                        |  /api/*
+                        v
++---------------------------------------------------+
+|  apps/api            (cap crida a internet)        |
+|   routes/integrations.ts  -> casos d'us            |
+|   routes/webhooks.ts      -> firma + inbox + encua |
++---------------------------------------------------+
+        |                                   |
+        | packages/application              | BullMQ
+        |  connectors.ts (casos d'us)       |
+        v                                   v
++------------------------+     +----------------------------------+
+| packages/persistence   |     |  apps/worker                     |
+|  connector-repository  |<--->|   connectors/runtime.ts          |
+|  credential-vault      |     |   connectors/guarded-fetch.ts    |
++------------------------+     +----------------------------------+
+        |                                   |
+        v                                   | ports (http, secrets, logger, clock)
++------------------------+                  v
+| PostgreSQL   RLS       |     +----------------------------------+
+|  connector_instances   |     |  packages/connectors             |
+|  connector_credentials |     |   contract.ts   registry.ts      |
+|  connector_sync_runs   |     |   built-in/generic-webhook.ts    |
+|  connector_endpoints   |     +----------------------------------+
+|  connector_inbox       |                  |
++------------------------+                  v
+                               +----------------------------------+
+                               | packages/domain/connectors.ts    |
+                               |  salut, backoff, circuit breaker |
+                               |  (pur, sense I/O)                |
+                               +----------------------------------+
+```
+
+La fletxa que no hi es explica el disseny: **de `packages/connectors` no en surt cap linia cap a
+`persistence`**. Un connector no pot llegir ni escriure res; nomes rep i retorna.
+
+### On va cada cosa
+
+| Peça | On | Per que alli |
+|---|---|---|
+| Regles pures: salut derivada, backoff, circuit breaker, redaccio | `packages/domain/src/connectors.ts` | Son decisions deterministes i es proven sense xarxa ni base de dades |
+| Contracte, registre i connectors integrats | `packages/connectors` (nou) | Cal un lloc que ni l'API ni el worker "posseeixin", perque tots dos el llegeixen |
+| Casos d'us: alta, prova, rotacio, desactivacio | `packages/application/src/connectors.ts` | Coordinen domini i ports, com la resta de moduls |
+| Repositoris tenant-scoped i vault | `packages/persistence` | El vault es "com s'escriu aquesta columna", i viu al costat de qui l'escriu (`ADR-0008`) |
+| `guarded-fetch`, execucio, reintents | `apps/worker/src/connectors/` | Es l'unic proces amb sortida a internet (decisio 2) |
+| Rutes i ingress | `apps/api/src/routes/` | Transport, com sempre |
+
+`packages/connectors` depen de `@control-hub/domain` i de `zod`, ja present al repositori. De res
+mes.
+
+## Contracte de connector
+
+Versionat: `contractVersion` es un numero i un connector declara el que implementa. Trencar-lo
+obliga a una versio nova, no a editar l'existent.
+
+```ts
+export type ConnectorDefinition<Config> = {
+  type: string;                          // "generic-webhook"
+  contractVersion: 1;
+  configSchema: ZodType<Config>;         // camps allowlisted, sense secrets
+  configFields: ConfigFieldDeclaration[]; // que preguntar i com dibuixar-ho
+  credentialKinds: readonly CredentialKind[];
+  capabilities: CapabilityManifest;      // que pot fer i cap a on
+  health(context: ConnectorContext<Config>): Promise<HealthReport>;
+  operations: Record<string, ConnectorOperation<Config>>;
+  ingress?: IngressHandler<Config>;
+};
+```
+
+El `CapabilityManifest` no es documentacio: es el que el runtime aplica. Declara els esquemes
+permesos, si el desti es la URL configurada o un host de l'allowlist interna, si accepta ingress
+i quines operacions existeixen. Una operacio que no hi consta no s'executa encara que el codi la
+tingui.
+
+El `ConnectorContext` dona `http` (nomes `guarded-fetch`), `secrets.open(kind)` (obre un sobre
+just a temps i el text pla no surt de l'abast de la crida), `logger` (redacta per defecte) i
+`clock`. **No dona base de dades, ni `fetch` global, ni `process.env`.**
+
+Un `ConnectorOperation` retorna `{ records, cursor, idempotencyKey }`. Persistir es feina de fora.
+
+## Fluxos
+
+**Alta.** `Owner` o `Technical` tria un tipus del registre, omple la configuracio, es valida amb
+el schema i es desa la instancia en estat `draft`. Sense credencial no es pot habilitar.
+
+**Credencial.** S'escriu per un endpoint que nomes escriu. Es segella amb la clau activa i queda
+com a slot `primary`. La resposta retorna metadades: `keyId`, `rotatedAt`, mai el valor.
+
+**Prova.** Encua un health check. El worker obre el sobre, fa una crida amb la guarda, escriu un
+`connector_sync_runs` i actualitza `health_status`. La pantalla llegeix el resultat, amb el codi
+d'error tradut i sense detall intern.
+
+**Rotacio.** La credencial nova entra com a `secondary`. Durant la finestra les dues son valides
+— per a ingress, la firma es comprova contra totes dues. En promoure-la, la vella es revoca i
+queda `revoked_at`. Aixi rotar no exigeix parar el proveidor.
+
+**Desactivacio.** L'instancia passa a `disabled`, les credencials es revoquen, els schedulers
+s'aturen i l'ingress respon com si l'endpoint no existis.
+
+**Desaparicio.** Una instancia s'esborra i no torna. Es una sola sentencia contra
+`connector_instances`; la cascada de l'esquema s'emporta credencials, execucions, adreces
+d'entrada i el seu inbox, registres, estat d'operacio, i els enllacos i regles d'alerta
+d'infraestructura amb els seus events. El que queda es la fila d'auditoria.
+
+**Ingress.** El proveidor firma i envia. L'API verifica, escriu inbox, respon `202`. El worker
+processa. Un duplicat es descarta a la clau unica i torna `202` igual.
+
+## Criteris d'acceptacio
+
+Els cinc del pla, amb la forma que tindra la prova que els tanca:
+
+1. **Cap credencial surt per l'API.** Un test recorre totes les respostes dels endpoints
+   d'integracions amb una credencial coneguda desada i falla si el text pla o el ciphertext hi
+   apareixen a qualsevol profunditat.
+2. **Configuracio invalida rebutjada.** Alta i actualitzacio amb un camp desconegut, un tipus
+   equivocat i una URL amb esquema no declarat responen `422` amb `code` estable.
+3. **Timeout i rate limit no bloquegen el worker.** Amb un desti que no respon mai, la resta de
+   jobs de la cua es completen dins del temps esperat.
+4. **Un retry no duplica efectes.** El mateix job executat dues vegades deixa una sola fila i una
+   sola crida efectiva; el mateix event d'ingress rebut dues vegades, tambe.
+5. **Un connector fallit no afecta el core.** Amb una instancia en circuit obert, el dashboard,
+   el CRM i el suport responen igual i el health check del sistema segueix `ready`.
+
+I dos mes que la fase no pot tancar sense:
+
+6. Un tenant no veu ni instancies, ni execucions, ni endpoints, ni inbox d'un altre, tampoc amb
+   un identificador manipulat.
+7. Un `Administrator` rep `403` a alta, rotacio i desactivacio, i `200` a lectura d'estat.
+
+## Permisos i tenancy
+
+Els permisos **ja existeixen** des de la migracio `0003`: `integrations:read`,
+`integrations:manage` i `credentials:rotate`. La Fase 6 no n'afegeix cap ni necessita backfill.
+
+| Accio | Permis | Owner | Administrator | Technical |
+|---|---|:---:|:---:|:---:|
+| Llegir integracions, salut i historial | `integrations:read` | X | X | X |
+| Alta, configuracio, habilitar i desactivar | `integrations:manage` | X |  | X |
+| Escriure i rotar credencials | `credentials:rotate` | X |  | X |
+| Crear i revocar endpoints d'ingress | `integrations:manage` | X |  | X |
+
+Tota lectura i escriptura passa per `withTenant`. L'unica consulta que s'executa fora de tenant
+context es la resolucio de l'endpoint d'ingress, perque encara no hi ha tenant: selecciona nomes
+`id, tenant_id, instance_id, connector_type, status` per `public_id`, viu en una funcio propia
+del repositori i tot el que ve despres ja va dins del tenant resolt. Aquesta excepcio queda
+comentada al codi i coberta per un test que falla si la funcio comença a retornar res mes.
+
+## Model de dades i migracio
+
+`0030_connectors.sql`. Totes les taules amb `tenant_id`, RLS `enable` + `force` i `unique
+(tenant_id, id)` per poder-hi penjar claus foranes compostes, com la resta del repositori.
+
+- **`connector_instances`** — `connector_type`, `name`, `status` (`draft|enabled|disabled|error`),
+  `config jsonb`, `config_version`, `health_status`, `health_checked_at`, `last_error_code`.
+  `unique (tenant_id, name)`.
+- **`connector_credentials`** — `instance_id`, `kind`, `slot` (`primary|secondary`), `key_id`,
+  `nonce bytea`, `ciphertext bytea`, `rotated_at`, `expires_at`, `last_used_at`, `revoked_at`.
+  Index unic parcial per `(tenant_id, instance_id, kind, slot) where revoked_at is null`: dues
+  credencials vives com a molt, que es exactament la finestra de rotacio.
+- **`connector_sync_runs`** — `operation`, `status`
+  (`running|succeeded|failed|dead_letter`), `attempt`, `started_at`, `finished_at`, `error_code`,
+  `items_processed`. Es l'historial que la pantalla ensenya i l'evidencia que sobreviu al reinici.
+- **`connector_webhook_endpoints`** — `public_id` de 32 bytes aleatoris, **unic globalment**
+  perque la URL entra sense tenant; `instance_id`, `revoked_at`.
+- **`connector_inbox`** — `endpoint_id`, `provider_event_id`, `payload_hash`, `received_at`,
+  `status` (`pending|processed|failed|discarded`), `attempts`, `processed_at`.
+  `unique (tenant_id, endpoint_id, provider_event_id)` es la idempotencia: no una comprovacio a
+  l'aplicacio que dos workers poden creuar, sino una restriccio que la base fa complir.
+
+Cap columna guarda text pla d'una credencial. El cos cru d'un webhook es conserva acotat i amb
+la retencio de `data-governance.md`, no indefinidament.
+
+## Crides sortints
+
+Cada crida, i **cada redireccio**, passa la mateixa guarda. El detall normatiu es a
+`connector-security.md`; el que aquesta especificacio fixa es que la implementacio es una sola
+funcio, `guarded-fetch`, i que cap connector pot fer una crida per un altre cami — la regla es
+comprovable perque el context no exposa `fetch`.
+
+Pressupostos per defecte, ajustables per operacio dins d'un maxim: connexio 5 s, capçaleres 5 s,
+total 30 s, resposta 5 MiB, 3 redireccions. Retry nomes per errors transitoris, amb backoff
+exponencial i jitter complet, calculat per una funcio pura del domini. Esgotat el pressupost
+d'intents, el run queda `dead_letter` i visible; no desapareix.
+
+El circuit breaker es una maquina d'estats pura (`closed|open|half_open`) al domini, amb l'estat
+efimer a Valkey per tenant i instancia. Un connector en circuit obert no s'intenta i no consumeix
+worker.
+
+## Webhooks entrants
+
+`POST /api/v1/webhooks/:publicId`, publica, amb el cos cru preservat nomes en aquesta ruta.
+
+- Firma HMAC-SHA256 sobre `timestamp` mes cos cru, comparada amb `timingSafeEqual`, contra les
+  credencials d'ingress vives (una o dues durant la rotacio).
+- Finestra de replay de 5 minuts.
+- Limit de cos 1 MiB, content type allowlistat, rate limit per `publicId`.
+- Idempotencia per identificador d'event del proveidor; si no en dona, `sha256` del cos cru.
+- **Endpoint desconegut, firma invalida i timestamp fora de finestra responen igual**: `404` amb
+  el mateix cos generic. Qui prova URLs no aprèn quines existeixen.
+- Exit: `202` amb cos buit, tant si l'event es nou com si ja el teniem. Processar es del worker.
+
+Un cos ben signat que el connector no pot llegir es l'unica excepcio a la resposta unica: `400`
+amb el codi del connector. Per arribar-hi cal la nostra clau de firma, aixi que no diu res a qui
+no la te, i qui la te ha de poder veure que ens ha enviat alguna cosa que no sabem interpretar.
+
+La verificacio la fa `ConnectorIngressService`, que obre el secret dins seu i respon si la firma
+quadra — mai amb que. Cap handler de l'API rep un objecte que pugui retornar un secret. La ruta
+publica queda exempta de la comprovacio d'`Origin` de la resta de l'API: aquella comprovacio
+protegeix rutes amb autoritat ambient (una cookie que el navegador adjunta sol) i aquesta no en
+te cap.
+
+Processar la inbox arriba amb el primer connector que digui que se n'ha de fer amb un event.
+Fins llavors els events queden `pending`: marcar-los `processed` sense que ningu els hagi tocat
+seria inventar-se una prova de feina que no s'ha fet.
+
+## API, errors i idempotencia
+
+REST sota `/api/v1`, problem details RFC 9457 amb `code` estable, segons
+`docs/specifications/errors-and-api.md`.
+
+| Metode i ruta | Permis | Notes |
+|---|---|---|
+| `GET /api/v1/connectors` | `integrations:read` | Cataleg del que porta la release, per poder triar |
+| `GET /api/v1/integrations` | `integrations:read` | Instancies amb salut; mai credencials |
+| `GET /api/v1/integrations/:id` | `integrations:read` | Una instancia; `404` si no es d'aquest tenant |
+| `POST /api/v1/integrations` | `integrations:manage` | Valida config; `422` si no passa |
+| `PATCH /api/v1/integrations/:id` | `integrations:manage` | Revalida i puja `config_version` |
+| `DELETE /api/v1/integrations/:id` | `integrations:manage` | Esborra la instancia i tot el que hi penja; retorna quantes credencials, execucions i adreces se n'han anat |
+| `POST /api/v1/integrations/:id/enable` i `/disable` | `integrations:manage` | Enable revalida; disable revoca credencials |
+| `POST /api/v1/integrations/:id/health-checks` | `integrations:manage` | Encua; `202` amb l'identificador de la peticio |
+| `GET /api/v1/integrations/:id/runs` | `integrations:read` | Historial paginat |
+| `GET /api/v1/integrations/:id/credentials` | `integrations:read` | Nomes metadades: ni valor ni `key_id` |
+| `PUT /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Nomes escriu; retorna metadades |
+| `POST /api/v1/integrations/:id/credentials/:kind/promote` | `credentials:rotate` | Tanca la rotacio |
+| `DELETE /api/v1/integrations/:id/credentials/:kind` | `credentials:rotate` | Revoca |
+| `GET /api/v1/integrations/:id/endpoints` | `integrations:read` | Metadades: mai el `public_id` |
+| `POST /api/v1/integrations/:id/endpoints` | `integrations:manage` | Retorna cami i secret **una vegada** |
+| `DELETE /api/v1/integrations/:id/endpoints/:endpointId` | `integrations:manage` | Revoca l'adreca i el seu secret |
+
+El `202` de la comprovacio de salut retorna l'identificador de la peticio encuada, no el d'un
+run: el run el crea el worker quan comença, i inventar-ne l'id abans faria que la redelivery
+trobes la fila ja oberta i no fes la feina. El resultat apareix a `/runs`.
+
+La creacio d'un endpoint retorna el **cami** (`/api/v1/webhooks/<public_id>`) i no una URL
+absoluta: l'unica cosa que l'API sap de la seva adreca publica es una capcalera `Host` que tria
+qui truca, i la pantalla ja sap contra quin origen parla. Una instancia te un endpoint viu alhora,
+perque el secret de firma viu per instancia i slot; revocar-lo revoca tambe el secret. Rotar
+aquest secret son les rutes de credencials, amb el `kind` `ingress_signing`.
+
+Les rutes de credencials i les d'endpoints nomes es declaren si hi ha anell de claus. Sense, la resta de la
+superficie funciona i aquestes responen `404`, que es la veritat: no hi ha res amb que segellar.
+
+Les operacions repetibles accepten `Idempotency-Key`: a `health-checks` la clau esdeve
+l'identificador del job, i BullMQ refusa el segon amb el mateix. OpenAPI s'actualitza al mateix
+increment que la ruta.
+
+El document OpenAPI es **genera de les rutes** (`/api/docs` quan `exposeApiDocs` esta obert), amb
+`tags`, `summary` i `description` a cada ruta d'aquesta superficie, i cap **response schema**: a
+Fastify un schema de resposta tambe es el serialitzador, aixi que un camp que hi faltes
+desapareixeria de la resposta. Les formes de resposta son les d'aquesta seccio i les del cataleg,
+i aquest document es qui les fixa. La ruta publica d'ingress tambe hi surt, perque es l'adreca
+contra la qual algu ha de configurar un proveidor; que qualsevol refus respongui igual es
+propietat del handler, no del fet de no documentar-la.
+
+## UX, i18n i accessibilitat
+
+Dues pantalles, amb `PageTopbar`, `SmartDataTable` i `ToastProvider`, com la resta: aquesta fase no
+inventa primitives. Estat de salut amb text a mes de color, perque un punt verd sol no es
+accessible. Missatges d'error traduits des del `code`, mai el text del proveidor. Claus `ca`, `es`
+i `en` al mateix commit que el component.
+
+**La llista respon "quina d'aquestes te un problema"; la fitxa respon "que es aixo i que ha
+estat fent".** `/{locale}/integrations` es la llista, i `/{locale}/integrations/[instanceId]` es
+una integracio sola: configuracio, adreca d'entrada, credencials, execucions i la zona d'esborrat.
+Fins a l'A9b la fitxa era un panell al costat de la taula, i les dues preguntes es repartien mitja
+pantalla i una barra de desplacament que no li servia a cap. Ser una ruta li dona tres coses que
+un panell no pot tenir: una adreca que algu pot enviar, la navegacio de tornada que ja tenen totes
+les altres fitxes del producte, i l'amplada sencera per a la taula.
+
+Els enllacos antics eren `?selected=<id>`, i encara circulen: la llista els redirigeix a la fitxa,
+**pero nomes si el valor te forma d'identificador**. Aquell valor acaba dins d'un cami, aixi que es
+comprova la forma en comptes d'escapar-la — un `../..` escapat continua sent un intent, i no hi ha
+cap cas legitim a preservar. El que no te la forma s'ignora i es queda a la llista.
+
+El formulari de configuracio es el mateix component al dialeg de creacio i a la fitxa. No per
+estalviar linies, sino perque un formulari que divergeix entre les dues pantalles es exactament la
+mena de deriva que no es veu: es descobreix el dia que un camp accepta una cosa en un lloc i una
+altra a l'altre.
+
+### La taula diu l'estat sense obrir res
+
+Una fila ha de respondre "aquesta va be?" sense que ningu hi entri. Tres decisions, i cap demana
+cap camp nou a l'API: el llistat ja porta el que cal.
+
+**El nom del proveidor, no el que fa servir el registre.** El tipus es kebab-case perque aixo es
+el que volen una URL i un registre; ningu anomena `generic-webhook` el que ha connectat. La fila
+duu la marca i el nom traduit, amb la mateixa conversio de clau que ja governa les targetes —i pel
+mateix motiu, que es l'unic error d'aquesta familia que ja ha arribat a un operador.
+
+**La salut amb el seu motiu.** «Fallant» tot sol obliga a entrar a la integracio per saber que ha
+fallat, i la fila ja ho sap: `health.lastErrorCode` viatja amb cada instancia. Es llegeix amb el
+vocabulari de **les execucions** (`runError*`), mai amb el de l'API: `FORBIDDEN` de l'API vol dir
+que et falta un permis i `FORBIDDEN` d'una lectura de salut vol dir que el proveidor ha refusat la
+credencial, i una llista es exactament on la frase equivocada duraria mes sense que ningu ho noti.
+Quan no hi ha codi no es dibuixa res: `recordHealth` reescriu `last_error_code` a cada comprovacio,
+exit inclos, aixi que una lectura sana no en porta cap i no cal defensar-se de cap motiu resse.
+
+**L'antiguitat de la lectura, no quan es va prendre.** Una marca de temps fa que el lector resti, i
+"aixo es actual?" es tota la rao per la qual la columna existeix. Es reaprofita `readingAge` de la
+pantalla d'infraestructura en comptes de duplicar-la, amb el mateix llindar de 45 minuts —tres
+passades de `pull_workflows` que podien haver passat i no han passat—, i **una lectura massa vella
+ho diu amb paraules**, no nomes amb color: una fila que digui «sana» de fa tres hores no es sana,
+es que ningu l'ha mirada, i sense aixo les dues es veuen igual.
+
+L'edat es calcula **al servidor**, no a la taula. El "ara" del client es un instant diferent del
+"ara" del servidor, i una fila que es dibuixa amb una edat i s'hidrata amb una altra es una
+discrepancia que React denuncia com un defecte. La pantalla d'infraestructura ja ho havia resolt
+aixi.
+
+La pantalla ha de deixar clar que un secret nomes es veu un cop, **abans** de generar-lo.
+
+En un desplegament sense anell de claus, les seccions de credencials i d'adreces d'entrada no
+surten. No hi ha ruta que les serveixi, i un boto que encunya un secret alla on no se'n pot
+segellar cap es un boto que sempre falla.
+
+### Connectar una plataforma
+
+**Primer es tria la plataforma, despres es respon el que aquella plataforma demana.** El cataleg
+es un conjunt de targetes amb marca i una frase, no una llista desplegable, i no n'hi ha cap de
+preseleccionada: un connector triat per nosaltres posa les preguntes d'un proveidor que no es el
+que l'operador tenia al cap. Les marques son dibuixos nostres amb el color de cada proveidor, no
+els seus logotips: un logotip reproduit de memoria es una marca registrada mal copiada, i un de
+carregat en temps de render es una peticio al servidor d'algu altre des d'una pantalla que ha de
+funcionar en una xarxa aillada.
+
+**El formulari el dicta el connector.** El cataleg porta els camps declarats i la pantalla els
+dibuixa sense saber res del proveidor, de manera que un connector afegit en una release posterior
+no obliga a tocar la pantalla. D'aquests camps, **el connector nomes tria dues coses**: com es
+dibuixen i per a que son. La resta es llegeix del seu esquema, amb una sola pregunta: que fa
+aquesta clau si no li dones res? Refusa, i llavors es obligatoria; respon amb un valor, i aquell
+valor es el que el formulari ha de mostrar ja escrit; o respon buit, i el camp comenca en blanc.
+Preguntar-ho un sol cop es el que impedeix que les dues respostes es contradiguin, i fa que
+canviar un valor per defecte al connector canvii el que ofereix el formulari sense que ningu
+editi cap formulari.
+
+Per a que serveix un camp decideix on va. Els de **connexio** son el que cal per arribar al
+proveidor i es pregunten obertament; els de **comportament** son quant se n'ha de llegir un cop
+s'hi arriba, i es plegan darrere un `<details>`, perque tots ells ja es responen sols i un
+formulari que obre amb cinc preguntes que ningu ha de contestar es llegeix com cinc preguntes que
+algu ha d'anar a investigar. Plegar nomes es honest si l'esquema pot continuar sense el camp:
+`defineConnector` refusa a la carrega del modul un camp obligatori declarat com a comportament,
+perque seria un camp amagat i despres refusat en enviar, queixant-se d'una cosa que l'operador no
+ha vist mai.
+
+`defineConnector` tambe refusa una llista que hagi divergit de l'esquema en qualsevol de les dues
+direccions. La direccio que importa mes: **una clau de configuracio sense camp declarat es una
+clau que ningu pot omplir des d'una pantalla**, i el simptoma no es un error sino una integracio
+que nomes es pot configurar per `curl` — que es on va acabar aquesta pantalla la primera vegada.
+
+El que es dibuixa d'una configuracio refusada es el cami i el codi, mai el valor escrit: si el
+cami nomena un camp declarat, la queixa cau sobre aquell camp; si no, es llista a part. Una
+queixa sobre un camp plegat **obre el desplegable**, perque si no seria invisible.
+
+Un connector que la versio en curs ja no porta no te camps ni res que pugui acceptar una edicio:
+la seva configuracio **es mostra, no s'ofereix**.
+
+**Els noms surten del diccionari per tipus de connector, i el tipus no es una clau.** Els tipus
+son kebab-case i les claus no poden ser-ho, aixi que una consulta feta directament amb el tipus
+no falla: erra, i cau al valor per defecte, que es el tipus mateix. Aixi es com `generic-webhook`
+va arribar a una pantalla que per la resta estava traduida. La conversio viu en un sol lloc i hi
+ha una prova que recorre el registre i exigeix, per a cada connector, cada camp i cada tipus de
+credencial, que hi hagi paraules a les tres llengues.
+
+### Per que ha fallat
+
+**Una execucio que falla desa un codi, i la pantalla el converteix en una frase.** El conjunt de
+codis es tancat i viu a `@control-hub/domain`, no alli on es llencen: hi ha tres llocs que en
+produeixen —la guarda d'eixida quan refusa una adreca o es rendeix amb ella, el runtime quan la
+crida ni tan sols es pot intentar, i un connector informant del proveidor, que hi aporta els tipus
+de fallada en majuscules— i cap dels que els llegeixen els veu tots tres. El que hi viu es
+l'acord.
+
+Que sigui tancat es el que el fa comprovable. `apps/worker` no pot llencar un codi que no en sigui
+membre —ho impedeix el tipus, no una revisio— i `packages/i18n` te una prova que recorre el
+vocabulari i exigeix una frase a cada llengua per a cada codi, amb una segona condicio: **que la
+frase no sigui la generica**. Una clau que existeix pero conte "no s'ha pogut completar
+l'operacio" passa una prova d'existencia i no diu res, que es exactament el que va passar: una
+adreca que faltava a la llista de destins permesos es va llegir com una operacio que no s'havia
+pogut completar, quan dir-ho era un minut de feina per a qui ho llegia.
+
+Les frases van a un espai propi, `runError*`, separat dels codis que retorna aquesta API. Les dues
+llistes topen a les paraules i el xoc no es cosmetic: `FORBIDDEN` d'aquesta API vol dir que a qui
+mira li falta un permis, i `FORBIDDEN` d'una execucio vol dir que el proveidor ha refusat la
+credencial que li hem enviat. Una sola clau posaria una de les dues frases sota el codi de
+l'altra, i **una frase equivocada amb aplom es pitjor que una de vaga**: envia algu a mirar-se els
+seus permisos quan la resposta es a l'altra punta.
+
+El recurs a la frase generica es queda, perque una execucio es historia: un registre escrit per
+una versio que coneixia un codi que aquesta ja no ha de poder-se dibuixar igualment. El que no pot
+passar es que sigui la resposta per a un codi que si que portem.
+
+Cap frase anomena un proveidor. La que anomenes n'anomena el que no es per a tots els altres
+connectors, i hi ha una prova que ho comprova.
+
+### La credencial
+
+**S'escriu des de la mateixa pantalla, i nomes s'escriu.** El camp exigeix `credentials:rotate`
+—que no es el permis que gestiona la integracio, perque qui pot canviar una adreca no ha de
+poder-hi posar el token— i el valor no torna: cap ruta d'aquesta API el llegeix, el formulari es
+buida en enviar-lo i el que queda a la llista son metadades. Escriure sobre un tipus que ja te
+valor **obre una rotacio** en comptes de substituir res, i la pantalla ho diu abans de fer-ho.
+
+**El formulari de creacio tambe la demana**, quan n'hi ha una que tingui sentit demanar: la que
+autentica les crides que fem nosaltres. Un connector sense egress no en te cap — nomes rep, i el
+secret amb que verifica s'encunya amb la seva adreca en comptes d'escriure'l ningu— i oferir-li
+un camp seria convidar algu a enganxar un token que no s'enviaria mai enlloc.
+
+Son dues crides, perque un secret no viatja per la ruta que crea una instancia: la caixa forta
+te la seva propia ruta i el seu propi permis, i posar un token al cos d'una creacio el deixaria a
+qualsevol log que registri aquella ruta. Aixo vol dir que hi ha un moment on la instancia existeix
+i el secret no. **No s'amaga i no es desfa**: esborrar una integracio perfectament bona perque ha
+fallat una segona crida convertiria un tall de xarxa en feina perduda. El dialeg es tanca, la
+pantalla obre la integracio nova i el missatge diu exactament que hi falta — el formulari de la
+credencial es alli mateix, i la instancia es un esborrany que no arriba enlloc fins que algu
+l'activa.
+
+En un desplegament sense anell de claus el camp no hi es, ni al dialeg ni al panell. La pantalla
+ho sap abans de tenir cap instancia a qui preguntar-ho, perque el cataleg mateix diu si aquesta
+instal·lacio pot guardar un secret.
+
+### Esborrar una integracio
+
+**Desactivar ja es l'arxiu, aixi que esborrar vol dir que no hi es.** Desactivar conserva la
+configuracio, l'historial i els enllacos mentre atura la feina, que es exactament el que vol qui
+nomes vol que pari. El que no existia era la manera de dir que una integracio ja no ha de ser-hi,
+i l'unic cami era `psql`. Un tercer estat entre `disabled` i "fora" no el sabria explicar ningu,
+i a mes `unique (tenant_id, name)` faria que una integracio arxivada es quedes el nom per sempre.
+
+**Es una sola sentencia, no una llista de taules.** La cascada ja es a les migracions i una
+segona copia escrita a ma en TypeScript es la copia que un dia deixa de quadrar. Se'n van
+credencials, execucions, adreces d'entrada i el seu inbox, registres, estat d'operacio, i els
+enllacos amb clients i les regles d'alerta d'infraestructura amb els seus events. La prova
+d'integracio les compta abans i despres, contra PostgreSQL, perque dues de les respostes que aixo
+depen no son al text del SQL: **una cascada no necessita privilegi de `delete` a les taules que
+referencien** —s'executa amb els privilegis del propietari— **i no la barra la RLS forçada**.
+Cap de les dues es cosa de creure-se-la d'un manual.
+
+**La `0036` obre exactament un privilegi**, `delete` sobre `connector_instances`, i cap mes. Les
+files de sota segueixen sent inabastables d'una en una: se'n van nomes com a consequencia que
+se'n vagi la instancia. Aquesta es la diferencia entre "un operador pot retirar una integracio" i
+"una peticio pot esborrar l'evidencia del que una integracio va fer".
+
+**L'historial d'execucions se'n va i l'auditoria es queda.** Una execucio es el registre d'un
+intent nostre —operacio, estat, intent, codi d'error— i nomes es llegeix des de la fitxa de la
+seva integracio: sense instancia no hi ha pantalla ni abast de tenant que hi arribi, i les files
+quedarien on ningu les pot veure. Ja caduquen soles per `data-governance.md`. El que ha de
+sobreviure es qui va decidir que, i aixo es `audit_log`, que te `target_id` en text sense clau
+forana i per tant sobreviu perfectament a la instancia que anomena. Per aixo la fila
+`connector_instance.deleted` porta el nom, el tipus, l'estat en que era i quantes credencials,
+execucions i adreces se n'han anat: es tot el que una investigacio tindra.
+
+**Sense precondicio d'estat.** Es pot esborrar una instancia activa. L'aturada que fa `disable`
+son files que aixo treu de cop dins la mateixa transaccio, i les dues coses que viuen fora de
+PostgreSQL es curen soles: el reconciliador esborra tot calendari que ja no vol i el runtime
+deixa caure una feina d'una instancia que no troba. Exigir "desactiva-la primer" seria una norma
+que fa complir una pantalla en comptes del sistema, i el resultat previsible es una integracio
+mig esborrada.
+
+**El que no podem fer i la pantalla ha de dir:** revocar la credencial al proveidor. Nosaltres
+n'oblidem el sobre; el token segueix valid alla fins que algu el retiri. Mateixa lliço que el
+runbook de rotacio.
+
+## Threat model
+
+| Amenaça | Control |
+|---|---|
+| SSRF cap a la xarxa interna o a metadades del cloud | `guarded-fetch`: resolucio DNS, filtratge de rangs, connexio a la IP validada, revalidacio de cada redireccio |
+| DNS rebinding entre comprovacio i connexio | Connexio a la IP ja validada, amb `Host` fixat |
+| Robatori de la base de dades | Credencials segellades amb clau fora de PostgreSQL (`ADR-0008`) |
+| Ciphertext mogut a un altre tenant | `tenant_id` i `instance_id` com a AAD: no obre |
+| Replay d'un webhook | Finestra de timestamp mes clau unica d'idempotencia |
+| Enumeracio d'endpoints d'ingress | `public_id` de 32 bytes i resposta identica per a desconegut i invalid |
+| Un tenant apuntant un connector a la VPS | Allowlist interna d'entorn, no editable per tenant |
+| Filtracio de secrets per logs | Logger que redacta per defecte; el text pla no surt de l'abast de `secrets.open` |
+| Un proveidor que satura el sistema | Rate limit per endpoint, inbox asincron, circuit breaker |
+| Escalada per connector defectuos | El connector no rep base de dades ni entorn |
+
+## Observabilitat i auditoria
+
+Metriques per connector i operacio: intents, exits, fallades per codi, latencia, obertures de
+circuit i profunditat d'inbox. Logs amb `connectorType`, `instanceId`, `operation`, `status`,
+`latencyMs` i `errorCode` — mai URL completa amb query, mai capçaleres.
+
+Auditoria obligatoria, amb les accions de `docs/specifications/audit.md`: alta, canvi de
+configuracio, habilitar, desactivar, escriptura i rotacio de credencial, creacio i revocacio
+d'endpoint. Tambe les denegades. `metadata` porta `connectorType` i `instanceId`, mai config
+sencera.
+
+## Pla de proves
+
+- **Unitaris (domini):** salut derivada, backoff amb jitter dins de limits, transicions del
+  circuit breaker, redaccio.
+- **Contract tests (connectors):** la llista de `connector-security.md` — config invalida,
+  credencial absent, expirada i rotada, timeout, reset, `429`, `5xx`, resposta massa gran, DNS
+  rebinding, redireccio interna, IP privada, firma invalida, replay, duplicat, cross-tenant i
+  redaccio.
+- **Integracio (PostgreSQL):** RLS de les cinc taules, unicitat d'idempotencia sota concurrencia,
+  finestra de rotacio de dues credencials, segellat i obertura amb clau retirada, i fallada amb
+  ciphertext manipulat.
+- **Integracio (worker):** un desti penjat no bloqueja la cua; dead-letter visible.
+- **E2E:** alta, prova, rotacio i desactivacio amb sessio iniciada, en `ca` i comprovant que cap
+  resposta porta el secret.
+
+## Rollout, feature flag i rollback
+
+Flag `connectors`, apagada per defecte, registrada a `packages/config/src/flags.ts` amb
+propietari i data de retirada. Apagada: l'API no declara les rutes, la web no mostra el menu ni
+la pantalla, `/{locale}/integrations` respon `404` i el worker no registra schedulers. L'ingress
+tambe respon `404`.
+
+La migracio `0030` es additiva i s'aplica amb la flag apagada sense efecte observable. Rollback
+es apagar la flag; no cal desfer la migracio.
+
+Variables noves a `.env.example`: `CONNECTOR_KEY_RING` (anell de claus) i
+`CONNECTOR_INTERNAL_ALLOWLIST`. Sense la primera, la fase arrenca amb les rutes de credencials
+desactivades i ho diu a l'arrencada, en comptes de fallar quan algu prova de desar-ne una.
+
+## Pla d'increments
+
+Cada increment es un commit revisable que passa `pnpm check` pel seu compte.
+
+| # | Increment | Tanca |
+|---|---|---|
+| 1 | Especificacio, `ADR-0008` i flag `connectors` | Aquest document aprovat |
+| 2 | Domini: salut, backoff, circuit breaker, redaccio | Unitaris |
+| 3 | `packages/connectors`: contracte, registre, webhook generic | Contract tests de config |
+| 4 | Migracio `0030` i repositoris tenant-scoped | RLS i cross-tenant |
+| 5 | Vault: anell de claus, segellat, rotacio | Criteri 1, clau retirada, ciphertext manipulat |
+| 6 | Worker: `guarded-fetch`, reintents, circuit, runs | Criteris 3, 4 i 5, suite SSRF |
+| 7 | API d'integracions, problem details i auditoria | Criteris 2 i 7 |
+| 8 | Ingress: firma, replay, inbox, idempotencia | Criteri 4 d'ingress, no enumerable |
+| 9 | Pantalla d'integracions, i18n `ca`/`es`/`en` | E2E |
+| 10 | OpenAPI, runbook de rotacio, `current-state.md` | Definition of Done |
+
+Els increments 1 a 8 no toquen `packages/ui` ni `apps/web/src/components`, que es on treballa
+l'altra sessio oberta. L'increment 9 s'ha de coordinar abans de començar.
+
+## Riscos coneguts
+
+- **El numero de migracio pot xocar.** Si l'altra sessio afegeix una migracio abans, `0030` passa
+  a `0031`. Es renumera abans de fer merge, mai despres d'aplicar-la enlloc.
+- **La suite SSRF depen de resolucio DNS.** S'ha de poder injectar el resolutor als tests o CI
+  sera intermitent.
+- **`0025` i `0026` encara no son a produccio.** La `0030` no hi depen, pero desplegar la Fase 6
+  arrossega les pendents.
+
+## Decisions de la revisio del propietari (11 d'agost de 2026)
+
+- **Especificacio aprovada.** L'increment 2 pot començar.
+- **`Administrator` es queda nomes amb lectura d'integracions.** La matriu de
+  `docs/specifications/permissions.md` ja ho deia i el disseny s'hi ajusta; no cal migracio.
+- **Custodia de l'anell de claus: gestor de contrasenyes, amb un sobre `age` de break-glass.**
+  En operacio es un Docker secret a la VPS. El detall i la regla que l'ordena son a
+  `docs/adr/0008-connector-credential-vault.md`; el runbook de rotacio de l'increment 10 hi ha
+  de sortir d'aqui.

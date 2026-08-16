@@ -1,6 +1,4 @@
 import { getDictionary, getSupportDictionary, isLocale } from "@control-hub/i18n";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
@@ -34,12 +32,7 @@ export default async function TicketPage({ params }: { params: Promise<{ locale:
           title={`#${detail.ticket.ticketNumber}`}
           description={detail.ticket.subject}
           themeLabel={t.header.theme}
-          actions={
-            <Link className="secondary-button" href={`/${locale}/support`}>
-              <ArrowLeft size={17} />
-              {labels.backToInbox}
-            </Link>
-          }
+          back={{ label: t.header.back, fallbackHref: `/${locale}/support` }}
         />
         <main className="compact-main">
           <TicketDetail detail={detail} labels={labels} locale={locale} />

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { SelectControl } from "@/components/form-field";
 import { MetricHelp } from "@/components/metric-help";
 import type { TablePreference } from "@/lib/api-types";
 
@@ -145,14 +146,16 @@ export function SmartDataTable<Row extends { id: string }>({
         <div className="smart-table-settings">
           <label>
             {labels.sort}
-            <select value={sort} onChange={(event) => query({ [sortParam]: event.target.value, [pageParam]: "1" })}>
-              {!sortOptions.some((option) => option.value === sort) && <option value={sort}>{labels.sort}</option>}
-              {sortOptions.map((option) => (
-                <option value={option.value} key={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <SelectControl
+              aria-label={labels.sort}
+              value={sort}
+              options={
+                sortOptions.some((option) => option.value === sort)
+                  ? sortOptions
+                  : [{ value: sort, label: labels.sort! }, ...sortOptions]
+              }
+              onChange={(event) => query({ [sortParam]: event.target.value, [pageParam]: "1" })}
+            />
           </label>
           <details>
             <summary>
@@ -316,20 +319,16 @@ export function SmartDataTable<Row extends { id: string }>({
         </span>
         <label>
           {labels.rows}
-          <select
+          <SelectControl
+            aria-label={labels.rows}
             value={pageSize}
+            options={[10, 25, 50, 100].map((size) => ({ value: String(size), label: String(size) }))}
             onChange={(event) => {
               const nextPageSize = Number(event.target.value) as TablePreference["pageSize"];
               void persist({ ...preference, pageSize: nextPageSize });
               query({ [pageSizeParam]: String(nextPageSize), [pageParam]: "1" });
             }}
-          >
-            {[10, 25, 50, 100].map((size) => (
-              <option value={size} key={size}>
-                {size}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <span>
           {page} / {pages}

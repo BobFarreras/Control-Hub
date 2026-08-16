@@ -37,5 +37,9 @@ Thumbs.db
 
 # Local tooling state
 .codex/
+# .claude/settings.json is versioned on purpose; the local override and the
+# worktree scratch space are not.
+.claude/settings.local.json
+.claude/worktrees/
 
 .next-verify/

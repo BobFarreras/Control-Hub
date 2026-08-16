@@ -62,6 +62,7 @@ export default async function RatesPage({ params }: { params: Promise<{ locale: 
           title={labels.title}
           description={labels.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}/projects` }}
           // The append-only rule explains both tables and is the reason they read as a log rather
           // than as settings. Too long to hover over, so it opens on click instead of costing two
           // rows of the page for good.

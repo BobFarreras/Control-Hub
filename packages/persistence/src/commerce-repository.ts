@@ -10,6 +10,8 @@ import {
   type ProductOfferRecord,
   type ProductCatalogDetail,
   type ProductRecord,
+  type ProductResourceRecord,
+  type ProductResourceKind,
   type ProductVersionRecord,
   type RenewalAlert,
   type SubscriptionRecord
@@ -51,10 +53,10 @@ export class PostgresCommerceRepository implements CommerceRepository {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const products = await tx<
         ProductRecord[]
-      >`select id, code, name, description, status, created_at as "createdAt" from products where tenant_id = ${context.tenantId} order by name`;
+      >`select id, code, name, description, status, created_at as "createdAt", updated_at as "updatedAt" from products where tenant_id = ${context.tenantId} order by name`;
       const versions = await tx<
         ProductVersionRecord[]
-      >`select id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt" from product_versions where tenant_id = ${context.tenantId} order by created_at desc`;
+      >`select id, product_id as "productId", version, status, released_at as "releasedAt", release_notes as "releaseNotes", features, contents, schema_document as "schemaDocument", created_at as "createdAt", updated_at as "updatedAt" from product_versions where tenant_id = ${context.tenantId} order by created_at desc`;
       const plans = await tx<
         PlanRecord[]
       >`select id, product_version_id as "productVersionId", code, name, description, commercial_model as "commercialModel", status, created_at as "createdAt" from plans where tenant_id = ${context.tenantId} order by name`;
@@ -69,19 +71,105 @@ export class PostgresCommerceRepository implements CommerceRepository {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const products = await tx<
         ProductRecord[]
-      >`select id, code, name, description, status, created_at as "createdAt" from products where tenant_id = ${context.tenantId} and id = ${productId}`;
+      >`select id, code, name, description, status, created_at as "createdAt", updated_at as "updatedAt" from products where tenant_id = ${context.tenantId} and id = ${productId}`;
       const product = products[0];
       if (!product) throw new CommerceError("PRODUCT_NOT_FOUND");
       const versions = await tx<
         ProductVersionRecord[]
-      >`select id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt" from product_versions where tenant_id = ${context.tenantId} and product_id = ${productId} order by created_at desc`;
+      >`select id, product_id as "productId", version, status, released_at as "releasedAt", release_notes as "releaseNotes", features, contents, schema_document as "schemaDocument", created_at as "createdAt", updated_at as "updatedAt" from product_versions where tenant_id = ${context.tenantId} and product_id = ${productId} order by created_at desc`;
       const plans = await tx<
         PlanRecord[]
       >`select p.id, p.product_version_id as "productVersionId", p.code, p.name, p.description, p.commercial_model as "commercialModel", p.status, p.created_at as "createdAt" from plans p join product_versions v on v.tenant_id = p.tenant_id and v.id = p.product_version_id where p.tenant_id = ${context.tenantId} and v.product_id = ${productId} order by p.name`;
       const prices = await tx<
         PriceRow[]
       >`select pp.id, pp.plan_id as "planId", pp.currency, pp.amount_minor as "amountMinor", pp.cost_minor as "costMinor", pp.tax_basis_points as "taxBasisPoints", pp.billing_interval as interval, pp.effective_from as "effectiveFrom", pp.created_at as "createdAt" from plan_prices pp join plans p on p.tenant_id = pp.tenant_id and p.id = pp.plan_id join product_versions v on v.tenant_id = p.tenant_id and v.id = p.product_version_id where pp.tenant_id = ${context.tenantId} and v.product_id = ${productId} order by pp.effective_from desc, pp.created_at desc`;
-      return { product, products: [product], versions, plans, prices: prices.map(price) };
+      const resources = await tx<ProductResourceRecord[]>`
+        select id, product_id as "productId", product_version_id as "productVersionId", kind, label, url,
+          created_at as "createdAt", updated_at as "updatedAt"
+        from product_resources
+        where tenant_id = ${context.tenantId} and product_id = ${productId}
+        order by kind, label`;
+      const customers = await tx<ProductCatalogDetail["customers"]>`
+        select cs.id as "serviceId", cs.customer_id as "customerId", c.display_name as "customerName",
+          p.name as "planName", cs.commercial_model as "commercialModel", cs.status, cs.quantity,
+          cs.starts_at as "startsAt", cs.ends_at as "endsAt"
+        from customer_services cs
+        join customers c on c.tenant_id = cs.tenant_id and c.id = cs.customer_id
+        join plans p on p.tenant_id = cs.tenant_id and p.id = cs.plan_id
+        join product_versions v on v.tenant_id = p.tenant_id and v.id = p.product_version_id
+        where cs.tenant_id = ${context.tenantId} and v.product_id = ${productId}
+        order by c.display_name, cs.starts_at desc`;
+      return { product, products: [product], versions, plans, prices: prices.map(price), resources, customers };
+    });
+  }
+
+  updateProduct(
+    context: TenantContext,
+    productId: string,
+    input: { name: string; description?: string; status: "active" | "archived"; expectedUpdatedAt: Date }
+  ): Promise<ProductRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<ProductRecord[]>`
+        update products set name = ${input.name}, description = ${input.description ?? null}, status = ${input.status},
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${productId} and updated_at = ${input.expectedUpdatedAt}
+        returning id, code, name, description, status, created_at as "createdAt", updated_at as "updatedAt"`;
+      if (rows[0]) return rows[0];
+      const exists = await tx<{ found: boolean }[]>`
+        select exists(select 1 from products where tenant_id = ${context.tenantId} and id = ${productId}) as found`;
+      throw new CommerceError(exists[0]?.found ? "CONCURRENT_MODIFICATION" : "PRODUCT_NOT_FOUND");
+    });
+  }
+
+  updateVersionKnowledge(
+    context: TenantContext,
+    versionId: string,
+    input: {
+      releaseNotes?: string;
+      features: string[];
+      contents: string[];
+      schemaDocument?: Record<string, unknown>;
+      expectedUpdatedAt: Date;
+    }
+  ): Promise<ProductVersionRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<ProductVersionRecord[]>`
+        update product_versions set release_notes = ${input.releaseNotes ?? null}, features = ${tx.json(input.features)},
+          contents = ${tx.json(input.contents)},
+          schema_document = ${input.schemaDocument ? JSON.stringify(input.schemaDocument) : null}::jsonb,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${versionId} and updated_at = ${input.expectedUpdatedAt}
+        returning id, product_id as "productId", version, status, released_at as "releasedAt",
+          release_notes as "releaseNotes", features, contents, schema_document as "schemaDocument",
+          created_at as "createdAt", updated_at as "updatedAt"`;
+      if (rows[0]) return rows[0];
+      const exists = await tx<{ found: boolean }[]>`
+        select exists(select 1 from product_versions where tenant_id = ${context.tenantId} and id = ${versionId}) as found`;
+      throw new CommerceError(exists[0]?.found ? "CONCURRENT_MODIFICATION" : "VERSION_NOT_FOUND");
+    });
+  }
+
+  replaceProductResources(
+    context: TenantContext,
+    productId: string,
+    resources: Array<{ productVersionId?: string; kind: ProductResourceKind; label: string; url: string }>
+  ): Promise<ProductResourceRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const product = await tx<{ found: boolean }[]>`
+        select exists(select 1 from products where tenant_id = ${context.tenantId} and id = ${productId}) as found`;
+      if (!product[0]?.found) throw new CommerceError("PRODUCT_NOT_FOUND");
+      await tx`delete from product_resources where tenant_id = ${context.tenantId} and product_id = ${productId}`;
+      for (const resource of resources) {
+        await tx`
+          insert into product_resources (id, tenant_id, product_id, product_version_id, kind, label, url)
+          values (${randomUUID()}, ${context.tenantId}, ${productId}, ${resource.productVersionId ?? null},
+            ${resource.kind}, ${resource.label}, ${resource.url})`;
+      }
+      return tx<ProductResourceRecord[]>`
+        select id, product_id as "productId", product_version_id as "productVersionId", kind, label, url,
+          created_at as "createdAt", updated_at as "updatedAt"
+        from product_resources where tenant_id = ${context.tenantId} and product_id = ${productId}
+        order by kind, label`;
     });
   }
 
@@ -90,7 +178,7 @@ export class PostgresCommerceRepository implements CommerceRepository {
       return await withTenant(this.database, context.tenantId, async (tx) => {
         const rows = await tx<
           ProductRecord[]
-        >`insert into products (id, tenant_id, code, name, description) values (${randomUUID()}, ${context.tenantId}, ${input.code}, ${input.name}, ${input.description ?? null}) returning id, code, name, description, status, created_at as "createdAt"`;
+        >`insert into products (id, tenant_id, code, name, description) values (${randomUUID()}, ${context.tenantId}, ${input.code}, ${input.name}, ${input.description ?? null}) returning id, code, name, description, status, created_at as "createdAt", updated_at as "updatedAt"`;
         return rows[0]!;
       });
     } catch (error) {
@@ -113,10 +201,10 @@ export class PostgresCommerceRepository implements CommerceRepository {
         const priceId = randomUUID();
         const products = await tx<
           ProductRecord[]
-        >`insert into products (id, tenant_id, code, name, description) values (${productId}, ${context.tenantId}, ${input.product.code}, ${input.product.name}, ${input.product.description ?? null}) returning id, code, name, description, status, created_at as "createdAt"`;
+        >`insert into products (id, tenant_id, code, name, description) values (${productId}, ${context.tenantId}, ${input.product.code}, ${input.product.name}, ${input.product.description ?? null}) returning id, code, name, description, status, created_at as "createdAt", updated_at as "updatedAt"`;
         const versions = await tx<
           ProductVersionRecord[]
-        >`insert into product_versions (id, tenant_id, product_id, version, status, released_at) values (${versionId}, ${context.tenantId}, ${productId}, ${input.version.version}, 'active', ${input.version.releasedAt}) returning id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt"`;
+        >`insert into product_versions (id, tenant_id, product_id, version, status, released_at) values (${versionId}, ${context.tenantId}, ${productId}, ${input.version.version}, 'active', ${input.version.releasedAt}) returning id, product_id as "productId", version, status, released_at as "releasedAt", release_notes as "releaseNotes", features, contents, schema_document as "schemaDocument", created_at as "createdAt", updated_at as "updatedAt"`;
         const plans = await tx<
           PlanRecord[]
         >`insert into plans (id, tenant_id, product_version_id, code, name, description, commercial_model) values (${planId}, ${context.tenantId}, ${versionId}, ${input.plan.code}, ${input.plan.name}, ${input.plan.description ?? null}, ${input.plan.commercialModel}) returning id, product_version_id as "productVersionId", code, name, description, commercial_model as "commercialModel", status, created_at as "createdAt"`;
@@ -139,7 +227,7 @@ export class PostgresCommerceRepository implements CommerceRepository {
       return await withTenant(this.database, context.tenantId, async (tx) => {
         const rows = await tx<
           ProductVersionRecord[]
-        >`insert into product_versions (id, tenant_id, product_id, version, status, released_at) select ${randomUUID()}, ${context.tenantId}, id, ${input.version}, ${input.status}, ${input.releasedAt ?? null} from products where tenant_id = ${context.tenantId} and id = ${productId} returning id, product_id as "productId", version, status, released_at as "releasedAt", created_at as "createdAt"`;
+        >`insert into product_versions (id, tenant_id, product_id, version, status, released_at) select ${randomUUID()}, ${context.tenantId}, id, ${input.version}, ${input.status}, ${input.releasedAt ?? null} from products where tenant_id = ${context.tenantId} and id = ${productId} returning id, product_id as "productId", version, status, released_at as "releasedAt", release_notes as "releaseNotes", features, contents, schema_document as "schemaDocument", created_at as "createdAt", updated_at as "updatedAt"`;
         if (!rows[0]) throw new CommerceError("PRODUCT_NOT_FOUND");
         return rows[0];
       });

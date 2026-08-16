@@ -1,6 +1,4 @@
 import { getAttendanceDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import { ChevronLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AttendancePendingRequests } from "@/components/attendance-pending-requests";
@@ -91,12 +89,7 @@ export default async function AttendanceTeamPage({
           title={labels.teamTitle}
           description={labels.teamDescription}
           themeLabel={t.header.theme}
-          actions={
-            <Link className="secondary-button" href={`/${locale}/attendance?month=${range.month}`}>
-              <ChevronLeft size={16} aria-hidden="true" />
-              {labels.backToOwn}
-            </Link>
-          }
+          back={{ label: t.header.back, fallbackHref: `/${locale}/attendance` }}
         />
         <main className="compact-main">
           <AttendancePendingRequests

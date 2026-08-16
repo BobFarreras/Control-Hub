@@ -20,6 +20,15 @@ export type Fixture = {
   internalNote: string;
   customerReply: string;
   commerce: { customer: string; product: string; plan: string };
+  /** What the infrastructure screen reads: the base a link is built from, and the rows to find. */
+  infrastructure: {
+    instance: string;
+    baseUrl: string;
+    fresh: { externalId: string; name: string };
+    stale: { externalId: string; name: string };
+    rule: string;
+    customer: string;
+  };
 };
 
 export const credentialsPath = process.env.E2E_CREDENTIALS_FILE

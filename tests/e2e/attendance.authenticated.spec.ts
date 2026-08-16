@@ -24,7 +24,9 @@ const t = {
   save: "Desar",
   declared: "Declarat",
   corrected: "Corregit",
-  team: "Jornada de l'equip",
+  // The sidebar entry and the page heading no longer say the same thing: the menu nests "Equip"
+  // under "Jornada", and only the screen itself spells the whole name out.
+  teamLink: "Equip",
   teamTitle: "Jornada de l'equip",
   recorded: "Registrades",
   export: "Exportar Excel"
@@ -84,11 +86,14 @@ test.describe("working time", () => {
     await expect(clock(page)).toContainText(t.stateIn);
     await expect(clock(page).getByRole("button", { name: t.clockOut })).toBeVisible();
 
-    // Reloaded rather than trusted: only a fresh render from the server says the entry was
-    // written, rather than that a button changed what it was showing.
-    await page.reload({ waitUntil: "domcontentloaded" });
+    /**
+     * Fetched again from the server rather than trusted: only a fresh render says the entry was
+     * written, rather than that a button changed what it was showing. The address names the view
+     * because the bare one opens the calendar, and the movements are on the records side.
+     */
+    await page.goto("/ca/attendance?view=records", { waitUntil: "domcontentloaded" });
     await expect(clock(page)).toContainText(t.stateIn);
-    await expect(page.getByRole("region", { name: t.history })).toContainText("Fitxar entrada");
+    await expect(page.getByRole("region", { name: t.history })).toContainText(t.clockIn);
   });
 
   test("refuses to send a time from the browser", async ({ page }) => {
@@ -132,7 +137,7 @@ test.describe("working time", () => {
     await clock(page).getByRole("button", { name: t.clockIn }).click();
     expect((await saved).status()).toBe(201);
 
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.goto("/ca/attendance?view=records", { waitUntil: "domcontentloaded" });
     const history = page.getByRole("region", { name: t.history });
     const correct = history.getByRole("button", { name: t.correct }).first();
     await waitForHydration(correct);
@@ -166,7 +171,7 @@ test.describe("working time", () => {
 
   test("shows the team its hours and hands them over as a file", async ({ page }) => {
     await page.goto("/ca/attendance", { waitUntil: "domcontentloaded" });
-    const link = page.getByRole("link", { name: t.team });
+    const link = page.getByRole("link", { name: t.teamLink });
     await waitForHydration(link);
     await link.click();
 

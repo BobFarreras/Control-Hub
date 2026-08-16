@@ -30,6 +30,13 @@ const t = {
 } as const;
 
 const row = (page: Page, subject: string) => page.getByRole("row").filter({ hasText: subject });
+/**
+ * The metadata sidebar of a ticket, and the scope every control on it is looked for in.
+ *
+ * The sidebar itself is labelled "Estat", exactly like the status control inside it, so an
+ * unscoped `getByLabel` finds two elements and fails on strict mode rather than on the product.
+ */
+const meta = (page: Page) => page.locator("aside.ticket-meta");
 const message = (page: Page, body: string) => page.locator("article.ticket-message").filter({ hasText: body });
 
 /**
@@ -59,17 +66,21 @@ async function createTicket(page: Page): Promise<{ id: string; subject: string }
   await open.click();
 
   /**
-   * Located by role and accessible name, not by `getByLabel`.
+   * Located by accessible name, and not as a `combobox`.
    *
-   * This form's fields are a `<label>` wrapped around the control, and for a wrapped `<select>`
-   * the label text Playwright matches on includes every option: the customer dropdown answers to
-   * "ClientFar Harbour LogisticsTramuntana Foods…", so an exact match on "Client" finds nothing
-   * and the test hangs on a form that is plainly on screen. The accessible name is "Client", which
-   * is also what somebody using a screen reader hears.
+   * These fields stopped being native `<select>` elements: a themed select is a trigger button
+   * with `aria-haspopup="listbox"` beside a hidden `<select>` that carries the form value. The
+   * hidden one is `aria-hidden`, so nothing in this form answers to the `combobox` role any more
+   * and a locator asking for one waits fifteen seconds on a dialog that is plainly on screen.
+   *
+   * `getByLabel` with an exact name reaches the trigger through its `aria-label`, and not the
+   * `<label>` wrapped around the pair: for a wrapped select the label text Playwright matches on
+   * includes every option — "ClientFar Harbour LogisticsTramuntana Foods…" — which no exact match
+   * for "Client" can hit.
    */
   const dialog = page.getByRole("dialog");
   // Whichever customer the seed created first; the point is that a ticket needs one.
-  await selectFieldOption(dialog.getByRole("combobox", { name: t.customer, exact: true }), { index: 0 });
+  await selectFieldOption(dialog.getByLabel(t.customer, { exact: true }), { index: 0 });
   await dialog.getByRole("textbox", { name: t.subject, exact: true }).fill(subject);
   await dialog.getByRole("textbox", { name: t.ticketDescription, exact: true }).fill("Obert per la prova end-to-end.");
 
@@ -194,7 +205,7 @@ test.describe("ticket detail", () => {
     const ticket = await createTicket(page);
     await page.goto(`/ca/support/${ticket.id}`, { waitUntil: "domcontentloaded" });
 
-    const status = page.getByRole("combobox", { name: t.status });
+    const status = meta(page).getByLabel(t.status, { exact: true });
     await waitForHydration(status);
     // A ticket is born new, which is the state this test means to move it out of.
     await expect(selectFieldValue(status)).toHaveValue("new");
@@ -211,7 +222,7 @@ test.describe("ticket detail", () => {
      * render from the server says the transition actually happened.
      */
     await page.reload({ waitUntil: "domcontentloaded" });
-    const reloaded = page.getByRole("combobox", { name: t.status });
+    const reloaded = meta(page).getByLabel(t.status, { exact: true });
     // Waited for, not asserted straight away: a reload re-renders on the server and rehydrates,
     // and the five seconds an assertion waits by itself are not always enough for both.
     await waitForHydration(reloaded);
@@ -225,7 +236,7 @@ test.describe("ticket detail", () => {
     const ticket = await createTicket(page);
     await page.goto(`/ca/support/${ticket.id}`, { waitUntil: "domcontentloaded" });
 
-    const assignee = page.getByRole("combobox", { name: t.assignee });
+    const assignee = meta(page).getByLabel(t.assignee, { exact: true });
     await waitForHydration(assignee);
     await expect(selectFieldValue(assignee)).toHaveValue("");
 
@@ -236,7 +247,7 @@ test.describe("ticket detail", () => {
     expect((await saved).status()).toBe(200);
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    const reloaded = page.getByRole("combobox", { name: t.assignee });
+    const reloaded = meta(page).getByLabel(t.assignee, { exact: true });
     await waitForHydration(reloaded);
     await expect(selectFieldValue(reloaded)).toHaveValue(fixture.membershipId);
 

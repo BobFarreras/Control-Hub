@@ -18,6 +18,7 @@ export type ProductRecord = {
   description: string | null;
   status: "active" | "archived";
   createdAt: Date;
+  updatedAt: Date;
 };
 export type ProductVersionRecord = {
   id: string;
@@ -25,7 +26,34 @@ export type ProductVersionRecord = {
   version: string;
   status: "draft" | "active" | "retired";
   releasedAt: Date | null;
+  releaseNotes: string | null;
+  features: string[];
+  contents: string[];
+  schemaDocument: Record<string, unknown> | null;
   createdAt: Date;
+  updatedAt: Date;
+};
+export type ProductResourceKind = "information" | "documentation" | "diagram" | "repository" | "demo";
+export type ProductResourceRecord = {
+  id: string;
+  productId: string;
+  productVersionId: string | null;
+  kind: ProductResourceKind;
+  label: string;
+  url: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+export type ProductCustomerRecord = {
+  serviceId: string;
+  customerId: string;
+  customerName: string;
+  planName: string;
+  commercialModel: CommercialModel;
+  status: "active" | "paused" | "completed" | "canceled";
+  quantity: number;
+  startsAt: Date;
+  endsAt: Date | null;
 };
 export type PlanRecord = {
   id: string;
@@ -60,7 +88,11 @@ export type ProductOfferRecord = {
   plan: PlanRecord;
   price: PriceRecord;
 };
-export type ProductCatalogDetail = Catalog & { product: ProductRecord };
+export type ProductCatalogDetail = Catalog & {
+  product: ProductRecord;
+  resources: ProductResourceRecord[];
+  customers: ProductCustomerRecord[];
+};
 export type ProductOfferInput = {
   product: { code: string; name: string; description?: string };
   version: { version: string };
@@ -126,6 +158,7 @@ export class CommerceError extends Error {
       | "CUSTOMER_NOT_FOUND"
       | "SUBSCRIPTION_NOT_FOUND"
       | "INVALID_SUBSCRIPTION_TRANSITION"
+      | "CONCURRENT_MODIFICATION"
       | "DUPLICATE_CODE"
   ) {
     super(code);
@@ -135,6 +168,32 @@ export class CommerceError extends Error {
 export interface CommerceRepository {
   catalog(context: TenantContext): Promise<Catalog>;
   productDetail(context: TenantContext, productId: string): Promise<ProductCatalogDetail>;
+  updateProduct(
+    context: TenantContext,
+    productId: string,
+    input: { name: string; description?: string; status: "active" | "archived"; expectedUpdatedAt: Date }
+  ): Promise<ProductRecord>;
+  updateVersionKnowledge(
+    context: TenantContext,
+    versionId: string,
+    input: {
+      releaseNotes?: string;
+      features: string[];
+      contents: string[];
+      schemaDocument?: Record<string, unknown>;
+      expectedUpdatedAt: Date;
+    }
+  ): Promise<ProductVersionRecord>;
+  replaceProductResources(
+    context: TenantContext,
+    productId: string,
+    resources: Array<{
+      productVersionId?: string;
+      kind: ProductResourceKind;
+      label: string;
+      url: string;
+    }>
+  ): Promise<ProductResourceRecord[]>;
   createProduct(
     context: TenantContext,
     input: { code: string; name: string; description?: string }
@@ -238,6 +297,72 @@ export class CommerceService {
   }
   productDetail(context: TenantContext, productId: string) {
     return this.repository.productDetail(context, productId);
+  }
+  updateProduct(
+    context: TenantContext,
+    productId: string,
+    input: { name: string; description?: string; status: "active" | "archived"; expectedUpdatedAt: Date }
+  ) {
+    if (!["active", "archived"].includes(input.status) || Number.isNaN(input.expectedUpdatedAt.getTime()))
+      throw new CommerceError("INVALID_INPUT");
+    return this.repository.updateProduct(context, productId, {
+      name: required(input.name, 160),
+      ...(input.description?.trim() ? { description: required(input.description, 2000) } : {}),
+      status: input.status,
+      expectedUpdatedAt: input.expectedUpdatedAt
+    });
+  }
+  updateVersionKnowledge(
+    context: TenantContext,
+    versionId: string,
+    input: {
+      releaseNotes?: string;
+      features: string[];
+      contents: string[];
+      schemaDocument?: Record<string, unknown>;
+      expectedUpdatedAt: Date;
+    }
+  ) {
+    const list = (values: string[]) => {
+      if (values.length > 100) throw new CommerceError("INVALID_INPUT");
+      return values.map((value) => required(value, 500));
+    };
+    if (Number.isNaN(input.expectedUpdatedAt.getTime())) throw new CommerceError("INVALID_INPUT");
+    return this.repository.updateVersionKnowledge(context, versionId, {
+      ...(input.releaseNotes?.trim() ? { releaseNotes: required(input.releaseNotes, 10000) } : {}),
+      features: list(input.features),
+      contents: list(input.contents),
+      ...(input.schemaDocument ? { schemaDocument: input.schemaDocument } : {}),
+      expectedUpdatedAt: input.expectedUpdatedAt
+    });
+  }
+  replaceProductResources(
+    context: TenantContext,
+    productId: string,
+    resources: Array<{ productVersionId?: string; kind: ProductResourceKind; label: string; url: string }>
+  ) {
+    if (resources.length > 50) throw new CommerceError("INVALID_INPUT");
+    const kinds: ProductResourceKind[] = ["information", "documentation", "diagram", "repository", "demo"];
+    return this.repository.replaceProductResources(
+      context,
+      productId,
+      resources.map((resource) => {
+        if (!kinds.includes(resource.kind)) throw new CommerceError("INVALID_INPUT");
+        let url: URL;
+        try {
+          url = new URL(resource.url);
+        } catch {
+          throw new CommerceError("INVALID_INPUT");
+        }
+        if (url.protocol !== "https:" || url.username || url.password) throw new CommerceError("INVALID_INPUT");
+        return {
+          ...(resource.productVersionId ? { productVersionId: resource.productVersionId } : {}),
+          kind: resource.kind,
+          label: required(resource.label, 160),
+          url: url.toString()
+        };
+      })
+    );
   }
   listSubscriptions(context: TenantContext) {
     return this.repository.listSubscriptions(context);

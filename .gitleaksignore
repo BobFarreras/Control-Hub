@@ -1,1 +1,6 @@
+# Fixtures, not credentials. Every value below was invented for a test, lives only in a test, and
+# is asserted by that same test never to reach a log, a response or a database row. Each one was
+# read before being listed here: a fingerprint is added because the finding was checked, never to
+# quieten a job. A finding outside a test file does not belong in this file at all.
 5e00719563a855c172ed21e72f6fcc74366b7d88:tests/e2e/totp.spec.ts:generic-api-key:12
+529ca42fc8e7c2357ea8c4ff8dec55d4cffd417e:packages/application/src/connector-credentials.test.ts:generic-api-key:240

@@ -1,6 +1,4 @@
 import { getCrmDetailDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { CustomerDetail } from "@/components/customer-detail";
@@ -39,15 +37,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ local
           title={customer.displayName}
           description={customer.billingEmail ?? customer.phone ?? "--"}
           themeLabel={common.header.theme}
-          actions={
-            <>
-              <span className="state state-active">{customer.status}</span>
-              <Link className="secondary-button" href={`/${locale}/crm`}>
-                <ArrowLeft size={17} />
-                {labels.back}
-              </Link>
-            </>
-          }
+          back={{ label: common.header.back, fallbackHref: `/${locale}/crm` }}
+          actions={<span className="state state-active">{customer.status}</span>}
         />
         <main className="customer-page compact-main">
           <CustomerDetail customer={customer} labels={labels} locale={locale} canReadFinancials={financialsVisible} />

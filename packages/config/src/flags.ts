@@ -23,6 +23,27 @@ export const featureFlags = {
     description: "Working time records, corrections and reconciliation against logged hours (Phase 5C).",
     owner: "owner",
     retireOn: "2027-06-30"
+  },
+  /**
+   * Off until the platform is complete. It gates the inbound webhook route as well as the
+   * integrations screen: a signing endpoint that answers before anything can process what it
+   * accepts is an open door, not a partial feature. See `docs/specifications/connectors.md`.
+   */
+  connectors: {
+    description: "Connector contract, credential vault, outbound calls and signed webhooks (Phase 6).",
+    owner: "owner",
+    retireOn: "2027-06-30"
+  },
+  /**
+   * Off by default, and it gates more than a screen: with it closed the worker schedules no
+   * connector operation at all and removes any schedule it finds. A phase that polls a provider
+   * every five minutes has to be switchable off from the outside, or the only way to stop it is a
+   * deploy. See `docs/specifications/infrastructure.md`.
+   */
+  infrastructure: {
+    description: "Infrastructure and n8n: pulled records, scheduled operations, alerts (Phase 7).",
+    owner: "owner",
+    retireOn: "2027-12-31"
   }
 } as const;
 

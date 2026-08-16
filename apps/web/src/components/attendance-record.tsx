@@ -1,9 +1,11 @@
 "use client";
 
-import { AlertTriangle, Clock, PencilLine, Plane, FileText, X } from "lucide-react";
+import { AlertTriangle, Plane, FileText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type FormEvent } from "react";
-import { MetricTile } from "@/components/metric-tile";
+import { AttendanceMonthNavigation } from "@/components/attendance-month-navigation";
+import { AttendanceTables } from "@/components/attendance-tables";
+import { SelectField } from "@/components/form-field";
 import { useToast } from "@/components/toast";
 import type {
   AttendanceEvent,
@@ -20,14 +22,6 @@ type HolidaysResponse = { holidays: AttendanceHoliday[] };
 type VacationsResponse = { vacations: AttendanceVacation[] };
 type AbsencesResponse = { absences: AttendanceAbsence[] };
 
-function supersededIds(events: AttendanceEvent[]): Set<string> {
-  return new Set(events.map((event) => event.correctsEventId).filter((id): id is string => Boolean(id)));
-}
-
-function wasDeclared(event: AttendanceEvent): boolean {
-  return Boolean(event.correctsEventId) || new Date(event.occurredAt) < new Date(event.recordedAt);
-}
-
 function toLocalInput(value: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
@@ -37,12 +31,14 @@ export function AttendanceRecord({
   month,
   labels: t,
   locale,
-  view = "table"
+  range,
+  view = "calendar"
 }: {
   month: AttendanceMonth;
   labels: Labels;
   locale: string;
-  view?: "table" | "calendar";
+  range: { from: string; to: string; month: string };
+  view?: "records" | "calendar";
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -58,15 +54,12 @@ export function AttendanceRecord({
   const [absences, setAbsences] = useState<AttendanceAbsence[]>([]);
   const [calendarVersion, setCalendarVersion] = useState(0);
 
-  const superseded = supersededIds(month.events);
   const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
   const date = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" });
 
   useEffect(() => {
-    if (view !== "calendar" || month.days.length === 0) return;
-    const from = month.days[0]!.day;
-    const to = month.days[month.days.length - 1]!.day;
-    const params = `from=${from}&to=${to}&membershipId=${month.membershipId}`;
+    if (view !== "calendar" || !month.membershipId) return;
+    const params = new URLSearchParams({ from: range.from, to: range.to, membershipId: month.membershipId });
 
     void Promise.all([
       fetch(`/api/v1/attendance/holidays?${params}`).then(async (response): Promise<HolidaysResponse> =>
@@ -83,7 +76,7 @@ export function AttendanceRecord({
       setVacations(v.vacations ?? []);
       setAbsences(a.absences ?? []);
     });
-  }, [view, month.days, month.membershipId, calendarVersion]);
+  }, [view, range.from, range.to, month.membershipId, calendarVersion]);
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,13 +168,11 @@ export function AttendanceRecord({
 
   return (
     <>
-      <section className="metric-row" aria-label={t.total}>
-        <MetricTile label={t.total!} icon={Clock} value={formatHours(month.totalMinutes)} />
-      </section>
-
       {view === "calendar" ? (
         <CalendarView
           month={month}
+          range={range}
+          locale={locale}
           labels={t}
           time={time}
           date={date}
@@ -200,52 +191,8 @@ export function AttendanceRecord({
           onCancelAbsence={(id) => void cancelAbsence(id)}
         />
       ) : (
-        <TableView month={month} labels={t} time={time} date={date} />
+        <AttendanceTables month={month} range={range} labels={t} locale={locale} onCorrect={setCorrecting} />
       )}
-
-      <section className="project-panel" aria-label={t.history}>
-        <h3>{t.history}</h3>
-        <div className="crm-table-wrap inside-panel">
-          <table className="crm-table">
-            <thead>
-              <tr>
-                <th>{t.kind}</th>
-                <th>{t.at}</th>
-                <th>{t.reason}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {month.events.length === 0 && (
-                <tr>
-                  <td colSpan={4}>{t.empty}</td>
-                </tr>
-              )}
-              {month.events.map((event) => {
-                const retired = superseded.has(event.id);
-                return (
-                  <tr key={event.id} className={retired ? "attendance-retired" : undefined}>
-                    <td>
-                      {t[kindKey(event.kind)]}
-                      {retired && <span className="attendance-mark">{t.corrected}</span>}
-                      {!retired && wasDeclared(event) && <span className="attendance-mark">{t.declared}</span>}
-                    </td>
-                    <td>{time.format(new Date(event.occurredAt))}</td>
-                    <td>{event.reason ?? ""}</td>
-                    <td>
-                      {!retired && (
-                        <button className="icon-button" aria-label={t.correct} onClick={() => setCorrecting(event)}>
-                          <PencilLine size={16} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       {correcting && (
         <div className="dialog-backdrop" role="presentation">
@@ -328,14 +275,18 @@ export function AttendanceRecord({
             </header>
             <p className="dialog-note">{t.absenceNote}</p>
             <form className="commerce-form" onSubmit={(event) => void submitAbsence(event)}>
-              <label>
-                {t.absenceType}
-                <select name="type" required disabled={busy}>
-                  <option value="sick_leave">{t.absenceSick}</option>
-                  <option value="personal_leave">{t.absencePersonal}</option>
-                  <option value="other">{t.absenceOther}</option>
-                </select>
-              </label>
+              <SelectField
+                name="type"
+                label={t.absenceType!}
+                required
+                disabled={busy}
+                defaultValue="sick_leave"
+                options={[
+                  { value: "sick_leave", label: t.absenceSick! },
+                  { value: "personal_leave", label: t.absencePersonal! },
+                  { value: "other", label: t.absenceOther! }
+                ]}
+              />
               <label>
                 {t.absenceStart}
                 <input name="startDate" type="date" required disabled={busy} defaultValue={absenceFormDate} />
@@ -369,79 +320,10 @@ export function AttendanceRecord({
   );
 }
 
-function kindKey(kind: AttendanceEvent["kind"]): string {
-  return kind === "clock_in"
-    ? "clockIn"
-    : kind === "clock_out"
-      ? "clockOut"
-      : kind === "pause_start"
-        ? "pauseStart"
-        : "pauseEnd";
-}
-
-function TableView({
-  month,
-  labels: t,
-  time,
-  date
-}: {
-  month: AttendanceMonth;
-  labels: Labels;
-  time: Intl.DateTimeFormat;
-  date: Intl.DateTimeFormat;
-}) {
-  return (
-    <section className="project-panel" aria-label={t.title}>
-      <h3>{t.day}</h3>
-      <div className="crm-table-wrap inside-panel">
-        <table className="crm-table">
-          <thead>
-            <tr>
-              <th>{t.day}</th>
-              <th>{t.entry}</th>
-              <th>{t.worked}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {month.days.length === 0 && (
-              <tr>
-                <td colSpan={3}>{t.empty}</td>
-              </tr>
-            )}
-            {month.days.map((day) => (
-              <tr key={day.day}>
-                <td>{date.format(new Date(`${day.day}T12:00:00`))}</td>
-                <td className="attendance-times">
-                  {month.sessions
-                    .filter((session) => session.day === day.day)
-                    .map((session) => (
-                      <span key={session.startedAt}>
-                        {time.format(new Date(session.startedAt))}
-                        {"–"}
-                        {session.endedAt ? time.format(new Date(session.endedAt)) : ""}
-                      </span>
-                    ))}
-                </td>
-                <td>
-                  {formatHours(day.workedMinutes)}
-                  {day.hasOpenSession && (
-                    <span className="metric-todo">
-                      <AlertTriangle size={13} aria-hidden="true" />
-                      {t.openSession}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function CalendarView({
   month,
+  range,
+  locale,
   labels: t,
   time,
   date,
@@ -454,6 +336,8 @@ function CalendarView({
   onCancelAbsence
 }: {
   month: AttendanceMonth;
+  range: { from: string; to: string; month: string };
+  locale: string;
   labels: Labels;
   time: Intl.DateTimeFormat;
   date: Intl.DateTimeFormat;
@@ -479,7 +363,7 @@ function CalendarView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [popover]);
 
-  const firstDay = month.days[0]?.day ?? new Date().toISOString().slice(0, 10);
+  const firstDay = range.from;
   const parts = firstDay.split("-");
   const year = parseInt(parts[0] ?? "0", 10);
   const monthNum = parseInt(parts[1] ?? "1", 10);
@@ -537,7 +421,16 @@ function CalendarView({
 
   return (
     <section className="project-panel" aria-label={t.calendarView}>
-      <h3>{t.calendar}</h3>
+      <header className="panel-head attendance-panel-head">
+        <h3>{t.calendar}</h3>
+        <AttendanceMonthNavigation
+          month={range.month}
+          locale={locale}
+          href={(monthValue) => `/${locale}/attendance?view=calendar&month=${monthValue}`}
+          previousLabel={t.monthPrevious!}
+          nextLabel={t.monthNext!}
+        />
+      </header>
       <div className="attendance-calendar">
         <div className="calendar-header" role="row">
           {dayNames.map((name) => (

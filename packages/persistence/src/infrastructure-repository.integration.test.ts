@@ -1,0 +1,513 @@
+import { randomUUID } from "node:crypto";
+import type { ConnectorConfig } from "@control-hub/application";
+import { createDatabaseClient, type DatabaseClient } from "@control-hub/database";
+import type { AlertVerdict, TenantContext } from "@control-hub/domain";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PostgresConnectorRepository } from "./connector-repository.js";
+import { PostgresInfrastructureRepository } from "./infrastructure-repository.js";
+
+const databaseUrl = process.env.TEST_DATABASE_URL;
+const adminUrl = process.env.TEST_DATABASE_ADMIN_URL;
+// Skipping locally is a convenience; skipping in CI would mean these guarantees ship unproven.
+if (process.env.CI && !(databaseUrl && adminUrl))
+  throw new Error("TEST_DATABASE_URL and TEST_DATABASE_ADMIN_URL are required in CI");
+const suite = databaseUrl && adminUrl ? describe : describe.skip;
+
+suite("PostgresInfrastructureRepository", () => {
+  let database: DatabaseClient;
+  let admin: DatabaseClient;
+  let repository: PostgresInfrastructureRepository;
+  let connectors: PostgresConnectorRepository;
+
+  const tenantA = randomUUID();
+  const tenantB = randomUUID();
+  const userId = randomUUID();
+  const membershipA = randomUUID();
+  const membershipB = randomUUID();
+  const now = new Date("2026-08-13T12:00:00.000Z");
+
+  const context = (tenantId: string, membershipId: string): TenantContext => ({
+    tenantId,
+    membershipId,
+    userId,
+    roles: ["owner"],
+    permissions: ["infrastructure:read", "infrastructure:operate", "integrations:read", "integrations:manage"],
+    mfaEnabled: true
+  });
+
+  const asA = () => context(tenantA, membershipA);
+  const asB = () => context(tenantB, membershipB);
+
+  const newInstance = async (tenantId: string, membershipId: string) =>
+    connectors.createInstance(context(tenantId, membershipId), {
+      connectorType: "generic-webhook",
+      name: `instance ${randomUUID()}`,
+      config: { eventIdPath: "id" }
+    });
+
+  /** A pulled record, written through the same port the worker writes one through. */
+  const putRecord = async (
+    tenantId: string,
+    membershipId: string,
+    instanceId: string,
+    operation: "pull_workflows" | "pull_executions",
+    externalId: string,
+    data: ConnectorConfig
+  ) =>
+    connectors.upsertRecords(context(tenantId, membershipId), {
+      instanceId,
+      operation,
+      shape: operation === "pull_workflows" ? "state" : "event",
+      records: [{ externalId, data }],
+      seenAt: now
+    });
+
+  const newCustomer = async (tenantId: string, name: string) => {
+    const id = randomUUID();
+    await admin`insert into customers (id, tenant_id, display_name, normalized_name)
+      values (${id}, ${tenantId}, ${name}, ${name.toLowerCase()})`;
+    return id;
+  };
+
+  const newRule = async (instanceId: string, overrides: Record<string, unknown> = {}) =>
+    repository.createRule(asA(), {
+      name: `rule ${randomUUID()}`,
+      kind: "workflow_failed",
+      instanceId,
+      targetType: "instance",
+      targetId: null,
+      severity: "high",
+      params: {},
+      freshnessSeconds: 900,
+      opensIncident: false,
+      ...overrides
+    });
+
+  const firing = (ruleId: string, dedupKey: string): AlertVerdict => ({
+    ruleId,
+    status: "firing",
+    dedupKey,
+    severity: "high",
+    summary: { workflowId: dedupKey.slice("workflow:".length), failures: "2" }
+  });
+
+  const resolution = (ruleId: string, dedupKey: string): AlertVerdict => ({
+    ruleId,
+    status: "resolved",
+    dedupKey,
+    severity: "high",
+    summary: {}
+  });
+
+  beforeAll(async () => {
+    database = createDatabaseClient(databaseUrl!);
+    admin = createDatabaseClient(adminUrl!);
+    repository = new PostgresInfrastructureRepository(database);
+    connectors = new PostgresConnectorRepository(database);
+
+    await admin`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      values (${userId}, 'Infra Test', ${`${userId}@test.local`}, true, now(), now())`;
+    await admin`insert into tenants (id, slug, name) values
+      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B')`;
+    await admin`insert into memberships (id, tenant_id, user_id) values
+      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId})`;
+  });
+
+  afterAll(async () => {
+    // Everything under a tenant cascades from the tenant row, the infrastructure tables included.
+    await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
+    await admin`delete from "user" where id = ${userId}`;
+    await database.end({ timeout: 5 });
+    await admin.end({ timeout: 5 });
+  });
+
+  const automationsOf = async (instanceId: string) =>
+    (await repository.listAutomations(asA())).filter((item) => item.instanceId === instanceId);
+
+  const alertsOf = async (ruleId: string, status?: "firing" | "resolved") =>
+    (await repository.listAlerts(asA(), status ? { status } : {})).filter((alert) => alert.ruleId === ruleId);
+
+  describe("automations", () => {
+    it("lists what the provider says exists, with what we decided hung off it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "workflow:wf-a", {
+        name: "Invoicing",
+        active: true,
+        archived: false,
+        tags: ["billing", "urgent"]
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      await repository.linkAutomation(asA(), {
+        instanceId: instance.id,
+        externalId: "workflow:wf-a",
+        customerId,
+        notes: "les factures"
+      });
+
+      const [automation] = await automationsOf(instance.id);
+      expect(automation).toMatchObject({
+        externalId: "workflow:wf-a",
+        name: "Invoicing",
+        active: true,
+        archived: false,
+        tags: ["billing", "urgent"],
+        customerId,
+        notes: "les factures"
+      });
+      expect(automation?.observedAt).toBeInstanceOf(Date);
+    });
+
+    it("shows an automation nobody has associated with anybody", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "workflow:orphan", {
+        name: "Orphan",
+        active: false
+      });
+
+      const [automation] = await automationsOf(instance.id);
+      expect(automation).toMatchObject({
+        externalId: "workflow:orphan",
+        name: "Orphan",
+        tags: [],
+        customerId: null,
+        notes: null
+      });
+    });
+
+    it("keeps the notes when the association is withdrawn", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "workflow:wf-b", { name: "Second" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      const link = { instanceId: instance.id, externalId: "workflow:wf-b", customerId, notes: "ojo" };
+      await repository.linkAutomation(asA(), link);
+      await repository.linkAutomation(asA(), { ...link, customerId: null });
+
+      const [automation] = await automationsOf(instance.id);
+      expect(automation).toMatchObject({ customerId: null, notes: "ojo" });
+    });
+
+    it("shows one tenant nothing of another's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_workflows", "workflow:secret", { name: "Theirs" });
+
+      const mine = await repository.listAutomations(asA());
+      expect(mine.some((item) => item.externalId === "workflow:secret")).toBe(false);
+      const theirs = await repository.listAutomations(asB());
+      expect(theirs.some((item) => item.externalId === "workflow:secret")).toBe(true);
+    });
+  });
+
+  describe("rules", () => {
+    it("stores a rule and reads it back with its defaults", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id, { params: { withinMinutes: 30 } });
+
+      expect(rule).toMatchObject({ kind: "workflow_failed", enabled: true, params: { withinMinutes: 30 } });
+      expect((await repository.listRules(asA())).some((item) => item.id === rule.id)).toBe(true);
+    });
+
+    it("refuses two rules of one tenant sharing a name, and allows it across tenants", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+
+      await expect(newRule(instance.id, { name: rule.name })).rejects.toThrow("DUPLICATE_RULE_NAME");
+
+      const theirInstance = await newInstance(tenantB, membershipB);
+      const mirrored = await repository.createRule(asB(), {
+        name: rule.name,
+        kind: "workflow_failed",
+        instanceId: theirInstance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "high",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+      expect(mirrored.name).toBe(rule.name);
+    });
+
+    it("changes only what the patch mentions", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id, { params: { withinMinutes: 30 }, severity: "critical" });
+
+      const updated = await repository.updateRule(asA(), rule.id, { enabled: false });
+
+      expect(updated).toMatchObject({
+        enabled: false,
+        severity: "critical",
+        params: { withinMinutes: 30 },
+        name: rule.name,
+        freshnessSeconds: 900
+      });
+    });
+
+    it("moves the target and its id together", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+
+      const narrowed = await repository.updateRule(asA(), rule.id, {
+        targetType: "automation",
+        targetId: "workflow:wf-a"
+      });
+      expect(narrowed).toMatchObject({ targetType: "automation", targetId: "workflow:wf-a" });
+
+      const widened = await repository.updateRule(asA(), rule.id, { targetType: "instance", targetId: null });
+      expect(widened).toMatchObject({ targetType: "instance", targetId: null });
+    });
+
+    it("refuses a freshness the column will not take", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await expect(newRule(instance.id, { freshnessSeconds: 10 })).rejects.toThrow("INVALID_INPUT");
+    });
+
+    it("says so rather than silently doing nothing when the rule is not this tenant's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      const theirs = await repository.createRule(asB(), {
+        name: `rule ${randomUUID()}`,
+        kind: "workflow_failed",
+        instanceId: instance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "low",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+
+      await expect(repository.updateRule(asA(), theirs.id, { enabled: false })).rejects.toThrow("RULE_NOT_FOUND");
+      await expect(repository.deleteRule(asA(), theirs.id)).rejects.toThrow("RULE_NOT_FOUND");
+    });
+  });
+
+  describe("writing down a verdict", () => {
+    it("creates the alert the first time and counts it up after that", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+
+      const [first] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-a")], now);
+      expect(first).toMatchObject({ created: true });
+
+      const later = new Date(now.getTime() + 120_000);
+      const [second] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-a")], later);
+      expect(second).toMatchObject({ created: false, alertId: first!.alertId });
+
+      const [alert] = await alertsOf(rule.id, "firing");
+      expect(alert).toMatchObject({ occurrences: 2, ruleName: rule.name, dedupKey: "workflow:wf-a" });
+      expect(alert?.startedAt.toISOString()).toBe(now.toISOString());
+      expect(alert?.lastSeenAt.toISOString()).toBe(later.toISOString());
+    });
+
+    it("keeps one live alert per key however many passes run", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      const verdicts = [firing(rule.id, "workflow:repeated")];
+
+      await repository.applyVerdicts(asA(), verdicts, now);
+      await repository.applyVerdicts(asA(), verdicts, now);
+      await repository.applyVerdicts(asA(), verdicts, now);
+
+      const live = await alertsOf(rule.id, "firing");
+      expect(live).toHaveLength(1);
+      expect(live[0]?.occurrences).toBe(3);
+    });
+
+    it("resolves what a later pass no longer claims, and lets the next firing start a new row", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-c")], now);
+
+      const resolvedAt = new Date(now.getTime() + 300_000);
+      const applied = await repository.applyVerdicts(asA(), [resolution(rule.id, "workflow:wf-c")], resolvedAt);
+      expect(applied).toHaveLength(1);
+
+      const again = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-c")], resolvedAt);
+      expect(again[0]).toMatchObject({ created: true });
+
+      const rows = await alertsOf(rule.id);
+      expect(rows.map((alert) => alert.status).sort()).toEqual(["firing", "resolved"]);
+    });
+
+    it("resolves nothing when nothing was firing, without inventing a row to close", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+
+      const applied = await repository.applyVerdicts(asA(), [resolution(rule.id, "workflow:never")], now);
+
+      expect(applied).toEqual([]);
+      expect(await alertsOf(rule.id)).toEqual([]);
+    });
+
+    it("writes nothing at all for a starved rule", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+
+      const applied = await repository.applyVerdicts(
+        asA(),
+        [{ ruleId: rule.id, status: "starved", dedupKey: `rule:${rule.id}`, severity: "high", summary: {} }],
+        now
+      );
+
+      expect(applied).toEqual([]);
+      expect(await alertsOf(rule.id)).toEqual([]);
+    });
+  });
+
+  describe("the incident an alert opens", () => {
+    it("opens one, ties it to the alert, and refuses a second", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id, { opensIncident: true, severity: "critical" });
+      const [applied] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-d")], now);
+
+      const incidentId = await repository.openIncidentForAlert(asA(), {
+        alertId: applied!.alertId,
+        severity: "critical",
+        title: "Invoicing failures: workflow:wf-d"
+      });
+
+      const [alert] = await alertsOf(rule.id, "firing");
+      expect(alert?.incidentId).toBe(incidentId);
+
+      await expect(
+        repository.openIncidentForAlert(asA(), {
+          alertId: applied!.alertId,
+          severity: "critical",
+          title: "Invoicing failures: workflow:wf-d"
+        })
+      ).rejects.toThrow("ALERT_ALREADY_HAS_INCIDENT");
+    });
+
+    it("puts the incident under observation when the alert resolves, and never closes it itself", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id, { opensIncident: true });
+      const [applied] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-e")], now);
+      const incidentId = await repository.openIncidentForAlert(asA(), {
+        alertId: applied!.alertId,
+        severity: "high",
+        title: "Invoicing failures: workflow:wf-e"
+      });
+
+      await repository.applyVerdicts(asA(), [resolution(rule.id, "workflow:wf-e")], new Date(now.getTime() + 60_000));
+
+      const [incident] = await admin<{ status: string }[]>`select status from incidents where id = ${incidentId}`;
+      // Closing an incident is a person's decision, which is why this is not `resolved`.
+      expect(incident?.status).toBe("monitoring");
+    });
+  });
+
+  describe("acknowledging and resolving by hand", () => {
+    it("records the first person who saw it and does not overwrite them", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      const [applied] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-f")], now);
+
+      const acknowledged = await repository.acknowledgeAlert(asA(), applied!.alertId, membershipA);
+      expect(acknowledged).toMatchObject({ status: "firing", acknowledgedByMembershipId: membershipA });
+
+      const again = await repository.acknowledgeAlert(asA(), applied!.alertId, membershipA);
+      expect(again.acknowledgedAt?.toISOString()).toBe(acknowledged.acknowledgedAt?.toISOString());
+    });
+
+    it("returns the closed alert even though it opened no incident", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      const [applied] = await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-g")], now);
+
+      const resolved = await repository.resolveAlert(asA(), applied!.alertId, new Date(now.getTime() + 60_000));
+
+      expect(resolved).toMatchObject({ id: applied!.alertId, status: "resolved", incidentId: null });
+      expect(resolved.resolvedAt).toBeInstanceOf(Date);
+    });
+
+    it("refuses to touch an alert that is not this tenant's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      const rule = await repository.createRule(asB(), {
+        name: `rule ${randomUUID()}`,
+        kind: "workflow_failed",
+        instanceId: instance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "high",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+      const [applied] = await repository.applyVerdicts(asB(), [firing(rule.id, "workflow:theirs")], now);
+
+      await expect(repository.acknowledgeAlert(asA(), applied!.alertId, membershipA)).rejects.toThrow(
+        "ALERT_NOT_FOUND"
+      );
+      await expect(repository.resolveAlert(asA(), applied!.alertId, now)).rejects.toThrow("ALERT_NOT_FOUND");
+    });
+  });
+
+  describe("what one pass reads", () => {
+    it("gathers the rules, the executions of their instances, the live alerts and the freshness", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      await putRecord(tenantA, membershipA, instance.id, "pull_executions", "execution:1", {
+        workflowId: "wf-a",
+        status: "error",
+        startedAt: now.toISOString()
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "workflow:wf-a", { name: "Invoicing" });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_executions",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+      await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:wf-a")], now);
+
+      const state = await repository.readEvaluationState(asA());
+
+      expect(state.rules.some((item) => item.id === rule.id)).toBe(true);
+      expect(state.records.some((item) => item.externalId === "execution:1")).toBe(true);
+      // The inventory is not what a rule of this kind reads, so it is not carried into the pass.
+      expect(state.records.every((item) => item.operation === "pull_executions")).toBe(true);
+      expect(state.liveAlerts).toEqual(expect.arrayContaining([{ ruleId: rule.id, dedupKey: "workflow:wf-a" }]));
+      expect(
+        state.freshness.some(
+          (item) =>
+            item.instanceId === instance.id &&
+            item.operation === "pull_executions" &&
+            item.lastSuccessAt?.toISOString() === now.toISOString()
+        )
+      ).toBe(true);
+    });
+
+    it("reads nothing of another tenant's, which is what makes a sweep safe to run per tenant", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_executions", "execution:theirs", {
+        workflowId: "wf-theirs",
+        status: "error",
+        startedAt: now.toISOString()
+      });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === "execution:theirs")).toBe(false);
+    });
+  });
+
+  describe("retention", () => {
+    it("removes resolved alerts past the window and leaves the live ones alone", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const rule = await newRule(instance.id);
+      const old = new Date(now.getTime() - 200 * 24 * 60 * 60 * 1000);
+
+      await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:old")], old);
+      await repository.applyVerdicts(asA(), [resolution(rule.id, "workflow:old")], old);
+      await repository.applyVerdicts(asA(), [firing(rule.id, "workflow:live")], now);
+
+      const cutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+      const purged = await repository.purgeAlertEvents({ resolvedBefore: cutoff, batchLimit: 5000 });
+      expect(purged).toBeGreaterThanOrEqual(1);
+
+      const remaining = await alertsOf(rule.id);
+      expect(remaining.map((alert) => alert.dedupKey)).toEqual(["workflow:live"]);
+    });
+  });
+});

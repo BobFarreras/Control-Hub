@@ -1,5 +1,4 @@
 import { getCommerceDictionary, getDictionary, isLocale } from "@control-hub/i18n";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
@@ -25,11 +24,9 @@ export default async function ProductPage({ params }: { params: Promise<{ locale
           title={detail.product.name}
           description={labels.productDetails}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}/products` }}
         />
         <main className="compact-main">
-          <Link className="catalog-back-link" href={`/${locale}/products`}>
-            {labels.backToCatalog}
-          </Link>
           <ProductCatalogDetail detail={detail} labels={labels} locale={locale} />
         </main>
       </div>

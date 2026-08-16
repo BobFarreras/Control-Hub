@@ -24,6 +24,12 @@ describe("feature flags", () => {
     expect(unknownFeatureFlags("projects_and_time")).toEqual([]);
   });
 
+  it("declares infrastructure, off until somebody asks for it", () => {
+    expect(isFeatureEnabled(parseFeatureFlags(""), "infrastructure")).toBe(false);
+    expect(isFeatureEnabled(parseFeatureFlags("infrastructure"), "infrastructure")).toBe(true);
+    expect(unknownFeatureFlags("infrastructure")).toEqual([]);
+  });
+
   it("gives every declared flag an owner and a date to be gone by", () => {
     for (const [name, flag] of Object.entries(featureFlags)) {
       expect(flag.owner, name).toBeTruthy();

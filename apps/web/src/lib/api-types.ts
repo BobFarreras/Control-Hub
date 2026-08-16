@@ -294,8 +294,28 @@ export type TimeEntriesPage = {
   pageSize: TablePreference["pageSize"];
 };
 
-export type Product = { id: string; code: string; name: string; description: string | null; status: string };
-export type Version = { id: string; productId: string; version: string; status: string };
+export type Product = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type Version = {
+  id: string;
+  productId: string;
+  version: string;
+  status: string;
+  releasedAt: string | null;
+  releaseNotes: string | null;
+  features: string[];
+  contents: string[];
+  schemaDocument: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
 export type CommercialModel = "subscription" | "maintenance" | "one_time" | "project_service";
 export type Plan = {
   id: string;
@@ -320,7 +340,31 @@ export type Price = {
 };
 
 export type Catalog = { products: Product[]; versions: Version[]; plans: Plan[]; prices: Price[] };
-export type ProductCatalogDetail = Catalog & { product: Product };
+export type ProductResource = {
+  id: string;
+  productId: string;
+  productVersionId: string | null;
+  kind: "information" | "documentation" | "diagram" | "repository" | "demo";
+  label: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ProductCustomer = {
+  serviceId: string;
+  customerId: string;
+  customerName: string;
+  planId: string;
+  planName: string;
+  status: string;
+  startsAt: string;
+  endsAt: string | null;
+};
+export type ProductCatalogDetail = Catalog & {
+  product: Product;
+  resources: ProductResource[];
+  customers: ProductCustomer[];
+};
 
 export type CustomerSubscription = {
   id: string;
@@ -521,3 +565,182 @@ export type AttendanceNonWorkingDaysResponse = { nonWorkingDays: AttendanceNonWo
 export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
 export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
 export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };
+
+/**
+ * The connector platform, as the integrations screen sees it.
+ *
+ * Note what is absent and must stay absent: a credential has no value here and no `keyId`, and a
+ * webhook endpoint has no `publicId`. The API cannot send either — the responses are written
+ * field by field — and repeating the omission in the type means a screen cannot ask for one.
+ */
+export type ConnectorHealthStatus = "unknown" | "healthy" | "degraded" | "failing" | "disabled";
+export type ConnectorInstanceStatus = "draft" | "enabled" | "disabled" | "error";
+
+export type ConnectorInstance = {
+  id: string;
+  connectorType: string;
+  name: string;
+  status: ConnectorInstanceStatus;
+  config: Record<string, unknown>;
+  configVersion: number;
+  health: { status: ConnectorHealthStatus; checkedAt: string | null; lastErrorCode: string | null };
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * One thing an operator has to fill in for this connector, as the catalogue describes it.
+ *
+ * `required` is not the connector's opinion but its schema's, resolved when the connector was
+ * defined, so a form cannot disagree with what the server will accept.
+ */
+export type ConnectorConfigField = {
+  name: string;
+  kind: "url" | "text" | "number" | "toggle" | "list";
+  /** `connection` is what it takes to reach the provider; `behaviour` is what to do once there. */
+  group: "connection" | "behaviour";
+  required: boolean;
+  /** What the connector already answers for this field, or `null` when it answers nothing. */
+  defaultValue: string | number | boolean | string[] | null;
+};
+
+export type ConnectorCatalogueEntry = {
+  type: string;
+  contractVersion: number;
+  configFields: ConnectorConfigField[];
+  credentialKinds: string[];
+  capabilities: {
+    egress: { schemes: string[]; destination: string } | null;
+    operations: string[];
+    ingress: boolean;
+  };
+};
+
+export type ConnectorCredential = {
+  id: string;
+  kind: string;
+  slot: "primary" | "secondary";
+  rotatedAt: string | null;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type ConnectorEndpoint = { id: string; createdAt: string; revokedAt: string | null };
+
+export type ConnectorRun = {
+  id: string;
+  operation: string;
+  status: "running" | "succeeded" | "failed" | "dead_letter";
+  attempt: number;
+  configVersion: number;
+  startedAt: string;
+  finishedAt: string | null;
+  errorCode: string | null;
+  itemsProcessed: number;
+};
+
+export type IntegrationsResponse = { integrations: ConnectorInstance[] };
+export type IntegrationResponse = { integration: ConnectorInstance };
+export type ConnectorCatalogueResponse = {
+  connectors: ConnectorCatalogueEntry[];
+  /** False on an installation with no key ring: nothing here can accept a secret. */
+  vaultAvailable: boolean;
+};
+export type ConnectorCredentialsResponse = { credentials: ConnectorCredential[] };
+export type ConnectorEndpointsResponse = { endpoints: ConnectorEndpoint[] };
+export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page: number; pageSize: number };
+/** The only response that carries an address and a secret, and only the once. */
+export type CreatedConnectorEndpointResponse = { endpoint: ConnectorEndpoint; path: string; secret: string };
+
+/** Everything the screen shows about one integration, loaded together by the page that selects it. */
+export type IntegrationDetail = {
+  instance: ConnectorInstance;
+  endpoints: ConnectorEndpoint[];
+  credentials: ConnectorCredential[];
+  runs: ConnectorRun[];
+  /** How many runs exist in total, so the panel knows whether there is a second page to fetch. */
+  runsTotal: number;
+  /**
+   * Whether this deployment has a key ring at all.
+   *
+   * Without one the API declares no credential and no endpoint route, so an empty list and a
+   * missing route look identical from here. They are not: offering a button that mints a secret
+   * on an installation that cannot seal one is offering an operation that always fails.
+   */
+  vaultAvailable: boolean;
+};
+
+/**
+ * The infrastructure module.
+ *
+ * An automation carries `instanceId` and `externalId` and no address: the link to the provider is
+ * built here from the base an operator configured, never received. See `lib/infrastructure-link`.
+ */
+export type AlertSeverity = "critical" | "high" | "normal" | "low";
+
+export type InfrastructureAutomation = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  active: boolean;
+  archived: boolean;
+  tags: string[];
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
+export type InfrastructureAlert = {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  dedupKey: string;
+  status: "firing" | "resolved";
+  severity: AlertSeverity;
+  /** Small, flat and ours: identifiers and counts the domain built, never a provider payload. */
+  summary: Record<string, string>;
+  startedAt: string;
+  lastSeenAt: string;
+  occurrences: number;
+  resolvedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByMembershipId: string | null;
+  incidentId: string | null;
+};
+
+export type InfrastructureOverview = {
+  automations: { total: number; active: number; linked: number };
+  alerts: { total: number; acknowledged: number; bySeverity: Record<AlertSeverity, number> };
+  /** The oldest reading behind the counts, or null when there is nothing to summarise. */
+  observedFrom: string | null;
+};
+
+/** The one kind of rule phase 7.1 ships. A union, so a kind the API adds is a compile error here. */
+export type AlertRuleKind = "workflow_failed";
+
+export type InfrastructureAlertRule = {
+  id: string;
+  name: string;
+  kind: AlertRuleKind;
+  instanceId: string;
+  targetType: "instance" | "automation";
+  /** The `externalId` of the one automation being watched, or null for all of them. */
+  targetId: string | null;
+  severity: AlertSeverity;
+  params: Record<string, unknown>;
+  /** How old the data may be before the rule stops claiming to know anything. */
+  freshnessSeconds: number;
+  opensIncident: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[] };
+
+export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
+export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
+export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };

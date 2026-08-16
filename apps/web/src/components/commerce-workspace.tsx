@@ -1,22 +1,15 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Archive,
-  CalendarClock,
-  CircleDollarSign,
-  PackagePlus,
-  Pause,
-  Play,
-  Plus,
-  RefreshCw,
-  X
-} from "lucide-react";
+import { Archive, CalendarClock, PackagePlus, Pause, Play, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { SelectControl } from "@/components/form-field";
+import { InstantSearch } from "@/components/instant-search";
 import { MetricHelp } from "@/components/metric-help";
+import { SmartDataTable, type SmartColumn } from "@/components/smart-data-table";
+import { useToast } from "@/components/toast";
+import type { TablePreference } from "@/lib/api-types";
 import { toCatalogCode } from "@/lib/catalog-code";
 import { catalogProductOffering } from "@/lib/catalog-product-offering";
 import { formValue } from "@/lib/form";
@@ -99,6 +92,8 @@ export function CommerceWorkspace({
   renderedAt: number;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [dialog, setDialog] = useState<"product" | "version" | "plan" | "price" | "subscription" | null>(null);
   const [dialogContext, setDialogContext] = useState<{ productId?: string; versionId?: string; planId?: string }>({});
   const [productCode, setProductCode] = useState("");
@@ -108,6 +103,12 @@ export function CommerceWorkspace({
   const [commercialModel, setCommercialModel] = useState<CommercialModel>("subscription");
   const [billingInterval, setBillingInterval] = useState("monthly");
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (loadError) toast("error", t.loadError ?? t.formError ?? "LOAD_ERROR");
+  }, [loadError, t.formError, t.loadError, toast]);
+  useEffect(() => {
+    if (error && !dialog) toast("error", error);
+  }, [dialog, error, toast]);
   /** Last resort for a handler that rejected outright, so a failure is never silent. */
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
   const currency = (minor: number, code: string) =>
@@ -129,6 +130,69 @@ export function CommerceWorkspace({
       }),
     [catalog, renderedAt]
   );
+  const productRows = useMemo(() => {
+    const status = searchParams.get("productStatus");
+    const search = (searchParams.get("search") ?? "").trim().toLocaleLowerCase(locale);
+    const sort = searchParams.get("productSort") ?? "name_asc";
+    const rows = catalog.products
+      .filter((product) => !status || product.status === status)
+      .filter(
+        (product) =>
+          !search ||
+          `${product.code} ${product.name} ${product.description ?? ""}`.toLocaleLowerCase(locale).includes(search)
+      )
+      .map((product) => {
+        const offering = catalogProductOffering(product.id, catalog);
+        const latestVersion = offering.versions[0]?.version ?? "--";
+        return { ...product, latestVersion, planCount: offering.plans.length, offerCount: offering.prices.length };
+      });
+    return rows.sort((a, b) =>
+      sort === "name_desc" ? b.name.localeCompare(a.name, locale) : a.name.localeCompare(b.name, locale)
+    );
+  }, [catalog, locale, searchParams]);
+  const productColumns: SmartColumn<(typeof productRows)[number]>[] = [
+    {
+      id: "product",
+      label: t.product ?? "",
+      locked: true,
+      width: 310,
+      sort: { asc: "name_asc", desc: "name_desc" },
+      render: (row) => (
+        <div className="catalog-table-product">
+          <Link href={`/${locale}/products/${row.id}`}>{row.name}</Link>
+          <small>
+            {row.code} · {row.description || t.noProductDescription}
+          </small>
+        </div>
+      )
+    },
+    {
+      id: "status",
+      label: t.status ?? "",
+      width: 130,
+      filter: {
+        parameter: "productStatus",
+        options: ["active", "archived"].map((value) => ({ value, label: t[value] ?? value }))
+      },
+      render: (row) => <span className={`state state-${row.status}`}>{t[row.status] ?? row.status}</span>
+    },
+    { id: "version", label: t.latestVersion ?? t.version ?? "", width: 130, render: (row) => row.latestVersion },
+    { id: "plans", label: t.plans ?? "", width: 110, render: (row) => row.planCount },
+    { id: "offers", label: t.publishedOffers ?? "", width: 140, render: (row) => row.offerCount }
+  ];
+  const productPreference: TablePreference = {
+    tableId: "commerce.products",
+    columnOrder: productColumns.map((column) => column.id),
+    hiddenColumns: [],
+    columnWidths: {},
+    pageSize: 25
+  };
+  const requestedPageSize = Number(searchParams.get("productPageSize"));
+  const productPageSize: TablePreference["pageSize"] = [10, 25, 50, 100].includes(requestedPageSize)
+    ? (requestedPageSize as TablePreference["pageSize"])
+    : 25;
+  const productPage = Math.max(1, Number(searchParams.get("productPage")) || 1);
+  const visibleProductRows = productRows.slice((productPage - 1) * productPageSize, productPage * productPageSize);
   const openDialog = (
     next: "product" | "version" | "plan" | "price" | "subscription",
     context: { productId?: string; versionId?: string; planId?: string } = {}
@@ -266,37 +330,9 @@ export function CommerceWorkspace({
           : undefined;
   return (
     <>
-      {loadError && (
-        <p className="crm-error">
-          <AlertTriangle size={17} />
-          {t.loadError}
-        </p>
-      )}
-      {error && !dialog && (
-        <p className="crm-error">
-          <AlertTriangle size={17} />
-          {error}
-          {error === t.mfaRequired && <Link href={`/${locale}/security`}>{t.configureMfa}</Link>}
-        </p>
-      )}
-      <section className={`commerce-summary-strip${view === "catalog" ? " catalog-summary-strip" : ""}`}>
-        {view === "catalog" ? (
-          <article>
-            <div>
-              <span>{t.products}</span>
-              <strong>{catalog.products.length}</strong>
-            </div>
-            <div>
-              <span>{t.plans}</span>
-              <strong>{catalog.plans.length}</strong>
-            </div>
-            <div>
-              <span>{t.publishedOffers}</span>
-              <strong>{currentPrices.length}</strong>
-            </div>
-          </article>
-        ) : (
-          metrics.map((item) => (
+      {view === "subscriptions" && (
+        <section className="commerce-summary-strip">
+          {metrics.map((item) => (
             <article key={item.currency}>
               <span className="currency-code">{item.currency}</span>
               <div>
@@ -312,15 +348,8 @@ export function CommerceWorkspace({
                 <strong>{currency(item.annualMarginMinor, item.currency)}</strong>
               </div>
             </article>
-          ))
-        )}
-        <div className="commerce-actions">
-          {view === "catalog" ? (
-            <button className="primary-command" onClick={() => openDialog("product")}>
-              <PackagePlus size={17} />
-              {t.addProduct}
-            </button>
-          ) : (
+          ))}
+          <div className="commerce-actions">
             <button
               className="primary-command"
               onClick={() => openDialog("subscription")}
@@ -329,109 +358,67 @@ export function CommerceWorkspace({
               <Plus size={17} />
               {t.addSubscription}
             </button>
-          )}
-        </div>
-      </section>
-      {view === "catalog" ? (
-        <section className="catalog-grid">
-          {catalog.products.length === 0 ? (
-            <p className="crm-empty">{t.emptyCatalog}</p>
-          ) : (
-            catalog.products.map((product) => {
-              const {
-                versions,
-                plans: productPlans,
-                prices: productPrices
-              } = catalogProductOffering(product.id, catalog);
-              return (
-                <article className="catalog-product" key={product.id}>
-                  <header>
-                    <div>
-                      <span>{product.code}</span>
-                      <h2>{product.name}</h2>
-                    </div>
-                    <span className={`state state-${product.status}`}>{t[product.status] ?? product.status}</span>
-                  </header>
-                  <div className="catalog-product-summary">
-                    <p>{product.description || t.noProductDescription}</p>
-                    <div>
-                      <span>
-                        <strong>{productPlans.length}</strong> {(t.plans ?? "").toLocaleLowerCase(locale)}
-                      </span>
-                      <span>
-                        <strong>{productPrices.length}</strong> {(t.publishedOffers ?? "").toLocaleLowerCase(locale)}
-                      </span>
-                    </div>
-                    <Link className="catalog-detail-link" href={`/${locale}/products/${product.id}`}>
-                      {t.viewProduct}
-                    </Link>
-                  </div>
-                  <details className="catalog-offer-details">
-                    <summary>{t.manageOffer}</summary>
-                    <div className="catalog-offer-toolbar">
-                      <span>
-                        {t.versions}: {versions.length}
-                      </span>
-                      <button
-                        className="secondary-button"
-                        onClick={() => openDialog("version", { productId: product.id })}
-                      >
-                        <Plus size={15} /> {t.addVersion}
-                      </button>
-                    </div>
-                    {versions.map((version) => (
-                      <div className="catalog-version" key={version.id}>
-                        <header>
-                          <strong>
-                            {t.version} {version.version}
-                          </strong>
-                          <button
-                            className="secondary-button"
-                            onClick={() => openDialog("plan", { versionId: version.id })}
-                          >
-                            <Plus size={15} /> {t.addPlan}
-                          </button>
-                        </header>
-                        {catalog.plans.filter((plan) => plan.productVersionId === version.id).length === 0 && (
-                          <p className="catalog-inline-empty">{t.noPlans}</p>
-                        )}
-                        {catalog.plans
-                          .filter((plan) => plan.productVersionId === version.id)
-                          .map((plan) => {
-                            const prices = catalog.prices.filter((price) => price.planId === plan.id);
-                            return (
-                              <div className="catalog-plan" key={plan.id}>
-                                <div>
-                                  <strong>{plan.name}</strong>
-                                  <small>{plan.code}</small>
-                                  <span className="catalog-model">
-                                    {t[plan.commercialModel] ?? plan.commercialModel}
-                                  </span>
-                                </div>
-                                <div>
-                                  {prices.map((price) => (
-                                    <span className="price-chip" key={price.id}>
-                                      {currency(price.amountMinor, price.currency)} / {t[price.interval]}
-                                    </span>
-                                  ))}
-                                  <button
-                                    className="catalog-price-action"
-                                    onClick={() => openDialog("price", { planId: plan.id })}
-                                  >
-                                    <CircleDollarSign size={14} /> {t.publishPrice}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    ))}
-                  </details>
-                </article>
-              );
-            })
-          )}
+          </div>
         </section>
+      )}
+      {view === "catalog" ? (
+        <SmartDataTable
+          tableId="commerce.products"
+          rows={visibleProductRows}
+          columns={productColumns}
+          preference={productPreference}
+          total={productRows.length}
+          page={productPage}
+          pageSize={productPageSize}
+          pageParam="productPage"
+          pageSizeParam="productPageSize"
+          sortParam="productSort"
+          sort={searchParams.get("productSort") ?? "name_asc"}
+          sortOptions={[
+            { value: "name_asc", label: t.nameAsc ?? t.name ?? "" },
+            { value: "name_desc", label: t.nameDesc ?? t.name ?? "" }
+          ]}
+          empty={t.emptyCatalog ?? ""}
+          labels={{
+            sort: t.sort ?? "",
+            filter: t.filter ?? "",
+            all: t.all ?? "",
+            columns: t.columns ?? "",
+            visibility: t.visibility ?? "",
+            moveUp: t.moveUp ?? "",
+            moveDown: t.moveDown ?? "",
+            narrower: t.narrower ?? "",
+            wider: t.wider ?? "",
+            results: t.results ?? "",
+            rows: t.rowsPerPage ?? "",
+            previous: t.previous ?? "",
+            nextPage: t.nextPage ?? ""
+          }}
+          primaryControls={
+            <>
+              <InstantSearch placeholder={t.searchProducts ?? t.search ?? ""} resetParams={["productPage"]} />
+              <div className="catalog-inline-kpis" aria-label={t.catalog}>
+                <span>
+                  <strong>{catalog.products.length}</strong>
+                  {t.products}
+                </span>
+                <span>
+                  <strong>{catalog.plans.length}</strong>
+                  {t.plans}
+                </span>
+                <span>
+                  <strong>{currentPrices.length}</strong>
+                  {t.publishedOffers}
+                </span>
+              </div>
+              <button className="primary-command" onClick={() => openDialog("product")}>
+                <PackagePlus size={17} />
+                {t.addProduct}
+              </button>
+            </>
+          }
+          rowHref={(row) => `/${locale}/products/${row.id}`}
+        />
       ) : (
         <section className="subscription-layout">
           <div className="subscription-table">
@@ -456,13 +443,14 @@ export function CommerceWorkspace({
                       fail
                     )}
                   >
-                    <select name="priceId" defaultValue={subscription.priceId}>
-                      {currentPrices.map((price) => (
-                        <option key={price.id} value={price.id}>
-                          {price.planName} · {currency(price.amountMinor, price.currency)}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="priceId"
+                      defaultValue={subscription.priceId}
+                      options={currentPrices.map((price) => ({
+                        value: price.id,
+                        label: `${price.planName} · ${currency(price.amountMinor, price.currency)}`
+                      }))}
+                    />
                     <button className="icon-button" title={t.changePlan} aria-label={t.changePlan}>
                       <RefreshCw size={15} />
                     </button>
@@ -689,13 +677,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.product}
-                      <select name="productId">
-                        {catalog.products.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="productId"
+                        options={catalog.products.map((item) => ({
+                          value: item.id,
+                          label: item.name
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -726,13 +714,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.version}
-                      <select name="versionId">
-                        {catalog.versions.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {catalog.products.find((product) => product.id === item.productId)?.name} · {item.version}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="versionId"
+                        options={catalog.versions.map((item) => ({
+                          value: item.id,
+                          label: `${catalog.products.find((product) => product.id === item.productId)?.name} · ${item.version}`
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -768,13 +756,13 @@ export function CommerceWorkspace({
                   ) : (
                     <label>
                       {t.plan}
-                      <select name="planId">
-                        {catalog.plans.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
+                      <SelectControl
+                        name="planId"
+                        options={catalog.plans.map((item) => ({
+                          value: item.id,
+                          label: item.name
+                        }))}
+                      />
                     </label>
                   )}
                   <label>
@@ -814,23 +802,23 @@ export function CommerceWorkspace({
                 <>
                   <label>
                     {t.customer}
-                    <select name="customerId">
-                      {customers.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.displayName}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="customerId"
+                      options={customers.map((item) => ({
+                        value: item.id,
+                        label: item.displayName
+                      }))}
+                    />
                   </label>
                   <label>
                     {t.plan}
-                    <select name="priceId">
-                      {currentPrices.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.planName} · {currency(item.amountMinor, item.currency)}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectControl
+                      name="priceId"
+                      options={currentPrices.map((item) => ({
+                        value: item.id,
+                        label: `${item.planName} · ${currency(item.amountMinor, item.currency)}`
+                      }))}
+                    />
                   </label>
                   <label>
                     {t.quantity}

@@ -1,6 +1,7 @@
 import { Bell } from "lucide-react";
 import { ClockButton } from "@/components/clock-button";
 import { HelpDialog } from "@/components/help";
+import { NavigationBackButton } from "@/components/navigation-back-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function PageTopbar({
@@ -9,13 +10,15 @@ export function PageTopbar({
   description,
   themeLabel,
   actions,
-  help
+  help,
+  back
 }: {
   eyebrow: string;
   title: string;
   description?: string | undefined;
   themeLabel: string;
   actions?: React.ReactNode;
+  back?: { label: string; fallbackHref: string } | undefined;
   /**
    * An explanation of how the screen behaves, behind a `?` beside the title.
    *
@@ -26,6 +29,7 @@ export function PageTopbar({
 }) {
   return (
     <header className="topbar">
+      {back ? <NavigationBackButton {...back} /> : <NavigationBackButton label="" fallbackHref="/" hidden />}
       <div className="topbar-page-title">
         <p>{eyebrow}</p>
         <div>

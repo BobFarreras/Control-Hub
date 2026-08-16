@@ -22,6 +22,7 @@ export default async function ProductsPage({ params }: { params: Promise<{ local
           title={labels.products}
           description={labels.description}
           themeLabel={t.header.theme}
+          back={{ label: t.header.back, fallbackHref: `/${locale}` }}
         />
         <main className="compact-main">
           <CommerceWorkspace {...data} labels={labels} locale={locale} view="catalog" />
