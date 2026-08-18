@@ -58,6 +58,14 @@ export function classify(from, to) {
  * A grouped update names nothing in its subject -- it says "10 updates" -- and lists the
  * packages in the body instead. Reading only subjects would record the busiest commits as a
  * single anonymous line, so the body wins whenever it has something to say.
+ *
+ * The last branch is the one that earns its keep. Not every dependency commit is written by
+ * Dependabot: a major taken by hand gets a subject that says what it did rather than "bump X
+ * from A to B", and until this fell through to `unknown` such a commit vanished from the log
+ * entirely -- the prefix said "dependency update", the pattern did not match, and nothing was
+ * recorded. That is the one outcome this file exists to prevent, so a commit that claims a
+ * dependency prefix now always leaves a row, even when the row has to say the version could
+ * not be read.
  */
 export function parseCommit(subject, body) {
   if (!prefixes.some((prefix) => subject.startsWith(prefix))) return [];
@@ -70,7 +78,12 @@ export function parseCommit(subject, body) {
   if (grouped.length > 0) return grouped;
 
   const single = /bump (\S+) from (\S+) to (\S+)/.exec(subject);
-  return single ? [{ name: single[1], from: single[2], to: single[3] }] : [];
+  if (single) return [{ name: single[1], from: single[2], to: single[3] }];
+
+  // What is left of the subject once the prefix and the pull request number are gone: enough to
+  // recognise the commit in the table and go read it.
+  const described = subject.replace(/^[a-z-]+\([a-z-]+\):\s*/, "").replace(/\s*\(#\d+\)\s*$/, "");
+  return [{ name: described, from: "?", to: "?" }];
 }
 
 const sections = [
@@ -89,7 +102,8 @@ export function renderLog(entries) {
     "# Registre de dependencies",
     "",
     "> **Generat, no escrit.** Surt de l'historial de git amb `pnpm deps:log`, llegint els commits",
-    "> que Dependabot signa. No l'editis a ma: el proper cop que es generi perdras el canvi.",
+    "> amb prefix de dependencia, els de Dependabot i els nostres. No l'editis a ma: el proper cop",
+    "> que es generi perdras el canvi.",
     "",
     "## Resum",
     "",
