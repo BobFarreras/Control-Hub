@@ -67,6 +67,13 @@ import { registerSupportRoutes } from "./routes/support.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
+import { apiVersion } from "./version.js";
+
+/**
+ * Resolved once, at import. Under the bundler this is a literal and costs nothing; outside it,
+ * it is one read of the manifest rather than one per route that mentions a version.
+ */
+const packagedVersion = apiVersion();
 
 /**
  * BullMQ wants host, port and password rather than a URL, and it opens its own connection: the
@@ -164,7 +171,7 @@ export function buildApp(options: BuildAppOptions) {
     openapi: {
       info: {
         title: "Control Hub API",
-        version: options.version ?? "0.1.0",
+        version: options.version ?? packagedVersion,
         description: [
           "The connector surface answers errors as RFC 9457 problem details",
           "(`application/problem+json`) with a stable UPPER_SNAKE `code`; the rest of the API",
@@ -418,7 +425,7 @@ export function buildApp(options: BuildAppOptions) {
     app.get<{ Reply: LiveHealth }>("/health/live", { schema: { tags: ["health"] } }, () => ({
       status: "ok",
       service: "api",
-      version: options.version ?? "0.1.0"
+      version: options.version ?? packagedVersion
     }));
     app.get<{ Reply: ReadyHealth }>(
       "/health/ready",

@@ -4,6 +4,12 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## Sense publicar
+
+- **L'API ja diu quina versio es.** `/health/live` i el document OpenAPI de `/api/docs` anunciaven
+  `0.1.0` durant tota la `v0.2.0`, perque el numero estava escrit a ma al costat d'on es registra
+  i res no el feia mentir quan la release avancava. Ara surt del manifest del paquet.
+
 ## v0.2.0 - 2026-08-16
 
 Dues fases senceres que la `v0.1.0` no tenia.
