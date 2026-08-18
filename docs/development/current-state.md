@@ -27,6 +27,27 @@ aturaven res. Amb Dependabot obrint propostes cada setmana, aixo volia dir que u
 la imatge complia les regles. Els minor i els patch ara es fusionen sols quan les vuit passen;
 els major no, mai. El procediment i el que costa son a `BRANCHING.md`.
 
+**La tanda de majors pendents esta tancada** el 18 d'agost de 2026, abans de comencar la 7.2 i
+no durant. Cadascun ha anat sol a la seva branca i s'ha exercitat a ma alli on `BRANCHING.md` ho
+demana. Els quatre que canvien alguna cosa mes que un numero:
+
+- **Node 26 a les imatges.** Node 25 va treure corepack de la distribucio, aixi que el
+  `deploy/Dockerfile` ja no l'encen: instal·la el pnpm que diu `packageManager`, amb
+  `--ignore-scripts` perque una etapa de build no es lloc per executar scripts de tercers.
+- **TypeScript 6.** Ha deixat d'incloure sol els paquets `@types/*`, cosa que va deixar
+  trenta-nou errors de `Buffer`, `process` i `NodeJS` a la vista. `tsconfig.base.json` ara
+  anomena `"types": ["node"]`: el que es ambient passa a ser una decisio en comptes d'un efecte
+  secundari del que hi hagi instal·lat.
+- **BullMQ 6 amb ioredis 6.** Nomes a partir del 6 l'ioredis es un peer i no una dependencia
+  imbricada, o sigui que aquest es el punt on la cua parla RESP3 amb el nostre client i no amb
+  un ioredis 5 amagat a dins. El reconciliador ja estava escrit contra Job Schedulers, que es
+  el que va salvar-lo de l'API de repetibles que el 6 elimina.
+- **`github/codeql-action` en un sol commit.** Dependabot el parteix en dos perque tracta `init`
+  i `analyze` com dues accions; CodeQL no ho fa i `analyze` es nega a llegir una configuracio
+  escrita per una altra versio. Cap de les dues propostes podia anar primera.
+
+No queda cap proposta de Dependabot oberta.
+
 **Fase 6 fusionada a `develop`** (`464ea5f`) i **fase 7.1 tambe** (`7cc853b`). Les branques
 `feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
 res.

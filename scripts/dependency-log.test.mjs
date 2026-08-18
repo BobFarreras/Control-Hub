@@ -65,6 +65,19 @@ test("parseCommit opens a grouped update instead of counting it as one", () => {
   ]);
 });
 
+test("parseCommit keeps a dependency commit it cannot read, instead of dropping it", () => {
+  /**
+   * Not every dependency commit comes from Dependabot. A major taken by hand gets a subject
+   * describing what it did, and the old parser matched the prefix, failed the `bump X from A
+   * to B` pattern and returned nothing -- so `chore(docker): move the images to node 26` left
+   * no trace at all. A major missing from the register is precisely the failure the register
+   * is for, and an unreadable version belongs in `unknown`, not in silence.
+   */
+  const entries = parseCommit("chore(docker): move the images to node 26 and stop relying on corepack (#35)", "");
+  assert.deepEqual(entries, [{ name: "move the images to node 26 and stop relying on corepack", from: "?", to: "?" }]);
+  assert.equal(classify(entries[0].from, entries[0].to), "unknown");
+});
+
 test("parseCommit ignores a commit that is not a dependency bump", () => {
   assert.deepEqual(parseCommit("feat(connectors): let an integration be retired, not only stopped", ""), []);
   assert.deepEqual(parseCommit("docs(state): the 7.1 branch is closed", "Updates the state file"), []);

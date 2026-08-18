@@ -143,6 +143,13 @@ s'escriu a ma menteix al tercer mes, i un registre que menteix es pitjor que no 
 Regenera'l quan tanquis una tanda de majors. El workflow `dependency-log.yml` el publica cada
 dilluns al resum de l'execucio, i alli hi diu si la copia del repositori s'ha quedat enrere.
 
+**Escriu l'assumpte com l'escriuria Dependabot.** Quan el major el puges tu i no ell, el titol
+del commit ha de dir `bump <paquet> from <versio> to <versio>` amb un dels prefixos que declara
+`dependabot.yml`. Es l'unica part del commit que el generador sap llegir: un assumpte que
+descriu el canvi amb les teves paraules acaba a **Sense classificar**, amb el paquet i les
+versions en interrogant, i llavors el registre nomes serveix per dir-te quin commit has d'anar
+a obrir.
+
 ## Flux del propietari
 
 Mentre el repositori tingui un unic desenvolupador, el propietari pot integrar sense PR.
