@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "tsup";
 
 /**
@@ -18,5 +19,14 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   noExternal: [/^@control-hub\//],
-  external: [/^(?!@control-hub\/)(?![./])/]
+  external: [/^(?!@control-hub\/)(?![./])/],
+
+  // The runtime stage of the image carries `dist` and `node_modules` only, so the manifest is
+  // not there to be read. The version is stamped in here instead, from that same manifest, and
+  // `src/version.ts` explains what happens when this define is absent.
+  define: {
+    __API_VERSION__: JSON.stringify(
+      (JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8")) as { version: string }).version
+    )
+  }
 });

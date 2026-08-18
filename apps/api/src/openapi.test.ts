@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parseKeyRing } from "@control-hub/config";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
@@ -30,6 +31,7 @@ const keyRing = () =>
 
 type Operation = { tags?: string[]; summary?: string; responses?: Record<string, { content?: unknown }> };
 type Document = {
+  info?: { version?: string };
   tags?: { name: string }[];
   paths: Record<string, Record<string, Operation>>;
 };
@@ -80,6 +82,21 @@ const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const)
 const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
 
 describe("openapi document", () => {
+  /**
+   * The document said `0.1.0` for the whole of `v0.2.0`, because the version was a literal
+   * written beside the registration and nothing made it wrong when the release moved. This reads
+   * the manifest rather than repeating a number, so the only way to break it is to break the
+   * wiring, not to forget a file.
+   */
+  it("says which version it is, and agrees with the manifest", async () => {
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+      version: string;
+    };
+    const document = await documentOf(withConnectors);
+
+    expect(document.info?.version).toBe(manifest.version);
+  });
+
   it("describes every connector route with a tag and a summary", async () => {
     const document = await documentOf(withConnectors);
 
