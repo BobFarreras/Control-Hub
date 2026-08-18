@@ -2,6 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // TypeScript 6 stopped pulling every `@types/*` package in automatically, so the one that
+    // carries the Node globals -- `Buffer`, `process`, the `NodeJS` namespace -- has to be named.
+    // Naming it is the better arrangement anyway: what is ambient here is now a decision rather
+    // than a side effect of whatever happens to be installed.
+    "types": ["node"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
