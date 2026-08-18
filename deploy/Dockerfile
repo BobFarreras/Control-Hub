@@ -7,12 +7,20 @@
 #
 # Each service now gets its own runtime with its own production dependency closure.
 
-FROM node:22.16-alpine AS dependencies
+FROM node:26.7-alpine AS dependencies
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+# Node 25 removed corepack from the distribution, so the package manager this image builds with
+# has to be fetched rather than switched on. The version is read from `packageManager` rather than
+# written again here: two places naming the pnpm that builds our images is one place to get it
+# wrong, which is the same reasoning as `apps/api/src/version.ts`.
+#
+# `--ignore-scripts` is the part that matters. Fetching a package is the moment a lifecycle script
+# would run, and a build stage is a bad place to run somebody else's. It reaches no runtime stage
+# in any case: those start from a clean `node` and never see a package manager.
+RUN npm install -g --ignore-scripts "pnpm@$(node -p 'require("./package.json").packageManager.split("@")[1]')"
 COPY apps ./apps
 COPY packages ./packages
 RUN pnpm install --frozen-lockfile
@@ -34,7 +42,7 @@ RUN cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 FROM builder AS pruned
 RUN pnpm deploy --filter @control-hub/api --prod --legacy /out/api   && pnpm deploy --filter @control-hub/worker --prod --legacy /out/worker   && pnpm deploy --filter @control-hub/database --prod --legacy /out/database
 
-FROM node:22.16-alpine AS runtime
+FROM node:26.7-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 USER node
