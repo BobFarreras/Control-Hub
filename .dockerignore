@@ -1,11 +1,55 @@
+# What never travels to the Docker daemon.
+#
+# Docker matches a pattern without a slash against the top level only -- the opposite of
+# `.gitignore`, where a bare name matches at every depth. That difference is why this file was
+# quietly doing almost nothing: `node_modules` excluded one directory out of the twenty-eight in
+# this workspace, and `.next` excluded a directory that does not exist while leaving the 2.4 GB
+# one under `apps/web` in place. Everything meant to match at any depth needs `**/`.
+#
+# The build only ever copies `apps/`, `packages/` and five named root files, so what is here is
+# not the last line of defence -- `deploy/Dockerfile` is. This file decides what crosses to the
+# daemon at all, which is a question of how long every build takes and of what a build stage can
+# read even when no stage copies it.
+
+# Version control, agent workspaces and editor state. `.claude/` and `.worktrees/` each hold
+# whole checkouts of this repository with their own installed dependencies.
 .git
 .github
-.next
-.turbo
-node_modules
-coverage
-playwright-report
-test-results
-.env*
+.claude
+.codex
+.worktrees
+
+# Anything a previous build wrote. All of it is regenerated inside the image, and a tree
+# installed on Windows carries binaries an Alpine container cannot execute.
+#
+# `.next*` rather than `.next` because the verification stack writes to `.next-verify`, and on
+# this machine that directory alone was a gigabyte of turbopack cache -- the single largest
+# thing left in the context after everything above was excluded. It was found by measuring the
+# context, not by reading the tree: `.gitignore` already knew about it and this file did not.
+**/node_modules
+**/.next*
+**/.turbo
+**/dist
+**/*.tsbuildinfo
+
+# Test and report output.
+**/coverage
+**/playwright-report
+**/test-results
+.e2e
+
+# Secrets, at every depth, which is the part that was not merely slow. The old top-level `.env*`
+# left `apps/web/.env.local` in the context, and `next build` reads that file: a `NEXT_PUBLIC_*`
+# value in it is inlined into the bundle that ships.
+#
+# The one exception is named at the top level only, and deliberately so. Written as
+# `!**/.env.example` it also matched the copies inside `.claude/worktrees/`, and a re-included
+# file drags its parent directories back in: the whole 1.1 GB tree reappeared in the context
+# because of one example file. Verified, not reasoned about -- a probe stage that copies the
+# context and lists what arrived.
+**/.env
+**/.env.*
 !.env.example
+
+# Design material that no stage builds from.
 stitch_avant_business_ecosystem
