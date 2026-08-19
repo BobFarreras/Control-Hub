@@ -15,8 +15,9 @@ de l'empresa, suport amb tickets i SLA, projectes amb imputacio de temps i barem
 registre de jornada, i la plataforma de connectors.
 
 Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
-base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`
-(**609 proves**), `build`— tambe, sobre tretze paquets. L'error de
+base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`,
+`build`— tambe, sobre tretze paquets. Amb el B1 dins son **878 proves** sense base de dades de test,
+i les 177 d'integracio de PostgreSQL se salten fins que `TEST_DATABASE_URL` hi es. L'error de
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
 
@@ -93,8 +94,54 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2**, que comenca per l'increment B1. La 7.1 esta tancada: la planificada (A1-A6),
-els A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
+**L'entrega 7.2, comencada: el B1 esta fet.** La 7.1 esta tancada: la planificada (A1-A6), els
+A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
+
+**Fet del 7.2:**
+
+| # | Que hi ha | On |
+|---|---|---|
+| B1 | Connector `prometheus`: `pull_host_metrics`, `pull_container_state` i `pull_probe_state`, totes forma `state`, amb els seus contract tests i les paraules del connector en `ca`, `es` i `en` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, `packages/connectors/src/index.ts`, `packages/i18n/src/index.ts` |
+
+**El que el B1 deixa decidit i no s'ha de tornar a decidir.** La **PromQL es constant**: cap valor
+de la configuracio entra mai en una URL, i `hostLabels`, `containerJob` i `probeJob` filtren el
+resultat ja parsejat. Aixo tanca la injeccio de PromQL, l'escapada de regex d'una etiqueta escrita
+en un formulari i el "cap secret a una query string" alhora, i una prova ho exigeix en comptes de
+confiar-ho a un habit. De Prometheus se'n desa **una projeccio nomenada camp a camp**, mai el joc
+d'etiquetes: una etiqueta que algu afegeixi a un `scrape_config` no arriba a cap registre. Una
+resposta de mes de 1.000 series o una passada de mes de 500 registres **falla en comptes de
+truncar-se**, perque en una operacio `state` retornar el que hi cabia caducaria la resta — el mateix
+argument que el pressupost de pagines d'n8n. La credencial es **opcional**: sense token es crida
+igualment i sense capcalera, un token pelat viatja com a `Bearer` i un valor que ja nomena el seu
+esquema viatja tal qual, de manera que un proxy amb autenticacio basica no obliga ningu a fer base64
+a ma; nomes s'atrapa `CREDENTIAL_MISSING`, perque un anell de claus trencat disfressat de crida
+anonima informaria d'un `401` que no es el problema. I l'usuari i la contrasenya d'un target sondat
+**es treuen abans** que allo sigui un `externalId`, que va a la base i a una pantalla.
+
+Els noms de codi que el connector llenca son **interns**: `RESPONSE_TOO_LARGE` i companyia arriben
+al runtime com a `INVALID_RESPONSE`, exactament com el `TOO_MANY_PAGES` d'n8n, de manera que el B1
+**no toca** el vocabulari tancat de `@control-hub/domain` ni les frases d'error de l'i18n.
+
+**El B1 si que toca `packages/i18n`, i el pla deia que no.** Registrar un connector obliga a donar-li
+nom, descripcio i etiqueta de cada camp en les tres llengues: `packages/i18n/src/index.test.ts`
+recorre el registre i falla si en falta cap. Aquella porta **no existia** el 12 d'agost, quan l'A4 va
+entrar n8n amb un "i res mes"; va arribar el 14 amb la pantalla de cataleg. Sense les paraules,
+l'increment deixaria `pnpm check` en vermell, i el pla demana que cada increment el passi pel seu
+compte. Queda anotat al pla d'increments de l'especificacio.
+
+**Encara no el fa servir ningu**, igual que n8n el dia que va entrar: cal una instancia creada des
+de la pantalla d'integracions i la flag `infrastructure` oberta perque el reconciliador li programi
+res. La marca del cataleg cau al connector generic fins que el B4 li'n dibuixi una. Els seus
+contract tests van contra fixtures escrites del contracte documentat de l'API HTTP v1, **no
+capturades de la VPS**.
+
+**Dues precondicions del 7.2 que no son codi**, i que el B1 no necessita pero el B3 si: el
+`blackbox_exporter` desplegat per a `certificate_expiring` i `service_down`, i una linia a l'escript
+de backup de la VPS que escrigui `control_hub_backup_last_success_seconds{backup_job="..."}` al
+fitxer del textfile collector. Si no es fan, aquelles regles no cauen del disseny: queden `starved`
+i es veuen.
+
+**El seguent pas es el B2**: la migracio `0037`, l'inventari de hosts i serveis, casos d'us i API.
 
 El xoc de numeracio que l'A9b va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per
 al permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a

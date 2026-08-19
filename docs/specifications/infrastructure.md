@@ -262,12 +262,50 @@ webhook les fa immediates.
 
 | | |
 |---|---|
-| Config | `baseUrl` (allowlistada), `hostLabels: string[]` (fins a 50), `containerJob?`, `probeJob?` |
+| Config | `baseUrl` (allowlistada), `hostLabels: string[]` (fins a 50, cada etiqueta fins a 190 caracters), `containerJob?`, `probeJob?` |
 | Credencials | Cap per defecte; `api_token` si la instancia esta darrere autenticacio basica |
 | Egress | `operator_allowlist`, esquemes `http` i `https` — un Prometheus a la mateixa VPS no te TLS i l'operador ja l'ha hagut de nomenar |
-| Operacions | `pull_host_metrics`, `pull_container_state`, `pull_probe_state` — totes forma `state` |
+| Operacions | `pull_host_metrics` (120 s), `pull_container_state` (300 s), `pull_probe_state` (120 s) — totes forma `state` |
 | Ingress | No |
 | `externalId` | `host:<label>`, `container:<name>`, `probe:<target>`, `backup:<job>` |
+
+**La PromQL es constant, i es el que ho ordena tot.** Cap valor de la configuracio entra mai en una
+URL: les expressions son literals al codi i `hostLabels`, `containerJob` i `probeJob` **filtren el
+resultat ja parsejat**. Aixo tanca alhora la injeccio de PromQL, l'escapada de regex d'una etiqueta
+que algu ha escrit en un formulari i el "cap secret a una query string", i es una propietat que una
+prova pot exigir en comptes d'un habit que algu ha de mantenir.
+
+**De Prometheus se'n desa una projeccio, mai el cos.** Una resposta porta el joc d'etiquetes sencer
+de cada serie, i un `scrape_config` hi afegeix el que l'operador vulgui. El connector nomena els
+camps que es queden —d'un host: CPU, memoria, el pitjor sistema de fitxers, carrega i temps
+d'engegada; d'un contenidor: quan se'l va veure, quan va arrencar, memoria i CPU; d'una sonda: si
+respon, quant triga i quan li caduca el certificat— i llegeix del mapa d'etiquetes nomes les dues o
+tres que identifiquen la cosa. Una resposta amb mes de 1.000 series, o una passada amb mes de 500
+registres, **es una fallada i no una truncacio**: en una operacio `state` retornar el que hi cabia
+caducaria tota la resta.
+
+**Les cadencies surten d'aqui**, no de la configuracio del tenant: res es sondeja mes sovint del que
+l'escombrada d'alertes —cada 2 minuts— pot actuar, de manera que una cadencia mes rapida compraria
+carrega i no avis.
+
+**La credencial es opcional i es una capcalera.** Un Prometheus no autentica res tot sol; qui demana
+contrasenya es el proxy del davant, i aquell proxy tant pot voler `Basic` com `Bearer`. Un token
+pelat viatja com a `Authorization: Bearer <token>`; un valor que **ja nomena el seu esquema** viatja
+tal qual, de manera que qui hi te autenticacio basica desa `Basic <base64>` en comptes que se li
+demani que faci certa la nostra suposicio. Nomes s'atrapa la credencial absent: un vault que no
+s'obre es un altre fet, i convertir-lo en una crida sense autenticacio informaria d'un `401` de
+l'altra punta quan la resposta era que el nostre anell de claus esta trencat.
+
+**Un target sondat pot dur credencials.** L'`instance` d'una sonda de `blackbox_exporter` es el que
+l'operador hi va apuntar, i pot ser una URL amb contrasenya. L'usuari i la contrasenya **es treuen
+abans** que allo sigui un `externalId`, que va a la base i a una pantalla. La resta es respecta tal
+qual: un `instance` acostuma a ser `host:port` i reescriure'l nomes el faria deixar de quadrar.
+
+**`probe:<target>` es l'etiqueta `instance`**, que es la identitat d'un target a Prometheus, i per
+aixo `up` i `probe_success` conflueixen sols al mateix registre amb el reetiquetatge estandard del
+`blackbox_exporter`. Si dues feines comparteixen `instance`, la fusio es **determinista** —les
+lectures s'apliquen ordenades per `(job, instance, camp)`— i el registre diu quina feina l'ha acabat
+descrivint.
 
 **D'on surten els certificats i els backups**, que era la mancanca de la revisio 1:
 
@@ -275,10 +313,12 @@ webhook les fa immediates.
 |---|---|---|
 | `certificate_expiring` | `probe_ssl_earliest_cert_expiry` | `blackbox_exporter`, sondant els dominis que Traefik serveix |
 | `service_down` | `probe_success`, i `up` per als exporters | `blackbox_exporter` i el propi Prometheus |
-| `backup_stale` | `control_hub_backup_last_success_seconds` | **L'escript de backup de la VPS**, pel textfile collector de `node_exporter` |
+| `backup_stale` | `control_hub_backup_last_success_seconds{backup_job="..."}` | **L'escript de backup de la VPS**, pel textfile collector de `node_exporter` |
 
 Les dues primeres son estandard; la tercera **exigeix una linia a l'escript de backup** que
-escrigui el timestamp al fitxer del textfile collector. Es una precondicio de la 7.2, no una feina
+escrigui el timestamp al fitxer del textfile collector. L'etiqueta es **`backup_job`** i no `job`,
+perque `job` pertany a la configuracio d'escombrada i diria `node` per a tots els backups de la
+maquina; l'`externalId` que en surt es `backup:<backup_job>`. Es una precondicio de la 7.2, no una feina
 de codi, i esta al runbook. Si en la revisio decideixes no desplegar `blackbox_exporter` o no
 tocar l'escript, aquelles regles **no cauen del disseny: cauen soles**, perque una regla sense
 dades queda `starved` i es veu (decisio 7). Treure-les seria esborrar dues files de configuracio,
@@ -548,7 +588,8 @@ al mateix commit.
 
 | # | Increment | Fitxers que toca | Tanca |
 |---|---|---|---|
-| B1 | Connector `prometheus`, amb `pull_probe_state` | **`packages/connectors/src/built-in/prometheus.ts` i el seu test, i res mes** | Contract tests |
+| B1 | Connector `prometheus`, amb `pull_probe_state` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, el registre, i **les paraules del connector a `packages/i18n`** | Contract tests |
+| | *L'i18n no es un afegit: `packages/i18n/src/index.test.ts` recorre el registre i exigeix nom, descripcio i etiqueta de cada camp en `ca`, `es` i `en`. Aquella porta no existia quan l'A4 va escriure "i res mes" per al connector d'n8n —va arribar amb la pantalla de cataleg— i sense les paraules l'increment deixaria `pnpm check` en vermell.* | | |
 | B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
