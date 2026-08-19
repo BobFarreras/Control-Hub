@@ -28,7 +28,7 @@
     "@fastify/swagger": "^9.5.0",
     "@fastify/swagger-ui": "^6.1.1",
     "better-auth": "^1.6.25",
-    "bullmq": "^5.61.0",
+    "bullmq": "^6.1.0",
     "exceljs": "^4.4.0",
     "fastify": "^5.6.0",
     "ioredis": "^6.0.0",
@@ -40,12 +40,12 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.3",
     "tsup": "^8.5.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.0"
   }
 }
