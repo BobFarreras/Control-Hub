@@ -123,6 +123,18 @@ const absenceSchema = {
   }
 } as const;
 
+const absenceStatusSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["absenceId", "status"],
+    properties: {
+      absenceId: uuid,
+      status: { type: "string", enum: ["approved", "rejected"] }
+    }
+  }
+} as const;
+
 const blockSchema = {
   body: {
     type: "object",
@@ -282,7 +294,7 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     { schema: rangeSchema },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
-      requirePermission(context, "attendance:holidays");
+      requirePermission(context, "attendance:record");
       return { holidays: await attendance.listHolidays(context, range(request.query)) };
     }
   );
@@ -438,7 +450,7 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     requirePermission(context, "attendance:record");
     const absence = await attendance.createAbsence(context, request.body);
     await writeAudit(database, context, request, {
-      action: "attendance.absence_created",
+      action: "attendance.absence_requested",
       targetType: "attendance_absence",
       targetId: absence.id,
       outcome: "success",
@@ -446,6 +458,23 @@ export function registerAttendanceRoutes({ app, database, auth, attendance }: At
     });
     return reply.code(201).send({ absence });
   });
+
+  app.put<{ Body: { absenceId: string; status: "approved" | "rejected" } }>(
+    "/api/v1/attendance/absences",
+    { schema: absenceStatusSchema },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "attendance:vacations");
+      const absence = await attendance.updateAbsenceStatus(context, request.body);
+      await writeAudit(database, context, request, {
+        action: request.body.status === "approved" ? "attendance.absence_approved" : "attendance.absence_rejected",
+        targetType: "attendance_absence",
+        targetId: absence.id,
+        outcome: "success"
+      });
+      return { absence };
+    }
+  );
 
   app.delete<{ Params: { id: string } }>("/api/v1/attendance/absences/:id", async (request, reply) => {
     const context = await resolveTenantContext(auth, database, request);

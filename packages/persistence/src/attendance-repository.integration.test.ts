@@ -50,6 +50,7 @@ suite("PostgresAttendanceRepository", () => {
 
   const worker = () => context(aina);
   const manager = () => context(bernat, ["attendance:record", "attendance:manage", "financials:read"]);
+  const approver = () => context(bernat, ["attendance:record", "attendance:vacations"]);
 
   /**
    * Writes straight to the log, so a test can lay out a day that already happened.
@@ -91,6 +92,7 @@ suite("PostgresAttendanceRepository", () => {
       await admin.unsafe("alter table attendance_events enable trigger attendance_events_append_only");
     }
     await admin`delete from time_entries where tenant_id = ${tenantA}`;
+    await admin`delete from attendance_absences where tenant_id = ${tenantA}`;
     await admin`delete from projects where tenant_id = ${tenantA}`;
     await admin`delete from customers where tenant_id = ${tenantA}`;
     await admin`delete from memberships where tenant_id = ${tenantA}`;
@@ -185,6 +187,32 @@ suite("PostgresAttendanceRepository", () => {
       await expect(service.month(worker(), bernat, { from: "2026-06-01", to: "2026-06-30" })).rejects.toThrow(
         "PERMISSION_DENIED"
       );
+    });
+  });
+
+  describe("absence approval", () => {
+    it("keeps a request pending until a privileged member resolves it", async () => {
+      const absence = await service.createAbsence(worker(), {
+        membershipId: aina,
+        startDate: "2026-09-10",
+        endDate: "2026-09-12",
+        type: "personal_leave",
+        notes: "Gestio personal"
+      });
+      expect(absence.status).toBe("pending");
+      await expect(
+        service.updateAbsenceStatus(worker(), { absenceId: absence.id, status: "approved" })
+      ).rejects.toThrow("PERMISSION_DENIED");
+
+      const approved = await service.updateAbsenceStatus(approver(), {
+        absenceId: absence.id,
+        status: "approved"
+      });
+      expect(approved).toMatchObject({
+        status: "approved",
+        approvedByMembershipId: bernat
+      });
+      expect(approved.approvedAt).toBeInstanceOf(Date);
     });
   });
 

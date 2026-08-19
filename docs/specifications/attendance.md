@@ -2,9 +2,22 @@
 
 ## Experiencia de consulta
 
-- La pantalla personal separa tres subseccions estables: **Calendari**, **Registre diari** i,
-  nomes per a qui te `attendance:manage`, **Equip**. El mes seleccionat es conserva entre
-  subseccions i forma part de la URL.
+- La pantalla personal separa quatre subseccions estables: **Resum**, **Calendari**,
+  **Registre** i, nomes per a qui te `attendance:manage`, **Equip**. La navegacio viu a la
+  sidebar compartida; no es duplica en tabs locals.
+- **Resum** es la porta d'entrada operativa: estat i accio de fitxatge, total del dia i del mes,
+  proxims dies del calendari laboral, sol·licituds personals i, si hi ha permis, incidencies i
+  sol·licituds pendents de l'equip. No mostra celebracions ni notificacions inventades: cada
+  bloc ha de tenir una font de dades real.
+- **Calendari** mostra l'any natural complet de la persona, amb selector d'any a la URL,
+  llegenda amb icona, text i color, i accions per sol·licitar vacances o registrar absencies.
+  El calendari anual es una projeccio de les mateixes dades tenant-scoped; no crea un segon
+  model de calendari.
+- Els dies del calendari es poden seleccionar amb ratoli o teclat. El primer dia inicia la
+  seleccio i el segon en tanca un rang inclusiu; una seleccio nova substitueix l'anterior. Les
+  accions reben aquest rang com a valor inicial, pero el servidor torna a validar les dates.
+- **Registre** conserva el detall mensual de dies, sessions i events, amb el mes seleccionat a
+  la URL. **Equip** conserva el resum, conciliacio, sol·licituds i exportacio mensuals.
 - El calendari rep sempre el rang mensual complet (`from` i `to`) com a contracte explicit. No
   dedueix el mes dels dies amb fitxatges: un mes sense cap moviment continua mostrant tots els
   dies i permet consultar o sol·licitar vacances i absencies.
@@ -78,6 +91,8 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
 - **Vista de calendari accessible:** mostra estat diari, hores registrades, absències i incidències de registre.
 - **Canvi taula/calendari:** l'usuari pot alternar entre vista de taula i vista de calendari, conservant el mes seleccionat a la URL.
 - **Navegació de mes amb fletxes accessibles:** sense textos "mes anterior/seguent", amb `aria-label` i tooltip.
+- **Navegacio anual accessible:** selector d'any amb anterior, seguent i valor explicit a la
+  URL; el canvi d'any no altera el registre ni depen que hi hagi fitxatges.
 
 ## Decisions
 
@@ -141,15 +156,21 @@ A banda de l'obligacio, el propietari vol un total d'hores mensual per persona.
     (dies que l'oficina tanca) no son automaticament els de jornada. Cada tenant configura els
     seus festius i dies no laborables per als seus treballadors.
 
-14. **Vacances, absències i bloquejos personals son registres separats.** Les vacances
-    aprovades, les absències (baixes mèdiques, permisos) i els bloquejos personals (hores
-    no disponibles) es modelen com a taules independents amb els seus estats i fluxos.
+14. **Vacances, absències i bloquejos personals son registres separats.** Vacances i absències
+    comparteixen el flux `pending`, `approved` i `rejected`; els bloquejos personals (hores no
+    disponibles) continuen sent registres directes. Una absència no afecta el calendari fins que
+    ha estat aprovada.
 
 15. **La vista de calendari és accessible.** No es representa només per color: cada dia té text
     descriptiu del seu estat (laborable, festiu, vacances, absència, etc.).
 
 16. **Navegació de mes amb fletxes accessibles.** Els textos "mes anterior/seguent" s'eliminen;
     les fletxes conserveixen `aria-label` i tooltip per accessibilitat.
+
+17. **Aprovar i rebutjar es una operacio privilegiada i auditada.** Qualsevol membre pot
+    sol·licitar vacances o absencies propies amb `attendance:record`. Nomes
+    `attendance:vacations` pot resoldre-les. La resposta desa qui l'ha resolt i quan; rebutjar no
+    elimina la sol·licitud.
 
 ## Fluxos
 
@@ -196,6 +217,20 @@ pot donar aquest modul: es el cost real d'estructura.
 - **(Increment 10)** Les fletxes de navegació de mes tenen `aria-label` i tooltip.
 - **(Increment 10)** Festius del tenant i dies no laborables es configuren per tenant.
 - **(Increment 10)** Vacances, absències i bloquejos personals es modelen com a taules separades.
+- Seleccionar un o dos dies al calendari preomple un rang inclusiu de sol·licitud i funciona amb
+  teclat, focus visible i sense dependre del color.
+- Una absencia nova queda `pending` i no pinta el dia com a absent fins que
+  `attendance:vacations` l'aprova.
+- Un membre sense `attendance:vacations` rep `403` si intenta aprovar o rebutjar una absencia.
+- Resoldre vacances i absencies conserva la peticio, l'autor, el moment i una entrada d'auditoria.
+- El Resum mostra nomes dades obtingudes dels contractes de jornada i diferencia l'absencia de
+  dades d'un estat correcte.
+- El Calendari mostra sempre els dotze mesos de l'any seleccionat, inclosos anys sense moviments.
+- El calendari anual no comunica cap estat nomes amb color: cada categoria te icona, text i una
+  descripcio accessible als dies afectats.
+- L'any del Calendari i el mes del Registre i Equip formen part de la URL i es poden compartir.
+- La sidebar mostra Resum, Calendari i Registre a qualsevol membre amb `attendance:record`, i
+  Equip nomes amb `attendance:manage`.
 
 ## Permisos i tenancy
 
@@ -213,7 +248,8 @@ pot donar aquest modul: es el cost real d'estructura.
   l'original i queda auditada.
 - `attendance:manage` permet llegir el registre de tothom, corregir-lo i exportar-lo. Fins i
   tot amb aquest permis, corregir es append-only i auditat.
-- `attendance:holidays` permet gestionar festius del tenant i dies no laborables.
+- `attendance:record` permet tambe llegir els festius i dies no laborables que afecten el propi
+  calendari. `attendance:holidays` permet crear-los i eliminar-los per al tenant.
 - `attendance:vacations` permet gestionar sol·licituds de vacances (aprovar/rebutjar).
 - La conciliacio contra hores imputades exigeix a mes `financials:read`, perque revela cost.
 - RLS i `force row level security`, com la resta.
@@ -239,7 +275,8 @@ de poder passar.
   `end_date`, `status` (`pending`, `approved`, `rejected`), `approved_by` nullable,
   `approved_at` nullable, `notes` nullable, `created_at`.
 - `attendance_absences`: absències (baixes mèdiques, permisos). `tenant_id`, `membership_id`,
-  `start_date`, `end_date`, `type` (`sick_leave`, `personal_leave`, `other`), `document_url`
+  `start_date`, `end_date`, `type` (`sick_leave`, `personal_leave`, `other`), `status`
+  (`pending`, `approved`, `rejected`), `approved_by` i `approved_at` nullables, `document_url`
   nullable, `notes` nullable, `created_by`, `created_at`.
 - `attendance_blocks`: bloquejos personals (hores no disponibles). `tenant_id`, `membership_id`,
   `date`, `start_time`, `end_time`, `reason`, `created_at`.
@@ -281,13 +318,14 @@ POST   /api/v1/attendance/corrections     (el propi; el d'altri, attendance:mana
 GET    /api/v1/attendance/export          (attendance:manage)
 GET    /api/v1/attendance/reconciliation  (attendance:manage + financials:read)
 POST   /api/v1/attendance/holidays        (attendance:holidays)
-GET    /api/v1/attendance/holidays        (attendance:holidays)
+GET    /api/v1/attendance/holidays        (attendance:record)
 DELETE /api/v1/attendance/holidays/:id    (attendance:holidays)
-POST   /api/v1/attendance/vacations       (attendance:vacations)
-GET    /api/v1/attendance/vacations       (attendance:vacations)
-PUT    /api/v1/attendance/vacations/:id   (attendance:vacations)
+POST   /api/v1/attendance/vacations       (attendance:record; own request)
+GET    /api/v1/attendance/vacations       (attendance:record; own or attendance:vacations)
+PUT    /api/v1/attendance/vacations       (attendance:vacations)
 POST   /api/v1/attendance/absences        (attendance:record)
 GET    /api/v1/attendance/absences        (attendance:record)
+PUT    /api/v1/attendance/absences        (attendance:vacations)
 POST   /api/v1/attendance/blocks          (attendance:record)
 GET    /api/v1/attendance/blocks          (attendance:record)
 DELETE /api/v1/attendance/blocks/:id      (attendance:record)
