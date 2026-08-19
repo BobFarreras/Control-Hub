@@ -68,7 +68,7 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**Redisseny de Jornada en curs a `feature/attendance-ui-redesign`.** L'arquitectura d'informacio
+**Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
 porta d'entrada amb fitxatge, temps d'avui i del mes, proxims dies i sol·licituds; Calendari mostra
 els dotze mesos de l'any seleccionat amb llegenda accessible i accions; Registre conserva el detall
@@ -87,10 +87,11 @@ instant de resolucio a les absencies; la `0037` continua reservada per a l'inven
 7.2. La consulta global i la cancel.lacio aliena queden igualment darrere el permis de gestio, de
 manera que un membre ordinari nomes veu i cancel.la les seves peticions.
 
-Verificat en aquesta branca: migracio sobre PostgreSQL de verificacio; lint i format globals;
-typecheck, suite completa i build dels 13 paquets; 111 proves web, 94 proves API, 26 proves
-d'aplicacio de jornada, 32 de domini i 178 d'integracio de persistencia; i l'E2E autenticat de
-jornada **6/6**, inclosa la seleccio d'interval i el formulari preemplenat.
+Verificat despres d'incorporar els canvis de dependencies de `develop`: migracio sobre PostgreSQL
+de verificacio; lint i format globals; typecheck, suite completa i build dels 13 paquets; 111
+proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 d'integracio de
+persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
+preemplenat.
 
 **L'entrega 7.2**, que comenca per l'increment B1. La 7.1 esta tancada: la planificada (A1-A6),
 els A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
