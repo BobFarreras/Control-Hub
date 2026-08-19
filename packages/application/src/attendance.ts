@@ -137,7 +137,7 @@ export type AttendanceRepository = {
     context: TenantContext,
     input: { vacationId: string; status: "approved" | "rejected"; approvedByMembershipId: string }
   ): Promise<AttendanceVacation>;
-  deleteVacation(context: TenantContext, vacationId: string): Promise<void>;
+  deleteVacation(context: TenantContext, vacationId: string, membershipId?: string): Promise<void>;
 
   listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]>;
   listAbsencesByMember(
@@ -157,7 +157,11 @@ export type AttendanceRepository = {
       createdByMembershipId: string;
     }
   ): Promise<AttendanceAbsence>;
-  deleteAbsence(context: TenantContext, absenceId: string): Promise<void>;
+  updateAbsenceStatus(
+    context: TenantContext,
+    input: { absenceId: string; status: "approved" | "rejected"; approvedByMembershipId: string }
+  ): Promise<AttendanceAbsence>;
+  deleteAbsence(context: TenantContext, absenceId: string, membershipId?: string): Promise<void>;
 
   listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]>;
   listBlocksByMember(context: TenantContext, membershipId: string, range: AttendanceRange): Promise<AttendanceBlock[]>;
@@ -357,7 +361,9 @@ export class AttendanceService {
   // Calendar methods
 
   async listHolidays(context: TenantContext, range: AttendanceRange): Promise<AttendanceHoliday[]> {
-    if (!hasPermission(context, "attendance:holidays")) throw new AttendanceError("PERMISSION_DENIED");
+    // Holidays are part of every member's own working calendar. Managing that calendar remains
+    // privileged, but hiding its read model from the people expected to follow it is contradictory.
+    if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listHolidays(context, range);
   }
 
@@ -419,14 +425,13 @@ export class AttendanceService {
   }
 
   async deleteVacation(context: TenantContext, vacationId: string): Promise<void> {
-    // Owners can cancel their own vacation with just attendance:record
-    // Managers need attendance:vacations to cancel any vacation
     if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
-    return this.repository.deleteVacation(context, vacationId);
+    const mayDeleteAny = hasPermission(context, "attendance:vacations");
+    return this.repository.deleteVacation(context, vacationId, mayDeleteAny ? undefined : context.membershipId);
   }
 
   async listAbsences(context: TenantContext, range: AttendanceRange): Promise<AttendanceAbsence[]> {
-    if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
+    if (!hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
     return this.repository.listAbsences(context, range);
   }
 
@@ -460,11 +465,21 @@ export class AttendanceService {
     });
   }
 
+  async updateAbsenceStatus(
+    context: TenantContext,
+    input: { absenceId: string; status: "approved" | "rejected" }
+  ): Promise<AttendanceAbsence> {
+    if (!hasPermission(context, "attendance:vacations")) throw new AttendanceError("PERMISSION_DENIED");
+    return this.repository.updateAbsenceStatus(context, {
+      ...input,
+      approvedByMembershipId: context.membershipId
+    });
+  }
+
   async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
-    // Owners can cancel their own absence with just attendance:record
-    // Managers need attendance:manage to cancel any absence
     if (!hasPermission(context, "attendance:record")) throw new AttendanceError("PERMISSION_DENIED");
-    return this.repository.deleteAbsence(context, absenceId);
+    const mayDeleteAny = hasPermission(context, "attendance:vacations");
+    return this.repository.deleteAbsence(context, absenceId, mayDeleteAny ? undefined : context.membershipId);
   }
 
   async listBlocks(context: TenantContext, range: AttendanceRange): Promise<AttendanceBlock[]> {

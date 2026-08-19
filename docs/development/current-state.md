@@ -47,6 +47,30 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**Redisseny de Jornada en curs a `feature/attendance-ui-redesign`.** L'arquitectura d'informacio
+aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
+porta d'entrada amb fitxatge, temps d'avui i del mes, proxims dies i sol·licituds; Calendari mostra
+els dotze mesos de l'any seleccionat amb llegenda accessible i accions; Registre conserva el detall
+mensual professional; Equip conserva conciliacio, aprovacions i exportacio, i nomes existeix amb
+`attendance:manage`. Les rutes noves son `/attendance`, `/attendance/calendar`,
+`/attendance/records` i `/attendance/team`.
+
+El calendari personal ara pot llegir els festius amb `attendance:record`; crear-los i eliminar-los
+continua exigint `attendance:holidays`. Abans la UI prometia festius a qualsevol membre pero el GET
+els amagava als qui no podien administrar-los.
+
+La seleccio de dies del calendari crea sol.licituds de vacances o absencia amb un interval inclusiu.
+Totes dues neixen `pending`; nomes `attendance:vacations` les pot aprovar o rebutjar i una absencia
+no modifica el calendari fins que queda aprovada. La migracio `0038` afegeix estat, aprovador i
+instant de resolucio a les absencies; la `0037` continua reservada per a l'inventari de hosts de la
+7.2. La consulta global i la cancel.lacio aliena queden igualment darrere el permis de gestio, de
+manera que un membre ordinari nomes veu i cancel.la les seves peticions.
+
+Verificat en aquesta branca: migracio sobre PostgreSQL de verificacio; lint i format globals;
+typecheck, suite completa i build dels 13 paquets; 111 proves web, 94 proves API, 26 proves
+d'aplicacio de jornada, 32 de domini i 178 d'integracio de persistencia; i l'E2E autenticat de
+jornada **6/6**, inclosa la seleccio d'interval i el formulari preemplenat.
+
 **L'entrega 7.2**, que comenca per l'increment B1. La 7.1 esta tancada: la planificada (A1-A6),
 els A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
 
@@ -370,9 +394,9 @@ El detall i els checks dels increments de consolidacio previs son a
 
 - Alta d'incidencies i el seu vincle amb tickets: l'esquema hi es, la UI no.
 - Pantalla de configuracio de suport (horari, festius, objectius): l'API hi es, la UI no.
-- UI de gestio global de festius i bloquejos: nomes hi ha API i domini. La jornada personal ja
-  mostra i permet sol·licitar vacances i absencies sobre qualsevol mes de l'any; el calendari
-  consulta sempre el rang mensual complet, fins i tot quan no hi ha fitxatges.
+- UI de gestio global de festius i bloquejos: nomes hi ha API i domini. El calendari personal ja
+  mostra l'any complet i permet sol·licitar vacances i absencies, pero administrar el calendari
+  global continua pendent.
 - CRM, productes i subscripcions no tenen encara proves E2E amb sessio iniciada, tot i que la
   infraestructura ja hi es.
 - `db:seed:dev` no sembra projectes ni imputacions, aixi que la pantalla de projectes surt buida
@@ -449,9 +473,10 @@ Registre a `packages/config/src/flags.ts`; s'activen amb `CONTROL_HUB_FLAGS`.
 - CRM permet canviar visualment les etapes actives del lead; Guanyat converteix el lead
   en client i Perdut es una accio terminal separada.
 - Tota UI nova ha de seguir `DESIGN_SYSTEM.md` i reutilitzar aquestes primitives.
-- Jornada separa Calendari, Registre i Equip (aquest darrer nomes amb `attendance:manage`). Les
-  taules de dies, moviments i equip reutilitzen `SmartDataTable`, amb ordre recent-primer,
-  filtres, paginacio i configuracio de columnes.
+- Jornada separa Resum, Calendari, Registre i Equip (aquest darrer nomes amb
+  `attendance:manage`). Calendari es anual i conserva l'any a la URL; Registre i Equip son
+  mensuals. Les taules de dies, moviments i equip reutilitzen `SmartDataTable`, amb ordre
+  recent-primer, filtres, paginacio i configuracio de columnes.
 - El cataleg de productes reutilitza `SmartDataTable` i porta la gestio comercial a la fitxa
   del producte. La identitat del producte es estable; funcionalitats, contingut, esquema i
   notes pertanyen a la versio. Els recursos son enllacos HTTPS tipats i el codi es referencia

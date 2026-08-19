@@ -20,6 +20,7 @@ const context = (permissions: Permission[], membershipId = "member-a"): TenantCo
 const worker = context(["attendance:record"]);
 const manager = context(["attendance:record", "attendance:manage"], "member-manager");
 const accountant = context(["attendance:record", "attendance:manage", "financials:read"], "member-manager");
+const absenceApprover = context(["attendance:record", "attendance:vacations"], "member-manager");
 
 const event = (overrides: Partial<AttendanceEventRecord> = {}): AttendanceEventRecord => ({
   id: "event-1",
@@ -89,6 +90,20 @@ const repository = (overrides: Partial<AttendanceRepository> = {}): AttendanceRe
     startDate: "2026-08-20",
     endDate: "2026-08-22",
     type: "sick_leave",
+    status: "pending",
+    documentUrl: null,
+    notes: null,
+    createdByMembershipId: "member-a"
+  }),
+  updateAbsenceStatus: vi.fn<AttendanceRepository["updateAbsenceStatus"]>().mockResolvedValue({
+    id: "a1",
+    membershipId: "member-a",
+    startDate: "2026-08-20",
+    endDate: "2026-08-22",
+    type: "sick_leave",
+    status: "approved",
+    approvedByMembershipId: "member-manager",
+    approvedAt: new Date(),
     documentUrl: null,
     notes: null,
     createdByMembershipId: "member-a"
@@ -336,5 +351,55 @@ describe("reconciliation", () => {
     expect(aina).toMatchObject({ workedMinutes: 480, loggedMinutes: 300, unbilledMinutes: 180 });
     // Nobody logged anything against a day nobody worked, and that is a zero, not a hole.
     expect(bernat).toMatchObject({ workedMinutes: 0, loggedMinutes: 0, unbilledMinutes: 0 });
+  });
+});
+
+describe("working calendar permissions", () => {
+  it("lets every clocking member read holidays without granting calendar administration", async () => {
+    const store = repository();
+    await expect(new AttendanceService(store).listHolidays(worker, august)).resolves.toEqual([]);
+    expect(store.listHolidays).toHaveBeenCalledWith(worker, august);
+  });
+
+  it("keeps holiday mutations behind attendance:holidays", async () => {
+    await expect(
+      new AttendanceService(repository()).createHoliday(worker, { date: "2026-08-15", name: "Festa" })
+    ).rejects.toThrow("PERMISSION_DENIED");
+  });
+
+  it("keeps absence approval behind attendance:vacations and records the approver", async () => {
+    const store = repository();
+    const service = new AttendanceService(store);
+    await expect(service.updateAbsenceStatus(worker, { absenceId: "a1", status: "approved" })).rejects.toThrow(
+      "PERMISSION_DENIED"
+    );
+
+    await service.updateAbsenceStatus(absenceApprover, { absenceId: "a1", status: "approved" });
+    expect(store.updateAbsenceStatus).toHaveBeenCalledWith(absenceApprover, {
+      absenceId: "a1",
+      status: "approved",
+      approvedByMembershipId: "member-manager"
+    });
+  });
+
+  it("does not expose every member's absences to an ordinary employee", async () => {
+    const store = repository();
+    const service = new AttendanceService(store);
+
+    await expect(service.listAbsences(worker, august)).rejects.toThrow("PERMISSION_DENIED");
+    await service.listAbsences(absenceApprover, august);
+    expect(store.listAbsences).toHaveBeenCalledWith(absenceApprover, august);
+  });
+
+  it("scopes an ordinary member's cancellation to their own absence", async () => {
+    const store = repository();
+    await new AttendanceService(store).deleteAbsence(worker, "a1");
+    expect(store.deleteAbsence).toHaveBeenCalledWith(worker, "a1", "member-a");
+  });
+
+  it("scopes an ordinary member's vacation cancellation to their own request", async () => {
+    const store = repository();
+    await new AttendanceService(store).deleteVacation(worker, "v1");
+    expect(store.deleteVacation).toHaveBeenCalledWith(worker, "v1", "member-a");
   });
 });

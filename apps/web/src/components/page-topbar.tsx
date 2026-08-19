@@ -11,7 +11,8 @@ export function PageTopbar({
   themeLabel,
   actions,
   help,
-  back
+  back,
+  showClock = true
 }: {
   eyebrow: string;
   title: string;
@@ -19,6 +20,7 @@ export function PageTopbar({
   themeLabel: string;
   actions?: React.ReactNode;
   back?: { label: string; fallbackHref: string } | undefined;
+  showClock?: boolean | undefined;
   /**
    * An explanation of how the screen behaves, behind a `?` beside the title.
    *
@@ -46,7 +48,7 @@ export function PageTopbar({
           renders nothing at all while the `attendance` flag is off, and nothing while the state
           is unknown, so no page has to know it exists.
         */}
-        <ClockButton />
+        {showClock && <ClockButton />}
         <button className="icon-button" aria-label="Notifications" title="Notifications">
           <Bell size={18} />
         </button>

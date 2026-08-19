@@ -53,13 +53,16 @@ export function AttendancePendingRequests({
     router.refresh();
   }
 
-  async function deleteAbsence(id: string) {
-    if (!confirm(t.confirmCancel)) return;
+  async function resolveAbsence(id: string, status: "approved" | "rejected") {
     setBusy(true);
-    const res = await fetch(`/api/v1/attendance/absences/${id}`, { method: "DELETE" });
+    const res = await fetch("/api/v1/attendance/absences", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ absenceId: id, status })
+    });
     setBusy(false);
     if (!res.ok) return toast("error", t.failed!);
-    toast("success", t.absenceCancelled!);
+    toast("success", status === "approved" ? t.absenceApproved! : t.absenceRejected!);
     router.refresh();
   }
 
@@ -116,8 +119,16 @@ export function AttendancePendingRequests({
                   <button
                     className="icon-button"
                     disabled={busy}
-                    onClick={() => void deleteAbsence(a.id)}
-                    aria-label={t.cancel}
+                    onClick={() => void resolveAbsence(a.id, "approved")}
+                    aria-label={t.approve}
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    disabled={busy}
+                    onClick={() => void resolveAbsence(a.id, "rejected")}
+                    aria-label={t.reject}
                   >
                     <X size={16} />
                   </button>

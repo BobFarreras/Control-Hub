@@ -546,6 +546,9 @@ export type AttendanceAbsence = {
   startDate: string;
   endDate: string;
   type: AttendanceAbsenceType;
+  status: AttendanceVacationStatus;
+  approvedByMembershipId: string | null;
+  approvedAt: string | null;
   documentUrl: string | null;
   notes: string | null;
   createdByMembershipId: string;

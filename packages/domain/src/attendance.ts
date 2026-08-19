@@ -250,7 +250,8 @@ export type AttendanceNonWorkingDay = {
   dayOfWeek: number; // 0 = Sunday, 6 = Saturday
 };
 
-export type AttendanceVacationStatus = "pending" | "approved" | "rejected";
+export type AttendanceRequestStatus = "pending" | "approved" | "rejected";
+export type AttendanceVacationStatus = AttendanceRequestStatus;
 
 export type AttendanceVacation = {
   id: string;
@@ -271,6 +272,9 @@ export type AttendanceAbsence = {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   type: AttendanceAbsenceType;
+  status: AttendanceRequestStatus;
+  approvedByMembershipId?: string | null;
+  approvedAt?: Date | null;
   documentUrl?: string | null;
   notes?: string | null;
   createdByMembershipId: string;
@@ -336,7 +340,9 @@ export function isVacationDay(date: string, vacations: readonly AttendanceVacati
  * Check if a date is an absence day for a member.
  */
 export function isAbsenceDay(date: string, absences: readonly AttendanceAbsence[], membershipId: string): boolean {
-  return absences.some((a) => a.membershipId === membershipId && date >= a.startDate && date <= a.endDate);
+  return absences.some(
+    (a) => a.membershipId === membershipId && a.status === "approved" && date >= a.startDate && date <= a.endDate
+  );
 }
 
 /**

@@ -299,9 +299,14 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
     }).catch(mapConstraint);
   }
 
-  async deleteVacation(context: TenantContext, vacationId: string): Promise<void> {
+  async deleteVacation(context: TenantContext, vacationId: string, membershipId?: string): Promise<void> {
     await withTenant(this.database, context.tenantId, async (tx) => {
-      await tx`delete from attendance_vacations where tenant_id = ${context.tenantId} and id = ${vacationId}`;
+      if (membershipId) {
+        await tx`delete from attendance_vacations
+          where tenant_id = ${context.tenantId} and id = ${vacationId} and membership_id = ${membershipId}`;
+      } else {
+        await tx`delete from attendance_vacations where tenant_id = ${context.tenantId} and id = ${vacationId}`;
+      }
     });
   }
 
@@ -311,7 +316,9 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
       context.tenantId,
       (tx) => tx<AttendanceAbsence[]>`
         select id, membership_id as "membershipId", start_date::text as "startDate",
-          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          end_date::text as "endDate", type, status,
+          approved_by_membership_id as "approvedByMembershipId", approved_at as "approvedAt",
+          document_url as "documentUrl", notes,
           created_by_membership_id as "createdByMembershipId"
         from attendance_absences
         where tenant_id = ${context.tenantId}
@@ -330,7 +337,9 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
       context.tenantId,
       (tx) => tx<AttendanceAbsence[]>`
         select id, membership_id as "membershipId", start_date::text as "startDate",
-          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          end_date::text as "endDate", type, status,
+          approved_by_membership_id as "approvedByMembershipId", approved_at as "approvedAt",
+          document_url as "documentUrl", notes,
           created_by_membership_id as "createdByMembershipId"
         from attendance_absences
         where tenant_id = ${context.tenantId} and membership_id = ${membershipId}
@@ -359,15 +368,41 @@ export class PostgresAttendanceRepository implements AttendanceRepository {
           ${input.endDate}::date, ${input.type}, ${input.documentUrl ?? null},
           ${input.notes ?? null}, ${input.createdByMembershipId})
         returning id, membership_id as "membershipId", start_date::text as "startDate",
-          end_date::text as "endDate", type, document_url as "documentUrl", notes,
+          end_date::text as "endDate", type, status,
+          approved_by_membership_id as "approvedByMembershipId", approved_at as "approvedAt",
+          document_url as "documentUrl", notes,
           created_by_membership_id as "createdByMembershipId"`;
       return absence!;
     }).catch(mapConstraint);
   }
 
-  async deleteAbsence(context: TenantContext, absenceId: string): Promise<void> {
+  async updateAbsenceStatus(
+    context: TenantContext,
+    input: { absenceId: string; status: "approved" | "rejected"; approvedByMembershipId: string }
+  ): Promise<AttendanceAbsence> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [absence] = await tx<AttendanceAbsence[]>`
+        update attendance_absences
+        set status = ${input.status}, approved_by_membership_id = ${input.approvedByMembershipId}, approved_at = now()
+        where tenant_id = ${context.tenantId} and id = ${input.absenceId} and status = 'pending'
+        returning id, membership_id as "membershipId", start_date::text as "startDate",
+          end_date::text as "endDate", type, status,
+          approved_by_membership_id as "approvedByMembershipId", approved_at as "approvedAt",
+          document_url as "documentUrl", notes,
+          created_by_membership_id as "createdByMembershipId"`;
+      if (!absence) throw new AttendanceError("EVENT_NOT_FOUND");
+      return absence;
+    }).catch(mapConstraint);
+  }
+
+  async deleteAbsence(context: TenantContext, absenceId: string, membershipId?: string): Promise<void> {
     await withTenant(this.database, context.tenantId, async (tx) => {
-      await tx`delete from attendance_absences where tenant_id = ${context.tenantId} and id = ${absenceId}`;
+      if (membershipId) {
+        await tx`delete from attendance_absences
+          where tenant_id = ${context.tenantId} and id = ${absenceId} and membership_id = ${membershipId}`;
+      } else {
+        await tx`delete from attendance_absences where tenant_id = ${context.tenantId} and id = ${absenceId}`;
+      }
     });
   }
 

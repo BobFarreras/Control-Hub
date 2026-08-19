@@ -31,6 +31,7 @@ type Labels = {
   projects: string;
   support: string;
   attendance: string;
+  attendanceOverview: string;
   attendanceCalendar: string;
   attendanceRecords: string;
   attendanceTeam: string;
@@ -50,7 +51,6 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const infrastructureEnabled = useFeature("infrastructure");
   const attendanceStatus = useAttendanceStatus();
   const attendanceMonth = searchParams.get("month");
-  const monthQuery = attendanceMonth ? `&month=${attendanceMonth}` : "";
   const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
     <Link
       className={
@@ -108,18 +108,25 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
             </summary>
             <div>
               {item(
-                `/${locale}/attendance?view=calendar${monthQuery}`,
+                `/${locale}/attendance`,
+                labels.attendanceOverview,
+                undefined,
+                true,
+                pathname === `/${locale}/attendance`
+              )}
+              {item(
+                `/${locale}/attendance/calendar${searchParams.get("year") ? `?year=${searchParams.get("year")}` : ""}`,
                 labels.attendanceCalendar,
                 undefined,
                 true,
-                pathname === `/${locale}/attendance` && searchParams.get("view") !== "records"
+                pathname === `/${locale}/attendance/calendar`
               )}
               {item(
-                `/${locale}/attendance?view=records${monthQuery}`,
+                `/${locale}/attendance/records${attendanceMonth ? `?month=${attendanceMonth}` : ""}`,
                 labels.attendanceRecords,
                 undefined,
                 true,
-                pathname === `/${locale}/attendance` && searchParams.get("view") === "records"
+                pathname === `/${locale}/attendance/records`
               )}
               {attendanceStatus?.canManage &&
                 item(
