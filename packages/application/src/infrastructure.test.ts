@@ -9,10 +9,16 @@ import {
   type AppliedVerdict,
   type AutomationRecord,
   type CreateAlertRuleInput,
+  type DeclareHostInput,
+  type DeclareServiceInput,
   type EvaluationState,
+  type HostRecord,
   type InfrastructureRepository,
   type LinkAutomationInput,
-  type UpdateAlertRuleInput
+  type ServiceRecord,
+  type UpdateAlertRuleInput,
+  type UpdateHostInput,
+  type UpdateServiceInput
 } from "./infrastructure.js";
 
 const now = new Date("2026-08-13T12:00:00.000Z");
@@ -78,6 +84,42 @@ class FakeRepository implements InfrastructureRepository {
     this.links.push(input);
     return Promise.resolve();
   };
+  hosts: HostRecord[] = [];
+  services: ServiceRecord[] = [];
+  declaredHosts: DeclareHostInput[] = [];
+  hostPatches: { hostId: string; patch: UpdateHostInput }[] = [];
+  declaredServices: DeclareServiceInput[] = [];
+  servicePatches: { serviceId: string; patch: UpdateServiceInput }[] = [];
+  deletedServices: string[] = [];
+  serviceFilters: { hostId?: string }[] = [];
+
+  listHosts = () => Promise.resolve(this.hosts);
+  findHost = (_context: TenantContext, hostId: string) =>
+    Promise.resolve(this.hosts.find((host) => host.id === hostId) ?? null);
+  declareHost = (_context: TenantContext, input: DeclareHostInput) => {
+    this.declaredHosts.push(input);
+    return Promise.resolve(hostRecord(input));
+  };
+  updateHost = (_context: TenantContext, hostId: string, patch: UpdateHostInput) => {
+    this.hostPatches.push({ hostId, patch });
+    return Promise.resolve(hostRecord({ id: hostId, ...patch }));
+  };
+  listServices = (_context: TenantContext, input: { hostId?: string }) => {
+    this.serviceFilters.push(input);
+    return Promise.resolve(this.services);
+  };
+  declareService = (_context: TenantContext, input: DeclareServiceInput) => {
+    this.declaredServices.push(input);
+    return Promise.resolve(serviceRecord(input));
+  };
+  updateService = (_context: TenantContext, serviceId: string, patch: UpdateServiceInput) => {
+    this.servicePatches.push({ serviceId, patch });
+    return Promise.resolve(serviceRecord({ id: serviceId, ...patch }));
+  };
+  deleteService = (_context: TenantContext, serviceId: string) => {
+    this.deletedServices.push(serviceId);
+    return Promise.resolve();
+  };
   listRules = () => Promise.resolve(this.rules);
   createRule = (_context: TenantContext, input: CreateAlertRuleInput) => Promise.resolve(ruleRecord(input));
   updateRule = (_context: TenantContext, ruleId: string, patch: UpdateAlertRuleInput) => {
@@ -105,6 +147,48 @@ class FakeRepository implements InfrastructureRepository {
     return Promise.resolve(`incident-${this.incidents.length}`);
   };
 }
+
+const hostRecord = (overrides: Partial<HostRecord> = {}): HostRecord => ({
+  id: "host-1",
+  name: "VPS principal",
+  hostname: "node-exporter:9100",
+  environment: "production",
+  notes: null,
+  createdAt: now,
+  updatedAt: now,
+  ...overrides
+});
+
+const newHost = (overrides: Partial<DeclareHostInput> = {}): DeclareHostInput => ({
+  name: "VPS principal",
+  hostname: "node-exporter:9100",
+  environment: "production",
+  notes: null,
+  ...overrides
+});
+
+const serviceRecord = (overrides: Partial<ServiceRecord> = {}): ServiceRecord => ({
+  id: "service-1",
+  hostId: "host-1",
+  name: "Automatitzacions",
+  kind: "container",
+  matchKey: "container:n8n",
+  expectedState: "up",
+  customerId: null,
+  createdAt: now,
+  updatedAt: now,
+  ...overrides
+});
+
+const newService = (overrides: Partial<DeclareServiceInput> = {}): DeclareServiceInput => ({
+  hostId: "host-1",
+  name: "Automatitzacions",
+  kind: "container",
+  matchKey: "container:n8n",
+  expectedState: "up",
+  customerId: null,
+  ...overrides
+});
 
 const alertEvent = (id: string): AlertEventRecord => ({
   id,
@@ -137,6 +221,8 @@ describe("who may do what", () => {
     await expect(service.listAutomations(administrator)).resolves.toEqual([]);
     await expect(service.listRules(administrator)).resolves.toEqual([]);
     await expect(service.listAlerts(administrator)).resolves.toEqual([]);
+    await expect(service.listHosts(administrator)).resolves.toEqual([]);
+    await expect(service.listServices(administrator)).resolves.toEqual([]);
   });
 
   it("refuses Administrator everything that changes something", async () => {
@@ -148,9 +234,27 @@ describe("who may do what", () => {
     await expect(service.deleteRule(administrator, "rule-1")).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.acknowledgeAlert(administrator, "alert-1")).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.resolveAlert(administrator, "alert-1", now)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.declareHost(administrator, newHost())).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.updateHost(administrator, "host-1", { notes: "x" })).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.declareService(administrator, newService())).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.updateService(administrator, "service-1", { name: "Altre" })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+    await expect(service.deleteService(administrator, "service-1")).rejects.toEqual(refused("FORBIDDEN"));
 
     // Nothing reached the repository, so a refusal cannot half-happen.
-    expect([repository.links, repository.deleted, repository.patches].every((list) => list.length === 0)).toBe(true);
+    expect(
+      [
+        repository.links,
+        repository.deleted,
+        repository.patches,
+        repository.declaredHosts,
+        repository.hostPatches,
+        repository.declaredServices,
+        repository.servicePatches,
+        repository.deletedServices
+      ].every((list) => list.length === 0)
+    ).toBe(true);
   });
 
   it("refuses somebody holding neither permission even the read", async () => {
@@ -343,6 +447,109 @@ describe("one pass of the engine", () => {
 
     expect(repository.appliedWith).toEqual(firstVerdicts);
     expect(second.firing).toBe(first.firing);
+  });
+});
+
+describe("declaring what we look after", () => {
+  it("keeps the label a reading will be matched by, trimmed", async () => {
+    await service.declareHost(owner, newHost({ hostname: "  node-exporter:9100  ", name: "  VPS principal  " }));
+
+    expect(repository.declaredHosts[0]).toMatchObject({ name: "VPS principal", hostname: "node-exporter:9100" });
+  });
+
+  it("refuses a label with a space in it, which would never match anything", async () => {
+    await expect(service.declareHost(owner, newHost({ hostname: "node exporter" }))).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    await expect(service.declareHost(owner, newHost({ hostname: "" }))).rejects.toEqual(refused("INVALID_HOSTNAME"));
+    expect(repository.declaredHosts).toEqual([]);
+  });
+
+  it("refuses a label longer than an external id can carry once prefixed", async () => {
+    await expect(service.declareHost(owner, newHost({ hostname: "n".repeat(191) }))).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    await expect(service.declareHost(owner, newHost({ hostname: "n".repeat(190) }))).resolves.toBeDefined();
+  });
+
+  it("refuses a host whose name says nothing", async () => {
+    await expect(service.declareHost(owner, newHost({ name: "no" }))).rejects.toEqual(refused("INVALID_NAME"));
+    await expect(service.declareHost(owner, newHost({ name: "n".repeat(121) }))).rejects.toEqual(
+      refused("INVALID_NAME")
+    );
+  });
+
+  it("refuses a note nobody could have meant to write", async () => {
+    await expect(service.declareHost(owner, newHost({ notes: "n".repeat(2001) }))).rejects.toEqual(
+      refused("NOTES_TOO_LONG")
+    );
+  });
+
+  it("says so when the host asked for is not there, rather than answering null", async () => {
+    await expect(service.getHost(owner, "host-9")).rejects.toEqual(refused("HOST_NOT_FOUND"));
+
+    repository.hosts = [hostRecord()];
+    await expect(service.getHost(administrator, "host-1")).resolves.toMatchObject({ id: "host-1" });
+  });
+
+  it("validates only what a patch actually carries", async () => {
+    await service.updateHost(owner, "host-1", { notes: "  vigilada des del 7.2  " });
+
+    expect(repository.hostPatches[0]).toEqual({ hostId: "host-1", patch: { notes: "vigilada des del 7.2" } });
+  });
+
+  it("holds a patched label to the same rule as a declared one", async () => {
+    await expect(service.updateHost(owner, "host-1", { hostname: "node exporter" })).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    expect(repository.hostPatches).toEqual([]);
+  });
+});
+
+describe("declaring a service, and how it is recognised", () => {
+  it("keeps the whole external id as the match key, prefix included", async () => {
+    await service.declareService(owner, newService({ matchKey: "  container:supabase-db  ", kind: "database" }));
+
+    // The kind says what it is; the key says how it is seen. A database observed by cAdvisor is
+    // both, and deriving one from the other would leave `database` with no data behind it.
+    expect(repository.declaredServices[0]).toMatchObject({ kind: "database", matchKey: "container:supabase-db" });
+  });
+
+  it("refuses a match key that could not be an identifier", async () => {
+    await expect(service.declareService(owner, newService({ matchKey: "container: n8n" }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    await expect(service.declareService(owner, newService({ matchKey: "   " }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    await expect(service.declareService(owner, newService({ matchKey: "c".repeat(201) }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    expect(repository.declaredServices).toEqual([]);
+  });
+
+  it("takes a probe target as a match key, which is a url and still one word", async () => {
+    await service.declareService(
+      owner,
+      newService({ kind: "http", matchKey: "probe:https://ssn8n.example.com/healthz" })
+    );
+
+    expect(repository.declaredServices[0]?.matchKey).toBe("probe:https://ssn8n.example.com/healthz");
+  });
+
+  it("carries the host filter through to the repository", async () => {
+    await service.listServices(owner, { hostId: "host-1" });
+    await service.listServices(owner);
+
+    expect(repository.serviceFilters).toEqual([{ hostId: "host-1" }, {}]);
+  });
+
+  it("lets a service be withdrawn, which a host cannot be", async () => {
+    await service.deleteService(owner, "service-1");
+
+    expect(repository.deletedServices).toEqual(["service-1"]);
+    // There is no `deleteHost` to call, and the grant in `0037` says the same thing.
+    expect("deleteHost" in service).toBe(false);
   });
 });
 

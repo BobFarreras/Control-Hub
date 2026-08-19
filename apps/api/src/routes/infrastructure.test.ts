@@ -1,6 +1,19 @@
-import type { AlertEventRecord, AlertRuleRecord, AutomationRecord } from "@control-hub/application";
+import type {
+  AlertEventRecord,
+  AlertRuleRecord,
+  AutomationRecord,
+  HostRecord,
+  ServiceRecord
+} from "@control-hub/application";
 import { describe, expect, it } from "vitest";
-import { alertResponse, automationResponse, overviewOf, ruleResponse } from "./infrastructure.js";
+import {
+  alertResponse,
+  automationResponse,
+  hostResponse,
+  overviewOf,
+  ruleResponse,
+  serviceResponse
+} from "./infrastructure.js";
 
 /**
  * An automation as the adapter hands it over, with two things on it that must not travel: the
@@ -172,5 +185,70 @@ describe("the overview", () => {
       alerts: { total: 0, acknowledged: 0, bySeverity: { critical: 0, high: 0, normal: 0, low: 0 } },
       observedFrom: null
     });
+  });
+});
+/**
+ * A host as the adapter hands it over, with two things a row must never carry outward: an address
+ * somebody pasted while declaring the machine, and a credential. Both are cast on deliberately --
+ * the type has no field for either, which is the property under test.
+ */
+const host = {
+  id: "h-1",
+  name: "VPS principal",
+  hostname: "node-exporter:9100",
+  environment: "production",
+  notes: "la de produccio",
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+  baseUrl: "https://prometheus.internal.example",
+  sshKey: "ssh_key_5c1d0e"
+} as unknown as HostRecord;
+
+const service: ServiceRecord = {
+  id: "s-1",
+  hostId: "h-1",
+  name: "Automatitzacions",
+  kind: "container",
+  matchKey: "container:n8n",
+  expectedState: "up",
+  customerId: "c-1",
+  createdAt: new Date(0),
+  updatedAt: new Date(0)
+};
+
+describe("what an inventory response says", () => {
+  it("carries no address and no secret, whatever arrived on the row", () => {
+    const response = hostResponse(host);
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain("prometheus.internal.example");
+    expect(serialized).not.toContain("ssh_key_5c1d0e");
+    expect(Object.keys(response).sort()).toEqual([
+      "createdAt",
+      "environment",
+      "hostname",
+      "id",
+      "name",
+      "notes",
+      "updatedAt"
+    ]);
+  });
+
+  it("keeps the kind and the match key apart, because one is not derivable from the other", () => {
+    const database = serviceResponse({ ...service, kind: "database", matchKey: "container:supabase-db" });
+
+    expect(database.kind).toBe("database");
+    expect(database.matchKey).toBe("container:supabase-db");
+    expect(Object.keys(serviceResponse(service)).sort()).toEqual([
+      "createdAt",
+      "customerId",
+      "expectedState",
+      "hostId",
+      "id",
+      "kind",
+      "matchKey",
+      "name",
+      "updatedAt"
+    ]);
   });
 });

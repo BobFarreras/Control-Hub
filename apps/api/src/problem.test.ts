@@ -125,6 +125,19 @@ describe("the status an infrastructure failure deserves", () => {
   });
 
   /**
+   * The inventory of increment B2 rides the same mapping, which is the point of the mapping: a
+   * code added later gets its status from the class it belongs to rather than a new branch.
+   */
+  it("places the inventory's own refusals in the same classes", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("HOST_NOT_FOUND"))).toEqual(["HOST_NOT_FOUND", 404]);
+    expect(codeAndStatus(new InfrastructureServiceError("SERVICE_NOT_FOUND"))).toEqual(["SERVICE_NOT_FOUND", 404]);
+    expect(codeAndStatus(new InfrastructureServiceError("DUPLICATE_HOSTNAME"))).toEqual(["DUPLICATE_HOSTNAME", 409]);
+    expect(codeAndStatus(new InfrastructureServiceError("DUPLICATE_MATCH_KEY"))).toEqual(["DUPLICATE_MATCH_KEY", 409]);
+    expect(codeAndStatus(new InfrastructureServiceError("INVALID_HOSTNAME"))).toEqual(["INVALID_HOSTNAME", 422]);
+    expect(codeAndStatus(new InfrastructureServiceError("INVALID_MATCH_KEY"))).toEqual(["INVALID_MATCH_KEY", 422]);
+  });
+
+  /**
    * A body naming a client that is not there is 422 and not 404: the route exists and the request
    * is well formed, and answering 404 would say the alert rule surface itself is missing.
    */

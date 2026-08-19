@@ -6,10 +6,16 @@ import {
   type AppliedVerdict,
   type AutomationRecord,
   type CreateAlertRuleInput,
+  type DeclareHostInput,
+  type DeclareServiceInput,
   type EvaluationState,
+  type HostRecord,
   type InfrastructureRepository,
   type LinkAutomationInput,
-  type UpdateAlertRuleInput
+  type ServiceRecord,
+  type UpdateAlertRuleInput,
+  type UpdateHostInput,
+  type UpdateServiceInput
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { AlertSeverity, AlertVerdict, LiveAlert, ObservedRecord, TenantContext } from "@control-hub/domain";
@@ -41,6 +47,13 @@ const alertColumns = `e.id, e.rule_id as "ruleId", r.name as "ruleName", e.dedup
   e.severity, e.summary, e.started_at as "startedAt", e.last_seen_at as "lastSeenAt", e.occurrences,
   e.resolved_at as "resolvedAt", e.acknowledged_at as "acknowledgedAt",
   e.acknowledged_by_membership_id as "acknowledgedByMembershipId", e.incident_id as "incidentId"`;
+
+const hostColumns = `id, name, hostname, environment, notes, created_at as "createdAt",
+  updated_at as "updatedAt"`;
+
+const serviceColumns = `id, host_id as "hostId", name, kind, match_key as "matchKey",
+  expected_state as "expectedState", customer_id as "customerId", created_at as "createdAt",
+  updated_at as "updatedAt"`;
 
 /** The operation whose records describe an automation, and the one whose age is a rule's freshness. */
 const workflowOperation = "pull_workflows";
@@ -88,6 +101,109 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         on conflict (tenant_id, instance_id, external_id) do update
           set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
     }).catch(mapConstraint);
+  }
+
+  async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+    });
+  }
+
+  async findHost(context: TenantContext, hostId: string): Promise<HostRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      return host ?? null;
+    });
+  }
+
+  async declareHost(context: TenantContext, input: DeclareHostInput): Promise<HostRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        insert into infra_hosts (id, tenant_id, name, hostname, environment, notes)
+        values (${randomUUID()}, ${context.tenantId}, ${input.name}, ${input.hostname},
+          ${input.environment}, ${input.notes})
+        returning ${tx.unsafe(hostColumns)}`;
+      return host!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  /**
+   * The same `coalesce` shape as a rule patch, with one exception that matters.
+   *
+   * `notes` and `customerId` may be set to null on purpose -- clearing a note, unlinking a client
+   * -- so for those the absence of the field, not its nullness, is what leaves the column alone.
+   * Coalescing them would make the two indistinguishable and the clearing impossible.
+   */
+  async updateHost(context: TenantContext, hostId: string, patch: UpdateHostInput): Promise<HostRecord> {
+    const host = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<HostRecord[]>`
+        update infra_hosts set
+          name = coalesce(${patch.name ?? null}, name),
+          hostname = coalesce(${patch.hostname ?? null}, hostname),
+          environment = coalesce(${patch.environment ?? null}, environment),
+          notes = case when ${patch.notes === undefined}::boolean then notes else ${patch.notes ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${hostId}
+        returning ${tx.unsafe(hostColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+    return host;
+  }
+
+  async listServices(context: TenantContext, input: { hostId?: string }): Promise<readonly ServiceRecord[]> {
+    const hostId = input.hostId ?? null;
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} and (${hostId}::uuid is null or host_id = ${hostId})
+        order by name`;
+    });
+  }
+
+  async declareService(context: TenantContext, input: DeclareServiceInput): Promise<ServiceRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [service] = await tx<ServiceRecord[]>`
+        insert into infra_services (id, tenant_id, host_id, name, kind, match_key, expected_state, customer_id)
+        values (${randomUUID()}, ${context.tenantId}, ${input.hostId}, ${input.name}, ${input.kind},
+          ${input.matchKey}, ${input.expectedState}, ${input.customerId})
+        returning ${tx.unsafe(serviceColumns)}`;
+      return service!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  async updateService(context: TenantContext, serviceId: string, patch: UpdateServiceInput): Promise<ServiceRecord> {
+    const service = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<ServiceRecord[]>`
+        update infra_services set
+          name = coalesce(${patch.name ?? null}, name),
+          kind = coalesce(${patch.kind ?? null}, kind),
+          match_key = coalesce(${patch.matchKey ?? null}, match_key),
+          expected_state = coalesce(${patch.expectedState ?? null}, expected_state),
+          customer_id = case when ${patch.customerId === undefined}::boolean then customer_id
+            else ${patch.customerId ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${serviceId}
+        returning ${tx.unsafe(serviceColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!service) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
+    return service;
+  }
+
+  async deleteService(context: TenantContext, serviceId: string): Promise<void> {
+    const deleted = await withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx`delete from infra_services
+        where tenant_id = ${context.tenantId} and id = ${serviceId} returning id`;
+      return rows.length;
+    });
+    if (deleted === 0) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
   }
 
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {
@@ -348,6 +464,25 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     if (!alert) throw new InfrastructureServiceError("ALERT_NOT_FOUND");
     return alert;
   }
+}
+
+/**
+ * The inventory's own collisions, told apart before the generic mapper sees them.
+ *
+ * `hostname` is tested before `name` deliberately: one word contains the other, and the wrong
+ * order would report a duplicate host name to somebody who reused a Prometheus label. A message
+ * that names the wrong field costs an afternoon.
+ */
+function mapInventoryConstraint(error: unknown): never {
+  const databaseError = error as DatabaseError;
+  const constraint = databaseError.constraint_name ?? "";
+  if (databaseError.code === "23505") {
+    if (constraint.includes("hostname")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+    if (constraint.includes("match_key")) throw new InfrastructureServiceError("DUPLICATE_MATCH_KEY");
+    if (constraint.includes("infra_services")) throw new InfrastructureServiceError("DUPLICATE_SERVICE_NAME");
+    if (constraint.includes("name")) throw new InfrastructureServiceError("DUPLICATE_HOST_NAME");
+  }
+  return mapConstraint(error);
 }
 
 function mapConstraint(error: unknown): never {

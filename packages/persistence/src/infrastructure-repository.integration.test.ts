@@ -492,6 +492,169 @@ suite("PostgresInfrastructureRepository", () => {
     });
   });
 
+  describe("the inventory somebody declares", () => {
+    const declareHost = async (overrides: Record<string, unknown> = {}) =>
+      repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null,
+        ...overrides
+      });
+
+    it("keeps a host and the services hung off it, and gives back what it stored", async () => {
+      const host = await declareHost({ notes: "La de produccio" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: "Automatitzacions",
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.findHost(asA(), host.id)).toMatchObject({ name: host.name, notes: "La de produccio" });
+      expect(service).toMatchObject({ hostId: host.id, kind: "container", expectedState: "up", customerId });
+    });
+
+    it("filters services by host, so a machine's page is one read", async () => {
+      const [one, two] = [await declareHost(), await declareHost()];
+      const onService = async (hostId: string) =>
+        repository.declareService(asA(), {
+          hostId,
+          name: `Servei ${randomUUID()}`,
+          kind: "http",
+          matchKey: `probe:https://${randomUUID()}.example.com/healthz`,
+          expectedState: "up",
+          customerId: null
+        });
+      await onService(one.id);
+      await onService(two.id);
+
+      const listed = await repository.listServices(asA(), { hostId: one.id });
+      expect(listed.map((item) => item.hostId)).toEqual([one.id]);
+    });
+
+    it("tells a duplicate label from a duplicate name, which one word contains the other", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ name: host.name })).rejects.toMatchObject({ code: "DUPLICATE_HOST_NAME" });
+      await expect(declareHost({ hostname: host.hostname })).rejects.toMatchObject({ code: "DUPLICATE_HOSTNAME" });
+    });
+
+    it("refuses two services watching the same observed thing", async () => {
+      const host = await declareHost();
+      const matchKey = `container:supabase-db-${randomUUID()}`;
+      const service = {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "database" as const,
+        matchKey,
+        expectedState: "up" as const,
+        customerId: null
+      };
+      await repository.declareService(asA(), service);
+
+      // Same key, different kind: what makes them the same is what is watched, not how it was
+      // classified, so the kind is deliberately not part of the key.
+      await expect(
+        repository.declareService(asA(), { ...service, name: `Servei ${randomUUID()}`, kind: "container" })
+      ).rejects.toMatchObject({ code: "DUPLICATE_MATCH_KEY" });
+    });
+
+    it("clears a note and a client when asked to, and leaves them alone when not", async () => {
+      const host = await declareHost({ notes: "provisional" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.updateHost(asA(), host.id, { environment: "staging" })).toMatchObject({
+        environment: "staging",
+        notes: "provisional"
+      });
+      expect(await repository.updateHost(asA(), host.id, { notes: null })).toMatchObject({ notes: null });
+      expect(await repository.updateService(asA(), service.id, { expectedState: "ignored" })).toMatchObject({
+        expectedState: "ignored",
+        customerId
+      });
+      expect(await repository.updateService(asA(), service.id, { customerId: null })).toMatchObject({
+        customerId: null
+      });
+    });
+
+    it("refuses a state and an environment nobody evaluates", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ environment: "produccio" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      await expect(
+        repository.declareService(asA(), {
+          hostId: host.id,
+          name: `Servei ${randomUUID()}`,
+          kind: "container",
+          matchKey: `container:${randomUUID()}`,
+          expectedState: "maybe" as never,
+          customerId: null
+        })
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    });
+
+    it("says so rather than pretending, when the row asked for is not there", async () => {
+      expect(await repository.findHost(asA(), randomUUID())).toBeNull();
+      await expect(repository.updateHost(asA(), randomUUID(), { notes: null })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+      await expect(repository.deleteService(asA(), randomUUID())).rejects.toMatchObject({
+        code: "SERVICE_NOT_FOUND"
+      });
+    });
+
+    it("withdraws a service, and holds no privilege to withdraw a host", async () => {
+      const host = await declareHost();
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      await repository.deleteService(asA(), service.id);
+      expect(await repository.listServices(asA(), { hostId: host.id })).toEqual([]);
+
+      // Acceptance criterion 9 is a grant, not a missing route: the application role cannot
+      // delete a host even when somebody writes the statement by hand.
+      await expect(database`delete from infra_hosts where id = ${host.id}`).rejects.toMatchObject({ code: "42501" });
+    });
+
+    it("shows one tenant nothing of the other, hosts and services alike", async () => {
+      const host = await declareHost();
+      await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.listHosts(asB())).map((item) => item.id)).not.toContain(host.id);
+      expect(await repository.findHost(asB(), host.id)).toBeNull();
+      expect((await repository.listServices(asB(), {})).map((item) => item.hostId)).not.toContain(host.id);
+      // Reaching across with a known id is refused by the policy, not by a missing filter.
+      await expect(repository.updateHost(asB(), host.id, { notes: "meu" })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+    });
+  });
+
   describe("retention", () => {
     it("removes resolved alerts past the window and leaves the live ones alone", async () => {
       const instance = await newInstance(tenantA, membershipA);

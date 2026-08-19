@@ -75,6 +75,64 @@ export type LinkAutomationInput = {
   notes: string | null;
 };
 
+export type HostEnvironment = "production" | "staging" | "development";
+export type ServiceKind = "container" | "http" | "database" | "automation";
+export type ServiceExpectedState = "up" | "stopped" | "ignored";
+
+/** A machine somebody declared, and the label the readings will be matched to it by. */
+export type HostRecord = {
+  id: string;
+  name: string;
+  hostname: string;
+  environment: HostEnvironment;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type DeclareHostInput = {
+  name: string;
+  hostname: string;
+  environment: HostEnvironment;
+  notes: string | null;
+};
+
+export type UpdateHostInput = Partial<DeclareHostInput>;
+
+/**
+ * Something on a host worth being told about.
+ *
+ * `kind` says what the service is; `matchKey` says how it is seen. The Postgres of a self-hosted
+ * Supabase is a database and is observed as a container, so deriving one from the other would
+ * leave a whole kind with no data behind it.
+ */
+export type ServiceRecord = {
+  id: string;
+  hostId: string;
+  name: string;
+  kind: ServiceKind;
+  matchKey: string;
+  expectedState: ServiceExpectedState;
+  customerId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type DeclareServiceInput = {
+  hostId: string;
+  name: string;
+  kind: ServiceKind;
+  matchKey: string;
+  expectedState: ServiceExpectedState;
+  customerId: string | null;
+};
+
+/**
+ * `hostId` is not patchable. A service that moved machine is watching something else, and letting
+ * it move would also let it collide with a name already taken on the host it arrives at.
+ */
+export type UpdateServiceInput = Partial<Omit<DeclareServiceInput, "hostId">>;
+
 export type CreateAlertRuleInput = {
   name: string;
   kind: AlertRuleKind;
@@ -110,6 +168,16 @@ export type InfrastructureRepository = {
   listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]>;
   linkAutomation(context: TenantContext, input: LinkAutomationInput): Promise<void>;
 
+  listHosts(context: TenantContext): Promise<readonly HostRecord[]>;
+  findHost(context: TenantContext, hostId: string): Promise<HostRecord | null>;
+  declareHost(context: TenantContext, input: DeclareHostInput): Promise<HostRecord>;
+  updateHost(context: TenantContext, hostId: string, patch: UpdateHostInput): Promise<HostRecord>;
+
+  listServices(context: TenantContext, input: { hostId?: string }): Promise<readonly ServiceRecord[]>;
+  declareService(context: TenantContext, input: DeclareServiceInput): Promise<ServiceRecord>;
+  updateService(context: TenantContext, serviceId: string, patch: UpdateServiceInput): Promise<ServiceRecord>;
+  deleteService(context: TenantContext, serviceId: string): Promise<void>;
+
   listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]>;
   createRule(context: TenantContext, input: CreateAlertRuleInput): Promise<AlertRuleRecord>;
   updateRule(context: TenantContext, ruleId: string, patch: UpdateAlertRuleInput): Promise<AlertRuleRecord>;
@@ -144,6 +212,10 @@ const shortestName = 3;
 const longestName = 120;
 const shortestFreshness = 60;
 const longestFreshness = 86_400;
+/** The connector caps a host label here so that `host:<label>` still fits an `external_id`. */
+const longestHostname = 190;
+const longestMatchKey = 200;
+const longestNotes = 2_000;
 
 function requireRead(context: TenantContext) {
   if (!hasPermission(context, "infrastructure:read")) throw new InfrastructureServiceError("FORBIDDEN");
@@ -184,6 +256,39 @@ function checkRule(input: CreateAlertRuleInput | UpdateAlertRuleInput) {
   if (input.targetType === "instance" && input.targetId) throw new InfrastructureServiceError("TARGET_NOT_ALLOWED");
 }
 
+/**
+ * Neither a hostname nor a match key may carry a space or a control character.
+ *
+ * Both are compared with an identifier a provider produced -- a Prometheus label, a container
+ * name, a probe target -- and none of those has ever contained one. What a space really means
+ * here is a value somebody pasted with something else stuck to it, and stored as typed it would
+ * simply never match, which reads on a screen as a service that is fine.
+ */
+// eslint-disable-next-line no-control-regex -- a control character is exactly what this rejects
+const illegible = /[\s\u0000-\u001f\u007f]/;
+
+function checkHostname(hostname: string) {
+  const trimmed = hostname.trim();
+  if (trimmed.length === 0 || trimmed.length > longestHostname || illegible.test(trimmed)) {
+    throw new InfrastructureServiceError("INVALID_HOSTNAME");
+  }
+  return trimmed;
+}
+
+function checkMatchKey(matchKey: string) {
+  const trimmed = matchKey.trim();
+  if (trimmed.length === 0 || trimmed.length > longestMatchKey || illegible.test(trimmed)) {
+    throw new InfrastructureServiceError("INVALID_MATCH_KEY");
+  }
+  return trimmed;
+}
+
+function checkNotes(notes: string | null) {
+  if (notes === null) return null;
+  if (notes.length > longestNotes) throw new InfrastructureServiceError("NOTES_TOO_LONG");
+  return notes.trim() || null;
+}
+
 export class InfrastructureService {
   constructor(private readonly repository: InfrastructureRepository) {}
 
@@ -199,8 +304,78 @@ export class InfrastructureService {
    */
   async linkAutomation(context: TenantContext, input: LinkAutomationInput): Promise<void> {
     requireOperate(context);
-    if (input.notes !== null && input.notes.length > 2000) throw new InfrastructureServiceError("NOTES_TOO_LONG");
-    await this.repository.linkAutomation(context, { ...input, notes: input.notes?.trim() || null });
+    await this.repository.linkAutomation(context, { ...input, notes: checkNotes(input.notes) });
+  }
+
+  async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {
+    requireRead(context);
+    return await this.repository.listHosts(context);
+  }
+
+  async getHost(context: TenantContext, hostId: string): Promise<HostRecord> {
+    requireRead(context);
+    const host = await this.repository.findHost(context, hostId);
+    if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+    return host;
+  }
+
+  /**
+   * Declares a machine we look after.
+   *
+   * `hostname` is required and is the whole reason the row is worth having: it is what a reading
+   * is matched to a host by. A host nothing can be matched to is a name on a screen that the data
+   * is never able to contradict.
+   */
+  async declareHost(context: TenantContext, input: DeclareHostInput): Promise<HostRecord> {
+    requireOperate(context);
+    return await this.repository.declareHost(context, {
+      ...input,
+      name: checkName(input.name),
+      hostname: checkHostname(input.hostname),
+      notes: checkNotes(input.notes)
+    });
+  }
+
+  async updateHost(context: TenantContext, hostId: string, patch: UpdateHostInput): Promise<HostRecord> {
+    requireOperate(context);
+    return await this.repository.updateHost(context, hostId, {
+      ...patch,
+      ...(patch.name === undefined ? {} : { name: checkName(patch.name) }),
+      ...(patch.hostname === undefined ? {} : { hostname: checkHostname(patch.hostname) }),
+      ...(patch.notes === undefined ? {} : { notes: checkNotes(patch.notes) })
+    });
+  }
+
+  async listServices(context: TenantContext, input: { hostId?: string } = {}): Promise<readonly ServiceRecord[]> {
+    requireRead(context);
+    return await this.repository.listServices(context, input);
+  }
+
+  async declareService(context: TenantContext, input: DeclareServiceInput): Promise<ServiceRecord> {
+    requireOperate(context);
+    return await this.repository.declareService(context, {
+      ...input,
+      name: checkName(input.name),
+      matchKey: checkMatchKey(input.matchKey)
+    });
+  }
+
+  async updateService(context: TenantContext, serviceId: string, patch: UpdateServiceInput): Promise<ServiceRecord> {
+    requireOperate(context);
+    return await this.repository.updateService(context, serviceId, {
+      ...patch,
+      ...(patch.name === undefined ? {} : { name: checkName(patch.name) }),
+      ...(patch.matchKey === undefined ? {} : { matchKey: checkMatchKey(patch.matchKey) })
+    });
+  }
+
+  /**
+   * Deciding a service no longer matters is ordinary and audited, which is why this exists and
+   * `deleteHost` does not: the privilege on the table says the same thing.
+   */
+  async deleteService(context: TenantContext, serviceId: string): Promise<void> {
+    requireOperate(context);
+    await this.repository.deleteService(context, serviceId);
   }
 
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {

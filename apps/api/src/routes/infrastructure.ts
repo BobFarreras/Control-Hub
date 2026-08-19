@@ -3,7 +3,13 @@ import type {
   AlertRuleRecord,
   AutomationRecord,
   CreateAlertRuleInput,
-  UpdateAlertRuleInput
+  DeclareHostInput,
+  DeclareServiceInput,
+  HostRecord,
+  ServiceRecord,
+  UpdateAlertRuleInput,
+  UpdateHostInput,
+  UpdateServiceInput
 } from "@control-hub/application";
 import type { AlertSeverity, TenantContext } from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
@@ -116,6 +122,63 @@ const ruleParams = {
   additionalProperties: false,
   required: ["ruleId"],
   properties: { ruleId: { type: "string", format: "uuid" } }
+} as const;
+
+export function hostResponse(host: HostRecord) {
+  return {
+    id: host.id,
+    name: host.name,
+    hostname: host.hostname,
+    environment: host.environment,
+    notes: host.notes,
+    createdAt: host.createdAt,
+    updatedAt: host.updatedAt
+  };
+}
+
+export function serviceResponse(service: ServiceRecord) {
+  return {
+    id: service.id,
+    hostId: service.hostId,
+    name: service.name,
+    kind: service.kind,
+    matchKey: service.matchKey,
+    expectedState: service.expectedState,
+    customerId: service.customerId,
+    createdAt: service.createdAt,
+    updatedAt: service.updatedAt
+  };
+}
+
+const hostParams = {
+  type: "object",
+  additionalProperties: false,
+  required: ["hostId"],
+  properties: { hostId: { type: "string", format: "uuid" } }
+} as const;
+
+const serviceParams = {
+  type: "object",
+  additionalProperties: false,
+  required: ["serviceId"],
+  properties: { serviceId: { type: "string", format: "uuid" } }
+} as const;
+
+/** `hostname` is capped where the connector caps a host label, so `host:<label>` still fits. */
+const hostFields = {
+  name: { type: "string", minLength: 3, maxLength: 120 },
+  hostname: { type: "string", minLength: 1, maxLength: 190 },
+  environment: { type: "string", enum: ["production", "staging", "development"] },
+  notes: { type: ["string", "null"], maxLength: 2000 }
+} as const;
+
+/** `hostId` is absent from the patch on purpose: a service that moved machine is a new service. */
+const serviceFields = {
+  name: { type: "string", minLength: 3, maxLength: 120 },
+  kind: { type: "string", enum: ["container", "http", "database", "automation"] },
+  matchKey: { type: "string", minLength: 1, maxLength: 200 },
+  expectedState: { type: "string", enum: ["up", "stopped", "ignored"] },
+  customerId: { type: ["string", "null"], format: "uuid" }
 } as const;
 
 const alertParams = {
@@ -247,6 +310,187 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
         metadata: { instanceId, customerId: request.body.customerId ?? "none" }
       });
       return { linked: true };
+    }
+  );
+
+  app.get(
+    "/api/v1/infrastructure/hosts",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every machine somebody declared",
+        description:
+          "The inventory, not the readings. `hostname` is the label a reading is matched to a host by, which is why a host cannot exist without one."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { hosts: (await infrastructure.listHosts(context)).map(hostResponse) };
+    }
+  );
+
+  app.post<{ Body: DeclareHostInput }>(
+    "/api/v1/infrastructure/hosts",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Declare a machine we look after",
+        description:
+          "`hostname` is required and unique: two hosts claiming one label would turn a single outage into two alerts about the same machine. There is no route to delete a host — a decommissioned machine is one whose `environment` says so, and the privilege on the table says the same.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "hostname", "environment"],
+          properties: hostFields
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const event = {
+        action: "infrastructure.host_declared",
+        targetType: "infra_host",
+        metadata: { hostname: request.body.hostname, environment: request.body.environment }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      const host = await infrastructure.declareHost(context, { ...request.body, notes: request.body.notes ?? null });
+      await writeAudit(database, context, request, { ...event, targetId: host.id, outcome: "success" });
+      return reply.code(201).send({ host: hostResponse(host) });
+    }
+  );
+
+  app.get<{ Params: { hostId: string } }>(
+    "/api/v1/infrastructure/hosts/:hostId",
+    { schema: { tags: ["infrastructure"], summary: "One machine", params: hostParams } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { host: hostResponse(await infrastructure.getHost(context, request.params.hostId)) };
+    }
+  );
+
+  app.patch<{ Params: { hostId: string }; Body: UpdateHostInput }>(
+    "/api/v1/infrastructure/hosts/:hostId",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Correct what was declared",
+        description:
+          "Only the fields present are changed. A null `notes` clears the note, which is why absence and null are not the same thing here.",
+        params: hostParams,
+        body: { type: "object", additionalProperties: false, properties: hostFields }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { hostId } = request.params;
+      const event = { action: "infrastructure.host_updated", targetType: "infra_host", targetId: hostId };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      const host = await infrastructure.updateHost(context, hostId, request.body);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return { host: hostResponse(host) };
+    }
+  );
+
+  app.get<{ Querystring: { hostId?: string } }>(
+    "/api/v1/infrastructure/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every service worth being told about",
+        description:
+          "`kind` says what the service is; `matchKey` says how it is observed — the complete `external_id` of the record, prefix included. They are separate because a database can be seen as a container.",
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: { hostId: { type: "string", format: "uuid" } }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      const { hostId } = request.query;
+      const services = await infrastructure.listServices(context, hostId === undefined ? {} : { hostId });
+      return { services: services.map(serviceResponse) };
+    }
+  );
+
+  app.post<{ Body: DeclareServiceInput }>(
+    "/api/v1/infrastructure/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Declare a service on a host",
+        description:
+          "`expectedState` is what the evaluation should conclude: `up` for the ordinary case, `stopped` for something that must stay down and about which we want to hear if it returns, `ignored` for declared but deliberately not alerted on. Two services may not share a `matchKey`: that would be two alerts about one outage.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["hostId", "name", "kind", "matchKey"],
+          properties: { ...serviceFields, hostId: { type: "string", format: "uuid" } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const event = {
+        action: "infrastructure.service_declared",
+        targetType: "infra_service",
+        metadata: { hostId: request.body.hostId, kind: request.body.kind, matchKey: request.body.matchKey }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      const service = await infrastructure.declareService(context, {
+        ...request.body,
+        expectedState: request.body.expectedState ?? "up",
+        customerId: request.body.customerId ?? null
+      });
+      await writeAudit(database, context, request, { ...event, targetId: service.id, outcome: "success" });
+      return reply.code(201).send({ service: serviceResponse(service) });
+    }
+  );
+
+  app.patch<{ Params: { serviceId: string }; Body: UpdateServiceInput }>(
+    "/api/v1/infrastructure/services/:serviceId",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Correct a declared service",
+        description: "A null `customerId` withdraws the association. `hostId` is not patchable.",
+        params: serviceParams,
+        body: { type: "object", additionalProperties: false, properties: serviceFields }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { serviceId } = request.params;
+      const event = { action: "infrastructure.service_updated", targetType: "infra_service", targetId: serviceId };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      const service = await infrastructure.updateService(context, serviceId, request.body);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return { service: serviceResponse(service) };
+    }
+  );
+
+  app.delete<{ Params: { serviceId: string } }>(
+    "/api/v1/infrastructure/services/:serviceId",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Stop watching a service",
+        description: "Deciding something no longer matters is ordinary and audited. A host has no such route.",
+        params: serviceParams
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { serviceId } = request.params;
+      const event = { action: "infrastructure.service_deleted", targetType: "infra_service", targetId: serviceId };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.deleteService(context, serviceId);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return reply.code(204).send();
     }
   );
 

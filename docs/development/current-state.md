@@ -16,8 +16,8 @@ registre de jornada, i la plataforma de connectors.
 
 Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
 base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`,
-`build`— tambe, sobre tretze paquets. Amb el B1 dins son **878 proves** sense base de dades de test,
-i les 177 d'integracio de PostgreSQL se salten fins que `TEST_DATABASE_URL` hi es. L'error de
+`build`— tambe, sobre tretze paquets. Amb el B1 i el B2 dins son **1.084 proves**, les
+d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 186 i en queden 898. L'error de
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
 
@@ -94,7 +94,7 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2, comencada: el B1 esta fet.** La 7.1 esta tancada: la planificada (A1-A6), els
+**L'entrega 7.2, comencada: el B1 i el B2 estan fets.** La 7.1 esta tancada: la planificada (A1-A6), els
 A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
 
 **Fet del 7.2:**
@@ -102,6 +102,7 @@ A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd
 | # | Que hi ha | On |
 |---|---|---|
 | B1 | Connector `prometheus`: `pull_host_metrics`, `pull_container_state` i `pull_probe_state`, totes forma `state`, amb els seus contract tests i les paraules del connector en `ca`, `es` i `en` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, `packages/connectors/src/index.ts`, `packages/i18n/src/index.ts` |
+| B2 | Inventari declarat: migracio `0037` amb `infra_hosts` i `infra_services`, els casos d'us amb els seus permisos, la implementacio contra PostgreSQL i vuit rutes sota `/api/v1/infrastructure` | `packages/database/migrations/0037_infrastructure_hosts.sql`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/problem.ts`, i els seus tests |
 
 **El que el B1 deixa decidit i no s'ha de tornar a decidir.** La **PromQL es constant**: cap valor
 de la configuracio entra mai en una URL, i `hostLabels`, `containerJob` i `probeJob` filtren el
@@ -141,12 +142,27 @@ de backup de la VPS que escrigui `control_hub_backup_last_success_seconds{backup
 fitxer del textfile collector. Si no es fan, aquelles regles no cauen del disseny: queden `starved`
 i es veuen.
 
-**El seguent pas es el B2**: la migracio `0037`, l'inventari de hosts i serveis, casos d'us i API.
+**El que el B2 deixa decidit.** `hostname` es **obligatori i unic**: es l'unica manera de comparar
+un host declarat amb una lectura, i esta acotat als mateixos 190 caracters que el connector imposa
+a `hostLabels`. **`kind` diu que es el servei i `match_key` com s'observa**, i son dues columnes
+perque el Postgres d'un Supabase autoallotjat es una base de dades que cAdvisor veu com un
+contenidor; `match_key` es l'`external_id` sencer, prefix inclos, i es unic sense el `kind` a dins.
+**`expected_state` te tres valors i tots tres els avalua el B3**: `up`, `stopped` —un servei que ha
+de quedar-se aturat i del qual volem saber si torna— i `ignored`. I **un host no s'esborra**: no es
+una ruta que falti, es el `grant`, com a `infra_alert_events`.
 
-El xoc de numeracio que l'A9b va provocar ja esta resolt al pla: l'A9b-1 va gastar la `0036` per
-al permis d'esborrat, aixi que **l'inventari de hosts del B2 es la `0037`**, renumerat a
-`infrastructure.md` abans de comencar-lo i no despres d'aplicar-lo. A `develop` les migracions van
-de la `0001` a la `0036` sense cap numero repetit.
+**El seguent pas es el B3**: les tres regles d'alerta d'infraestructura (`service_down`,
+`certificate_expiring` i `backup_stale`) a `packages/domain` i `packages/application`, amb els
+veredictes i el `starved` inclos.
+
+El xoc de numeracio que l'A9b va provocar ja esta resolt: l'A9b-1 va gastar la `0036` per al permis
+d'esborrat, aixi que **l'inventari de hosts es la `0037`**, renumerat a `infrastructure.md` abans
+d'escriure-la i no despres d'aplicar-la. Amb el B2 dins, les migracions van de la `0001` a la `0038`
+sense cap numero repetit.
+
+**El B2 tambe toca `packages/persistence`, que la fila del pla no nomenava.** Es on viu
+`PostgresInfrastructureRepository`: sense implementacio les rutes no tenen res al darrere, i les
+proves d'RLS que el criteri 9 exigeix son les d'aquell paquet. Queda anotat al pla d'increments.
 
 **Les dues flags segueixen tancades.** Fusionar no encen res: sense `connectors` ni
 `infrastructure` declarades, cap de les dues rutes existeix i el modul respon 404. Encendre-les es

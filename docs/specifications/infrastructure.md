@@ -379,12 +379,43 @@ desassociar un workflow i esborrar una regla son actes ordinaris i auditats. `in
 **no en te**: un esdeveniment es la constancia que va passar una cosa, i l'unic que en treu cap es
 la purga de retencio.
 
-**`0037_infrastructure_hosts.sql` — modul (7.2)**
+**`0037_infrastructure_hosts.sql` — modul (7.2), entregada al B2**
 
 - `infra_hosts` — `name`, `hostname` (l'etiqueta amb que Prometheus l'anomena), `environment`,
-  `notes`. `unique (tenant_id, name)`.
+  `notes`. `unique (tenant_id, name)` i tambe **`unique (tenant_id, hostname)`**.
 - `infra_services` — `host_id`, `name`, `kind` (`container|http|database|automation`),
   `match_key`, `expected_state`, `customer_id` opcional.
+  `unique (tenant_id, host_id, name)` i **`unique (tenant_id, match_key)`**.
+
+**`hostname` es obligatori.** Es l'unica manera de comparar un host declarat amb una lectura, i un
+host que cap observacio pot contradir es una fila que sembla cobertura. Esta acotat a **190
+caracters**, alla on el connector acota `hostLabels`, perque `host:<label>` capigui als 200 d'un
+`external_id`. La unicitat evita que dos hosts reclamin la mateixa etiqueta i que una sola caiguda
+arribi com dues alertes de dues coses que son la mateixa.
+
+**`environment` es un `check` acotat** (`production|staging|development`), pel mateix motiu que el
+`kind` d'una regla: un valor que ningu filtra no es un filtre, es una errada d'escriptura que
+parteix un entorn en dos.
+
+**`kind` diu que **es** el servei; `match_key` diu com **s'observa**.** Son dues columnes i no una
+perque el Postgres d'un Supabase autoallotjat es una base de dades i el veu cAdvisor com un
+contenidor: derivar l'observacio del `kind` deixaria `database` sense cap font de dades a la 7.2.
+`match_key` es l'`external_id` **sencer**, prefix inclos — `container:<name>`, `probe:<target>`,
+`host:<label>` — i es unic **sense el `kind` a dins**: el que fa que dos serveis siguin el mateix
+es que vigilen el mateix objecte, no com algu els ha classificat.
+
+**`expected_state` te tres valors, tots avaluables pel B3:** `up` es el cas normal; `stopped` es un
+servei que ha de quedar-se aturat i del qual volem saber si torna —un panell d'administracio
+retirat es el cas que va justificar el valor—; `ignored` es declarat pero deliberadament no
+alertat. Un quart valor que cap passada avalues tornaria a ser cobertura que no dispara mai. Amb
+`up`, l'absencia de registre nomes vol dir **caigut** si la instancia es fresca: si es mes rancia
+que `freshness_seconds` el veredicte es `starved`, perque no sabem si ha caigut el servei o qui ens
+ho havia de dir.
+
+**Un servei s'esborra; un host no.** No es una ruta que falta: es el `grant`. `infra_services` te
+`delete` i `infra_hosts` no en te, igual que `infra_alert_events`. D'un host en penja historia —els
+seus serveis i, a traves seu, cada alerta que ha disparat— i una maquina donada de baixa es una
+maquina que va existir. Retirar-la es un `environment` que algu canvia.
 
 `incidents` **no es modifica**: la `0014` ja te la forma que cal i aquesta fase li dona el primer
 escriptor.
@@ -590,7 +621,11 @@ al mateix commit.
 |---|---|---|---|
 | B1 | Connector `prometheus`, amb `pull_probe_state` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, el registre, i **les paraules del connector a `packages/i18n`** | Contract tests |
 | | *L'i18n no es un afegit: `packages/i18n/src/index.test.ts` recorre el registre i exigeix nom, descripcio i etiqueta de cada camp en `ca`, `es` i `en`. Aquella porta no existia quan l'A4 va escriure "i res mes" per al connector d'n8n —va arribar amb la pantalla de cataleg— i sense les paraules l'increment deixaria `pnpm check` en vermell.* | | |
-| B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
+| B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database`, `packages/persistence` | Criteri 9 sobre les taules noves |
+
+*El B2 tambe toca `packages/persistence`, que la fila no nomenava. Es on viu
+`PostgresInfrastructureRepository`: sense implementacio les rutes no tenen res al darrere, i les
+proves d'RLS que el criteri 9 exigeix son precisament les d'aquell paquet.*
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
 
