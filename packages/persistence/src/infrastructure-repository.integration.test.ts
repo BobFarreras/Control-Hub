@@ -56,7 +56,7 @@ suite("PostgresInfrastructureRepository", () => {
     tenantId: string,
     membershipId: string,
     instanceId: string,
-    operation: "pull_workflows" | "pull_executions" | "pull_container_state" | "pull_probe_state",
+    operation: "pull_workflows" | "pull_executions" | "pull_host_metrics" | "pull_container_state" | "pull_probe_state",
     externalId: string,
     data: ConnectorConfig
   ) =>
@@ -636,6 +636,92 @@ suite("PostgresInfrastructureRepository", () => {
 
       const state = await repository.readEvaluationState(asA());
       expect(state.services.every((item) => item.hostName !== theirHost.name)).toBe(true);
+    });
+  });
+
+  describe("what the dashboard reads", () => {
+    const declaredMachine = async (tenantId: string, membershipId: string) => {
+      const at = context(tenantId, membershipId);
+      const hostname = `node-${randomUUID()}:9100`;
+      const host = await repository.declareHost(at, {
+        name: `VPS ${randomUUID()}`,
+        hostname,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(at, {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service, hostname };
+    };
+
+    it("gathers the inventory, the reading of every line of it, and the freshness of each pass", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const { host, service, hostname } = await declaredMachine(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${hostname}`, {
+        cpuBusyRatio: 0.2
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", service.matchKey, {
+        memoryBytes: 512
+      });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === host.id)).toBe(true);
+      expect(state.services.some((item) => item.id === service.id)).toBe(true);
+      expect(state.records.map((item) => item.externalId)).toEqual(
+        expect.arrayContaining([`host:${hostname}`, service.matchKey])
+      );
+      expect(
+        state.freshness.some((item) => item.instanceId === instance.id && item.operation === "pull_host_metrics")
+      ).toBe(true);
+    });
+
+    /**
+     * The read is driven by what was declared, not by what the collectors happen to see. A tenant
+     * watching four containers must not pay for every container its Prometheus can enumerate.
+     */
+    it("asks for the identifiers it declared and for nothing else", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const undeclared = `container:stranger-${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", undeclared, { memoryBytes: 1 });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.records.some((item) => item.externalId === undeclared)).toBe(false);
+    });
+
+    it("reads no host, no service and no reading of another tenant", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      const theirs = await declaredMachine(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_container_state", theirs.service.matchKey, {
+        memoryBytes: 1
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === theirs.host.id)).toBe(false);
+      expect(state.services.some((item) => item.id === theirs.service.id)).toBe(false);
+      expect(state.records.some((item) => item.externalId === theirs.service.matchKey)).toBe(false);
+    });
+
+    it("reads nothing at all for a tenant that declared nothing", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await putRecord(tenantC, membershipC, instance.id, "pull_container_state", `container:${randomUUID()}`, {});
+
+      expect((await repository.readInventoryState(asC())).records).toEqual([]);
     });
   });
 

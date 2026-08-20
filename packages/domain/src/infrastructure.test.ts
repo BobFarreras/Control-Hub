@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentReading,
   evaluateAlertRules,
+  hostMatchKey,
   incidentFor,
   type AlertRule,
   type DeclaredService,
@@ -528,5 +530,161 @@ describe("a backup that stopped running", () => {
   it("reads no backup from another instance", () => {
     const elsewhere = { ...ranHoursAgo(30), instanceId: "instance-2" };
     expect(watch({ rules: backupRule, records: [elsewhere] })).toMatchObject([{ status: "starved" }]);
+  });
+});
+
+/**
+ * The reading behind the technical dashboard.
+ *
+ * The same core the `service_down` rule uses, asked a different question: not "should somebody be
+ * told" but "what does this thing look like right now". The difference that matters is the third
+ * answer -- a rule that cannot see says `starved` about itself, and here that same blindness has
+ * to read as `unknown` about the thing, never as `down`.
+ */
+describe("what the dashboard sees", () => {
+  const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_state: 360 };
+
+  const passed = (operation: string, secondsAgo: number, instance = instanceId): OperationFreshness => ({
+    instanceId: instance,
+    operation,
+    lastSuccessAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const seen = (
+    operation: string,
+    externalId: string,
+    secondsAgo: number,
+    data: Record<string, JsonValue> = {},
+    instance = instanceId
+  ): ObservedRecord => ({
+    instanceId: instance,
+    operation,
+    externalId,
+    data,
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const read = (input: {
+    matchKey: string;
+    records?: readonly ObservedRecord[];
+    freshness?: readonly OperationFreshness[];
+  }) =>
+    currentReading({
+      matchKey: input.matchKey,
+      records: input.records ?? [],
+      freshness: input.freshness ?? [passed("pull_host_metrics", 60)],
+      budgets,
+      now
+    });
+
+  it("names a host's reading by the prefix the connector publishes", () => {
+    expect(hostMatchKey("node-exporter:9100")).toBe("host:node-exporter:9100");
+  });
+
+  it("is up when the reading refreshed inside its budget, and hands the projection over whole", () => {
+    const record = seen("pull_host_metrics", "host:vps", 90, { cpuBusyRatio: 0.12, load1: 0.4 });
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toEqual({
+      state: "up",
+      observedAt: new Date(now.getTime() - 90_000),
+      data: { cpuBusyRatio: 0.12, load1: 0.4 }
+    });
+  });
+
+  /**
+   * `connector_records` is overwritten state: a machine that stopped answering keeps its row and
+   * stops moving `last_seen_at`. Absence is therefore a reading that went quiet, which is exactly
+   * what the row still being there has to be read as.
+   */
+  it("is down when the pass is current and this one reading stopped moving", () => {
+    const record = seen("pull_host_metrics", "host:vps", 1200, { cpuBusyRatio: 0.12 });
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toMatchObject({
+      state: "down",
+      observedAt: new Date(now.getTime() - 1_200_000)
+    });
+  });
+
+  it("is down when the pass is current and there is no reading at all", () => {
+    expect(read({ matchKey: "host:vps" })).toEqual({ state: "down", observedAt: null, data: {} });
+  });
+
+  /**
+   * The distinction the whole third state exists for. Losing sight of Prometheus is not twenty
+   * machines going down at once, and a dashboard that drew it that way would be lying at the exact
+   * moment somebody most needs it to be honest.
+   */
+  it("is unknown, not down, when the whole pass has gone stale", () => {
+    const record = seen("pull_host_metrics", "host:vps", 4000);
+    const freshness = [passed("pull_host_metrics", 4000)];
+
+    expect(read({ matchKey: "host:vps", records: [record], freshness })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is unknown when the operation that would observe it has never run", () => {
+    expect(read({ matchKey: "container:api", freshness: [] })).toMatchObject({ state: "unknown", observedAt: null });
+  });
+
+  it("is unknown when the pass never succeeded, which is not the same as long ago", () => {
+    const freshness = [{ instanceId, operation: "pull_host_metrics", lastSuccessAt: null }];
+
+    expect(read({ matchKey: "host:vps", freshness })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is unknown for a prefix nobody publishes", () => {
+    expect(read({ matchKey: "printer:hp" })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is down when a fresh reading contradicts itself", () => {
+    const record = seen("pull_probe_state", "probe:https://example.test/healthz", 60, { success: false });
+
+    expect(
+      read({
+        matchKey: "probe:https://example.test/healthz",
+        records: [record],
+        freshness: [passed("pull_probe_state", 30)]
+      })
+    ).toMatchObject({ state: "down" });
+  });
+
+  /**
+   * A tenant may run two Prometheus instances, and both may scrape a machine of the same name.
+   * Picking the most recent reading makes which one answers a property of the data rather than of
+   * the order rows came back in.
+   */
+  it("reads the most recent of two instances watching the same thing", () => {
+    const older = seen("pull_host_metrics", "host:vps", 1200, { load1: 9 }, "instance-2");
+    const newer = seen("pull_host_metrics", "host:vps", 30, { load1: 0.2 });
+
+    expect(read({ matchKey: "host:vps", records: [older, newer] })).toMatchObject({
+      state: "up",
+      data: { load1: 0.2 }
+    });
+  });
+
+  it("takes the freshest pass of the instances that run the operation", () => {
+    const record = seen("pull_host_metrics", "host:vps", 90);
+    const freshness = [passed("pull_host_metrics", 9000, "instance-2"), passed("pull_host_metrics", 30)];
+
+    expect(read({ matchKey: "host:vps", records: [record], freshness })).toMatchObject({ state: "up" });
+  });
+
+  it("reads no record of another operation, whatever its identifier says", () => {
+    const record = seen("pull_container_state", "host:vps", 30);
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toMatchObject({ state: "down", observedAt: null });
+  });
+
+  /**
+   * The dashboard reports the fact and the alert rules report the judgement. A service declared
+   * `stopped` reads as down here, and it is the screen that puts "expected" beside it: teaching
+   * this function about intent would give the two surfaces two different notions of down.
+   */
+  it("says what it sees, not what somebody expected to see", () => {
+    const freshness = [passed("pull_container_state", 60)];
+    const record = seen("pull_container_state", "container:old-worker", 9000);
+
+    expect(read({ matchKey: "container:old-worker", records: [record], freshness })).toMatchObject({ state: "down" });
   });
 });

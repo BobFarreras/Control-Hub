@@ -16,8 +16,9 @@ registre de jornada, i la plataforma de connectors.
 
 Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
 base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`,
-`build`— tambe, sobre tretze paquets. Amb el B1, el B2 i el B3 dins son **1.120 proves**, les
-d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 193 i en queden 927. L'error de
+`build`— tambe, sobre tretze paquets. Amb el B1, el B2, el B3 i la primera meitat del B4 dins son **1.155 proves**, les
+d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 197 i en passen 954 — no sumen les 1.155 perque quatre proves de
+`@control-hub/contracts` ni tan sols es registren sense base de dades. L'error de
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
 
@@ -94,7 +95,7 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2, comencada: el B1, el B2 i el B3 estan fets.** La 7.1 esta tancada: la planificada (A1-A6), els
+**L'entrega 7.2, comencada: el B1, el B2 i el B3 estan fets, i el B4 va pel primer dels seus dos commits.** La 7.1 esta tancada: la planificada (A1-A6), els
 A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
 
 **Fet del 7.2:**
@@ -103,6 +104,7 @@ A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd
 |---|---|---|
 | B1 | Connector `prometheus`: `pull_host_metrics`, `pull_container_state` i `pull_probe_state`, totes forma `state`, amb els seus contract tests i les paraules del connector en `ca`, `es` i `en` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, `packages/connectors/src/index.ts`, `packages/i18n/src/index.ts` |
 | B2 | Inventari declarat: migracio `0037` amb `infra_hosts` i `infra_services`, els casos d'us amb els seus permisos, la implementacio contra PostgreSQL i vuit rutes sota `/api/v1/infrastructure` | `packages/database/migrations/0037_infrastructure_hosts.sql`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/problem.ts`, i els seus tests |
+| B4 (1/2) | La lectura del tauler tecnic: `currentReading` al domini amb la tercera resposta `unknown`, els pressupostos llegits dels manifests, `GET /api/v1/infrastructure/inventory` amb la resposta escrita camp a camp, i l'OpenAPI del modul complet | `packages/domain/src/infrastructure.ts`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/app.ts`, `apps/api/src/openapi.test.ts`, i els seus tests |
 | B3 | Les tres regles d'infraestructura al motor pur: `service_down`, `certificate_expiring` i `backup_stale`, amb la migracio `0039` que amplia els `check` de `kind` i de target, i l'inventari i les operacions noves arribant a l'escombrada | `packages/domain/src/infrastructure.ts`, `packages/application/src/infrastructure.ts`, `packages/database/migrations/0039_infrastructure_alert_kinds.sql`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/web/src/lib/api-types.ts`, i els seus tests |
 
 **El que el B1 deixa decidit i no s'ha de tornar a decidir.** La **PromQL es constant**: cap valor
@@ -175,8 +177,28 @@ observa la cosa i una instancia que executa aquella operacio hi te fila a
 certificat o sense cap registre `backup:` la regla queda **`starved`, no verda** — que es
 exactament el que passaria si l'escript de backup de la VPS no emetes l'etiqueta `backup_job`.
 
-**El seguent pas es el B4**: el dashboard tecnic amb el detall de host i de servei, l'i18n, l'OpenAPI
-i el tancament de la Definition of Done de la fase, a `apps/web`, `packages/i18n` i `docs/`.
+**El que la primera meitat del B4 deixa decidit.** **Hi ha una sola nocio de "caigut"**: el tauler i
+la regla `service_down` conclouen amb el mateix nucli del domini, i el que el tauler hi afegeix es
+una **tercera resposta**. `unknown` es haver perdut de vista el col·lector, i `down` queda reservat
+per a una passada que si ha corregut i no ha trobat allo — dibuixar un Prometheus mut com vint
+maquines caient alhora seria mentir exactament quan mes falta fa la pantalla. **El pressupost surt
+del manifest** (`everySeconds` per tres passades) i no de cap fitxer de `apps/web`, de manera que un
+col·lector amb una altra cadencia no obliga a tocar la pantalla. **El tauler diu el que veu, no el
+que algu esperava**: un servei declarat `stopped` es llegeix `down` i es la pantalla qui hi posa
+"esperat" al costat. I **la resposta porta una llista blanca de camps per prefix**, segona tanca
+darrere la projeccio que el connector ja escriu, perque el camp que un col·lector futur publiqui no
+arribi a un navegador pel sol fet d'existir.
+
+**El B4 en toca quatre paquets mes que la seva fila, i per una rao sola: no existia cap lectura.**
+Les vuit rutes del B2 tornen l'inventari declarat i prou, aixi que sense
+`GET /api/v1/infrastructure/inventory` el "dashboard tecnic" seria una llista de noms que la dada no
+pot contradir mai. **Les vuit rutes del B2 tampoc eren a l'OpenAPI**: la llista del test es un
+whitelist i ningu comprovava que fos completa. Ara hi son, i una prova falla si algu declara una
+ruta d'infraestructura i no l'apunta.
+
+**El seguent pas es el segon commit del B4**: la pantalla amb la seccio de maquines i el detall de
+host i de servei, els formularis per declarar-los, l'i18n en `ca`/`es`/`en`, l'E2E i el tancament de
+la Definition of Done de la fase, a `apps/web`, `packages/i18n`, `tests/e2e` i `docs/`.
 
 El xoc de numeracio que l'A9b va provocar ja esta resolt: l'A9b-1 va gastar la `0036` per al permis
 d'esborrat, aixi que **l'inventari de hosts es la `0037`**, renumerat a `infrastructure.md` abans

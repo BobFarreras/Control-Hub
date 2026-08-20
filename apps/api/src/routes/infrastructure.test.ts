@@ -11,7 +11,9 @@ import {
   alertResponse,
   automationResponse,
   hostResponse,
+  inventoryResponse,
   overviewOf,
+  readingResponse,
   ruleResponse,
   serviceResponse
 } from "./infrastructure.js";
@@ -268,5 +270,112 @@ describe("what a rule of the infrastructure kinds looks like on the way out", ()
    */
   it("accepts exactly the kinds the engine knows how to evaluate", () => {
     expect([...alertRuleKinds]).toEqual(["workflow_failed", "service_down", "certificate_expiring", "backup_stale"]);
+  });
+});
+
+/**
+ * The reading the technical dashboard draws, on the side of the wire a browser is on.
+ *
+ * The connector already writes a named projection, so the allow-list here is the second fence.
+ * It exists because a future collector adding a field must not reach a client by the mere fact of
+ * having been added: the same rule the rest of this surface follows, applied to a payload whose
+ * shape a provider influences.
+ */
+describe("what a reading says on the way out", () => {
+  const reading = {
+    state: "up" as const,
+    observedAt: new Date("2026-08-13T11:59:00.000Z"),
+    data: {
+      cpuBusyRatio: 0.12,
+      memoryUsedRatio: 0.4,
+      filesystemUsedRatio: 0.6,
+      load1: 0.2,
+      uptimeSeconds: 900,
+      scrapeUrl: "https://prometheus.internal.example/api/v1/query",
+      apiToken: "prom_9f2c8ab4"
+    }
+  };
+
+  it("names the fields it lets through, and drops what nobody asked for", () => {
+    const response = readingResponse("host:node-exporter:9100", reading);
+    const serialized = JSON.stringify(response);
+
+    expect(response.state).toBe("up");
+    expect(response.observedAt).toEqual(reading.observedAt);
+    expect(Object.keys(response.data).sort()).toEqual([
+      "cpuBusyRatio",
+      "filesystemUsedRatio",
+      "load1",
+      "memoryUsedRatio",
+      "uptimeSeconds"
+    ]);
+    expect(serialized).not.toContain("prometheus.internal.example");
+    expect(serialized).not.toContain("prom_9f2c8ab4");
+  });
+
+  it("lets a container through only what a container publishes", () => {
+    const container = readingResponse("container:n8n", {
+      state: "up",
+      observedAt: null,
+      data: { memoryBytes: 512, cpuCores: 0.01, host: "node-exporter:9100", cpuBusyRatio: 0.9 }
+    });
+
+    expect(Object.keys(container.data).sort()).toEqual(["cpuCores", "memoryBytes"]);
+  });
+
+  it("carries a certificate's expiry, which is the whole point of watching a probe", () => {
+    const probe = readingResponse("probe:https://example.test/healthz", {
+      state: "down",
+      observedAt: null,
+      data: { success: false, scrapeUp: true, durationSeconds: 1.2, certificateExpiresAt: "2026-10-09T00:00:00.000Z" }
+    });
+
+    expect(probe.data).toEqual({
+      success: false,
+      scrapeUp: true,
+      durationSeconds: 1.2,
+      certificateExpiresAt: "2026-10-09T00:00:00.000Z"
+    });
+  });
+
+  /** A prefix nobody listed shows its state and its age and nothing else, which is the safe way. */
+  it("gives a kind nobody has decided about nothing but its state", () => {
+    expect(readingResponse("printer:hp", { state: "unknown", observedAt: null, data: { serial: "X" } })).toEqual({
+      state: "unknown",
+      observedAt: null,
+      data: {}
+    });
+  });
+
+  it("omits a field the collector did not write rather than sending it as null", () => {
+    expect(readingResponse("host:vps", { state: "down", observedAt: null, data: { load1: 0.2 } }).data).toEqual({
+      load1: 0.2
+    });
+  });
+});
+
+describe("the inventory a dashboard receives", () => {
+  const reading = { state: "up" as const, observedAt: new Date("2026-08-13T11:59:00.000Z"), data: {} };
+
+  it("hangs the services under their host and looks the host up by its own identifier", () => {
+    const response = inventoryResponse({
+      hosts: [
+        {
+          ...host,
+          reading: { ...reading, data: { load1: 0.2, apiToken: "prom_9f2c8ab4" } },
+          services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }]
+        }
+      ],
+      observedFrom: new Date("2026-08-13T11:58:00.000Z")
+    });
+
+    expect(response.hosts[0]).toMatchObject({ id: host.id, reading: { state: "up", data: { load1: 0.2 } } });
+    expect(response.hosts[0]!.services).toMatchObject([{ id: service.id, reading: { data: { memoryBytes: 512 } } }]);
+    expect(JSON.stringify(response)).not.toContain("prom_9f2c8ab4");
+    expect(response.observedFrom).toEqual(new Date("2026-08-13T11:58:00.000Z"));
+  });
+
+  it("says it has no age rather than inventing one", () => {
+    expect(inventoryResponse({ hosts: [], observedFrom: null })).toEqual({ hosts: [], observedFrom: null });
   });
 });

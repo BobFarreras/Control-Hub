@@ -300,17 +300,44 @@ function observation(
   now: Date
 ): { alive: boolean; lastSeenAt: Date | null } {
   const operation = operationForPrefix[prefixOf(service.matchKey)];
-  const record = records.find(
-    (item) =>
-      item.instanceId === rule.instanceId && item.operation === operation && item.externalId === service.matchKey
-  );
+  const record = latestRecord(records, operation, service.matchKey, rule.instanceId);
   if (!record) return { alive: false, lastSeenAt: null };
 
-  const refreshed = now.getTime() - record.lastSeenAt.getTime() <= rule.freshnessSeconds * 1000;
-  const contradicted = (downFlagsForPrefix[prefixOf(service.matchKey)] ?? []).some(
-    (field) => record.data[field] === false
-  );
-  return { alive: refreshed && !contradicted, lastSeenAt: record.lastSeenAt };
+  const alive = refreshedWithin(record, rule.freshnessSeconds, now) && !contradicted(service.matchKey, record);
+  return { alive, lastSeenAt: record.lastSeenAt };
+}
+
+/**
+ * The most recently seen reading carrying this identifier, or none.
+ *
+ * `instanceId` narrows it when the caller is a rule, which reads one instance and no other. The
+ * dashboard passes null, because a tenant may run two collectors over the same machine and the
+ * honest answer there is the newer of the two rather than whichever row came back first.
+ */
+function latestRecord(
+  records: readonly ObservedRecord[],
+  operation: string | undefined,
+  externalId: string,
+  instanceId: string | null
+): ObservedRecord | undefined {
+  if (operation === undefined) return undefined;
+
+  let latest: ObservedRecord | undefined;
+  for (const record of records) {
+    if (record.operation !== operation || record.externalId !== externalId) continue;
+    if (instanceId !== null && record.instanceId !== instanceId) continue;
+    if (!latest || record.lastSeenAt > latest.lastSeenAt) latest = record;
+  }
+  return latest;
+}
+
+function refreshedWithin(record: ObservedRecord, budgetSeconds: number, now: Date): boolean {
+  return now.getTime() - record.lastSeenAt.getTime() <= budgetSeconds * 1000;
+}
+
+/** Whether the reading itself carries a field saying the thing did not answer. */
+function contradicted(matchKey: string, record: ObservedRecord): boolean {
+  return (downFlagsForPrefix[prefixOf(matchKey)] ?? []).some((field) => record.data[field] === false);
 }
 
 function serviceDownVerdicts(
@@ -549,4 +576,71 @@ export function incidentFor(rule: AlertRule, verdict: AlertVerdict): IncidentToO
   if (!rule.opensIncident || verdict.status !== "firing") return null;
   const title = `${rule.name}: ${verdict.dedupKey}`;
   return { severity: rule.severity, title: title.slice(0, maxIncidentTitle) };
+}
+
+/** What a declared thing looks like from the outside right now. */
+export type ObservedState = "up" | "down" | "unknown";
+
+export type CurrentReading = {
+  state: ObservedState;
+  /** When the reading behind this state was last refreshed, or null when there is none. */
+  observedAt: Date | null;
+  /** The projection the connector wrote, handed over whole for the screen to name fields of. */
+  data: Readonly<Record<string, JsonValue>>;
+};
+
+/** The identifier a host's reading carries, so the prefix convention lives in exactly one file. */
+export function hostMatchKey(hostname: string): string {
+  return `host:${hostname}`;
+}
+
+/**
+ * What one declared thing looks like right now, for a screen rather than for an alert.
+ *
+ * The same core `service_down` reasons with, asked a different question. Two differences follow
+ * from that, and both are deliberate.
+ *
+ * **There is a third answer.** A rule that cannot see says `starved` about itself; a dashboard has
+ * to say `unknown` about the thing. Drawing a collector we have lost sight of as twenty machines
+ * going down at once would be a lie told at the exact moment somebody needs the screen to be
+ * honest, and `down` is reserved for a pass that did run and did not find this.
+ *
+ * **It reads no intent.** A service declared `stopped` reads as down here, and it is the screen
+ * that puts "expected" beside it. Teaching this function about expectations would give the
+ * dashboard and the rules two notions of down, which is the drift the whole file exists to avoid.
+ *
+ * The budget is per operation rather than per rule, because there is no rule involved: it comes
+ * from the cadence the connector declares, so a screen never invents a threshold of its own.
+ */
+export function currentReading(input: {
+  matchKey: string;
+  records: readonly ObservedRecord[];
+  freshness: readonly OperationFreshness[];
+  /** How old a reading of each operation may be, in seconds. An operation absent here is unknown. */
+  budgets: Readonly<Record<string, number>>;
+  now: Date;
+}): CurrentReading {
+  const blind: CurrentReading = { state: "unknown", observedAt: null, data: {} };
+
+  const operation = operationForPrefix[prefixOf(input.matchKey)];
+  if (operation === undefined) return blind;
+
+  const budget = input.budgets[operation];
+  if (budget === undefined) return blind;
+
+  // The freshest pass of any instance running the operation. An operation that has never returned
+  // has no last success, and then nobody has looked yet -- which is not the same as looked and
+  // found nothing.
+  let lastPass: Date | null = null;
+  for (const entry of input.freshness) {
+    if (entry.operation !== operation || !entry.lastSuccessAt) continue;
+    if (!lastPass || entry.lastSuccessAt > lastPass) lastPass = entry.lastSuccessAt;
+  }
+  if (!lastPass || input.now.getTime() - lastPass.getTime() > budget * 1000) return blind;
+
+  const record = latestRecord(input.records, operation, input.matchKey, null);
+  if (!record) return { state: "down", observedAt: null, data: {} };
+
+  const alive = refreshedWithin(record, budget, input.now) && !contradicted(input.matchKey, record);
+  return { state: alive ? "up" : "down", observedAt: record.lastSeenAt, data: record.data };
 }

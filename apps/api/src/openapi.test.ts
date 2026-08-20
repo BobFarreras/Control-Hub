@@ -69,6 +69,15 @@ const documentedInfrastructure = [
   ["get", "/api/v1/infrastructure/overview"],
   ["get", "/api/v1/infrastructure/automations"],
   ["put", "/api/v1/infrastructure/automations/{instanceId}/{externalId}/link"],
+  ["get", "/api/v1/infrastructure/inventory"],
+  ["get", "/api/v1/infrastructure/hosts"],
+  ["post", "/api/v1/infrastructure/hosts"],
+  ["get", "/api/v1/infrastructure/hosts/{hostId}"],
+  ["patch", "/api/v1/infrastructure/hosts/{hostId}"],
+  ["get", "/api/v1/infrastructure/services"],
+  ["post", "/api/v1/infrastructure/services"],
+  ["patch", "/api/v1/infrastructure/services/{serviceId}"],
+  ["delete", "/api/v1/infrastructure/services/{serviceId}"],
   ["get", "/api/v1/infrastructure/alert-rules"],
   ["post", "/api/v1/infrastructure/alert-rules"],
   ["patch", "/api/v1/infrastructure/alert-rules/{ruleId}"],
@@ -174,6 +183,26 @@ describe("openapi document", () => {
       Object.values(document.paths[path]?.[method]?.responses ?? {}).some((response) => response.content)
     );
     expect(serialised).toEqual([]);
+  });
+
+  /**
+   * The list above is a whitelist, and a whitelist that falls behind checks nothing: the eight
+   * inventory routes of increment B2 shipped undocumented precisely because nothing noticed they
+   * were missing from it. This makes forgetting to add a route the failure, rather than a route
+   * quietly escaping every property the tests above assert.
+   */
+  it("lists every infrastructure route there is, so none escapes the checks above", async () => {
+    const document = await documentOf(withInfrastructure);
+    const listed = new Set(documentedInfrastructure.map(([method, path]) => `${method} ${path}`));
+
+    const missing = Object.entries(document.paths)
+      .filter(([path]) => path.startsWith("/api/v1/infrastructure"))
+      .flatMap(([path, operations]) =>
+        Object.keys(operations ?? {})
+          .map((method) => `${method} ${path}`)
+          .filter((entry) => !listed.has(entry))
+      );
+    expect(missing).toEqual([]);
   });
 
   it("omits the infrastructure surface while its flag is off", async () => {

@@ -11,6 +11,7 @@ import {
   type EvaluationState,
   type HostRecord,
   type InfrastructureRepository,
+  type InventoryState,
   type LinkAutomationInput,
   type ServiceRecord,
   type UpdateAlertRuleInput,
@@ -18,12 +19,14 @@ import {
   type UpdateServiceInput
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
+import { hostMatchKey } from "@control-hub/domain";
 import type {
   AlertSeverity,
   AlertVerdict,
   DeclaredService,
   LiveAlert,
   ObservedRecord,
+  OperationFreshness,
   TenantContext
 } from "@control-hub/domain";
 
@@ -340,6 +343,44 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
       -- the incident update as the outcome would make every one of those a not-found.
       select id from closed`
     );
+  }
+
+  /**
+   * Everything the technical dashboard draws, read in one transaction.
+   *
+   * The inventory is read first because it is what says which readings matter: the dashboard asks
+   * for the identifiers it declared and for nothing else, so a tenant watching four containers
+   * does not pay for every container its collectors can see. No instance filter, unlike the
+   * evaluation read -- a rule reads one instance, but a machine is a machine whichever collector
+   * happened to see it.
+   */
+  async readInventoryState(context: TenantContext): Promise<InventoryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const hosts = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const services = await tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const wanted = [
+        ...new Set([...hosts.map((host) => hostMatchKey(host.hostname)), ...services.map((s) => s.matchKey)])
+      ];
+
+      const records =
+        wanted.length === 0
+          ? []
+          : await tx<ObservedRecord[]>`
+              select ${tx.unsafe(recordColumns)} from connector_records
+              where tenant_id = ${context.tenantId} and external_id in ${tx(wanted)}`;
+
+      const freshness = await tx<OperationFreshness[]>`
+        select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
+        from connector_operation_state where tenant_id = ${context.tenantId}`;
+
+      return { hosts, services, records, freshness };
+    });
   }
 
   async readEvaluationState(context: TenantContext): Promise<EvaluationState> {

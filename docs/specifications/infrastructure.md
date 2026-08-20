@@ -536,6 +536,44 @@ res que un `target_id` pugui anomenar. Ho imposa un `check` de la `0039` i no no
 perque un `patch` no porta mai el `kind` i l'unic que sap que es una regla es la fila. Vigilar un
 sol servei seria afegir un valor al `check`, no refer res.
 
+### El que el tauler llegeix (B4)
+
+**Una sola nocio de "caigut".** El tauler i la regla `service_down` conclouen amb **el mateix nucli
+del domini**: la lectura mes recent d'aquell identificador, refrescada dins el pressupost i sense
+cap booleà que la contradigui. Dues definicions acabarien divergint, i llavors una pantalla verda i
+una alerta viva parlarien de la mateixa maquina alhora.
+
+**El que el tauler hi afegeix es una tercera resposta.** Una regla que no hi veu diu `starved`
+d'ella mateixa; una pantalla ha de dir **`unknown` de la cosa**. Dibuixar un col·lector que hem
+perdut de vista com vint maquines caient alhora seria mentir exactament quan mes falta fa que la
+pantalla sigui honesta. `down` queda per a una passada que **si** ha corregut i no ha trobat allo:
+o la lectura ha deixat d'avancar, o el `success` de la sonda diu que no.
+
+**El pressupost surt del manifest, no de la pantalla.** `everySeconds` de l'operacio per **tres
+passades** —les mateixes tres que la pantalla ja aplica a l'edat d'una automatitzacio. Un
+`pull_host_metrics` cada 2 minuts i un `pull_container_state` cada 5 no es mesuren amb la mateixa
+vara, i cap fitxer de `apps/web` conte cap llindar. Una operacio que ningu programa no te cadencia,
+i per tant no te pressupost: tot el que observaria queda `unknown`.
+
+**El tauler diu el que veu, no el que algu esperava veure.** Un servei declarat `stopped` es llegeix
+`down`, i es la pantalla qui hi posa "esperat" al costat. Ensenyar la intencio a la funcio que
+observa seria, altre cop, tornar a tenir dues nocions de caigut.
+
+**Un host es busca per l'identificador que porta la seva lectura**, `host:<hostname>`, que es tot el
+motiu pel qual `hostname` es obligatori en declarar-lo. La construccio d'aquest identificador viu al
+domini, en una funcio, i no repetida a cada capa.
+
+**Un tenant pot tenir dos col·lectors mirant la mateixa maquina.** Guanya la lectura mes recent, de
+manera que quina respon es una propietat de la dada i no de l'ordre en que les files han tornat. El
+mateix per a la frescor de la passada: val la mes recent de les instancies que executen l'operacio.
+
+**La resposta porta una llista blanca de camps per prefix.** El connector ja escriu una projeccio
+nomenada camp a camp, aixi que aquesta es la segona tanca i no la primera — pero es la que hi ha al
+costat del cable on hi ha un navegador. Un camp que un col·lector futur comenci a publicar no
+arriba a ningu pel sol fet d'existir, que es la mateixa regla que segueix la resta de la superficie.
+Un prefix que ningu ha llistat ensenya el seu estat i la seva edat i res mes, que es el costat segur
+per equivocar-se.
+
 ## Permisos i tenancy
 
 Cap permis nou i cap backfill: `infrastructure:read` i `infrastructure:operate` existeixen des de
@@ -562,6 +600,7 @@ REST sota `/api/v1`, problem details RFC 9457, com la superficie de connectors.
 | `PUT /api/v1/infrastructure/automations/:instanceId/:externalId/link` | `infrastructure:operate` | 7.1 |
 | `GET`, `POST /api/v1/infrastructure/alert-rules`, `PATCH`, `DELETE /:id` | read / operate | 7.1 |
 | `GET /api/v1/infrastructure/alerts`, `POST /:id/acknowledge`, `/resolve` | read / operate | 7.1 |
+| `GET /api/v1/infrastructure/inventory` | `infrastructure:read` | 7.2 |
 | `GET`, `POST /api/v1/infrastructure/hosts`, `GET`, `PATCH /:id` | read / operate | 7.2 |
 | `GET`, `POST /api/v1/infrastructure/services`, `PATCH`, `DELETE /:id` | read / operate | 7.2 |
 
@@ -570,6 +609,11 @@ automatitzacions hi ha, quantes corren, quantes tenen client, i les alertes vive
 quantes ha vist algu. Porta `observedFrom`, que es **la lectura mes antiga** de les que hi ha
 al darrere i no la mes nova: un resum nomes es tan fresc com la cosa mes rancia que hi entra.
 Sense res a resumir es `null`, mai l'hora d'ara.
+
+`inventory` es l'inventari declarat **unit a les seves lectures**, que es l'unica cosa d'aquesta
+llista que no es un recompte ni una taula: les vuit rutes de hosts i serveis tornen el que algu va
+declarar i res mes, i sense aquesta el tauler tecnic seria una llista de noms que la dada no pot
+contradir mai. Porta `observedFrom` amb el mateix criteri que `overview`: la lectura mes antiga.
 
 Cap resposta porta una URL de proveidor, ni un token, ni el cos cru d'un event. Les respostes
 d'automatitzacions porten `externalId` i el que la pantalla necessita per **construir** l'enllac,
@@ -690,6 +734,16 @@ servei, i unes regles correctes als tests i mortes en produccio son el pitjor re
 surt d'una constant del domini que la ruta escampa, de manera que no hi ha dues llistes per
 divergir.*
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
+| | *Partit en dos commits: primer la lectura —el que la pantalla podra dibuixar— i despres la pantalla. El primer es on son les proves que importen.* | | |
+
+*El B4 en toca quatre mes que la seva fila, i per una rao sola: **no existia cap lectura**. Les vuit
+rutes del B2 tornen l'inventari declarat i prou, aixi que sense una ruta nova el "dashboard tecnic"
+seria una llista de noms. Entra `GET /api/v1/infrastructure/inventory`, i amb ella `packages/domain`
+—el nucli compartit amb `service_down`—, `packages/application` —els pressupostos i el cas d'us—,
+`packages/persistence` i `apps/api`. Al mateix commit s'hi afegeixen a l'OpenAPI **les vuit rutes
+del B2**, que no hi eren: la llista del test es un whitelist i ningu comprovava que fos completa, de
+manera que van passar sense que cap propietat les mires. Ara una prova falla si algu declara una
+ruta d'infraestructura i no l'apunta.*
 
 ## Com entraria una capacitat d'accio (disseny, no s'implementa a la Fase 7)
 

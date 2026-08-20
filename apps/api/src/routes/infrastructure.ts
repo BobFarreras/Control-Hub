@@ -6,12 +6,21 @@ import type {
   DeclareHostInput,
   DeclareServiceInput,
   HostRecord,
+  Inventory,
+  ObservedHost,
+  ObservedService,
   ServiceRecord,
   UpdateAlertRuleInput,
   UpdateHostInput,
   UpdateServiceInput
 } from "@control-hub/application";
-import { alertRuleKinds, type AlertSeverity, type TenantContext } from "@control-hub/domain";
+import {
+  alertRuleKinds,
+  type AlertSeverity,
+  type CurrentReading,
+  type JsonValue,
+  type TenantContext
+} from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { InfrastructureContext } from "./context.js";
@@ -148,6 +157,50 @@ export function serviceResponse(service: ServiceRecord) {
     createdAt: service.createdAt,
     updatedAt: service.updatedAt
   };
+}
+
+/**
+ * What a reading may say to a client, named per kind of thing rather than handed over whole.
+ *
+ * The connector already writes a projection field by field, so this is the second fence and not
+ * the first -- but it is the one on the side of the wire a browser is on. A field a future
+ * collector starts publishing reaches nobody by the mere fact of existing, which is the same rule
+ * every other response on this surface follows. A prefix nobody lists carries nothing, which is
+ * the safe way round: a new kind of observed thing shows its state and its age, and somebody has
+ * to decide on purpose what else it may show.
+ */
+const readableFields: Readonly<Record<string, readonly string[]>> = {
+  host: ["cpuBusyRatio", "memoryUsedRatio", "filesystemUsedRatio", "load1", "uptimeSeconds"],
+  container: ["lastSeenAt", "startedAt", "memoryBytes", "cpuCores"],
+  probe: ["success", "scrapeUp", "durationSeconds", "certificateExpiresAt"],
+  backup: ["lastSuccessAt"]
+};
+
+export function readingResponse(matchKey: string, reading: CurrentReading) {
+  const colon = matchKey.indexOf(":");
+  const data: Record<string, JsonValue> = {};
+  for (const field of readableFields[colon === -1 ? "" : matchKey.slice(0, colon)] ?? []) {
+    const value = reading.data[field];
+    if (value !== undefined) data[field] = value;
+  }
+  return { state: reading.state, observedAt: reading.observedAt, data };
+}
+
+export function observedServiceResponse(service: ObservedService) {
+  return { ...serviceResponse(service), reading: readingResponse(service.matchKey, service.reading) };
+}
+
+/** A host's reading is looked up by the identifier its metrics carry, which is `host:<hostname>`. */
+export function observedHostResponse(host: ObservedHost) {
+  return {
+    ...hostResponse(host),
+    reading: readingResponse(`host:${host.hostname}`, host.reading),
+    services: host.services.map(observedServiceResponse)
+  };
+}
+
+export function inventoryResponse(inventory: Inventory) {
+  return { hosts: inventory.hosts.map(observedHostResponse), observedFrom: inventory.observedFrom };
 }
 
 const hostParams = {
@@ -310,6 +363,23 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
         metadata: { instanceId, customerId: request.body.customerId ?? "none" }
       });
       return { linked: true };
+    }
+  );
+
+  app.get(
+    "/api/v1/infrastructure/inventory",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every machine and service, with what is currently known of it",
+        description:
+          "The declared inventory joined to its readings, judged exactly as the `service_down` rule judges one, so a dashboard and an alert cannot disagree about what down means. `state` has three values and the third is the point: `unknown` is a collector we have lost sight of, and it is never drawn as an outage. `observedFrom` is the oldest reading behind the answer, because a dashboard is only as fresh as the stalest thing on it."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { inventory: inventoryResponse(await infrastructure.readInventory(context, new Date())) };
     }
   );
 

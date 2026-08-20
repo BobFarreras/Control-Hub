@@ -1,6 +1,8 @@
 import {
+  currentReading,
   evaluateAlertRules,
   hasPermission,
+  hostMatchKey,
   incidentFor,
   type AlertRule,
   type AlertSeverity,
@@ -10,6 +12,7 @@ import {
   type AlertRuleTargetType,
   type JsonValue,
   type LiveAlert,
+  type CurrentReading,
   type ObservedRecord,
   type OperationFreshness,
   type TenantContext
@@ -159,6 +162,67 @@ export type EvaluationState = {
 };
 
 /**
+ * How stale a reading of each operation may be before the dashboard stops calling it current.
+ *
+ * Keyed by operation because a screen must not invent a threshold of its own: the number comes
+ * from the cadence the connector itself declares, so a pass that runs every two minutes and one
+ * that runs every five are not held to the same budget. An operation nobody schedules has no
+ * cadence and therefore no entry, and everything it would observe reads as unknown.
+ */
+export type OperationBudgets = Readonly<Record<string, number>>;
+
+/**
+ * Passes that could have happened and did not before a reading stops being current.
+ *
+ * The same three the screen already applies to an automation's age. One missed pass is a slow
+ * provider, and holding a reading to a single cadence would paint the dashboard red every time a
+ * scrape ran late.
+ */
+export const observationPasses = 3;
+
+/**
+ * The budget of every operation the installed connectors schedule.
+ *
+ * The longest cadence wins when two connectors declare an operation of the same name: holding a
+ * slow collector to a fast one's budget would report its readings as gone while they are merely
+ * younger than its next pass.
+ */
+export function observationBudgets(
+  connectors: readonly { capabilities: { operations: Readonly<Record<string, { everySeconds?: number }>> } }[]
+): OperationBudgets {
+  const budgets: Record<string, number> = {};
+  for (const connector of connectors) {
+    for (const [operation, declaration] of Object.entries(connector.capabilities.operations)) {
+      const every = declaration.everySeconds;
+      if (every === undefined) continue;
+      budgets[operation] = Math.max(budgets[operation] ?? 0, every * observationPasses);
+    }
+  }
+  return budgets;
+}
+
+/** Everything the technical dashboard reads, in one pass so the whole screen agrees on one view. */
+export type InventoryState = {
+  hosts: readonly HostRecord[];
+  services: readonly ServiceRecord[];
+  records: readonly ObservedRecord[];
+  freshness: readonly OperationFreshness[];
+};
+
+export type ObservedService = ServiceRecord & { reading: CurrentReading };
+
+export type ObservedHost = HostRecord & { reading: CurrentReading; services: readonly ObservedService[] };
+
+/**
+ * The declared inventory with what is currently known about each line of it.
+ *
+ * `observedFrom` is the oldest reading behind it and not the newest, exactly as in the overview: a
+ * dashboard is only as fresh as the stalest thing on it, and the freshest would hide the machine
+ * that stopped answering yesterday.
+ */
+export type Inventory = { hosts: readonly ObservedHost[]; observedFrom: Date | null };
+
+/**
  * What writing a verdict produced.
  *
  * `created` is the whole reason this is not a plain count: an incident is opened when an alert
@@ -190,6 +254,7 @@ export type InfrastructureRepository = {
   acknowledgeAlert(context: TenantContext, alertId: string, membershipId: string): Promise<AlertEventRecord>;
   resolveAlert(context: TenantContext, alertId: string, at: Date): Promise<AlertEventRecord>;
 
+  readInventoryState(context: TenantContext): Promise<InventoryState>;
   readEvaluationState(context: TenantContext): Promise<EvaluationState>;
   applyVerdicts(
     context: TenantContext,
@@ -301,7 +366,15 @@ function checkNotes(notes: string | null) {
 }
 
 export class InfrastructureService {
-  constructor(private readonly repository: InfrastructureRepository) {}
+  /**
+   * The budgets come from outside because they are a property of the deployment's connectors, not
+   * of this service: an installation that ships a collector with a different cadence must not need
+   * a change here for its dashboard to read correctly.
+   */
+  constructor(
+    private readonly repository: InfrastructureRepository,
+    private readonly budgets: OperationBudgets
+  ) {}
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {
     requireRead(context);
@@ -387,6 +460,43 @@ export class InfrastructureService {
   async deleteService(context: TenantContext, serviceId: string): Promise<void> {
     requireOperate(context);
     await this.repository.deleteService(context, serviceId);
+  }
+
+  /**
+   * The declared inventory with what is currently known about each line of it.
+   *
+   * Judged by the same reading the `service_down` rule uses, so the dashboard and the alerts
+   * cannot disagree about what "down" means. What the dashboard adds is the third answer: a
+   * collector we have lost sight of leaves every line `unknown`, never down.
+   *
+   * A host is looked up by exactly the identifier a reading would carry, which is what makes
+   * `hostname` required at declaration: a host nothing can be matched to is a name the data is
+   * never able to contradict.
+   */
+  async readInventory(context: TenantContext, now: Date): Promise<Inventory> {
+    requireRead(context);
+    const state = await this.repository.readInventoryState(context);
+    const read = (matchKey: string) =>
+      currentReading({ matchKey, records: state.records, freshness: state.freshness, budgets: this.budgets, now });
+
+    const observed: Date[] = [];
+    const remember = (reading: CurrentReading) => {
+      if (reading.observedAt) observed.push(reading.observedAt);
+      return reading;
+    };
+
+    const hosts = state.hosts.map<ObservedHost>((host) => ({
+      ...host,
+      reading: remember(read(hostMatchKey(host.hostname))),
+      services: state.services
+        .filter((service) => service.hostId === host.id)
+        .map<ObservedService>((service) => ({ ...service, reading: remember(read(service.matchKey)) }))
+    }));
+
+    return {
+      hosts,
+      observedFrom: observed.length > 0 ? new Date(Math.min(...observed.map((at) => at.getTime()))) : null
+    };
   }
 
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {

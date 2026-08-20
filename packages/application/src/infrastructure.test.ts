@@ -1,9 +1,11 @@
-import type { AlertVerdict, TenantContext } from "@control-hub/domain";
+import { connectorRegistry } from "@control-hub/connectors";
+import type { AlertVerdict, JsonValue, TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AlertEngine,
   InfrastructureService,
   InfrastructureServiceError,
+  observationBudgets,
   type AlertEventRecord,
   type AlertRuleRecord,
   type AppliedVerdict,
@@ -14,6 +16,7 @@ import {
   type EvaluationState,
   type HostRecord,
   type InfrastructureRepository,
+  type InventoryState,
   type LinkAutomationInput,
   type ServiceRecord,
   type UpdateAlertRuleInput,
@@ -135,6 +138,8 @@ class FakeRepository implements InfrastructureRepository {
     Promise.resolve({ ...alertEvent(alertId), acknowledgedAt: now, acknowledgedByMembershipId: membershipId });
   resolveAlert = (_context: TenantContext, alertId: string, at: Date) =>
     Promise.resolve({ ...alertEvent(alertId), status: "resolved" as const, resolvedAt: at });
+  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [] };
+  readInventoryState = () => Promise.resolve(this.inventoryState);
   readEvaluationState = () => Promise.resolve(this.state);
   /** Retention has no tenant and no session, so nothing in this suite exercises it. */
   purgeAlertEvents = () => Promise.resolve(0);
@@ -207,11 +212,14 @@ const alertEvent = (id: string): AlertEventRecord => ({
   incidentId: null
 });
 
+/** Three passes of the cadences the Prometheus connector declares: 2 min, 5 min and 2 min. */
+const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_state: 360 };
+
 let repository: FakeRepository;
 let service: InfrastructureService;
 beforeEach(() => {
   repository = new FakeRepository();
-  service = new InfrastructureService(repository);
+  service = new InfrastructureService(repository, budgets);
 });
 
 const refused = (code: string): unknown => expect.objectContaining({ code });
@@ -618,5 +626,117 @@ describe("an infrastructure rule", () => {
     const result = await new AlertEngine(repository).sweep(owner, now);
 
     expect(result).toEqual({ firing: 0, resolved: 0, starved: 1, incidentsOpened: 0 });
+  });
+});
+
+describe("the budgets a dashboard is allowed to use", () => {
+  it("gives every scheduled operation three of its own passes", () => {
+    const connectors = [{ capabilities: { operations: { pull_host_metrics: { everySeconds: 120 } } } }];
+
+    expect(observationBudgets(connectors)).toEqual({ pull_host_metrics: 360 });
+  });
+
+  /** An operation nobody schedules never runs, so nothing it would observe can be called current. */
+  it("gives no budget to an operation with no cadence", () => {
+    const connectors = [{ capabilities: { operations: { check_health: {} } } }];
+
+    expect(observationBudgets(connectors)).toEqual({});
+  });
+
+  it("keeps the slowest cadence when two connectors name one operation", () => {
+    const connectors = [
+      { capabilities: { operations: { pull_probe_state: { everySeconds: 120 } } } },
+      { capabilities: { operations: { pull_probe_state: { everySeconds: 600 } } } }
+    ];
+
+    expect(observationBudgets(connectors)).toEqual({ pull_probe_state: 1800 });
+  });
+
+  it("agrees with what the Prometheus connector actually declares", () => {
+    expect(observationBudgets([connectorRegistry.require("prometheus")])).toMatchObject(budgets);
+  });
+});
+
+describe("the inventory a dashboard reads", () => {
+  const host = hostRecord({ id: "host-1", hostname: "node-exporter:9100" });
+  const container = serviceRecord({ id: "service-1", hostId: "host-1", matchKey: "container:n8n" });
+
+  const seen = (operation: string, externalId: string, secondsAgo: number, data: Record<string, JsonValue> = {}) => ({
+    instanceId,
+    operation,
+    externalId,
+    data,
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const passed = (operation: string, secondsAgo: number) => ({
+    instanceId,
+    operation,
+    lastSuccessAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  beforeEach(() => {
+    repository.inventoryState = {
+      hosts: [host],
+      services: [container],
+      records: [
+        seen("pull_host_metrics", "host:node-exporter:9100", 60, { cpuBusyRatio: 0.2 }),
+        seen("pull_container_state", "container:n8n", 120, { memoryBytes: 512 })
+      ],
+      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)]
+    };
+  });
+
+  it("hangs each service under the host it was declared on, with what is known of both", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts).toHaveLength(1);
+    expect(inventory.hosts[0]).toMatchObject({
+      id: "host-1",
+      hostname: "node-exporter:9100",
+      reading: { state: "up", data: { cpuBusyRatio: 0.2 } }
+    });
+    expect(inventory.hosts[0]!.services).toMatchObject([
+      { id: "service-1", reading: { state: "up", data: { memoryBytes: 512 } } }
+    ]);
+  });
+
+  /**
+   * A host is matched by exactly the identifier a reading carries, which is the whole reason
+   * `hostname` is required at declaration. A machine nobody can match reads as down rather than
+   * as a row with no opinion.
+   */
+  it("looks a host up by the identifier its reading would carry", async () => {
+    repository.inventoryState = { ...repository.inventoryState, hosts: [hostRecord({ hostname: "elsewhere:9100" })] };
+
+    expect((await service.readInventory(owner, now)).hosts[0]!.reading).toMatchObject({ state: "down" });
+  });
+
+  it("reports the oldest reading behind it, not the newest", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.observedFrom).toEqual(new Date(now.getTime() - 120_000));
+  });
+
+  it("has no age at all when nothing has been read", async () => {
+    repository.inventoryState = { ...repository.inventoryState, records: [], freshness: [] };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.observedFrom).toBeNull();
+    expect(inventory.hosts[0]!.reading).toMatchObject({ state: "unknown" });
+  });
+
+  it("keeps a host with nothing declared on it, because an empty machine is still watched", async () => {
+    repository.inventoryState = { ...repository.inventoryState, services: [] };
+
+    expect((await service.readInventory(owner, now)).hosts[0]!.services).toEqual([]);
+  });
+
+  it("lets Administrator read it and refuses somebody with no infrastructure permission", async () => {
+    const asAdministrator = await service.readInventory(administrator, now);
+    expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);
+    await expect(service.readInventory(stranger, now)).rejects.toEqual(refused("FORBIDDEN"));
   });
 });
