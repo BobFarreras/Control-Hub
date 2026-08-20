@@ -81,6 +81,14 @@ const titles: Record<string, string> = {
   TARGET_REQUIRED: "A rule watching one automation needs to say which",
   TARGET_NOT_ALLOWED: "A rule watching the whole instance names no automation",
   NOTES_TOO_LONG: "Note too long",
+  HOST_NOT_FOUND: "No such host",
+  SERVICE_NOT_FOUND: "No such service",
+  DUPLICATE_HOST_NAME: "A host already uses that name",
+  DUPLICATE_HOSTNAME: "A host already answers to that label",
+  DUPLICATE_SERVICE_NAME: "That host already has a service with that name",
+  DUPLICATE_MATCH_KEY: "Something already watches that",
+  INVALID_HOSTNAME: "Invalid host label",
+  INVALID_MATCH_KEY: "Invalid match key",
   REFERENCE_NOT_FOUND: "Refers to something that does not exist",
   INTERNAL_ERROR: "Unexpected error"
 };

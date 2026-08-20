@@ -6,13 +6,29 @@ import {
   type AppliedVerdict,
   type AutomationRecord,
   type CreateAlertRuleInput,
+  type DeclareHostInput,
+  type DeclareServiceInput,
   type EvaluationState,
+  type HostRecord,
   type InfrastructureRepository,
+  type InventoryState,
   type LinkAutomationInput,
-  type UpdateAlertRuleInput
+  type ServiceRecord,
+  type UpdateAlertRuleInput,
+  type UpdateHostInput,
+  type UpdateServiceInput
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import type { AlertSeverity, AlertVerdict, LiveAlert, ObservedRecord, TenantContext } from "@control-hub/domain";
+import { hostMatchKey } from "@control-hub/domain";
+import type {
+  AlertSeverity,
+  AlertVerdict,
+  DeclaredService,
+  LiveAlert,
+  ObservedRecord,
+  OperationFreshness,
+  TenantContext
+} from "@control-hub/domain";
 
 /**
  * The infrastructure module's reads and writes, all of them inside a tenant scope.
@@ -42,9 +58,21 @@ const alertColumns = `e.id, e.rule_id as "ruleId", r.name as "ruleName", e.dedup
   e.resolved_at as "resolvedAt", e.acknowledged_at as "acknowledgedAt",
   e.acknowledged_by_membership_id as "acknowledgedByMembershipId", e.incident_id as "incidentId"`;
 
+const hostColumns = `id, name, hostname, environment, notes, created_at as "createdAt",
+  updated_at as "updatedAt"`;
+
+const serviceColumns = `id, host_id as "hostId", name, kind, match_key as "matchKey",
+  expected_state as "expectedState", customer_id as "customerId", created_at as "createdAt",
+  updated_at as "updatedAt"`;
+
 /** The operation whose records describe an automation, and the one whose age is a rule's freshness. */
 const workflowOperation = "pull_workflows";
 const executionOperation = "pull_executions";
+/** Where a certificate expiry and a backup heartbeat both come from, in one `state` operation. */
+const probeOperation = "pull_probe_state";
+
+const recordColumns = `instance_id as "instanceId", operation, external_id as "externalId", data,
+  first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"`;
 
 export class PostgresInfrastructureRepository implements InfrastructureRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -88,6 +116,109 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         on conflict (tenant_id, instance_id, external_id) do update
           set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
     }).catch(mapConstraint);
+  }
+
+  async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+    });
+  }
+
+  async findHost(context: TenantContext, hostId: string): Promise<HostRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      return host ?? null;
+    });
+  }
+
+  async declareHost(context: TenantContext, input: DeclareHostInput): Promise<HostRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        insert into infra_hosts (id, tenant_id, name, hostname, environment, notes)
+        values (${randomUUID()}, ${context.tenantId}, ${input.name}, ${input.hostname},
+          ${input.environment}, ${input.notes})
+        returning ${tx.unsafe(hostColumns)}`;
+      return host!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  /**
+   * The same `coalesce` shape as a rule patch, with one exception that matters.
+   *
+   * `notes` and `customerId` may be set to null on purpose -- clearing a note, unlinking a client
+   * -- so for those the absence of the field, not its nullness, is what leaves the column alone.
+   * Coalescing them would make the two indistinguishable and the clearing impossible.
+   */
+  async updateHost(context: TenantContext, hostId: string, patch: UpdateHostInput): Promise<HostRecord> {
+    const host = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<HostRecord[]>`
+        update infra_hosts set
+          name = coalesce(${patch.name ?? null}, name),
+          hostname = coalesce(${patch.hostname ?? null}, hostname),
+          environment = coalesce(${patch.environment ?? null}, environment),
+          notes = case when ${patch.notes === undefined}::boolean then notes else ${patch.notes ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${hostId}
+        returning ${tx.unsafe(hostColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+    return host;
+  }
+
+  async listServices(context: TenantContext, input: { hostId?: string }): Promise<readonly ServiceRecord[]> {
+    const hostId = input.hostId ?? null;
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} and (${hostId}::uuid is null or host_id = ${hostId})
+        order by name`;
+    });
+  }
+
+  async declareService(context: TenantContext, input: DeclareServiceInput): Promise<ServiceRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [service] = await tx<ServiceRecord[]>`
+        insert into infra_services (id, tenant_id, host_id, name, kind, match_key, expected_state, customer_id)
+        values (${randomUUID()}, ${context.tenantId}, ${input.hostId}, ${input.name}, ${input.kind},
+          ${input.matchKey}, ${input.expectedState}, ${input.customerId})
+        returning ${tx.unsafe(serviceColumns)}`;
+      return service!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  async updateService(context: TenantContext, serviceId: string, patch: UpdateServiceInput): Promise<ServiceRecord> {
+    const service = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<ServiceRecord[]>`
+        update infra_services set
+          name = coalesce(${patch.name ?? null}, name),
+          kind = coalesce(${patch.kind ?? null}, kind),
+          match_key = coalesce(${patch.matchKey ?? null}, match_key),
+          expected_state = coalesce(${patch.expectedState ?? null}, expected_state),
+          customer_id = case when ${patch.customerId === undefined}::boolean then customer_id
+            else ${patch.customerId ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${serviceId}
+        returning ${tx.unsafe(serviceColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!service) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
+    return service;
+  }
+
+  async deleteService(context: TenantContext, serviceId: string): Promise<void> {
+    const deleted = await withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx`delete from infra_services
+        where tenant_id = ${context.tenantId} and id = ${serviceId} returning id`;
+      return rows.length;
+    });
+    if (deleted === 0) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
   }
 
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {
@@ -214,22 +345,108 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     );
   }
 
+  /**
+   * Everything the technical dashboard draws, read in one transaction.
+   *
+   * The inventory is read first because it is what says which readings matter: the dashboard asks
+   * for the identifiers it declared and for nothing else, so a tenant watching four containers
+   * does not pay for every container its collectors can see. No instance filter, unlike the
+   * evaluation read -- a rule reads one instance, but a machine is a machine whichever collector
+   * happened to see it.
+   */
+  async readInventoryState(context: TenantContext): Promise<InventoryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const hosts = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const services = await tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const wanted = [
+        ...new Set([...hosts.map((host) => hostMatchKey(host.hostname)), ...services.map((s) => s.matchKey)])
+      ];
+
+      const records =
+        wanted.length === 0
+          ? []
+          : await tx<ObservedRecord[]>`
+              select ${tx.unsafe(recordColumns)} from connector_records
+              where tenant_id = ${context.tenantId} and external_id in ${tx(wanted)}`;
+
+      const freshness = await tx<OperationFreshness[]>`
+        select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
+        from connector_operation_state where tenant_id = ${context.tenantId}`;
+
+      return { hosts, services, records, freshness };
+    });
+  }
+
   async readEvaluationState(context: TenantContext): Promise<EvaluationState> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const rules = await tx<AlertRuleRecord[]>`
         select ${tx.unsafe(ruleColumns)} from infra_alert_rules where tenant_id = ${context.tenantId}`;
 
-      // Only the operation the rules read, and only for instances a rule points at. A tenant with
-      // one rule does not pay for reading every record of every instance it has installed.
+      // Only what the rules present actually read, and only for instances a rule points at. A
+      // tenant with one rule does not pay for reading every record of every instance it has
+      // installed, and a tenant with no rule of a kind reads nothing on its behalf.
+      const kinds = new Set(rules.map((rule) => rule.kind));
       const instanceIds = [...new Set(rules.map((rule) => rule.instanceId))];
-      const records = instanceIds.length
-        ? await tx<ObservedRecord[]>`
-            select instance_id as "instanceId", operation, external_id as "externalId", data,
-              first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"
-            from connector_records
-            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
-              and instance_id in ${tx(instanceIds)}`
+
+      // The inventory is read before the records, because it is what says which records matter.
+      // `ignored` is filtered here as well as in the domain: the partial index of `0037` is on
+      // exactly this predicate, so the filter costs nothing and the rows never leave the database.
+      const services = kinds.has("service_down")
+        ? await tx<DeclaredService[]>`
+            select service.name, host.name as "hostName", service.match_key as "matchKey",
+              service.expected_state as "expectedState"
+            from infra_services service
+            join infra_hosts host on host.tenant_id = service.tenant_id and host.id = service.host_id
+            where service.tenant_id = ${context.tenantId} and service.expected_state <> 'ignored'`
         : [];
+
+      const columns = tx.unsafe(recordColumns);
+      const reads: Promise<ObservedRecord[]>[] = [];
+
+      if (instanceIds.length > 0) {
+        if (kinds.has("workflow_failed")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // Certificates and backups both live in the probe pass, and neither is named by anything
+        // we declared: what exists is whatever the exporters published, so the whole pass is read.
+        if (kinds.has("certificate_expiring") || kinds.has("backup_stale")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${probeOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // The opposite case: here the inventory names exactly which readings are wanted, so the
+        // query asks for those and not for every container and workflow the providers know of.
+        const matchKeys = [...new Set(services.map((service) => service.matchKey))];
+        if (matchKeys.length > 0) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and instance_id in ${tx(instanceIds)}
+              and external_id in ${tx(matchKeys)}`);
+        }
+      }
+
+      // The reads overlap on purpose -- a probe reading can be both a certificate and a declared
+      // service -- and a duplicate would become two verdicts sharing one dedup key, which the
+      // partial unique index would then refuse. Identity is the record's own key.
+      const records = [
+        ...new Map(
+          (await Promise.all(reads))
+            .flat()
+            .map((record) => [`${record.instanceId}\u0000${record.operation}\u0000${record.externalId}`, record])
+        ).values()
+      ];
 
       const freshness = await tx<{ instanceId: string; operation: string; lastSuccessAt: Date | null }[]>`
         select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
@@ -239,7 +456,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         select rule_id as "ruleId", dedup_key as "dedupKey" from infra_alert_events
         where tenant_id = ${context.tenantId} and status = 'firing'`;
 
-      return { rules, records, liveAlerts, freshness };
+      return { rules, records, services, liveAlerts, freshness };
     });
   }
 
@@ -348,6 +565,25 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     if (!alert) throw new InfrastructureServiceError("ALERT_NOT_FOUND");
     return alert;
   }
+}
+
+/**
+ * The inventory's own collisions, told apart before the generic mapper sees them.
+ *
+ * `hostname` is tested before `name` deliberately: one word contains the other, and the wrong
+ * order would report a duplicate host name to somebody who reused a Prometheus label. A message
+ * that names the wrong field costs an afternoon.
+ */
+function mapInventoryConstraint(error: unknown): never {
+  const databaseError = error as DatabaseError;
+  const constraint = databaseError.constraint_name ?? "";
+  if (databaseError.code === "23505") {
+    if (constraint.includes("hostname")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+    if (constraint.includes("match_key")) throw new InfrastructureServiceError("DUPLICATE_MATCH_KEY");
+    if (constraint.includes("infra_services")) throw new InfrastructureServiceError("DUPLICATE_SERVICE_NAME");
+    if (constraint.includes("name")) throw new InfrastructureServiceError("DUPLICATE_HOST_NAME");
+  }
+  return mapConstraint(error);
 }
 
 function mapConstraint(error: unknown): never {

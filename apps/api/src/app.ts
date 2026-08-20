@@ -13,6 +13,7 @@ import {
   CrmError,
   CrmService,
   InfrastructureService,
+  observationBudgets,
   ProjectsError,
   ProjectsService,
   SupportError,
@@ -362,7 +363,12 @@ export function buildApp(options: BuildAppOptions) {
       if (isFeatureEnabled(featureFlags, "infrastructure"))
         registerInfrastructureRoutes({
           ...context,
-          infrastructure: new InfrastructureService(new PostgresInfrastructureRepository(database))
+          infrastructure: new InfrastructureService(
+            new PostgresInfrastructureRepository(database),
+            // Read from the manifests rather than written here, so a collector shipped with a
+            // different cadence needs no second place to be told about it.
+            observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type)))
+          )
         });
     }
 

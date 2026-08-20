@@ -7,8 +7,9 @@ import { readFixture, waitForHydration } from "./support/fixture";
  * What this proves and unit tests cannot: that the link to a workflow is one **we** composed out
  * of the configured base -- the address is asserted, never followed, because whether an n8n
  * answers on this machine is not what is under test -- that a reading arrives with its age and
- * says so when it is old, and that acknowledging a live alert survives the round trip to the API
- * and back onto the screen.
+ * says so when it is old, that acknowledging a live alert survives the round trip to the API and
+ * back onto the screen, and that a machine reads as three different things depending on what we
+ * can actually see of it: answering, stopped, and out of sight.
  *
  * The rows come from `apps/api/src/seed-e2e.ts`. They cannot be created through this screen: an
  * automation exists because a connector pulled it, and there is no provider here to pull from.
@@ -29,7 +30,11 @@ const t = {
   alerts: "Alertes",
   acknowledge: "Reconeixer",
   acknowledged: "Reconeguda",
-  stale: "Dada antiga"
+  stale: "Dada antiga",
+  hosts: "Maquines",
+  up: "Respon",
+  down: "No respon",
+  unknown: "Sense lectura"
 } as const;
 
 test("shows what runs with the age of its reading, and acknowledges a live alert", async ({ page }) => {
@@ -83,4 +88,35 @@ test("shows what runs with the age of its reading, and acknowledges a live alert
   await expect(alerts.getByRole("row").filter({ hasText: rule }).getByText(t.acknowledged)).toBeVisible({
     timeout: 15_000
   });
+});
+
+test("says of every machine what is currently known of it, and no more", async ({ page }) => {
+  const { host, services } = readFixture().infrastructure;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+
+  const machines = page.getByRole("region", { name: t.hosts });
+  const machine = machines.getByRole("listitem").filter({ hasText: host.name });
+  await expect(machine).toBeVisible();
+  // The host answers, and it says so with the figures a person came to read.
+  await expect(machine.getByText(t.up, { exact: true }).first()).toBeVisible();
+  await expect(machine.getByText("CPU", { exact: true })).toBeVisible();
+
+  /**
+   * The three answers, side by side on one machine.
+   *
+   * A container whose reading stopped moving is **down**; a probe of an operation that never
+   * passed is **unknown** and not down. Blurring the two is the failure this screen exists to
+   * avoid: one sends somebody to a machine that never stopped, and there is no unit test that can
+   * prove the difference survives the API, the page and the browser.
+   */
+  const row = (name: string) => machine.getByRole("row").filter({ hasText: name });
+  await expect(row(services.up.name).getByText(t.up, { exact: true })).toBeVisible();
+  await expect(row(services.down.name).getByText(t.down, { exact: true })).toBeVisible();
+  await expect(row(services.unknown.name).getByText(t.unknown, { exact: true })).toBeVisible();
+  await expect(row(services.unknown.name).getByText(t.down, { exact: true })).toHaveCount(0);
+
+  // No address of a provider reaches this screen, from the inventory any more than from anywhere
+  // else: what the page holds of Prometheus is what somebody declared, never where it lives.
+  expect(await page.content()).not.toContain("127.0.0.1:9090");
 });

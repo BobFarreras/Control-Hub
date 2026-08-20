@@ -1,18 +1,27 @@
-import type { AlertVerdict, TenantContext } from "@control-hub/domain";
+import { connectorRegistry } from "@control-hub/connectors";
+import type { AlertVerdict, JsonValue, TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AlertEngine,
   InfrastructureService,
   InfrastructureServiceError,
+  observationBudgets,
   type AlertEventRecord,
   type AlertRuleRecord,
   type AppliedVerdict,
   type AutomationRecord,
   type CreateAlertRuleInput,
+  type DeclareHostInput,
+  type DeclareServiceInput,
   type EvaluationState,
+  type HostRecord,
   type InfrastructureRepository,
+  type InventoryState,
   type LinkAutomationInput,
-  type UpdateAlertRuleInput
+  type ServiceRecord,
+  type UpdateAlertRuleInput,
+  type UpdateHostInput,
+  type UpdateServiceInput
 } from "./infrastructure.js";
 
 const now = new Date("2026-08-13T12:00:00.000Z");
@@ -68,7 +77,7 @@ class FakeRepository implements InfrastructureRepository {
   alerts: AlertEventRecord[] = [];
   deleted: string[] = [];
   patches: { ruleId: string; patch: UpdateAlertRuleInput }[] = [];
-  state: EvaluationState = { rules: [], records: [], liveAlerts: [], freshness: [] };
+  state: EvaluationState = { rules: [], records: [], services: [], liveAlerts: [], freshness: [] };
   applied: AppliedVerdict[] = [];
   appliedWith: AlertVerdict[] = [];
   incidents: { alertId: string; severity: string; title: string }[] = [];
@@ -76,6 +85,42 @@ class FakeRepository implements InfrastructureRepository {
   listAutomations = () => Promise.resolve(this.automations);
   linkAutomation = (_context: TenantContext, input: LinkAutomationInput) => {
     this.links.push(input);
+    return Promise.resolve();
+  };
+  hosts: HostRecord[] = [];
+  services: ServiceRecord[] = [];
+  declaredHosts: DeclareHostInput[] = [];
+  hostPatches: { hostId: string; patch: UpdateHostInput }[] = [];
+  declaredServices: DeclareServiceInput[] = [];
+  servicePatches: { serviceId: string; patch: UpdateServiceInput }[] = [];
+  deletedServices: string[] = [];
+  serviceFilters: { hostId?: string }[] = [];
+
+  listHosts = () => Promise.resolve(this.hosts);
+  findHost = (_context: TenantContext, hostId: string) =>
+    Promise.resolve(this.hosts.find((host) => host.id === hostId) ?? null);
+  declareHost = (_context: TenantContext, input: DeclareHostInput) => {
+    this.declaredHosts.push(input);
+    return Promise.resolve(hostRecord(input));
+  };
+  updateHost = (_context: TenantContext, hostId: string, patch: UpdateHostInput) => {
+    this.hostPatches.push({ hostId, patch });
+    return Promise.resolve(hostRecord({ id: hostId, ...patch }));
+  };
+  listServices = (_context: TenantContext, input: { hostId?: string }) => {
+    this.serviceFilters.push(input);
+    return Promise.resolve(this.services);
+  };
+  declareService = (_context: TenantContext, input: DeclareServiceInput) => {
+    this.declaredServices.push(input);
+    return Promise.resolve(serviceRecord(input));
+  };
+  updateService = (_context: TenantContext, serviceId: string, patch: UpdateServiceInput) => {
+    this.servicePatches.push({ serviceId, patch });
+    return Promise.resolve(serviceRecord({ id: serviceId, ...patch }));
+  };
+  deleteService = (_context: TenantContext, serviceId: string) => {
+    this.deletedServices.push(serviceId);
     return Promise.resolve();
   };
   listRules = () => Promise.resolve(this.rules);
@@ -93,6 +138,8 @@ class FakeRepository implements InfrastructureRepository {
     Promise.resolve({ ...alertEvent(alertId), acknowledgedAt: now, acknowledgedByMembershipId: membershipId });
   resolveAlert = (_context: TenantContext, alertId: string, at: Date) =>
     Promise.resolve({ ...alertEvent(alertId), status: "resolved" as const, resolvedAt: at });
+  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [] };
+  readInventoryState = () => Promise.resolve(this.inventoryState);
   readEvaluationState = () => Promise.resolve(this.state);
   /** Retention has no tenant and no session, so nothing in this suite exercises it. */
   purgeAlertEvents = () => Promise.resolve(0);
@@ -105,6 +152,48 @@ class FakeRepository implements InfrastructureRepository {
     return Promise.resolve(`incident-${this.incidents.length}`);
   };
 }
+
+const hostRecord = (overrides: Partial<HostRecord> = {}): HostRecord => ({
+  id: "host-1",
+  name: "VPS principal",
+  hostname: "node-exporter:9100",
+  environment: "production",
+  notes: null,
+  createdAt: now,
+  updatedAt: now,
+  ...overrides
+});
+
+const newHost = (overrides: Partial<DeclareHostInput> = {}): DeclareHostInput => ({
+  name: "VPS principal",
+  hostname: "node-exporter:9100",
+  environment: "production",
+  notes: null,
+  ...overrides
+});
+
+const serviceRecord = (overrides: Partial<ServiceRecord> = {}): ServiceRecord => ({
+  id: "service-1",
+  hostId: "host-1",
+  name: "Automatitzacions",
+  kind: "container",
+  matchKey: "container:n8n",
+  expectedState: "up",
+  customerId: null,
+  createdAt: now,
+  updatedAt: now,
+  ...overrides
+});
+
+const newService = (overrides: Partial<DeclareServiceInput> = {}): DeclareServiceInput => ({
+  hostId: "host-1",
+  name: "Automatitzacions",
+  kind: "container",
+  matchKey: "container:n8n",
+  expectedState: "up",
+  customerId: null,
+  ...overrides
+});
 
 const alertEvent = (id: string): AlertEventRecord => ({
   id,
@@ -123,11 +212,14 @@ const alertEvent = (id: string): AlertEventRecord => ({
   incidentId: null
 });
 
+/** Three passes of the cadences the Prometheus connector declares: 2 min, 5 min and 2 min. */
+const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_state: 360 };
+
 let repository: FakeRepository;
 let service: InfrastructureService;
 beforeEach(() => {
   repository = new FakeRepository();
-  service = new InfrastructureService(repository);
+  service = new InfrastructureService(repository, budgets);
 });
 
 const refused = (code: string): unknown => expect.objectContaining({ code });
@@ -137,6 +229,8 @@ describe("who may do what", () => {
     await expect(service.listAutomations(administrator)).resolves.toEqual([]);
     await expect(service.listRules(administrator)).resolves.toEqual([]);
     await expect(service.listAlerts(administrator)).resolves.toEqual([]);
+    await expect(service.listHosts(administrator)).resolves.toEqual([]);
+    await expect(service.listServices(administrator)).resolves.toEqual([]);
   });
 
   it("refuses Administrator everything that changes something", async () => {
@@ -148,9 +242,27 @@ describe("who may do what", () => {
     await expect(service.deleteRule(administrator, "rule-1")).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.acknowledgeAlert(administrator, "alert-1")).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.resolveAlert(administrator, "alert-1", now)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.declareHost(administrator, newHost())).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.updateHost(administrator, "host-1", { notes: "x" })).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.declareService(administrator, newService())).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.updateService(administrator, "service-1", { name: "Altre" })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+    await expect(service.deleteService(administrator, "service-1")).rejects.toEqual(refused("FORBIDDEN"));
 
     // Nothing reached the repository, so a refusal cannot half-happen.
-    expect([repository.links, repository.deleted, repository.patches].every((list) => list.length === 0)).toBe(true);
+    expect(
+      [
+        repository.links,
+        repository.deleted,
+        repository.patches,
+        repository.declaredHosts,
+        repository.hostPatches,
+        repository.declaredServices,
+        repository.servicePatches,
+        repository.deletedServices
+      ].every((list) => list.length === 0)
+    ).toBe(true);
   });
 
   it("refuses somebody holding neither permission even the read", async () => {
@@ -258,6 +370,7 @@ describe("one pass of the engine", () => {
           lastSeenAt: now
         }
       ],
+      services: [],
       liveAlerts: [],
       freshness: [{ instanceId, operation: "pull_executions", lastSuccessAt: new Date(now.getTime() - 60_000) }]
     };
@@ -325,7 +438,7 @@ describe("one pass of the engine", () => {
   });
 
   it("changes nothing when there is nothing to say", async () => {
-    repository.state = { rules: [], records: [], liveAlerts: [], freshness: [] };
+    repository.state = { rules: [], records: [], services: [], liveAlerts: [], freshness: [] };
 
     const result = await new AlertEngine(repository).sweep(owner, now);
 
@@ -346,10 +459,284 @@ describe("one pass of the engine", () => {
   });
 });
 
+describe("declaring what we look after", () => {
+  it("keeps the label a reading will be matched by, trimmed", async () => {
+    await service.declareHost(owner, newHost({ hostname: "  node-exporter:9100  ", name: "  VPS principal  " }));
+
+    expect(repository.declaredHosts[0]).toMatchObject({ name: "VPS principal", hostname: "node-exporter:9100" });
+  });
+
+  it("refuses a label with a space in it, which would never match anything", async () => {
+    await expect(service.declareHost(owner, newHost({ hostname: "node exporter" }))).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    await expect(service.declareHost(owner, newHost({ hostname: "" }))).rejects.toEqual(refused("INVALID_HOSTNAME"));
+    expect(repository.declaredHosts).toEqual([]);
+  });
+
+  it("refuses a label longer than an external id can carry once prefixed", async () => {
+    await expect(service.declareHost(owner, newHost({ hostname: "n".repeat(191) }))).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    await expect(service.declareHost(owner, newHost({ hostname: "n".repeat(190) }))).resolves.toBeDefined();
+  });
+
+  it("refuses a host whose name says nothing", async () => {
+    await expect(service.declareHost(owner, newHost({ name: "no" }))).rejects.toEqual(refused("INVALID_NAME"));
+    await expect(service.declareHost(owner, newHost({ name: "n".repeat(121) }))).rejects.toEqual(
+      refused("INVALID_NAME")
+    );
+  });
+
+  it("refuses a note nobody could have meant to write", async () => {
+    await expect(service.declareHost(owner, newHost({ notes: "n".repeat(2001) }))).rejects.toEqual(
+      refused("NOTES_TOO_LONG")
+    );
+  });
+
+  it("says so when the host asked for is not there, rather than answering null", async () => {
+    await expect(service.getHost(owner, "host-9")).rejects.toEqual(refused("HOST_NOT_FOUND"));
+
+    repository.hosts = [hostRecord()];
+    await expect(service.getHost(administrator, "host-1")).resolves.toMatchObject({ id: "host-1" });
+  });
+
+  it("validates only what a patch actually carries", async () => {
+    await service.updateHost(owner, "host-1", { notes: "  vigilada des del 7.2  " });
+
+    expect(repository.hostPatches[0]).toEqual({ hostId: "host-1", patch: { notes: "vigilada des del 7.2" } });
+  });
+
+  it("holds a patched label to the same rule as a declared one", async () => {
+    await expect(service.updateHost(owner, "host-1", { hostname: "node exporter" })).rejects.toEqual(
+      refused("INVALID_HOSTNAME")
+    );
+    expect(repository.hostPatches).toEqual([]);
+  });
+});
+
+describe("declaring a service, and how it is recognised", () => {
+  it("keeps the whole external id as the match key, prefix included", async () => {
+    await service.declareService(owner, newService({ matchKey: "  container:supabase-db  ", kind: "database" }));
+
+    // The kind says what it is; the key says how it is seen. A database observed by cAdvisor is
+    // both, and deriving one from the other would leave `database` with no data behind it.
+    expect(repository.declaredServices[0]).toMatchObject({ kind: "database", matchKey: "container:supabase-db" });
+  });
+
+  it("refuses a match key that could not be an identifier", async () => {
+    await expect(service.declareService(owner, newService({ matchKey: "container: n8n" }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    await expect(service.declareService(owner, newService({ matchKey: "   " }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    await expect(service.declareService(owner, newService({ matchKey: "c".repeat(201) }))).rejects.toEqual(
+      refused("INVALID_MATCH_KEY")
+    );
+    expect(repository.declaredServices).toEqual([]);
+  });
+
+  it("takes a probe target as a match key, which is a url and still one word", async () => {
+    await service.declareService(
+      owner,
+      newService({ kind: "http", matchKey: "probe:https://ssn8n.example.com/healthz" })
+    );
+
+    expect(repository.declaredServices[0]?.matchKey).toBe("probe:https://ssn8n.example.com/healthz");
+  });
+
+  it("carries the host filter through to the repository", async () => {
+    await service.listServices(owner, { hostId: "host-1" });
+    await service.listServices(owner);
+
+    expect(repository.serviceFilters).toEqual([{ hostId: "host-1" }, {}]);
+  });
+
+  it("lets a service be withdrawn, which a host cannot be", async () => {
+    await service.deleteService(owner, "service-1");
+
+    expect(repository.deletedServices).toEqual(["service-1"]);
+    // There is no `deleteHost` to call, and the grant in `0037` says the same thing.
+    expect("deleteHost" in service).toBe(false);
+  });
+});
+
 describe("the error the service speaks", () => {
   it("is one type with a code, so a route maps it without reading a message", async () => {
     const failure = await service.listAutomations(stranger).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureServiceError);
     expect((failure as InfrastructureServiceError).code).toBe("FORBIDDEN");
+  });
+});
+
+describe("an infrastructure rule", () => {
+  /**
+   * The three kinds of 7.2 read one instance's whole inventory and say something per service, so
+   * there is nothing for a target to name. Refusing it here rather than storing it keeps the rule
+   * out of the table; the same invariant is a check constraint, because a patch never carries the
+   * kind and only the row knows it.
+   */
+  it("is refused when it names a target, because it watches the whole instance", async () => {
+    await expect(
+      service.createRule(owner, {
+        ...newRule(),
+        kind: "service_down",
+        targetType: "automation",
+        targetId: "container:supabase-db"
+      })
+    ).rejects.toMatchObject({ code: "TARGET_NOT_ALLOWED" });
+  });
+
+  it("is accepted instance-wide, for each of the three kinds", async () => {
+    for (const kind of ["service_down", "certificate_expiring", "backup_stale"] as const) {
+      await expect(service.createRule(owner, { ...newRule(), kind })).resolves.toBeTruthy();
+    }
+  });
+
+  it("hands the declared inventory to the engine, so a service can be judged at all", async () => {
+    repository.state = {
+      rules: [ruleRecord({ kind: "service_down", opensIncident: false })],
+      records: [],
+      services: [
+        { name: "Supabase database", hostName: "VPS principal", matchKey: "container:supabase-db", expectedState: "up" }
+      ],
+      liveAlerts: [],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 60_000) }]
+    };
+    repository.applied = [{ ruleId: "rule-1", dedupKey: "container:supabase-db", alertId: "alert-1", created: true }];
+
+    const result = await new AlertEngine(repository).sweep(owner, now);
+
+    expect(repository.appliedWith).toEqual([
+      expect.objectContaining({ status: "firing", dedupKey: "container:supabase-db" })
+    ]);
+    expect(result.firing).toBe(1);
+  });
+
+  it("is starved rather than green when the inventory it would judge is empty", async () => {
+    repository.state = {
+      rules: [ruleRecord({ kind: "service_down" })],
+      records: [],
+      services: [],
+      liveAlerts: [],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: now }]
+    };
+
+    const result = await new AlertEngine(repository).sweep(owner, now);
+
+    expect(result).toEqual({ firing: 0, resolved: 0, starved: 1, incidentsOpened: 0 });
+  });
+});
+
+describe("the budgets a dashboard is allowed to use", () => {
+  it("gives every scheduled operation three of its own passes", () => {
+    const connectors = [{ capabilities: { operations: { pull_host_metrics: { everySeconds: 120 } } } }];
+
+    expect(observationBudgets(connectors)).toEqual({ pull_host_metrics: 360 });
+  });
+
+  /** An operation nobody schedules never runs, so nothing it would observe can be called current. */
+  it("gives no budget to an operation with no cadence", () => {
+    const connectors = [{ capabilities: { operations: { check_health: {} } } }];
+
+    expect(observationBudgets(connectors)).toEqual({});
+  });
+
+  it("keeps the slowest cadence when two connectors name one operation", () => {
+    const connectors = [
+      { capabilities: { operations: { pull_probe_state: { everySeconds: 120 } } } },
+      { capabilities: { operations: { pull_probe_state: { everySeconds: 600 } } } }
+    ];
+
+    expect(observationBudgets(connectors)).toEqual({ pull_probe_state: 1800 });
+  });
+
+  it("agrees with what the Prometheus connector actually declares", () => {
+    expect(observationBudgets([connectorRegistry.require("prometheus")])).toMatchObject(budgets);
+  });
+});
+
+describe("the inventory a dashboard reads", () => {
+  const host = hostRecord({ id: "host-1", hostname: "node-exporter:9100" });
+  const container = serviceRecord({ id: "service-1", hostId: "host-1", matchKey: "container:n8n" });
+
+  const seen = (operation: string, externalId: string, secondsAgo: number, data: Record<string, JsonValue> = {}) => ({
+    instanceId,
+    operation,
+    externalId,
+    data,
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const passed = (operation: string, secondsAgo: number) => ({
+    instanceId,
+    operation,
+    lastSuccessAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  beforeEach(() => {
+    repository.inventoryState = {
+      hosts: [host],
+      services: [container],
+      records: [
+        seen("pull_host_metrics", "host:node-exporter:9100", 60, { cpuBusyRatio: 0.2 }),
+        seen("pull_container_state", "container:n8n", 120, { memoryBytes: 512 })
+      ],
+      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)]
+    };
+  });
+
+  it("hangs each service under the host it was declared on, with what is known of both", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts).toHaveLength(1);
+    expect(inventory.hosts[0]).toMatchObject({
+      id: "host-1",
+      hostname: "node-exporter:9100",
+      reading: { state: "up", data: { cpuBusyRatio: 0.2 } }
+    });
+    expect(inventory.hosts[0]!.services).toMatchObject([
+      { id: "service-1", reading: { state: "up", data: { memoryBytes: 512 } } }
+    ]);
+  });
+
+  /**
+   * A host is matched by exactly the identifier a reading carries, which is the whole reason
+   * `hostname` is required at declaration. A machine nobody can match reads as down rather than
+   * as a row with no opinion.
+   */
+  it("looks a host up by the identifier its reading would carry", async () => {
+    repository.inventoryState = { ...repository.inventoryState, hosts: [hostRecord({ hostname: "elsewhere:9100" })] };
+
+    expect((await service.readInventory(owner, now)).hosts[0]!.reading).toMatchObject({ state: "down" });
+  });
+
+  it("reports the oldest reading behind it, not the newest", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.observedFrom).toEqual(new Date(now.getTime() - 120_000));
+  });
+
+  it("has no age at all when nothing has been read", async () => {
+    repository.inventoryState = { ...repository.inventoryState, records: [], freshness: [] };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.observedFrom).toBeNull();
+    expect(inventory.hosts[0]!.reading).toMatchObject({ state: "unknown" });
+  });
+
+  it("keeps a host with nothing declared on it, because an empty machine is still watched", async () => {
+    repository.inventoryState = { ...repository.inventoryState, services: [] };
+
+    expect((await service.readInventory(owner, now)).hosts[0]!.services).toEqual([]);
+  });
+
+  it("lets Administrator read it and refuses somebody with no infrastructure permission", async () => {
+    const asAdministrator = await service.readInventory(administrator, now);
+    expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);
+    await expect(service.readInventory(stranger, now)).rejects.toEqual(refused("FORBIDDEN"));
   });
 });

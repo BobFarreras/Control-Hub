@@ -21,9 +21,14 @@ suite("PostgresInfrastructureRepository", () => {
 
   const tenantA = randomUUID();
   const tenantB = randomUUID();
+  // A tenant nothing else in this file writes to, for the assertions about what is *not* read.
+  // Those cannot share a tenant with the rest: a rule another test created would make them true
+  // or false depending on the order the tests happened to run in.
+  const tenantC = randomUUID();
   const userId = randomUUID();
   const membershipA = randomUUID();
   const membershipB = randomUUID();
+  const membershipC = randomUUID();
   const now = new Date("2026-08-13T12:00:00.000Z");
 
   const context = (tenantId: string, membershipId: string): TenantContext => ({
@@ -37,6 +42,7 @@ suite("PostgresInfrastructureRepository", () => {
 
   const asA = () => context(tenantA, membershipA);
   const asB = () => context(tenantB, membershipB);
+  const asC = () => context(tenantC, membershipC);
 
   const newInstance = async (tenantId: string, membershipId: string) =>
     connectors.createInstance(context(tenantId, membershipId), {
@@ -50,14 +56,15 @@ suite("PostgresInfrastructureRepository", () => {
     tenantId: string,
     membershipId: string,
     instanceId: string,
-    operation: "pull_workflows" | "pull_executions",
+    operation: "pull_workflows" | "pull_executions" | "pull_host_metrics" | "pull_container_state" | "pull_probe_state",
     externalId: string,
     data: ConnectorConfig
   ) =>
     connectors.upsertRecords(context(tenantId, membershipId), {
       instanceId,
       operation,
-      shape: operation === "pull_workflows" ? "state" : "event",
+      // Only executions are events. Everything else is the provider's current answer, overwritten.
+      shape: operation === "pull_executions" ? "event" : "state",
       records: [{ externalId, data }],
       seenAt: now
     });
@@ -108,14 +115,16 @@ suite("PostgresInfrastructureRepository", () => {
     await admin`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
       values (${userId}, 'Infra Test', ${`${userId}@test.local`}, true, now(), now())`;
     await admin`insert into tenants (id, slug, name) values
-      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B')`;
+      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B'),
+      (${tenantC}, ${`infra-c-${tenantC}`}, 'Infra C')`;
     await admin`insert into memberships (id, tenant_id, user_id) values
-      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId})`;
+      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId}),
+      (${membershipC}, ${tenantC}, ${userId})`;
   });
 
   afterAll(async () => {
     // Everything under a tenant cascades from the tenant row, the infrastructure tables included.
-    await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
+    await admin`delete from tenants where id in (${tenantA}, ${tenantB}, ${tenantC})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });
     await admin.end({ timeout: 5 });
@@ -489,6 +498,393 @@ suite("PostgresInfrastructureRepository", () => {
 
       const state = await repository.readEvaluationState(asA());
       expect(state.records.some((item) => item.externalId === "execution:theirs")).toBe(false);
+    });
+
+    /** The declared inventory, and the reading of each declared thing whatever pass wrote it. */
+    const declaredService = async (matchKey: string) => {
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service };
+    };
+
+    it("carries the inventory, with the name of the machine each service sits on", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:supabase-${randomUUID()}`;
+      const { host, service } = await declaredService(matchKey);
+
+      const state = await repository.readEvaluationState(asA());
+
+      expect(state.services).toEqual(
+        expect.arrayContaining([{ name: service.name, hostName: host.name, matchKey, expectedState: "up" }])
+      );
+    });
+
+    it("leaves the inventory unread when no rule would judge it", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await repository.createRule(asC(), {
+        name: `rule ${randomUUID()}`,
+        kind: "workflow_failed",
+        instanceId: instance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "high",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+      const host = await repository.declareHost(asC(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asC(), {
+        hostId: host.id,
+        name: "Sense vigilancia",
+        kind: "container",
+        matchKey: `container:unwatched-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.readEvaluationState(asC())).services).toEqual([]);
+    });
+
+    it("never carries a service somebody deliberately ignored", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:retired-${randomUUID()}`;
+      const { service } = await declaredService(matchKey);
+      await repository.updateService(asA(), service.id, { expectedState: "ignored" });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.some((item) => item.matchKey === matchKey)).toBe(false);
+    });
+
+    it("fetches a declared service's own reading, whichever pass wrote it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:n8n-${randomUUID()}`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", matchKey, { memoryBytes: 1 });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === matchKey)).toBe(true);
+    });
+
+    it("reads the probe pass for a backup rule, which is where the heartbeat lives", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "backup_stale" });
+      const externalId = `backup:daily-${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", externalId, {
+        lastSuccessAt: now.toISOString()
+      });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === externalId)).toBe(true);
+    });
+
+    /**
+     * Two reads want the same probe reading -- one because a certificate lives in it, one because
+     * a service was declared against it. A duplicate would become two verdicts sharing a dedup
+     * key, and the partial unique index would refuse the second.
+     */
+    it("returns a reading once even when two rules both want it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      await newRule(instance.id, { kind: "certificate_expiring" });
+      const matchKey = `probe:https://${randomUUID()}.example.com`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", matchKey, { success: true });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.filter((item) => item.externalId === matchKey)).toHaveLength(1);
+    });
+
+    it("reads no inventory of another tenant's", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const theirs = await newInstance(tenantB, membershipB);
+      const theirHost = await repository.declareHost(asB(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asB(), {
+        hostId: theirHost.id,
+        name: "Seu",
+        kind: "container",
+        matchKey: `container:theirs-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      expect(theirs.id).toBeTruthy();
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.every((item) => item.hostName !== theirHost.name)).toBe(true);
+    });
+  });
+
+  describe("what the dashboard reads", () => {
+    const declaredMachine = async (tenantId: string, membershipId: string) => {
+      const at = context(tenantId, membershipId);
+      const hostname = `node-${randomUUID()}:9100`;
+      const host = await repository.declareHost(at, {
+        name: `VPS ${randomUUID()}`,
+        hostname,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(at, {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service, hostname };
+    };
+
+    it("gathers the inventory, the reading of every line of it, and the freshness of each pass", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const { host, service, hostname } = await declaredMachine(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${hostname}`, {
+        cpuBusyRatio: 0.2
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", service.matchKey, {
+        memoryBytes: 512
+      });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === host.id)).toBe(true);
+      expect(state.services.some((item) => item.id === service.id)).toBe(true);
+      expect(state.records.map((item) => item.externalId)).toEqual(
+        expect.arrayContaining([`host:${hostname}`, service.matchKey])
+      );
+      expect(
+        state.freshness.some((item) => item.instanceId === instance.id && item.operation === "pull_host_metrics")
+      ).toBe(true);
+    });
+
+    /**
+     * The read is driven by what was declared, not by what the collectors happen to see. A tenant
+     * watching four containers must not pay for every container its Prometheus can enumerate.
+     */
+    it("asks for the identifiers it declared and for nothing else", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const undeclared = `container:stranger-${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", undeclared, { memoryBytes: 1 });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.records.some((item) => item.externalId === undeclared)).toBe(false);
+    });
+
+    it("reads no host, no service and no reading of another tenant", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      const theirs = await declaredMachine(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_container_state", theirs.service.matchKey, {
+        memoryBytes: 1
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === theirs.host.id)).toBe(false);
+      expect(state.services.some((item) => item.id === theirs.service.id)).toBe(false);
+      expect(state.records.some((item) => item.externalId === theirs.service.matchKey)).toBe(false);
+    });
+
+    it("reads nothing at all for a tenant that declared nothing", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await putRecord(tenantC, membershipC, instance.id, "pull_container_state", `container:${randomUUID()}`, {});
+
+      expect((await repository.readInventoryState(asC())).records).toEqual([]);
+    });
+  });
+
+  describe("the inventory somebody declares", () => {
+    const declareHost = async (overrides: Record<string, unknown> = {}) =>
+      repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null,
+        ...overrides
+      });
+
+    it("keeps a host and the services hung off it, and gives back what it stored", async () => {
+      const host = await declareHost({ notes: "La de produccio" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: "Automatitzacions",
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.findHost(asA(), host.id)).toMatchObject({ name: host.name, notes: "La de produccio" });
+      expect(service).toMatchObject({ hostId: host.id, kind: "container", expectedState: "up", customerId });
+    });
+
+    it("filters services by host, so a machine's page is one read", async () => {
+      const [one, two] = [await declareHost(), await declareHost()];
+      const onService = async (hostId: string) =>
+        repository.declareService(asA(), {
+          hostId,
+          name: `Servei ${randomUUID()}`,
+          kind: "http",
+          matchKey: `probe:https://${randomUUID()}.example.com/healthz`,
+          expectedState: "up",
+          customerId: null
+        });
+      await onService(one.id);
+      await onService(two.id);
+
+      const listed = await repository.listServices(asA(), { hostId: one.id });
+      expect(listed.map((item) => item.hostId)).toEqual([one.id]);
+    });
+
+    it("tells a duplicate label from a duplicate name, which one word contains the other", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ name: host.name })).rejects.toMatchObject({ code: "DUPLICATE_HOST_NAME" });
+      await expect(declareHost({ hostname: host.hostname })).rejects.toMatchObject({ code: "DUPLICATE_HOSTNAME" });
+    });
+
+    it("refuses two services watching the same observed thing", async () => {
+      const host = await declareHost();
+      const matchKey = `container:supabase-db-${randomUUID()}`;
+      const service = {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "database" as const,
+        matchKey,
+        expectedState: "up" as const,
+        customerId: null
+      };
+      await repository.declareService(asA(), service);
+
+      // Same key, different kind: what makes them the same is what is watched, not how it was
+      // classified, so the kind is deliberately not part of the key.
+      await expect(
+        repository.declareService(asA(), { ...service, name: `Servei ${randomUUID()}`, kind: "container" })
+      ).rejects.toMatchObject({ code: "DUPLICATE_MATCH_KEY" });
+    });
+
+    it("clears a note and a client when asked to, and leaves them alone when not", async () => {
+      const host = await declareHost({ notes: "provisional" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.updateHost(asA(), host.id, { environment: "staging" })).toMatchObject({
+        environment: "staging",
+        notes: "provisional"
+      });
+      expect(await repository.updateHost(asA(), host.id, { notes: null })).toMatchObject({ notes: null });
+      expect(await repository.updateService(asA(), service.id, { expectedState: "ignored" })).toMatchObject({
+        expectedState: "ignored",
+        customerId
+      });
+      expect(await repository.updateService(asA(), service.id, { customerId: null })).toMatchObject({
+        customerId: null
+      });
+    });
+
+    it("refuses a state and an environment nobody evaluates", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ environment: "produccio" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      await expect(
+        repository.declareService(asA(), {
+          hostId: host.id,
+          name: `Servei ${randomUUID()}`,
+          kind: "container",
+          matchKey: `container:${randomUUID()}`,
+          expectedState: "maybe" as never,
+          customerId: null
+        })
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    });
+
+    it("says so rather than pretending, when the row asked for is not there", async () => {
+      expect(await repository.findHost(asA(), randomUUID())).toBeNull();
+      await expect(repository.updateHost(asA(), randomUUID(), { notes: null })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+      await expect(repository.deleteService(asA(), randomUUID())).rejects.toMatchObject({
+        code: "SERVICE_NOT_FOUND"
+      });
+    });
+
+    it("withdraws a service, and holds no privilege to withdraw a host", async () => {
+      const host = await declareHost();
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      await repository.deleteService(asA(), service.id);
+      expect(await repository.listServices(asA(), { hostId: host.id })).toEqual([]);
+
+      // Acceptance criterion 9 is a grant, not a missing route: the application role cannot
+      // delete a host even when somebody writes the statement by hand.
+      await expect(database`delete from infra_hosts where id = ${host.id}`).rejects.toMatchObject({ code: "42501" });
+    });
+
+    it("shows one tenant nothing of the other, hosts and services alike", async () => {
+      const host = await declareHost();
+      await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.listHosts(asB())).map((item) => item.id)).not.toContain(host.id);
+      expect(await repository.findHost(asB(), host.id)).toBeNull();
+      expect((await repository.listServices(asB(), {})).map((item) => item.hostId)).not.toContain(host.id);
+      // Reaching across with a known id is refused by the policy, not by a missing filter.
+      await expect(repository.updateHost(asB(), host.id, { notes: "meu" })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
     });
   });
 

@@ -344,7 +344,22 @@ try {
     fresh: { externalId: "workflow:e2e-fresh", name: "E2E Sincronitzacio nocturna" },
     stale: { externalId: "workflow:e2e-stale", name: "E2E Informe setmanal" },
     rule: "E2E Automatitzacio que falla",
-    customer: customers[0][0]
+    customer: customers[0][0],
+    /**
+     * The machine and the three answers a reading can give.
+     *
+     * `up` is a container whose reading keeps moving, `down` is one that stopped moving hours ago
+     * while the collector kept passing, and `unknown` is a probe of an operation no pass has ever
+     * reported. The third one is the reason this fixture exists at all: it can only be produced by
+     * a collector that never ran, and the difference between "it is down" and "we cannot see it"
+     * is the one this screen must never blur.
+     */
+    host: { name: "E2E VPS principal", hostname: "e2e-vps" },
+    services: {
+      up: { name: "E2E Base de dades", matchKey: "container:e2e-postgres" },
+      down: { name: "E2E Panell antic", matchKey: "container:e2e-panell" },
+      unknown: { name: "E2E Portal public", matchKey: "probe:e2e-portal" }
+    }
   } as const;
 
   const connectorInstanceId = id(`${tenantId}:connector:n8n-e2e`);
@@ -421,6 +436,116 @@ try {
     )
     on conflict (tenant_id, instance_id, external_id) do update
       set customer_id = excluded.customer_id, updated_at = now()`;
+
+  /**
+   * A Prometheus nobody has to reach either, and the inventory it is compared with.
+   *
+   * The base is a loopback address for the same reason the n8n one is: a fixture naming a real
+   * host would be a fixture that could reach one. No pass runs during the suite -- what is seeded
+   * is the state a pass would have left behind, which is the only way to seed a reading that
+   * stopped moving and an operation that never ran.
+   */
+  const prometheusInstanceId = id(`${tenantId}:connector:prometheus-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${prometheusInstanceId}, ${tenantId}, 'prometheus', 'Prometheus E2E', 'enabled',
+      ${database.json({
+        baseUrl: "http://127.0.0.1:9090",
+        hostLabels: [infrastructureFixture.host.hostname],
+        containerJob: "cadvisor",
+        probeJob: "blackbox"
+      })},
+      'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const hostId = id(`${tenantId}:infra-host:e2e`);
+  await database`
+    insert into infra_hosts (id, tenant_id, name, hostname, environment, notes)
+    values (
+      ${hostId}, ${tenantId}, ${infrastructureFixture.host.name}, ${infrastructureFixture.host.hostname},
+      'production', 'Maquina de proves de la suite E2E.'
+    )
+    on conflict (id) do update set
+      name = excluded.name, hostname = excluded.hostname, environment = excluded.environment, updated_at = now()`;
+
+  const services = [
+    { key: "up", kind: "container", expected: "up" },
+    { key: "down", kind: "container", expected: "up" },
+    { key: "unknown", kind: "http", expected: "up" }
+  ] as const;
+  for (const service of services) {
+    const declared = infrastructureFixture.services[service.key];
+    await database`
+      insert into infra_services (id, tenant_id, host_id, name, kind, match_key, expected_state)
+      values (
+        ${id(`${tenantId}:infra-service:${service.key}`)}, ${tenantId}, ${hostId}, ${declared.name},
+        ${service.kind}, ${declared.matchKey}, ${service.expected}
+      )
+      on conflict (id) do update set
+        name = excluded.name, kind = excluded.kind, match_key = excluded.match_key, updated_at = now()`;
+  }
+
+  /**
+   * The readings, and the passes they came from.
+   *
+   * Whether a figure still counts is measured against the cadence the connector declares --
+   * `pull_host_metrics` every two minutes, `pull_container_state` every five, three passes of
+   * grace -- so the ages here are chosen on that scale and not on the forty-five minutes an
+   * automation is given. Two hours is far past every one of them.
+   */
+  const readings = [
+    {
+      operation: "pull_host_metrics",
+      externalId: `host:${infrastructureFixture.host.hostname}`,
+      minutesAgo: 1,
+      data: {
+        cpuBusyRatio: 0.21,
+        memoryUsedRatio: 0.63,
+        filesystemUsedRatio: 0.44,
+        load1: 0.58,
+        uptimeSeconds: 903_600
+      }
+    },
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.services.up.matchKey,
+      minutesAgo: 2,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 412_000_000, cpuCores: 0.03 }
+    },
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.services.down.matchKey,
+      minutesAgo: 120,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 96_000_000, cpuCores: 0 }
+    }
+  ] as const;
+  for (const reading of readings)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${reading.externalId}`)}, ${tenantId}, ${prometheusInstanceId},
+        ${reading.operation}, ${reading.externalId}, 'state', ${database.json(reading.data)},
+        now() - '2 days'::interval, now() - ${`${reading.minutesAgo} minutes`}::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  // Two operations passed just now and a third never did. Nothing is written for the probes on
+  // purpose: an operation with no state of its own is what makes a service read as `unknown`
+  // rather than as down, and that answer cannot be seeded any other way.
+  for (const operation of ["pull_host_metrics", "pull_container_state"])
+    await database`
+      insert into connector_operation_state (id, tenant_id, instance_id, operation, last_run_at, last_success_at)
+      values (
+        ${id(`${tenantId}:operation-state:${operation}`)}, ${tenantId}, ${prometheusInstanceId},
+        ${operation}, now(), now()
+      )
+      on conflict (tenant_id, instance_id, operation) do update
+        set last_run_at = excluded.last_run_at, last_success_at = excluded.last_success_at, updated_at = now()`;
 
   // ------------------------------------------------------------------------- hand over the keys
 
