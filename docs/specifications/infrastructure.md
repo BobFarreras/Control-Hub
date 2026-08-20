@@ -402,6 +402,18 @@ caracters**, alla on el connector acota `hostLabels`, perque `host:<label>` capi
 `external_id`. La unicitat evita que dos hosts reclamin la mateixa etiqueta i que una sola caiguda
 arribi com dues alertes de dues coses que son la mateixa.
 
+**Aquella etiqueta es `instance`, i no el nom bonic de la maquina.** El connector identifica un host
+per l'etiqueta `instance` de la serie —el target del raspat, tipicament `node-exporter:9100`— i la
+filtra contra `hostLabels`; no llegeix cap etiqueta `host`. Aixo vol dir que el `hostname` que es
+declara aqui ha de ser **exactament** el mateix valor que hi ha a `hostLabels`, i que `vpsia` no hi
+serveix si el target es diu `node-exporter:9100`. El parany que hi ha al darrere val la pena
+escriure'l: els `external_labels` d'un `prometheus.yml` **no apareixen a les consultes locals** —
+nomes s'apliquen a federacio, `remote_write` i alertes—, de manera que declarar
+`external_labels: { host: vpsia }` i esperar-lo a la lectura no falla, simplement no distingeix res.
+Per a mes d'una maquina no cal cap `relabel_config`: dos `node-exporter` son dos targets i per tant
+dos `instance` diferents. Nomes caldria si un dia arribessin series d'una altra maquina per
+`remote_write`, que es precisament el cas on els `external_labels` si que compten.
+
 **`environment` es un `check` acotat** (`production|staging|development`), pel mateix motiu que el
 `kind` d'una regla: un valor que ningu filtra no es un filtre, es una errada d'escriptura que
 parteix un entorn en dos.

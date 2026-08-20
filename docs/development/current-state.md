@@ -142,11 +142,14 @@ res. La marca del cataleg cau al connector generic fins que el B4 li'n dibuixi u
 contract tests van contra fixtures escrites del contracte documentat de l'API HTTP v1, **no
 capturades de la VPS**.
 
-**Dues precondicions del 7.2 que no son codi**, i que el B1 no necessita pero el B3 si: el
-`blackbox_exporter` desplegat per a `certificate_expiring` i `service_down`, i una linia a l'escript
-de backup de la VPS que escrigui `control_hub_backup_last_success_seconds{backup_job="..."}` al
-fitxer del textfile collector. Si no es fan, aquelles regles no cauen del disseny: queden `starved`
-i es veuen.
+**Les dues precondicions del 7.2 que no son codi ja estan fetes** el 20 d'agost de 2026, i
+verificades a la VPS: el `blackbox_exporter` desplegat —el job `blackbox` esta `up` amb dos
+targets— i l'escript de backup emetent
+`control_hub_backup_last_success_seconds{backup_job="hub-vps-daily"}` al textfile collector, visible
+tant al `node-exporter` com a Prometheus. El valor de `backup_job` segueix la convencio
+`<maquina>-<que>`, perque dues maquines amb el mateix valor fusionarien series i el `max` amagaria
+la que esta morta. Sense elles, `certificate_expiring` i `backup_stale` haurien quedat `starved` —
+visibles, no silencioses.
 
 **El que el B2 deixa decidit.** `hostname` es **obligatori i unic**: es l'unica manera de comparar
 un host declarat amb una lectura, i esta acotat als mateixos 190 caracters que el connector imposa
@@ -238,11 +241,21 @@ La resta de `pnpm check` si que esta passada sobre els tretze paquets: `lint`, `
 `typecheck`, `test` i `build`. Despres, fusionar `claude/prometheus-connector-b1-qi1uvt` a
 `develop` amb `--no-ff`, per no aixafar els quatre increments en un de sol.
 
-**Les dues precondicions de VPS del 7.2 continuen sense fer**, i no bloquegen el merge: el
-`blackbox_exporter` desplegat, i la linia de l'escript de backup que escriu
-`control_hub_backup_last_success_seconds{backup_job="..."}` al textfile collector. Sense elles,
-`certificate_expiring` i `backup_stale` queden `starved` i es veuen a la pantalla — que es
-exactament el disseny, no un forat.
+**El que queda per cablejar la instancia de debo, i no es codi.** El `hostname` d'un host declarat
+ha de ser **l'etiqueta `instance`** —`node-exporter:9100`—, la mateixa cadena que va a `hostLabels`,
+i no el nom de la maquina: el connector no llegeix cap etiqueta `host`. Els `external_labels` d'un
+`prometheus.yml` **no surten a les consultes locals**, nomes a federacio, `remote_write` i alertes,
+de manera que declarar-hi `host: vpsia` no falla, simplement no distingeix res; per a mes d'una
+maquina tampoc cal cap `relabel_config`, perque dos `node-exporter` ja son dos `instance`. Queda
+escrit a `docs/specifications/infrastructure.md`. Els jobs de la VPS son `node`, `cadvisor`,
+`blackbox` i `prometheus`, i Prometheus segueix tancat a `127.0.0.1:9090` sense autenticacio, o
+sigui que la instancia haura d'anar per `CONNECTOR_INTERNAL_ALLOWLIST` i sense credencial.
+
+**Un buit conegut i no bloquejant:** dels crons de la VPS, nomes el backup diari emet metrica. El
+backup del joc i la prova de restauracio setmanal son invisibles per al Control Hub; seguint la
+convencio serien `hub-vps-aigioh` i `hub-vps-drill`, i cadascun voldria un servei declarat amb
+`match_key` `backup:<aquell valor>`. Una prova de restauracio que deixa de correr en silenci es
+exactament el que `backup_stale` existeix per dir.
 
 El xoc de numeracio que l'A9b va provocar ja esta resolt: l'A9b-1 va gastar la `0036` per al permis
 d'esborrat, aixi que **l'inventari de hosts es la `0037`**, renumerat a `infrastructure.md` abans
