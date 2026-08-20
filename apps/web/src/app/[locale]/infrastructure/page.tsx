@@ -1,7 +1,12 @@
 import { getDictionary, getInfrastructureDictionary, isLocale } from "@control-hub/i18n";
 import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
-import { InfrastructureWorkspace, type AutomationRow, type RuleRow } from "@/components/infrastructure-workspace";
+import {
+  InfrastructureWorkspace,
+  type AutomationRow,
+  type HostRow,
+  type RuleRow
+} from "@/components/infrastructure-workspace";
 import { PageTopbar } from "@/components/page-topbar";
 import { apiFetch, readJson } from "@/lib/api";
 import type {
@@ -11,13 +16,14 @@ import type {
   InfrastructureAlertRulesResponse,
   InfrastructureAlertsResponse,
   InfrastructureAutomationsResponse,
+  InfrastructureInventoryResponse,
   InfrastructureOverview,
   InfrastructureOverviewResponse,
   IntegrationsResponse,
   Page as ApiPage
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
-import { readingAge } from "@/lib/infrastructure";
+import { readingAge, readingFigures } from "@/lib/infrastructure";
 import { automationLink } from "@/lib/infrastructure-link";
 import { requireSession } from "@/lib/require-session";
 
@@ -28,9 +34,13 @@ import { requireSession } from "@/lib/require-session";
  * validated on this side**, out of the base an operator configured on the integration and the
  * workflow id the provider gave us: the infrastructure API deliberately answers with neither, so
  * this is the only place that holds both halves, and the browser receives a link we built or
- * nothing at all. **The age of every reading is computed here too**, against a single instant, so
- * that a row cannot read differently on the server and after hydration, and so that a figure
- * arrives already carrying how old it is.
+ * nothing at all. **The age of every reading is computed here too**, and so are the words its
+ * figures are read in, against a single instant, so that a row cannot read differently on the
+ * server and after hydration, and so that a figure arrives already carrying how old it is.
+ *
+ * What is not decided here is whether a machine is up: that is the API's answer, taken as given.
+ * Two places deciding it is how a green screen and a live alert end up describing one machine at
+ * the same time.
  *
  * The bases come from the integrations surface, which needs its own permission. Without it there
  * are no links and the names render as text, which is the same outcome as a base nobody
@@ -41,6 +51,7 @@ import { requireSession } from "@/lib/require-session";
 
 type Loaded = {
   overview: InfrastructureOverview | null;
+  hosts: HostRow[];
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -51,6 +62,7 @@ type Loaded = {
 
 const empty: Loaded = {
   overview: null,
+  hosts: [],
   automations: [],
   alerts: [],
   rules: [],
@@ -76,10 +88,11 @@ function basesOf(integrations: ConnectorInstance[]): Map<string, { name: string;
   );
 }
 
-async function load(showResolved: boolean, now: Date): Promise<Loaded> {
+async function load(locale: string, labels: Record<string, string>, showResolved: boolean, now: Date): Promise<Loaded> {
   try {
     const [
       overviewResponse,
+      inventoryResponse,
       automationsResponse,
       alertsResponse,
       rulesResponse,
@@ -88,6 +101,7 @@ async function load(showResolved: boolean, now: Date): Promise<Loaded> {
       operate
     ] = await Promise.all([
       apiFetch("/api/v1/infrastructure/overview"),
+      apiFetch("/api/v1/infrastructure/inventory"),
       apiFetch("/api/v1/infrastructure/automations"),
       apiFetch(`/api/v1/infrastructure/alerts${showResolved ? "" : "?status=firing"}`),
       apiFetch("/api/v1/infrastructure/alert-rules"),
@@ -105,6 +119,22 @@ async function load(showResolved: boolean, now: Date): Promise<Loaded> {
 
     return {
       overview: (await readJson<InfrastructureOverviewResponse>(overviewResponse)).overview,
+      // A reading arrives with the two things only this side can add: how old it is, and what its
+      // figures say in words. Both are worked out against the one instant above. The state itself
+      // travels untouched -- the API decided it against the cadence the collector declares, and a
+      // second opinion on this side is exactly what must not exist.
+      hosts: inventoryResponse.ok
+        ? (await readJson<InfrastructureInventoryResponse>(inventoryResponse)).inventory.hosts.map<HostRow>((host) => ({
+            ...host,
+            age: readingAge(host.reading.observedAt, now),
+            figures: readingFigures(labels, locale, host.reading, now),
+            services: host.services.map((service) => ({
+              ...service,
+              age: readingAge(service.reading.observedAt, now),
+              figures: readingFigures(labels, locale, service.reading, now)
+            }))
+          }))
+        : [],
       automations: (await readJson<InfrastructureAutomationsResponse>(automationsResponse)).automations.map(
         (automation) => ({
           ...automation,
@@ -149,7 +179,7 @@ export default async function InfrastructurePage({
 
   const now = new Date();
   const showResolved = query.resolved === "1";
-  const data = await load(showResolved, now);
+  const data = await load(locale, labels, showResolved, now);
 
   return (
     <div className="app-shell">
@@ -165,6 +195,7 @@ export default async function InfrastructurePage({
           <InfrastructureWorkspace
             overview={data.overview}
             observedFromAge={readingAge(data.overview?.observedFrom, now)}
+            hosts={data.hosts}
             automations={data.automations}
             alerts={data.alerts}
             rules={data.rules}

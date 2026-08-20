@@ -5894,6 +5894,66 @@ main {
   background: var(--danger);
   content: "";
 }
+/* The machines of the infrastructure screen. A card each, because a machine is a heading with
+   figures under it rather than a row: the figures of two hosts are never compared column by
+   column, and forcing them into a table would leave every cell of a probe empty. */
+.infra-hosts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.infra-host {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.infra-host > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.infra-host > header > div {
+  display: grid;
+}
+.infra-host > p {
+  margin: 10px 0 0;
+}
+.infra-state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.infra-state small {
+  white-space: nowrap;
+}
+/* Label above figure, so a narrow column never leaves a number without the word that names it. */
+.infra-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 12px 0 0;
+}
+.infra-figures > div {
+  display: grid;
+}
+.infra-figures dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.infra-figures dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.infra-host .crm-table-wrap {
+  margin-top: 12px;
+}
+
 @media (max-width: 1199px) {
   .attendance-overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -623,9 +623,29 @@ Fase 6.
 
 ## La pantalla
 
-`/{locale}/infrastructure`, darrere la flag i amb sessio. Quatre parts: el resum, les alertes
-—vives per defecte, amb un enllac per incloure-hi les resoltes—, les automatitzacions i les
-regles. Qui no te `infrastructure:operate` la veu sencera i sense cap boto.
+`/{locale}/infrastructure`, darrere la flag i amb sessio. Cinc parts: el resum, les alertes —vives
+per defecte, amb un enllac per incloure-hi les resoltes—, **les maquines**, les automatitzacions i
+les regles. Qui no te `infrastructure:operate` la veu sencera i sense cap boto.
+
+**Cada maquina es una fitxa i no una fila** (7.2, B4). Porta el nom, l'etiqueta per la qual se la
+reconeix, l'entorn, l'estat amb la seva edat, les xifres que se n'han llegit, i a sota la taula
+dels seus serveis amb l'estat i l'edat de cadascun. Dues maquines no es comparen mai columna a
+columna —una sonda i un host no tenen les mateixes xifres—, i una taula ho hauria dibuixat com una
+graella mig buida. Declarar i corregir maquines i serveis, i deixar de vigilar-ne un, son dialegs
+d'aquesta mateixa pantalla; qui nomes te `infrastructure:read` no en veu cap boto.
+
+**L'estat el diu l'API i la pantalla no en te cap de propi.** Es dibuixa tal com arriba —`up`,
+`down` o `unknown`—, amb la seva paraula i la seva icona, i `unknown` porta la frase que diu que
+no es una caiguda sino un col·lector que no hem vist passar. Al costat no hi ha cap segona
+etiqueta de "dada antiga": si una lectura encara compta ja s'ha decidit contra la cadencia que el
+connector declara, i una regla mes gruixuda dibuixada al costat seria una segona opinio sobre la
+mateixa pregunta. Les automatitzacions, que no tenen estat observat, la conserven.
+
+**Les xifres es tradueixen a la pagina i contra el mateix instant que les edats.** Un percentatge,
+uns bytes, una durada i una data de caducitat es dibuixen amb les paraules del diccionari, i el
+que ja ha passat diu "caducat" en comptes de comptar cap enrere. La llista de camps que es poden
+dibuixar viu a `apps/web/src/lib/infrastructure.ts` i es tancada, com la de l'API: un camp que un
+col·lector futur comenci a publicar no arriba a cap pantalla pel sol fet d'existir.
 
 **L'enllac i l'edat es calculen al servidor, no al navegador.** La resposta d'infraestructura no
 porta cap adreca de proveidor; la base surt de la superficie d'integracions, que demana el seu
@@ -676,7 +696,10 @@ Els cinc del pla, i quatre que la fase no pot tancar sense.
 - **Integracio worker:** reconciliacio de calendaris (orfe, flag apagada, circuit obert); una
   instancia penjada que no bloqueja les altres ni l'escalacio.
 - **E2E:** amb el flag obert i sessio iniciada, en `ca`: veure les automatitzacions, obrir-ne
-  l'enllac extern, veure una alerta viva i reconeixer-la. Amb el flag tancat,
+  l'enllac extern, veure una alerta viva i reconeixer-la; i veure una maquina amb les seves xifres
+  i tres serveis que diuen tres coses diferents —un que respon, un que ha deixat d'avancar i un
+  que ningu ha mirat mai—, que es l'unica manera de provar que la diferencia entre `down` i
+  `unknown` sobreviu a l'API, a la pagina i al navegador. Amb el flag tancat,
   `/{locale}/infrastructure` respon `404`.
 
 ## Rollout, feature flag i rollback
@@ -744,6 +767,12 @@ seria una llista de noms. Entra `GET /api/v1/infrastructure/inventory`, i amb el
 del B2**, que no hi eren: la llista del test es un whitelist i ningu comprovava que fos completa, de
 manera que van passar sense que cap propietat les mires. Ara una prova falla si algu declara una
 ruta d'infraestructura i no l'apunta.*
+
+*El segon commit del B4 es la pantalla, i tanca la fase: la seccio de maquines amb el detall de
+host i de servei, els dialegs per declarar-los i corregir-los, les paraules en `ca`, `es` i `en`, i
+l'E2E de les tres respostes. La suite E2E porta ara un Prometheus de fixture amb el seu inventari,
+les seves lectures i l'estat de les seves operacions: `unknown` nomes es pot sembrar deixant una
+operacio sense cap passada, i no hi ha cap altra manera d'escriure aquella fila.*
 
 ## Com entraria una capacitat d'accio (disseny, no s'implementa a la Fase 7)
 

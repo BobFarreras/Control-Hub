@@ -28,6 +28,9 @@ export type Fixture = {
     stale: { externalId: string; name: string };
     rule: string;
     customer: string;
+    host: { name: string; hostname: string };
+    /** One service per answer a reading can give: it answers, it stopped, we cannot see it. */
+    services: Record<"up" | "down" | "unknown", { name: string; matchKey: string }>;
   };
 };
 

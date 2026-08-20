@@ -5,6 +5,7 @@ import {
   Check,
   ExternalLink,
   Eye,
+  Pencil,
   Plus,
   Power,
   PowerOff,
@@ -21,14 +22,28 @@ import { useToast } from "@/components/toast";
 import type {
   AlertSeverity,
   CustomerOption,
+  HostEnvironment,
   InfrastructureAlert,
   InfrastructureAlertRule,
   InfrastructureAutomation,
-  InfrastructureOverview
+  InfrastructureOverview,
+  ObservedHost,
+  ObservedService,
+  Reading,
+  ServiceExpectedState,
+  ServiceKind
 } from "@/lib/api-types";
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
-import { ageLabel, alertState, alertStateTone, severityTone, type ReadingAge } from "@/lib/infrastructure";
+import {
+  ageLabel,
+  alertState,
+  alertStateTone,
+  observedStateTone,
+  severityTone,
+  type Figure,
+  type ReadingAge
+} from "@/lib/infrastructure";
 import { errorMessage, problemCode } from "@/lib/integrations";
 
 /**
@@ -59,7 +74,19 @@ export type AutomationRow = InfrastructureAutomation & {
 
 export type RuleRow = InfrastructureAlertRule & { instanceName: string };
 
+/** A service with what the server worked out about its reading: its age and its figures in words. */
+export type ServiceRow = ObservedService & { age: ReadingAge | null; figures: Figure[] };
+
+export type HostRow = Omit<ObservedHost, "services"> & {
+  age: ReadingAge | null;
+  figures: Figure[];
+  services: ServiceRow[];
+};
+
 const severities: AlertSeverity[] = ["critical", "high", "normal", "low"];
+const environments: HostEnvironment[] = ["production", "staging", "development"];
+const serviceKinds: ServiceKind[] = ["container", "http", "database", "automation"];
+const expectedStates: ServiceExpectedState[] = ["up", "stopped", "ignored"];
 
 const jsonHeaders = { "content-type": "application/json" };
 
@@ -73,8 +100,34 @@ async function call(path: string, init: RequestInit): Promise<Result> {
 }
 
 /** `critical` becomes `severityCritical`: one derivation, no table to keep in step with the union. */
+function capitalised(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
 function severityLabel(t: Labels, severity: AlertSeverity): string {
-  return t[`severity${severity.charAt(0).toUpperCase()}${severity.slice(1)}`] ?? severity;
+  return t[`severity${capitalised(severity)}`] ?? severity;
+}
+
+/**
+ * What is currently known of one machine or service: the state, in a pill, and the hour it was
+ * read beside it.
+ *
+ * The state is the API's and is never recomputed here. `unknown` is drawn as its own answer and
+ * carries the sentence that says what it means, because a collector we have lost sight of is not
+ * an outage and nobody should be sent looking for one. There is no second staleness badge either:
+ * whether a reading still counts was already decided against the cadence the collector declares,
+ * and a coarser rule drawn next to it would be a second opinion on the same question.
+ */
+function ReadingState({ reading, age, labels: t }: { reading: Reading; age: ReadingAge | null; labels: Labels }) {
+  return (
+    <span className="infra-state" title={reading.state === "unknown" ? t.stateUnknownHint : undefined}>
+      <StatusPill
+        tone={observedStateTone[reading.state]}
+        label={t[`state${capitalised(reading.state)}`] ?? reading.state}
+      />
+      <small className="muted">{ageLabel(t, age, t.observedNever ?? "")}</small>
+    </span>
+  );
 }
 
 function automationStateLabel(t: Labels, automation: AutomationRow): string {
@@ -85,6 +138,7 @@ function automationStateLabel(t: Labels, automation: AutomationRow): string {
 export function InfrastructureWorkspace({
   overview,
   observedFromAge,
+  hosts,
   automations,
   alerts,
   rules,
@@ -97,6 +151,7 @@ export function InfrastructureWorkspace({
 }: {
   overview: InfrastructureOverview | null;
   observedFromAge: ReadingAge | null;
+  hosts: HostRow[];
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -112,6 +167,9 @@ export function InfrastructureWorkspace({
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [linking, setLinking] = useState<AutomationRow | null>(null);
+  // Null is closed; a host of null is one being declared rather than one being corrected.
+  const [hostDialog, setHostDialog] = useState<{ host: HostRow | null } | null>(null);
+  const [serviceDialog, setServiceDialog] = useState<{ hostId: string; service: ServiceRow | null } | null>(null);
   const [ruleDialog, setRuleDialog] = useState(false);
   const [formError, setFormError] = useState("");
   const [ruleInstanceId, setRuleInstanceId] = useState("");
@@ -141,6 +199,69 @@ export function InfrastructureWorkspace({
 
   async function resolve(alertId: string) {
     await run(`/api/v1/infrastructure/alerts/${alertId}/resolve`, { method: "POST" }, t.resolved ?? "");
+  }
+
+  async function submitHost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!hostDialog) return;
+    const data = new FormData(event.currentTarget);
+    const existing = hostDialog.host;
+    setBusy(true);
+    setFormError("");
+    const result = await call(
+      existing ? `/api/v1/infrastructure/hosts/${existing.id}` : "/api/v1/infrastructure/hosts",
+      {
+        method: existing ? "PATCH" : "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          name: formValue(data, "name"),
+          hostname: formValue(data, "hostname"),
+          environment: formValue(data, "environment"),
+          notes: formValue(data, "notes").trim() || null
+        })
+      }
+    );
+    setBusy(false);
+    if (!result.ok) return setFormError(errorMessage(t, result.code));
+    setHostDialog(null);
+    toast("success", (existing ? t.hostUpdated : t.hostCreated) ?? "");
+    router.refresh();
+  }
+
+  async function submitService(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!serviceDialog) return;
+    const data = new FormData(event.currentTarget);
+    const existing = serviceDialog.service;
+    const body = {
+      name: formValue(data, "name"),
+      kind: formValue(data, "kind"),
+      matchKey: formValue(data, "matchKey"),
+      expectedState: formValue(data, "expectedState"),
+      customerId: formValue(data, "customerId") || null
+    };
+    setBusy(true);
+    setFormError("");
+    const result = await call(
+      existing ? `/api/v1/infrastructure/services/${existing.id}` : "/api/v1/infrastructure/services",
+      {
+        method: existing ? "PATCH" : "POST",
+        headers: jsonHeaders,
+        // A service that moved machine is watching something else, which is why the host travels
+        // only when the service is being declared and never when it is being corrected.
+        body: JSON.stringify(existing ? body : { ...body, hostId: serviceDialog.hostId })
+      }
+    );
+    setBusy(false);
+    if (!result.ok) return setFormError(errorMessage(t, result.code));
+    setServiceDialog(null);
+    toast("success", (existing ? t.serviceUpdated : t.serviceCreated) ?? "");
+    router.refresh();
+  }
+
+  async function removeService(service: ServiceRow) {
+    if (!confirm((t.removeServiceDescription ?? "").replace("{name}", service.name))) return;
+    await run(`/api/v1/infrastructure/services/${service.id}`, { method: "DELETE" }, t.serviceRemoved ?? "");
   }
 
   async function toggleRule(rule: RuleRow) {
@@ -286,10 +407,7 @@ export function InfrastructureWorkspace({
                         <StatusPill tone={severityTone[alert.severity]} label={severityLabel(t, alert.severity)} />
                       </td>
                       <td>
-                        <StatusPill
-                          tone={alertStateTone[state]}
-                          label={t[`alert${state.charAt(0).toUpperCase()}${state.slice(1)}`] ?? state}
-                        />
+                        <StatusPill tone={alertStateTone[state]} label={t[`alert${capitalised(state)}`] ?? state} />
                         {alert.incidentId && <small className="muted">{t.incidentOpened}</small>}
                       </td>
                       <td>
@@ -326,6 +444,154 @@ export function InfrastructureWorkspace({
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      <section className="project-panel" aria-label={t.sectionHosts}>
+        <header className="project-panel-heading">
+          <h3>{t.sectionHosts}</h3>
+          {canOperate && (
+            <button
+              className="primary-command"
+              onClick={() => {
+                setFormError("");
+                setHostDialog({ host: null });
+              }}
+            >
+              <Plus size={17} />
+              {t.newHost}
+            </button>
+          )}
+        </header>
+        {hosts.length === 0 ? (
+          <p className="muted">{t.hostsEmpty}</p>
+        ) : (
+          <ul className="infra-hosts">
+            {hosts.map((host) => (
+              <li className="infra-host" key={host.id}>
+                <header>
+                  <div>
+                    <span className="ticket-subject">{host.name}</span>
+                    <small className="muted">
+                      {host.hostname} · {t[`environment${capitalised(host.environment)}`] ?? host.environment}
+                    </small>
+                  </div>
+                  <ReadingState reading={host.reading} age={host.age} labels={t} />
+                  {canOperate && (
+                    <span className="pending-actions">
+                      <button
+                        className="icon-button"
+                        disabled={busy}
+                        aria-label={t.editHost}
+                        onClick={() => {
+                          setFormError("");
+                          setHostDialog({ host });
+                        }}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        disabled={busy}
+                        aria-label={t.newService}
+                        onClick={() => {
+                          setFormError("");
+                          setServiceDialog({ hostId: host.id, service: null });
+                        }}
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </span>
+                  )}
+                </header>
+
+                {host.figures.length > 0 && (
+                  <dl className="infra-figures">
+                    {host.figures.map((figure) => (
+                      <div key={figure.field}>
+                        <dt>{figure.label}</dt>
+                        <dd>{figure.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {host.notes && <p className="muted">{host.notes}</p>}
+
+                {host.services.length === 0 ? (
+                  <p className="muted">{t.servicesEmpty}</p>
+                ) : (
+                  <div className="crm-table-wrap inside-panel">
+                    <table className="crm-table" aria-label={`${t.sectionServices} · ${host.name}`}>
+                      <thead>
+                        <tr>
+                          <th>{t.serviceName}</th>
+                          <th>{t.serviceKind}</th>
+                          <th>{t.state}</th>
+                          <th>{t.observed}</th>
+                          {canOperate && <th />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {host.services.map((service) => (
+                          <tr key={service.id}>
+                            <td>
+                              <span className="ticket-subject">{service.name}</span>
+                              <small className="muted">{service.matchKey}</small>
+                            </td>
+                            <td>
+                              {t[`kind${capitalised(service.kind)}`] ?? service.kind}
+                              {service.expectedState !== "up" && (
+                                <small className="muted">
+                                  {t[`expected${capitalised(service.expectedState)}`] ?? service.expectedState}
+                                </small>
+                              )}
+                            </td>
+                            <td>
+                              <ReadingState reading={service.reading} age={service.age} labels={t} />
+                            </td>
+                            <td>
+                              {service.figures.length === 0 ? (
+                                <span className="muted">-</span>
+                              ) : (
+                                service.figures.map((figure) => (
+                                  <small className="muted" key={figure.field}>
+                                    {figure.label}: {figure.value}
+                                  </small>
+                                ))
+                              )}
+                            </td>
+                            {canOperate && (
+                              <td className="pending-actions">
+                                <button
+                                  className="icon-button"
+                                  disabled={busy}
+                                  aria-label={t.editService}
+                                  onClick={() => {
+                                    setFormError("");
+                                    setServiceDialog({ hostId: host.id, service });
+                                  }}
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button
+                                  className="icon-button"
+                                  disabled={busy}
+                                  aria-label={t.removeService}
+                                  onClick={actionHandler(removeService, onError).bind(null, service)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
@@ -521,6 +787,156 @@ export function InfrastructureWorkspace({
                 </button>
                 <button type="submit" className="primary-button" disabled={busy}>
                   {t.save}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {hostDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setHostDialog(null);
+          }}
+        >
+          <section
+            className="crm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={hostDialog.host ? t.editHost : t.newHost}
+          >
+            <header>
+              <h2>{hostDialog.host ? t.editHost : t.newHost}</h2>
+            </header>
+            <form className="dialog-form" onSubmit={eventHandler(submitHost, onError)}>
+              <TextField
+                label={t.hostName!}
+                name="name"
+                required
+                minLength={3}
+                maxLength={120}
+                defaultValue={hostDialog.host?.name ?? ""}
+              />
+              {/* The label a reading is matched by. A machine declared with the wrong one is never
+                  contradicted by any data, which reads on this screen as a machine that is fine. */}
+              <TextField
+                label={t.hostHostname!}
+                name="hostname"
+                required
+                maxLength={190}
+                hint={t.hostHostnameHint}
+                defaultValue={hostDialog.host?.hostname ?? ""}
+              />
+              <SelectField
+                label={t.hostEnvironment!}
+                name="environment"
+                defaultValue={hostDialog.host?.environment ?? "production"}
+                options={environments.map((environment) => ({
+                  value: environment,
+                  label: t[`environment${capitalised(environment)}`] ?? environment
+                }))}
+              />
+              <TextField
+                label={t.hostNotes!}
+                name="notes"
+                maxLength={2000}
+                defaultValue={hostDialog.host?.notes ?? ""}
+                wide
+              />
+              {formError && (
+                <p className="form-error wide" role="alert">
+                  {formError}
+                </p>
+              )}
+              <footer>
+                <button type="button" className="secondary-button" onClick={() => setHostDialog(null)}>
+                  {t.cancel}
+                </button>
+                <button type="submit" className="primary-button" disabled={busy}>
+                  {hostDialog.host ? t.save : t.create}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {serviceDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setServiceDialog(null);
+          }}
+        >
+          <section
+            className="crm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={serviceDialog.service ? t.editService : t.newService}
+          >
+            <header>
+              <h2>{serviceDialog.service ? t.editService : t.newService}</h2>
+              <p className="muted">{hosts.find((host) => host.id === serviceDialog.hostId)?.name}</p>
+            </header>
+            <form className="dialog-form" onSubmit={eventHandler(submitService, onError)}>
+              <TextField
+                label={t.serviceName!}
+                name="name"
+                required
+                minLength={3}
+                maxLength={120}
+                defaultValue={serviceDialog.service?.name ?? ""}
+              />
+              <SelectField
+                label={t.serviceKind!}
+                name="kind"
+                defaultValue={serviceDialog.service?.kind ?? "container"}
+                options={serviceKinds.map((kind) => ({ value: kind, label: t[`kind${capitalised(kind)}`] ?? kind }))}
+              />
+              {/* What the service is and how it is seen are two different things: the Postgres of a
+                  self-hosted Supabase is a database, and cAdvisor sees it as a container. */}
+              <TextField
+                label={t.serviceMatchKey!}
+                name="matchKey"
+                required
+                maxLength={200}
+                hint={t.serviceMatchKeyHint}
+                defaultValue={serviceDialog.service?.matchKey ?? ""}
+                wide
+              />
+              <SelectField
+                label={t.serviceExpected!}
+                name="expectedState"
+                defaultValue={serviceDialog.service?.expectedState ?? "up"}
+                options={expectedStates.map((state) => ({
+                  value: state,
+                  label: t[`expected${capitalised(state)}`] ?? state
+                }))}
+              />
+              <SelectField
+                label={t.serviceCustomer!}
+                name="customerId"
+                defaultValue={serviceDialog.service?.customerId ?? ""}
+                options={[
+                  { value: "", label: t.noCustomer! },
+                  ...customers.map((customer) => ({ value: customer.id, label: customer.displayName }))
+                ]}
+              />
+              {formError && (
+                <p className="form-error wide" role="alert">
+                  {formError}
+                </p>
+              )}
+              <footer>
+                <button type="button" className="secondary-button" onClick={() => setServiceDialog(null)}>
+                  {t.cancel}
+                </button>
+                <button type="submit" className="primary-button" disabled={busy}>
+                  {serviceDialog.service ? t.save : t.create}
                 </button>
               </footer>
             </form>

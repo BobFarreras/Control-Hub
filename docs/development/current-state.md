@@ -16,8 +16,9 @@ registre de jornada, i la plataforma de connectors.
 
 Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
 base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`,
-`build`— tambe, sobre tretze paquets. Amb el B1, el B2, el B3 i la primera meitat del B4 dins son **1.155 proves**, les
-d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 197 i en passen 954 — no sumen les 1.155 perque quatre proves de
+`build`— tambe, sobre tretze paquets. Amb el B1, el B2, el B3 i el B4 sencers dins son **1.165
+proves**, les d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 197 i en
+passen 964 — no sumen les 1.165 perque quatre proves de
 `@control-hub/contracts` ni tan sols es registren sense base de dades. L'error de
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
@@ -95,8 +96,9 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2, comencada: el B1, el B2 i el B3 estan fets, i el B4 va pel primer dels seus dos commits.** La 7.1 esta tancada: la planificada (A1-A6), els
-A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
+**L'entrega 7.2 esta implementada sencera: el B1, el B2, el B3 i els dos commits del B4.** La 7.1
+esta tancada: la planificada (A1-A6), els A7-A9 que van sortir d'usar-la, i el merge a `develop`
+amb els dos gates en verd.
 
 **Fet del 7.2:**
 
@@ -106,6 +108,7 @@ A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd
 | B2 | Inventari declarat: migracio `0037` amb `infra_hosts` i `infra_services`, els casos d'us amb els seus permisos, la implementacio contra PostgreSQL i vuit rutes sota `/api/v1/infrastructure` | `packages/database/migrations/0037_infrastructure_hosts.sql`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/problem.ts`, i els seus tests |
 | B4 (1/2) | La lectura del tauler tecnic: `currentReading` al domini amb la tercera resposta `unknown`, els pressupostos llegits dels manifests, `GET /api/v1/infrastructure/inventory` amb la resposta escrita camp a camp, i l'OpenAPI del modul complet | `packages/domain/src/infrastructure.ts`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/app.ts`, `apps/api/src/openapi.test.ts`, i els seus tests |
 | B3 | Les tres regles d'infraestructura al motor pur: `service_down`, `certificate_expiring` i `backup_stale`, amb la migracio `0039` que amplia els `check` de `kind` i de target, i l'inventari i les operacions noves arribant a l'escombrada | `packages/domain/src/infrastructure.ts`, `packages/application/src/infrastructure.ts`, `packages/database/migrations/0039_infrastructure_alert_kinds.sql`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/web/src/lib/api-types.ts`, i els seus tests |
+| B4 (2/2) | La pantalla: la seccio de maquines amb les xifres de cada host i la taula de serveis, els dialegs per declarar-los i corregir-los, les paraules en `ca`/`es`/`en`, i l'E2E de les tres respostes sobre una llavor amb Prometheus | `apps/web/src/lib/infrastructure.ts`, `apps/web/src/lib/api-types.ts`, `apps/web/src/components/infrastructure-workspace.tsx`, `apps/web/src/app/[locale]/infrastructure/page.tsx`, `apps/web/src/app/styles.css`, `packages/i18n/src/index.ts`, `apps/api/src/seed-e2e.ts`, `tests/e2e/`, i els seus tests |
 
 **El que el B1 deixa decidit i no s'ha de tornar a decidir.** La **PromQL es constant**: cap valor
 de la configuracio entra mai en una URL, i `hostLabels`, `containerJob` i `probeJob` filtren el
@@ -196,9 +199,50 @@ pot contradir mai. **Les vuit rutes del B2 tampoc eren a l'OpenAPI**: la llista 
 whitelist i ningu comprovava que fos completa. Ara hi son, i una prova falla si algu declara una
 ruta d'infraestructura i no l'apunta.
 
-**El seguent pas es el segon commit del B4**: la pantalla amb la seccio de maquines i el detall de
-host i de servei, els formularis per declarar-los, l'i18n en `ca`/`es`/`en`, l'E2E i el tancament de
-la Definition of Done de la fase, a `apps/web`, `packages/i18n`, `tests/e2e` i `docs/`.
+**El que el segon commit del B4 deixa decidit.** **La pantalla no torna a decidir res**: `state`
+viatja tal com l'API l'ha conclos i el navegador el dibuixa, de manera que no hi ha dues nocions de
+"caigut" per divergir. D'aixo se'n despren la decisio que costa mes d'explicar i menys de defensar
+un cop escrita: **maquines i serveis no porten segona insignia d'antiguitat**. El
+`staleAfterMinutes = 45` de `apps/web/src/lib/infrastructure.ts` esta calibrat per a
+`pull_workflows` —tres passades de quinze minuts— i posar-lo al costat d'un estat ja jutjat contra
+el pressupost del manifest seria una segona opinio sobre la mateixa pregunta, sovint la contraria:
+un contenidor amb pressupost de 900 s pot ser perfectament viu als 46 minuts. Els automatismes, que
+no tenen estat observat, si que la conserven, perque alli l'edat es tot el que hi ha.
+
+**La llista de xifres es tancada i viu a `apps/web/src/lib/infrastructure.ts`**: la mateixa regla que
+la llista blanca per prefix de l'API, aplicada al costat del cable on hi ha el navegador. Un camp que
+ningu ha posat a la taula no es dibuixa, i una prova ho exigeix ficant una adreca i un token dins la
+lectura i comprovant que no surten. Les xifres i les edats **es calculen al servidor contra un sol
+instant**, com ja feia l'edat de les automatitzacions, perque el "ara" del client no es el del
+servidor i la diferencia es una discrepancia d'hidratacio. Un valor de la forma equivocada es
+descarta en comptes de dibuixar-se: una xifra que ningu pot creure es pitjor que cap xifra. I un
+uptime i l'hora en que un contenidor va arrencar es diuen amb **les mateixes paraules** que
+qualsevol altra edat; nomes el certificat, que mira endavant, te vocabulari propi, i un que ja ha
+caducat ho diu amb paraules en comptes de comptar enrere.
+
+**Una maquina es una targeta, no una fila.** Una sonda i un host no comparteixen cap xifra, i una
+taula unica els dibuixaria mig buits; els serveis d'un host si que son una taula, perque entre ells
+si que es comparen. Els botons de declarar i corregir nomes existeixen amb `infrastructure:operate`,
+i un servei que es mou de host es un servei que observa una altra cosa, aixi que el `hostId` nomes
+viatja en crear-lo.
+
+**La llavor d'E2E porta un Prometheus amb inventari, lectures i estat d'operacio**, perque
+`unknown` nomes es pot sembrar deixant una operacio **sense cap fila** a
+`connector_operation_state`: no es un valor que es pugui escriure a la base, es l'absencia d'una
+passada. Es l'unica manera que la pantalla ensenyi les tres respostes alhora.
+
+**El seguent pas es tancar la 7.2 i fusionar-la.** Falta la porta que no s'ha pogut passar en
+aquesta sessio: `pnpm check:e2e` sobre base `_e2e` neta i sembrada, que ara hauria de ser **28/28**
+—la prova nova de les tres respostes—, perque aquesta sessio no te la pila de verificacio en peu.
+La resta de `pnpm check` si que esta passada sobre els tretze paquets: `lint`, `format:check`,
+`typecheck`, `test` i `build`. Despres, fusionar `claude/prometheus-connector-b1-qi1uvt` a
+`develop` amb `--no-ff`, per no aixafar els quatre increments en un de sol.
+
+**Les dues precondicions de VPS del 7.2 continuen sense fer**, i no bloquegen el merge: el
+`blackbox_exporter` desplegat, i la linia de l'escript de backup que escriu
+`control_hub_backup_last_success_seconds{backup_job="..."}` al textfile collector. Sense elles,
+`certificate_expiring` i `backup_stale` queden `starved` i es veuen a la pantalla — que es
+exactament el disseny, no un forat.
 
 El xoc de numeracio que l'A9b va provocar ja esta resolt: l'A9b-1 va gastar la `0036` per al permis
 d'esborrat, aixi que **l'inventari de hosts es la `0037`**, renumerat a `infrastructure.md` abans

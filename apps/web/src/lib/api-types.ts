@@ -747,3 +747,65 @@ export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[
 export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
 export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
 export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };
+
+/**
+ * The inventory with what is currently known of it (phase 7.2, increment B4).
+ *
+ * The state is the API's and never recomputed here: the same `currentReading` that decides
+ * whether a `service_down` alert fires decides what this screen draws, so a green row and a live
+ * alert cannot describe one machine at the same time. `unknown` is the third answer and not a
+ * shade of `down` -- it is the collector we have lost sight of, and a screen that drew it as
+ * `down` would be reporting an outage of its own making.
+ */
+export type ObservedState = "up" | "down" | "unknown";
+
+/** What a projection carries: flat scalars, named field by field on the way out of the API. */
+export type ReadingValue = string | number | boolean | null;
+
+export type Reading = {
+  state: ObservedState;
+  /** When the figure below was read, or null when there is none. Never drawn as an age of zero. */
+  observedAt: string | null;
+  data: Record<string, ReadingValue>;
+};
+
+export type HostEnvironment = "production" | "staging" | "development";
+export type ServiceKind = "container" | "http" | "database" | "automation";
+export type ServiceExpectedState = "up" | "stopped" | "ignored";
+
+export type InfrastructureHost = {
+  id: string;
+  name: string;
+  /** The label a reading is matched to this machine by, which is why it cannot be empty. */
+  hostname: string;
+  environment: HostEnvironment;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InfrastructureService = {
+  id: string;
+  hostId: string;
+  name: string;
+  kind: ServiceKind;
+  /** How the service is observed: the whole `external_id` of the record, prefix included. */
+  matchKey: string;
+  expectedState: ServiceExpectedState;
+  customerId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ObservedService = InfrastructureService & { reading: Reading };
+export type ObservedHost = InfrastructureHost & { reading: Reading; services: ObservedService[] };
+
+export type InfrastructureInventory = {
+  hosts: ObservedHost[];
+  /** The oldest reading behind the screen, or null when nothing has been read yet. */
+  observedFrom: string | null;
+};
+
+export type InfrastructureInventoryResponse = { inventory: InfrastructureInventory };
+export type InfrastructureHostResponse = { host: InfrastructureHost };
+export type InfrastructureServiceResponse = { service: InfrastructureService };
