@@ -71,6 +71,17 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**La 7.3 espera aprovacio de l'especificacio.** L'entrega 7.2 es a `develop` (merge `f96fab2`, sense
+fast-forward) i la branca `claude/connector-onboarding` en surt. El que hi ha escrit i pendent de
+visat es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1), el resum i els
+filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no s'ha declarat
+(C3). **No s'hi ha escrit codi**, que es el que mana el metode.
+
+La decisio que mes forma dona a la fase: **el programari diagnostica i escriu ordres, no n'executa
+cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de
+consequencies: avui el pitjor cas d'un panell compromes es que algu sapiga quanta RAM gasta una VPS;
+amb una clau SSH al vault seria perdre-les totes.
+
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
 porta d'entrada amb fitxatge, temps d'avui i del mes, proxims dies i sol·licituds; Calendari mostra
@@ -86,8 +97,8 @@ els amagava als qui no podien administrar-los.
 La seleccio de dies del calendari crea sol.licituds de vacances o absencia amb un interval inclusiu.
 Totes dues neixen `pending`; nomes `attendance:vacations` les pot aprovar o rebutjar i una absencia
 no modifica el calendari fins que queda aprovada. La migracio `0038` afegeix estat, aprovador i
-instant de resolucio a les absencies; la `0037` continua reservada per a l'inventari de hosts de la
-7.2. La consulta global i la cancel.lacio aliena queden igualment darrere el permis de gestio, de
+instant de resolucio a les absencies; la `0037` ja esta gastada per l'inventari de hosts de la 7.2 i
+la `0039` pels tipus d'alerta. La consulta global i la cancel.lacio aliena queden igualment darrere el permis de gestio, de
 manera que un membre ordinari nomes veu i cancel.la les seves peticions.
 
 Verificat despres d'incorporar els canvis de dependencies de `develop`: migracio sobre PostgreSQL
@@ -96,7 +107,8 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2 esta implementada sencera: el B1, el B2, el B3 i els dos commits del B4.** La 7.1
+**L'entrega 7.2 esta implementada sencera i integrada a `develop`: el B1, el B2, el B3 i els dos
+commits del B4.** La 7.1
 esta tancada: la planificada (A1-A6), els A7-A9 que van sortir d'usar-la, i el merge a `develop`
 amb els dos gates en verd.
 
@@ -164,7 +176,7 @@ una ruta que falti, es el `grant`, com a `infra_alert_events`.
 `match_key` d'un servei, l'`externalId` d'una sonda o d'un backup— i no un prefix nou al davant:
 `dedup_key` i `match_key` estan acotats tots dos a 200 caracters, i `service:<match_key>`
 desbordaria en silenci. **Un servei es "amunt" quan la seva lectura s'ha refrescat dins el
-pressupost i cap booleà diu el contrari**: `connector_records` es estat sobreescrit, o sigui que un
+pressupost i cap boolea diu el contrari**: `connector_records` es estat sobreescrit, o sigui que un
 contenidor aturat no perd la fila, deixa d'avancar-li el `last_seen_at`; els booleans que
 contradiuen son `success` i `scrapeUp` d'una sonda i `active` d'una automatitzacio. El mateix
 `freshness_seconds` s'aplica a dos nivells: si tota l'operacio es rancia la regla queda `starved` i

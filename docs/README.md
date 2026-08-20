@@ -41,6 +41,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/infrastructure.md`: estat de la VPS i de les automatitzacions d'n8n, amb
   registres estirats, alertes i incidencies. Aprovada, Fase 7, partida en 7.1 (plataforma, n8n
   i pantalla) i 7.2 (Prometheus, inventari i alertes), darrere la flag `infrastructure`.
+- `specifications/connector-onboarding.md`: connectar una maquina sense endevinar res -- el
+  diagnostic que diu que falta, el resum amb moltes maquines i el descobriment que proposa el
+  que encara no s'ha declarat. **Proposta**, Fase 7.3, pendent d'aprovacio.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El
