@@ -74,7 +74,7 @@ class FakeRepository implements InfrastructureRepository {
   alerts: AlertEventRecord[] = [];
   deleted: string[] = [];
   patches: { ruleId: string; patch: UpdateAlertRuleInput }[] = [];
-  state: EvaluationState = { rules: [], records: [], liveAlerts: [], freshness: [] };
+  state: EvaluationState = { rules: [], records: [], services: [], liveAlerts: [], freshness: [] };
   applied: AppliedVerdict[] = [];
   appliedWith: AlertVerdict[] = [];
   incidents: { alertId: string; severity: string; title: string }[] = [];
@@ -362,6 +362,7 @@ describe("one pass of the engine", () => {
           lastSeenAt: now
         }
       ],
+      services: [],
       liveAlerts: [],
       freshness: [{ instanceId, operation: "pull_executions", lastSuccessAt: new Date(now.getTime() - 60_000) }]
     };
@@ -429,7 +430,7 @@ describe("one pass of the engine", () => {
   });
 
   it("changes nothing when there is nothing to say", async () => {
-    repository.state = { rules: [], records: [], liveAlerts: [], freshness: [] };
+    repository.state = { rules: [], records: [], services: [], liveAlerts: [], freshness: [] };
 
     const result = await new AlertEngine(repository).sweep(owner, now);
 
@@ -558,5 +559,64 @@ describe("the error the service speaks", () => {
     const failure = await service.listAutomations(stranger).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureServiceError);
     expect((failure as InfrastructureServiceError).code).toBe("FORBIDDEN");
+  });
+});
+
+describe("an infrastructure rule", () => {
+  /**
+   * The three kinds of 7.2 read one instance's whole inventory and say something per service, so
+   * there is nothing for a target to name. Refusing it here rather than storing it keeps the rule
+   * out of the table; the same invariant is a check constraint, because a patch never carries the
+   * kind and only the row knows it.
+   */
+  it("is refused when it names a target, because it watches the whole instance", async () => {
+    await expect(
+      service.createRule(owner, {
+        ...newRule(),
+        kind: "service_down",
+        targetType: "automation",
+        targetId: "container:supabase-db"
+      })
+    ).rejects.toMatchObject({ code: "TARGET_NOT_ALLOWED" });
+  });
+
+  it("is accepted instance-wide, for each of the three kinds", async () => {
+    for (const kind of ["service_down", "certificate_expiring", "backup_stale"] as const) {
+      await expect(service.createRule(owner, { ...newRule(), kind })).resolves.toBeTruthy();
+    }
+  });
+
+  it("hands the declared inventory to the engine, so a service can be judged at all", async () => {
+    repository.state = {
+      rules: [ruleRecord({ kind: "service_down", opensIncident: false })],
+      records: [],
+      services: [
+        { name: "Supabase database", hostName: "VPS principal", matchKey: "container:supabase-db", expectedState: "up" }
+      ],
+      liveAlerts: [],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 60_000) }]
+    };
+    repository.applied = [{ ruleId: "rule-1", dedupKey: "container:supabase-db", alertId: "alert-1", created: true }];
+
+    const result = await new AlertEngine(repository).sweep(owner, now);
+
+    expect(repository.appliedWith).toEqual([
+      expect.objectContaining({ status: "firing", dedupKey: "container:supabase-db" })
+    ]);
+    expect(result.firing).toBe(1);
+  });
+
+  it("is starved rather than green when the inventory it would judge is empty", async () => {
+    repository.state = {
+      rules: [ruleRecord({ kind: "service_down" })],
+      records: [],
+      services: [],
+      liveAlerts: [],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: now }]
+    };
+
+    const result = await new AlertEngine(repository).sweep(owner, now);
+
+    expect(result).toEqual({ firing: 0, resolved: 0, starved: 1, incidentsOpened: 0 });
   });
 });

@@ -722,7 +722,7 @@ export type InfrastructureOverview = {
 };
 
 /** The one kind of rule phase 7.1 ships. A union, so a kind the API adds is a compile error here. */
-export type AlertRuleKind = "workflow_failed";
+export type AlertRuleKind = "workflow_failed" | "service_down" | "certificate_expiring" | "backup_stale";
 
 export type InfrastructureAlertRule = {
   id: string;

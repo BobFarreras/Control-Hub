@@ -3,6 +3,8 @@ import {
   evaluateAlertRules,
   incidentFor,
   type AlertRule,
+  type DeclaredService,
+  type JsonValue,
   type LiveAlert,
   type ObservedRecord,
   type OperationFreshness
@@ -48,6 +50,7 @@ const evaluate = (input: {
   evaluateAlertRules({
     rules: input.rules ?? [rule()],
     records: input.records ?? [],
+    services: [],
     liveAlerts: input.live ?? [],
     freshness: input.freshness ?? fresh,
     now
@@ -249,5 +252,281 @@ describe("many rules at once", () => {
   it("gives the same answer twice for the same input, because a missed pass must not lose an alert", () => {
     const input = { records: [failure("1", "wf-a", 5), failure("2", "wf-b", 5)] };
     expect(evaluate(input)).toEqual(evaluate(input));
+  });
+});
+
+/**
+ * The three infrastructure rules of phase 7.2.
+ *
+ * They read the same table as the one above but ask a different question: not "did something
+ * fail" but "is the thing we declared still there". The inventory is what makes the difference --
+ * absence only means an outage when somebody said the thing should exist.
+ */
+const service = (overrides: Partial<DeclaredService> = {}): DeclaredService => ({
+  name: "Supabase database",
+  hostName: "vps-1",
+  matchKey: "container:supabase-db",
+  expectedState: "up",
+  ...overrides
+});
+
+const seen = (
+  externalId: string,
+  operation: string,
+  data: Record<string, JsonValue>,
+  secondsAgo = 30
+): ObservedRecord => ({
+  instanceId,
+  operation,
+  externalId,
+  data,
+  firstSeenAt: new Date(now.getTime() - 86_400_000),
+  lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+});
+
+/** A Prometheus instance that has run all three of its operations recently. */
+const observing: OperationFreshness[] = [
+  { instanceId, operation: "pull_host_metrics", lastSuccessAt: new Date(now.getTime() - 60_000) },
+  { instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 60_000) },
+  { instanceId, operation: "pull_probe_state", lastSuccessAt: new Date(now.getTime() - 60_000) }
+];
+
+const watch = (input: {
+  rules?: readonly AlertRule[];
+  records?: readonly ObservedRecord[];
+  services?: readonly DeclaredService[];
+  live?: readonly LiveAlert[];
+  freshness?: readonly OperationFreshness[];
+}) =>
+  evaluateAlertRules({
+    rules: input.rules ?? [rule({ kind: "service_down" })],
+    records: input.records ?? [],
+    services: input.services ?? [service()],
+    liveAlerts: input.live ?? [],
+    freshness: input.freshness ?? observing,
+    now
+  });
+
+describe("a service somebody declared", () => {
+  it("fires when its reading has stopped being refreshed, and names it by its match key", () => {
+    const verdicts = watch({ records: [seen("container:supabase-db", "pull_container_state", {}, 1_200)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "container:supabase-db",
+        severity: "high",
+        summary: {
+          service: "Supabase database",
+          host: "vps-1",
+          expected: "up",
+          lastSeenAt: "2026-08-13T11:40:00.000Z"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about one that is still being refreshed", () => {
+    expect(watch({ records: [seen("container:supabase-db", "pull_container_state", {})] })).toEqual([]);
+  });
+
+  /** Decision 1: a declared service that no observation ever mentions is exactly the case to see. */
+  it("fires for one that has never been observed at all", () => {
+    const verdicts = watch({ records: [] });
+
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toMatchObject({ status: "firing", dedupKey: "container:supabase-db" });
+    expect(verdicts[0]?.summary.lastSeenAt).toBeUndefined();
+  });
+
+  it("believes a probe that says it failed, even though the reading is current", () => {
+    const probe = service({ matchKey: "probe:https://example.test", name: "Public site" });
+    const records = [seen("probe:https://example.test", "pull_probe_state", { success: false, scrapeUp: true })];
+
+    expect(watch({ services: [probe], records })).toHaveLength(1);
+  });
+
+  it("believes Prometheus when it says it could not scrape the exporter", () => {
+    const probe = service({ matchKey: "probe:node-exporter:9100" });
+    const records = [seen("probe:node-exporter:9100", "pull_probe_state", { scrapeUp: false })];
+
+    expect(watch({ services: [probe], records })).toHaveLength(1);
+  });
+
+  it("believes an automation that says it is not active", () => {
+    const automation = service({ matchKey: "workflow:wf-a" });
+    const freshness = [
+      ...observing,
+      { instanceId, operation: "pull_workflows", lastSuccessAt: new Date(now.getTime() - 60_000) }
+    ];
+    const records = [seen("workflow:wf-a", "pull_workflows", { active: false })];
+
+    expect(watch({ services: [automation], records, freshness })).toHaveLength(1);
+    const running = [seen("workflow:wf-a", "pull_workflows", { active: true })];
+    expect(watch({ services: [automation], records: running, freshness })).toEqual([]);
+  });
+
+  it("reads a service expected to stay stopped the other way round", () => {
+    const retired = service({ matchKey: "container:old-admin", expectedState: "stopped" });
+    const back = [seen("container:old-admin", "pull_container_state", {})];
+
+    expect(watch({ services: [retired], records: back })).toMatchObject([{ status: "firing" }]);
+    expect(watch({ services: [retired], records: [] })).toEqual([]);
+  });
+
+  it("never evaluates one that was declared and deliberately ignored", () => {
+    const ignored = service({ expectedState: "ignored" });
+    expect(watch({ services: [ignored], records: [] })).toEqual([expect.objectContaining({ status: "starved" })]);
+  });
+
+  /**
+   * A tenant with Prometheus and n8n has two instances and may declare services of both. Without
+   * this, each rule would fire for the other instance's inventory.
+   */
+  it("leaves alone a service whose operation this instance does not run", () => {
+    // The container is this Prometheus instance's to judge and is missing, so it fires. The
+    // automation belongs to the n8n instance next to it: without the filter it would drag
+    // `pull_workflows` into what this rule must have read, and starve the whole rule instead.
+    const automation = service({ matchKey: "workflow:wf-a", name: "Facturacio" });
+    const freshness = [
+      ...observing,
+      { instanceId: "instance-2", operation: "pull_workflows", lastSuccessAt: new Date(now.getTime() - 60_000) }
+    ];
+
+    const verdicts = watch({ services: [service(), automation], records: [], freshness });
+
+    expect(verdicts).toEqual([expect.objectContaining({ status: "firing", dedupKey: "container:supabase-db" })]);
+  });
+
+  it("is starved rather than green when it has nothing evaluable to watch", () => {
+    expect(watch({ services: [] })).toEqual([
+      { ruleId: "rule-1", status: "starved", dedupKey: "rule:rule-1", severity: "high", summary: {} }
+    ]);
+  });
+
+  it("is starved when the operation behind its inventory has gone stale", () => {
+    const stale = observing.map((entry) =>
+      entry.operation === "pull_container_state"
+        ? { ...entry, lastSuccessAt: new Date(now.getTime() - 3_600_000) }
+        : entry
+    );
+
+    expect(watch({ records: [], freshness: stale })).toMatchObject([{ status: "starved" }]);
+  });
+
+  it("resolves when the service comes back", () => {
+    const live: LiveAlert[] = [{ ruleId: "rule-1", dedupKey: "container:supabase-db" }];
+    const records = [seen("container:supabase-db", "pull_container_state", {})];
+
+    expect(watch({ records, live })).toEqual([
+      { ruleId: "rule-1", status: "resolved", dedupKey: "container:supabase-db", severity: "high", summary: {} }
+    ]);
+  });
+});
+
+describe("a certificate about to expire", () => {
+  const expiring = (days: number) =>
+    seen("probe:https://example.test", "pull_probe_state", {
+      certificateExpiresAt: new Date(now.getTime() + days * 86_400_000).toISOString()
+    });
+
+  const certificateRule = [rule({ kind: "certificate_expiring" })];
+
+  it("fires inside the fortnight it watches by default, and names the days left", () => {
+    const verdicts = watch({ rules: certificateRule, records: [expiring(9)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "probe:https://example.test",
+        severity: "high",
+        summary: {
+          target: "https://example.test",
+          expiresAt: "2026-08-22T12:00:00.000Z",
+          daysLeft: "9"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about one with time left", () => {
+    expect(watch({ rules: certificateRule, records: [expiring(40)] })).toEqual([]);
+  });
+
+  it("watches the window it was asked about", () => {
+    const rules = [rule({ kind: "certificate_expiring", params: { withinDays: 45 } })];
+    expect(watch({ rules, records: [expiring(40)] })).toHaveLength(1);
+  });
+
+  it("fires for one that has already expired, and says so with a negative count", () => {
+    const verdicts = watch({ rules: certificateRule, records: [expiring(-3)] });
+    expect(verdicts[0]?.summary.daysLeft).toBe("-3");
+  });
+
+  /**
+   * The failure mode this rule exists to avoid is the quiet one: no blackbox job configured, no
+   * certificate in any reading, and a screen that looks fine.
+   */
+  it("is starved when no reading carries a certificate at all", () => {
+    const records = [seen("probe:https://example.test", "pull_probe_state", { success: true })];
+    expect(watch({ rules: certificateRule, records })).toMatchObject([{ status: "starved" }]);
+  });
+
+  it("ignores a date that does not parse rather than firing on it", () => {
+    const broken = [seen("probe:https://example.test", "pull_probe_state", { certificateExpiresAt: "soon" })];
+    expect(watch({ rules: certificateRule, records: broken })).toMatchObject([{ status: "starved" }]);
+  });
+});
+
+describe("a backup that stopped running", () => {
+  const ranHoursAgo = (hours: number) =>
+    seen("backup:hub-vps-daily", "pull_probe_state", {
+      lastSuccessAt: new Date(now.getTime() - hours * 3_600_000).toISOString()
+    });
+
+  const backupRule = [rule({ kind: "backup_stale" })];
+
+  it("fires past the day and two hours it allows by default", () => {
+    const verdicts = watch({ rules: backupRule, records: [ranHoursAgo(30)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "backup:hub-vps-daily",
+        severity: "high",
+        summary: {
+          backupJob: "hub-vps-daily",
+          lastSuccessAt: "2026-08-12T06:00:00.000Z",
+          ageHours: "30"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about a backup that ran last night", () => {
+    expect(watch({ rules: backupRule, records: [ranHoursAgo(11)] })).toEqual([]);
+  });
+
+  it("allows the age it was asked to allow", () => {
+    const rules = [rule({ kind: "backup_stale", params: { maximumAgeHours: 8 } })];
+    expect(watch({ rules, records: [ranHoursAgo(11)] })).toHaveLength(1);
+  });
+
+  /**
+   * The whole point of the rule. A backup script that writes no `backup_job` label produces no
+   * record, and a rule that answered "green" to that would be worse than having no rule.
+   */
+  it("is starved when nothing ever wrote a backup heartbeat", () => {
+    expect(watch({ rules: backupRule, records: [] })).toEqual([
+      { ruleId: "rule-1", status: "starved", dedupKey: "rule:rule-1", severity: "high", summary: {} }
+    ]);
+  });
+
+  it("reads no backup from another instance", () => {
+    const elsewhere = { ...ranHoursAgo(30), instanceId: "instance-2" };
+    expect(watch({ rules: backupRule, records: [elsewhere] })).toMatchObject([{ status: "starved" }]);
   });
 });

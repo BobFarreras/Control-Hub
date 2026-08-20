@@ -11,7 +11,7 @@ import type {
   UpdateHostInput,
   UpdateServiceInput
 } from "@control-hub/application";
-import type { AlertSeverity, TenantContext } from "@control-hub/domain";
+import { alertRuleKinds, type AlertSeverity, type TenantContext } from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
 import { requirePermission, resolveTenantContext, writeAudit } from "../security.js";
 import type { InfrastructureContext } from "./context.js";
@@ -518,7 +518,7 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
           required: ["name", "kind", "instanceId", "targetType", "severity", "freshnessSeconds"],
           properties: {
             ...ruleFields,
-            kind: { type: "string", enum: ["workflow_failed"] },
+            kind: { type: "string", enum: [...alertRuleKinds] },
             instanceId: { type: "string", format: "uuid" }
           }
         }

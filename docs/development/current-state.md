@@ -16,8 +16,8 @@ registre de jornada, i la plataforma de connectors.
 
 Portes de qualitat sobre `develop` ja fusionat: `pnpm check:e2e` passa **27/27** amb dos workers,
 base neta i sense reintents, i `pnpm check` sencer —`lint`, `format:check`, `typecheck`, `test`,
-`build`— tambe, sobre tretze paquets. Amb el B1 i el B2 dins son **1.084 proves**, les
-d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 186 i en queden 898. L'error de
+`build`— tambe, sobre tretze paquets. Amb el B1, el B2 i el B3 dins son **1.120 proves**, les
+d'integracio de PostgreSQL incloses; sense `TEST_DATABASE_URL` se'n salten 193 i en queden 927. L'error de
 `react-hooks/set-state-in-effect` que hi havia a `attendance-record.tsx` va marxar amb el
 redisseny de la jornada, que reescriu aquell fitxer.
 
@@ -94,7 +94,7 @@ proves web, 94 proves API, 26 proves d'aplicacio de jornada, 32 de domini i 178 
 persistencia; i l'E2E autenticat de jornada **6/6**, inclosa la seleccio d'interval i el formulari
 preemplenat.
 
-**L'entrega 7.2, comencada: el B1 i el B2 estan fets.** La 7.1 esta tancada: la planificada (A1-A6), els
+**L'entrega 7.2, comencada: el B1, el B2 i el B3 estan fets.** La 7.1 esta tancada: la planificada (A1-A6), els
 A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd.
 
 **Fet del 7.2:**
@@ -103,6 +103,7 @@ A7-A9 que van sortir d'usar-la, i el merge a `develop` amb els dos gates en verd
 |---|---|---|
 | B1 | Connector `prometheus`: `pull_host_metrics`, `pull_container_state` i `pull_probe_state`, totes forma `state`, amb els seus contract tests i les paraules del connector en `ca`, `es` i `en` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, `packages/connectors/src/index.ts`, `packages/i18n/src/index.ts` |
 | B2 | Inventari declarat: migracio `0037` amb `infra_hosts` i `infra_services`, els casos d'us amb els seus permisos, la implementacio contra PostgreSQL i vuit rutes sota `/api/v1/infrastructure` | `packages/database/migrations/0037_infrastructure_hosts.sql`, `packages/application/src/infrastructure.ts`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/api/src/problem.ts`, i els seus tests |
+| B3 | Les tres regles d'infraestructura al motor pur: `service_down`, `certificate_expiring` i `backup_stale`, amb la migracio `0039` que amplia els `check` de `kind` i de target, i l'inventari i les operacions noves arribant a l'escombrada | `packages/domain/src/infrastructure.ts`, `packages/application/src/infrastructure.ts`, `packages/database/migrations/0039_infrastructure_alert_kinds.sql`, `packages/persistence/src/infrastructure-repository.ts`, `apps/api/src/routes/infrastructure.ts`, `apps/web/src/lib/api-types.ts`, i els seus tests |
 
 **El que el B1 deixa decidit i no s'ha de tornar a decidir.** La **PromQL es constant**: cap valor
 de la configuracio entra mai en una URL, i `hostLabels`, `containerJob` i `probeJob` filtren el
@@ -151,18 +152,48 @@ contenidor; `match_key` es l'`external_id` sencer, prefix inclos, i es unic sens
 de quedar-se aturat i del qual volem saber si torna— i `ignored`. I **un host no s'esborra**: no es
 una ruta que falti, es el `grant`, com a `infra_alert_events`.
 
-**El seguent pas es el B3**: les tres regles d'alerta d'infraestructura (`service_down`,
-`certificate_expiring` i `backup_stale`) a `packages/domain` i `packages/application`, amb els
-veredictes i el `starved` inclos.
+**El que el B3 deixa decidit.** El `dedupKey` de les tres regles **es l'identificador mateix** —el
+`match_key` d'un servei, l'`externalId` d'una sonda o d'un backup— i no un prefix nou al davant:
+`dedup_key` i `match_key` estan acotats tots dos a 200 caracters, i `service:<match_key>`
+desbordaria en silenci. **Un servei es "amunt" quan la seva lectura s'ha refrescat dins el
+pressupost i cap booleà diu el contrari**: `connector_records` es estat sobreescrit, o sigui que un
+contenidor aturat no perd la fila, deixa d'avancar-li el `last_seen_at`; els booleans que
+contradiuen son `success` i `scrapeUp` d'una sonda i `active` d'una automatitzacio. El mateix
+`freshness_seconds` s'aplica a dos nivells: si tota l'operacio es rancia la regla queda `starved` i
+no diu res de ningu, i nomes amb la passada fresca una lectura sense refrescar vol dir que **aquella
+cosa** ha marxat.
+
+**Una regla llegeix una instancia, i el prefix del `match_key` decideix quins serveis li toquen.**
+Un tenant amb Prometheus i n8n en te dues i pot declarar serveis de totes dues; sense filtre, cada
+regla dispararia pels serveis de l'altra. No ha calgut cap columna: el prefix diu quina operacio
+observa la cosa i una instancia que executa aquella operacio hi te fila a
+`connector_operation_state`.
+
+**L'absencia vol dir dues coses oposades, i queden separades.** Per a `service_down` l'absencia
+**es** l'alerta, que es la decisio 1 de l'especificacio. Per a `certificate_expiring` i
+`backup_stale` no hi ha res que declari que hauria d'existir, aixi que sense cap lectura amb
+certificat o sense cap registre `backup:` la regla queda **`starved`, no verda** — que es
+exactament el que passaria si l'escript de backup de la VPS no emetes l'etiqueta `backup_job`.
+
+**El seguent pas es el B4**: el dashboard tecnic amb el detall de host i de servei, l'i18n, l'OpenAPI
+i el tancament de la Definition of Done de la fase, a `apps/web`, `packages/i18n` i `docs/`.
 
 El xoc de numeracio que l'A9b va provocar ja esta resolt: l'A9b-1 va gastar la `0036` per al permis
 d'esborrat, aixi que **l'inventari de hosts es la `0037`**, renumerat a `infrastructure.md` abans
-d'escriure-la i no despres d'aplicar-la. Amb el B2 dins, les migracions van de la `0001` a la `0038`
-sense cap numero repetit.
+d'escriure-la i no despres d'aplicar-la. La `0038` la va gastar el redisseny de Jornada, o sigui que
+els tipus de regla nous son la **`0039`**. Amb el B3 dins, les migracions van de la `0001` a la
+`0039` sense cap numero repetit.
 
 **El B2 tambe toca `packages/persistence`, que la fila del pla no nomenava.** Es on viu
 `PostgresInfrastructureRepository`: sense implementacio les rutes no tenen res al darrere, i les
 proves d'RLS que el criteri 9 exigeix son les d'aquell paquet. Queda anotat al pla d'increments.
+
+**El B3 en toca quatre mes que la seva fila, i pel mateix motiu.** La `0039` perque la `0035` ja
+deia que la 7.2 ampliaria aquell `check`; `packages/persistence` perque `readEvaluationState`
+llegia nomes `pull_executions` i cap servei, i unes regles correctes als tests i mortes en
+produccio serien el pitjor resultat possible; i una linia a `apps/api` i una a
+`apps/web/src/lib/api-types.ts` perque la llista de tipus de regla ara **surt d'una constant del
+domini** (`alertRuleKinds`) que la ruta escampa, de manera que no queden dues llistes per divergir.
 
 **Les dues flags segueixen tancades.** Fusionar no encen res: sense `connectors` ni
 `infrastructure` declarades, cap de les dues rutes existeix i el modul respon 404. Encendre-les es

@@ -6,6 +6,7 @@ import {
   type AlertSeverity,
   type AlertVerdict,
   type AlertRuleKind,
+  type DeclaredService,
   type AlertRuleTargetType,
   type JsonValue,
   type LiveAlert,
@@ -151,6 +152,8 @@ export type UpdateAlertRuleInput = Partial<Omit<CreateAlertRuleInput, "kind" | "
 export type EvaluationState = {
   rules: readonly AlertRuleRecord[];
   records: readonly ObservedRecord[];
+  /** The declared inventory, which is what makes a missing reading mean an outage. */
+  services: readonly DeclaredService[];
   liveAlerts: readonly LiveAlert[];
   freshness: readonly OperationFreshness[];
 };
@@ -254,6 +257,14 @@ function checkRule(input: CreateAlertRuleInput | UpdateAlertRuleInput) {
   }
   if (input.targetType === "automation" && !input.targetId) throw new InfrastructureServiceError("TARGET_REQUIRED");
   if (input.targetType === "instance" && input.targetId) throw new InfrastructureServiceError("TARGET_NOT_ALLOWED");
+
+  // The three kinds of 7.2 read one instance's whole inventory and speak per service, so there is
+  // nothing a target could name. A patch never carries the kind, which is why the same invariant
+  // is also a check constraint: only the stored row knows what it is.
+  const kind = "kind" in input ? input.kind : undefined;
+  if (kind !== undefined && kind !== "workflow_failed" && input.targetType !== "instance") {
+    throw new InfrastructureServiceError("TARGET_NOT_ALLOWED");
+  }
 }
 
 /**
@@ -445,6 +456,7 @@ export class AlertEngine {
     const verdicts = evaluateAlertRules({
       rules: state.rules,
       records: state.records,
+      services: state.services,
       liveAlerts: state.liveAlerts,
       freshness: state.freshness,
       now

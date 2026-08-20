@@ -379,6 +379,15 @@ desassociar un workflow i esborrar una regla son actes ordinaris i auditats. `in
 **no en te**: un esdeveniment es la constancia que va passar una cosa, i l'unic que en treu cap es
 la purga de retencio.
 
+**`0039_infrastructure_alert_kinds.sql` — modul (7.2), entregada al B3**
+
+- Amplia `check (kind in (...))` d'`infra_alert_rules` amb `service_down`, `certificate_expiring` i
+  `backup_stale`, que es el que la `0035` ja deia que faria la 7.2.
+- Hi afegeix `check (kind = 'workflow_failed' or target_type = 'instance')`: les tres regles noves
+  llegeixen tot l'inventari d'una instancia i no hi ha res que un `target_id` pugui anomenar.
+
+La `0038` la va gastar `attendance_absence_approval`, del redisseny de Jornada.
+
 **`0037_infrastructure_hosts.sql` — modul (7.2), entregada al B2**
 
 - `infra_hosts` — `name`, `hostname` (l'etiqueta amb que Prometheus l'anomena), `environment`,
@@ -482,6 +491,50 @@ instancia.
 fila a `incidents` amb la gravetat de la regla i queda lligada per `incident_id`. Mentre l'alerta
 segueix viva no se n'obre cap altra —ho impedeix l'index unic parcial— i en resoldre's, la
 incidencia passa a `monitoring`; tancar-la es d'una persona.
+
+### Les tres regles de la 7.2 (B3)
+
+| Regla | Que mira | `dedupKey` | Parametres |
+|---|---|---|---|
+| `service_down` | Cada servei declarat de la instancia | el seu `match_key` | cap |
+| `certificate_expiring` | Cada lectura de sonda amb data de caducitat | l'`externalId` `probe:<target>` | `withinDays`, per defecte 14 |
+| `backup_stale` | Cada bategada de backup | l'`externalId` `backup:<job>` | `maximumAgeHours`, per defecte 26 |
+
+**El `dedupKey` es l'identificador mateix, sense cap prefix afegit.** `dedup_key` esta acotat a 200
+caracters i `match_key` tambe pot arribar-hi: `service:<match_key>` desbordaria en silenci. Com que
+tots dos ja porten el seu prefix, es prenen tal qual i el desbordament es impossible per
+construccio.
+
+**Un servei es "amunt" quan la seva lectura s'ha refrescat dins el pressupost i cap booleà diu el
+contrari.** `connector_records` es estat sobreescrit: un contenidor aturat **no perd la fila**,
+deixa d'avancar-li el `last_seen_at`. L'absencia es doncs una lectura que ha deixat de refrescar-se,
+no una fila que falta. Els booleans que contradiuen son `success` i `scrapeUp` d'una sonda i
+`active` d'una automatitzacio; un host i un contenidor no en tenen cap.
+
+El mateix `freshness_seconds` s'aplica a dos nivells i encaixa: si tota l'operacio es rancia la
+regla queda `starved` i no diu res de ningu; si l'operacio es fresca pero **aquella** lectura no,
+llavors nomes ha desaparegut aquella cosa.
+
+**Una regla llegeix una instancia, i el prefix decideix quins serveis li toquen.** Un tenant amb
+Prometheus i n8n en te dues i pot declarar serveis de totes dues; sense filtre, cada regla
+dispararia pels serveis de l'altra. No cal cap columna: el prefix del `match_key` diu quina
+operacio observa la cosa (`host:`, `container:`, `probe:`, `backup:`, `workflow:`), i una instancia
+que executa aquella operacio hi te fila a `connector_operation_state`. Una operacio que no ha
+corregut mai no en te, i llavors encara no hem mirat i no en diem res.
+
+**L'absencia vol dir dues coses oposades.** Per a `service_down` l'absencia **es** l'alerta: la
+decisio 1 diu que un servei declarat que deixa d'apareixer es precisament el cas que s'ha de veure.
+Per a les altres dues no hi ha res que declari que hauria d'existir, aixi que l'absencia es
+ignorancia: sense cap lectura amb certificat, o sense cap registre `backup:`, la regla queda
+`starved` i no verda. Es el mode de fallada d'un escript de backup que no emet l'etiqueta
+`backup_job`, que altrament es veuria com un tauler verd. Per simetria, una regla `service_down`
+sense cap servei avaluable tambe queda `starved`.
+
+**Les tres son d'instancia i no de servei.** `target_type` es queda amb `instance | automation`, i
+les noves exigeixen `instance`: llegeixen tot l'inventari i parlen per servei, o sigui que no hi ha
+res que un `target_id` pugui anomenar. Ho imposa un `check` de la `0039` i no nomes el cas d'us,
+perque un `patch` no porta mai el `kind` i l'unic que sap que es una regla es la fila. Vigilar un
+sol servei seria afegir un valor al `check`, no refer res.
 
 ## Permisos i tenancy
 
@@ -590,7 +643,8 @@ ruta, **el worker no programa ni reconcilia cap operacio i esborra els calendari
 web no mostra l'entrada i la pantalla respon `404`. **L'entrada "Infraestructura" del menu lateral
 deixa de ser `href="#"` i passa a estar darrere el flag**, com Integracions.
 
-Les tres migracions son additives i s'apliquen amb la flag apagada sense efecte observable.
+Les migracions son additives i s'apliquen amb la flag apagada sense efecte observable. La `0039`
+nomes amplia dos `check` d'`infra_alert_rules` i no toca cap fila existent.
 Rollback es apagar la flag.
 
 Variables noves a `.env.example`: cap de propia. Els connectors depenen de
@@ -627,6 +681,14 @@ al mateix commit.
 `PostgresInfrastructureRepository`: sense implementacio les rutes no tenen res al darrere, i les
 proves d'RLS que el criteri 9 exigeix son precisament les d'aquell paquet.*
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
+
+*El B3 en toca quatre mes. La migracio `0039` amplia el `check` de `kind`, que el comentari de la
+`0035` ja anunciava textualment; sense ella la base refusa les files i les regles no es poden ni
+crear. `packages/persistence` perque `readEvaluationState` nomes llegia `pull_executions` i cap
+servei, i unes regles correctes als tests i mortes en produccio son el pitjor resultat possible.
+`apps/api` i `apps/web/src/lib/api-types.ts`, una linia cadascun: la llista de tipus de regla ara
+surt d'una constant del domini que la ruta escampa, de manera que no hi ha dues llistes per
+divergir.*
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
 
 ## Com entraria una capacitat d'accio (disseny, no s'implementa a la Fase 7)

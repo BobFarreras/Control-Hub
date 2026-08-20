@@ -21,9 +21,14 @@ suite("PostgresInfrastructureRepository", () => {
 
   const tenantA = randomUUID();
   const tenantB = randomUUID();
+  // A tenant nothing else in this file writes to, for the assertions about what is *not* read.
+  // Those cannot share a tenant with the rest: a rule another test created would make them true
+  // or false depending on the order the tests happened to run in.
+  const tenantC = randomUUID();
   const userId = randomUUID();
   const membershipA = randomUUID();
   const membershipB = randomUUID();
+  const membershipC = randomUUID();
   const now = new Date("2026-08-13T12:00:00.000Z");
 
   const context = (tenantId: string, membershipId: string): TenantContext => ({
@@ -37,6 +42,7 @@ suite("PostgresInfrastructureRepository", () => {
 
   const asA = () => context(tenantA, membershipA);
   const asB = () => context(tenantB, membershipB);
+  const asC = () => context(tenantC, membershipC);
 
   const newInstance = async (tenantId: string, membershipId: string) =>
     connectors.createInstance(context(tenantId, membershipId), {
@@ -50,14 +56,15 @@ suite("PostgresInfrastructureRepository", () => {
     tenantId: string,
     membershipId: string,
     instanceId: string,
-    operation: "pull_workflows" | "pull_executions",
+    operation: "pull_workflows" | "pull_executions" | "pull_container_state" | "pull_probe_state",
     externalId: string,
     data: ConnectorConfig
   ) =>
     connectors.upsertRecords(context(tenantId, membershipId), {
       instanceId,
       operation,
-      shape: operation === "pull_workflows" ? "state" : "event",
+      // Only executions are events. Everything else is the provider's current answer, overwritten.
+      shape: operation === "pull_executions" ? "event" : "state",
       records: [{ externalId, data }],
       seenAt: now
     });
@@ -108,14 +115,16 @@ suite("PostgresInfrastructureRepository", () => {
     await admin`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
       values (${userId}, 'Infra Test', ${`${userId}@test.local`}, true, now(), now())`;
     await admin`insert into tenants (id, slug, name) values
-      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B')`;
+      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B'),
+      (${tenantC}, ${`infra-c-${tenantC}`}, 'Infra C')`;
     await admin`insert into memberships (id, tenant_id, user_id) values
-      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId})`;
+      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId}),
+      (${membershipC}, ${tenantC}, ${userId})`;
   });
 
   afterAll(async () => {
     // Everything under a tenant cascades from the tenant row, the infrastructure tables included.
-    await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
+    await admin`delete from tenants where id in (${tenantA}, ${tenantB}, ${tenantC})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });
     await admin.end({ timeout: 5 });
@@ -489,6 +498,144 @@ suite("PostgresInfrastructureRepository", () => {
 
       const state = await repository.readEvaluationState(asA());
       expect(state.records.some((item) => item.externalId === "execution:theirs")).toBe(false);
+    });
+
+    /** The declared inventory, and the reading of each declared thing whatever pass wrote it. */
+    const declaredService = async (matchKey: string) => {
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service };
+    };
+
+    it("carries the inventory, with the name of the machine each service sits on", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:supabase-${randomUUID()}`;
+      const { host, service } = await declaredService(matchKey);
+
+      const state = await repository.readEvaluationState(asA());
+
+      expect(state.services).toEqual(
+        expect.arrayContaining([{ name: service.name, hostName: host.name, matchKey, expectedState: "up" }])
+      );
+    });
+
+    it("leaves the inventory unread when no rule would judge it", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await repository.createRule(asC(), {
+        name: `rule ${randomUUID()}`,
+        kind: "workflow_failed",
+        instanceId: instance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "high",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+      const host = await repository.declareHost(asC(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asC(), {
+        hostId: host.id,
+        name: "Sense vigilancia",
+        kind: "container",
+        matchKey: `container:unwatched-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.readEvaluationState(asC())).services).toEqual([]);
+    });
+
+    it("never carries a service somebody deliberately ignored", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:retired-${randomUUID()}`;
+      const { service } = await declaredService(matchKey);
+      await repository.updateService(asA(), service.id, { expectedState: "ignored" });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.some((item) => item.matchKey === matchKey)).toBe(false);
+    });
+
+    it("fetches a declared service's own reading, whichever pass wrote it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:n8n-${randomUUID()}`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", matchKey, { memoryBytes: 1 });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === matchKey)).toBe(true);
+    });
+
+    it("reads the probe pass for a backup rule, which is where the heartbeat lives", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "backup_stale" });
+      const externalId = `backup:daily-${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", externalId, {
+        lastSuccessAt: now.toISOString()
+      });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === externalId)).toBe(true);
+    });
+
+    /**
+     * Two reads want the same probe reading -- one because a certificate lives in it, one because
+     * a service was declared against it. A duplicate would become two verdicts sharing a dedup
+     * key, and the partial unique index would refuse the second.
+     */
+    it("returns a reading once even when two rules both want it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      await newRule(instance.id, { kind: "certificate_expiring" });
+      const matchKey = `probe:https://${randomUUID()}.example.com`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", matchKey, { success: true });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.filter((item) => item.externalId === matchKey)).toHaveLength(1);
+    });
+
+    it("reads no inventory of another tenant's", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const theirs = await newInstance(tenantB, membershipB);
+      const theirHost = await repository.declareHost(asB(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asB(), {
+        hostId: theirHost.id,
+        name: "Seu",
+        kind: "container",
+        matchKey: `container:theirs-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      expect(theirs.id).toBeTruthy();
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.every((item) => item.hostName !== theirHost.name)).toBe(true);
     });
   });
 

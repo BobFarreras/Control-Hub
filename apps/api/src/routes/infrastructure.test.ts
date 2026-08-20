@@ -5,6 +5,7 @@ import type {
   HostRecord,
   ServiceRecord
 } from "@control-hub/application";
+import { alertRuleKinds } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   alertResponse,
@@ -250,5 +251,22 @@ describe("what an inventory response says", () => {
       "name",
       "updatedAt"
     ]);
+  });
+});
+
+describe("what a rule of the infrastructure kinds looks like on the way out", () => {
+  it("carries the kind through untouched, so the screen can group by it", () => {
+    for (const kind of alertRuleKinds) {
+      expect(ruleResponse({ ...rule, kind })).toMatchObject({ kind });
+    }
+  });
+
+  /**
+   * The route's schema spreads the same array the engine's switch is checked against. Adding a
+   * kind to one and forgetting the other used to be possible, and the symptom was a rule the API
+   * refused to create for a reason nobody could see in either file.
+   */
+  it("accepts exactly the kinds the engine knows how to evaluate", () => {
+    expect([...alertRuleKinds]).toEqual(["workflow_failed", "service_down", "certificate_expiring", "backup_stale"]);
   });
 });

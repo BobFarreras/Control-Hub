@@ -18,7 +18,14 @@ import {
   type UpdateServiceInput
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
-import type { AlertSeverity, AlertVerdict, LiveAlert, ObservedRecord, TenantContext } from "@control-hub/domain";
+import type {
+  AlertSeverity,
+  AlertVerdict,
+  DeclaredService,
+  LiveAlert,
+  ObservedRecord,
+  TenantContext
+} from "@control-hub/domain";
 
 /**
  * The infrastructure module's reads and writes, all of them inside a tenant scope.
@@ -58,6 +65,11 @@ const serviceColumns = `id, host_id as "hostId", name, kind, match_key as "match
 /** The operation whose records describe an automation, and the one whose age is a rule's freshness. */
 const workflowOperation = "pull_workflows";
 const executionOperation = "pull_executions";
+/** Where a certificate expiry and a backup heartbeat both come from, in one `state` operation. */
+const probeOperation = "pull_probe_state";
+
+const recordColumns = `instance_id as "instanceId", operation, external_id as "externalId", data,
+  first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"`;
 
 export class PostgresInfrastructureRepository implements InfrastructureRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -335,17 +347,65 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
       const rules = await tx<AlertRuleRecord[]>`
         select ${tx.unsafe(ruleColumns)} from infra_alert_rules where tenant_id = ${context.tenantId}`;
 
-      // Only the operation the rules read, and only for instances a rule points at. A tenant with
-      // one rule does not pay for reading every record of every instance it has installed.
+      // Only what the rules present actually read, and only for instances a rule points at. A
+      // tenant with one rule does not pay for reading every record of every instance it has
+      // installed, and a tenant with no rule of a kind reads nothing on its behalf.
+      const kinds = new Set(rules.map((rule) => rule.kind));
       const instanceIds = [...new Set(rules.map((rule) => rule.instanceId))];
-      const records = instanceIds.length
-        ? await tx<ObservedRecord[]>`
-            select instance_id as "instanceId", operation, external_id as "externalId", data,
-              first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"
-            from connector_records
-            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
-              and instance_id in ${tx(instanceIds)}`
+
+      // The inventory is read before the records, because it is what says which records matter.
+      // `ignored` is filtered here as well as in the domain: the partial index of `0037` is on
+      // exactly this predicate, so the filter costs nothing and the rows never leave the database.
+      const services = kinds.has("service_down")
+        ? await tx<DeclaredService[]>`
+            select service.name, host.name as "hostName", service.match_key as "matchKey",
+              service.expected_state as "expectedState"
+            from infra_services service
+            join infra_hosts host on host.tenant_id = service.tenant_id and host.id = service.host_id
+            where service.tenant_id = ${context.tenantId} and service.expected_state <> 'ignored'`
         : [];
+
+      const columns = tx.unsafe(recordColumns);
+      const reads: Promise<ObservedRecord[]>[] = [];
+
+      if (instanceIds.length > 0) {
+        if (kinds.has("workflow_failed")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // Certificates and backups both live in the probe pass, and neither is named by anything
+        // we declared: what exists is whatever the exporters published, so the whole pass is read.
+        if (kinds.has("certificate_expiring") || kinds.has("backup_stale")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${probeOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // The opposite case: here the inventory names exactly which readings are wanted, so the
+        // query asks for those and not for every container and workflow the providers know of.
+        const matchKeys = [...new Set(services.map((service) => service.matchKey))];
+        if (matchKeys.length > 0) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and instance_id in ${tx(instanceIds)}
+              and external_id in ${tx(matchKeys)}`);
+        }
+      }
+
+      // The reads overlap on purpose -- a probe reading can be both a certificate and a declared
+      // service -- and a duplicate would become two verdicts sharing one dedup key, which the
+      // partial unique index would then refuse. Identity is the record's own key.
+      const records = [
+        ...new Map(
+          (await Promise.all(reads))
+            .flat()
+            .map((record) => [`${record.instanceId}\u0000${record.operation}\u0000${record.externalId}`, record])
+        ).values()
+      ];
 
       const freshness = await tx<{ instanceId: string; operation: string; lastSuccessAt: Date | null }[]>`
         select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
@@ -355,7 +415,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         select rule_id as "ruleId", dedup_key as "dedupKey" from infra_alert_events
         where tenant_id = ${context.tenantId} and status = 'firing'`;
 
-      return { rules, records, liveAlerts, freshness };
+      return { rules, records, services, liveAlerts, freshness };
     });
   }
 
