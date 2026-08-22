@@ -95,6 +95,32 @@ El criteri 11 ja te la seva prova: `packages/i18n/src/index.test.ts` recorre
 `infrastructureErrorCodes` i falla si un codi no te frase en els tres idiomes o si cau a la frase
 generica.
 
+**`pnpm check` torna a estar verd de punta a punta**, i pel cami han caigut tres defectes que no
+eren del C1. El `build` fallava fent el prerender de `/_global-error`, la pagina interna de Next
+per quan el layout arrel no arriba a renderitzar: aquesta aplicacio no en tenia cap de propia i la
+integrada peta amb un `useContext` nul. Ara hi ha `apps/web/src/app/global-error.tsx`, que no es un
+pedac sino la pantalla que faltava — el layout arrel espera `currentAttendanceStatus()`, de manera
+que l'API sense respondre fa caure precisament el layout, i fins ara la resposta era una pagina en
+angles, sense estil i sense reportar res. Diu el mateix que `[locale]/error.tsx` en els tres
+idiomes, amb els colors del producte escrits inline (el full d'estils global no arriba a aquest
+limit) i fa `captureException`.
+
+El segon no arriba al repositori i val la pena saber-ho: `packages/database/src/index.ts` i
+`packages/domain/src/infrastructure.ts` tenien 2 i 57 linies en LF dins de fitxers CRLF, de quan es
+van inserir amb un script. Amb `endOfLine: "auto"` aixo deixa `format:check` vermell, pero
+**nomes en aquesta copia de treball**: `.gitattributes` diu `text=auto`, o sigui que git desa LF
+sempre i un clon nou surt tot en CRLF i verd. Arreglat amb `prettier --write` i sense res a
+committejar. La trampa es que qualsevol script que insereixi text amb `\n` en un fitxer que git ha
+posat en CRLF torna a obrir-la.
+
+El tercer, a `apps/web/src/app/styles.css`: **51 referencies a colors que no existien**. Vint-i-una
+sense cap fallback — `--text-muted`, `--bg`, `--fg`, `--primary`, `--focus`, `--text-strong` — de
+manera que la propietat no s'aplicava; i trenta que queien en un valor codificat a ma que era la
+paleta per defecte de Tailwind. Tot el modul de tiquets estava escrit contra un vocabulari de tokens
+que aqui no ha existit mai. Ara tot apunta a la paleta real i s'ha declarat `--info-subtle`, l'unic
+color semantic que no tenia superficie tenyida. L'unica variable no declarada que queda es
+`--row-index`, que ve inline des de `smart-data-table.tsx`.
+
 La decisio que mes forma dona a la fase: **el programari diagnostica i escriu ordres, no n'executa
 cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de
 consequencies: avui el pitjor cas d'un panell compromes es que algu sapiga quanta RAM gasta una VPS;
