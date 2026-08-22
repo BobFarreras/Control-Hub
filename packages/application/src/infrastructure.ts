@@ -5,6 +5,7 @@ import {
   hasPermission,
   hostMatchKey,
   incidentFor,
+  observedTally,
   type AlertRule,
   type ConnectorDiagnosis,
   type AlertSeverity,
@@ -16,6 +17,7 @@ import {
   type LiveAlert,
   type CurrentReading,
   type ObservedRecord,
+  type ObservedTally,
   type OperationFreshness,
   type TenantContext
 } from "@control-hub/domain";
@@ -222,7 +224,20 @@ export type ObservedHost = HostRecord & { reading: CurrentReading; services: rea
  * dashboard is only as fresh as the stalest thing on it, and the freshest would hide the machine
  * that stopped answering yesterday.
  */
-export type Inventory = { hosts: readonly ObservedHost[]; observedFrom: Date | null };
+/**
+ * How many machines and services there are, and how many of each are up, down or out of sight.
+ *
+ * It rides on the inventory rather than on the overview route because it is counted from the
+ * readings the inventory already computed. Asking the overview for it would mean reading the whole
+ * fleet twice per screen, and the second read could disagree with the first.
+ */
+export type InventorySummary = { hosts: ObservedTally; services: ObservedTally };
+
+export type Inventory = {
+  hosts: readonly ObservedHost[];
+  summary: InventorySummary;
+  observedFrom: Date | null;
+};
 
 /**
  * Everything the guided check reads, gathered in one pass so the answer describes one moment.
@@ -586,6 +601,12 @@ export class InfrastructureService {
 
     return {
       hosts,
+      // Counted from the very readings the rows were built from, by the domain rather than here,
+      // so the figure at the top of the screen cannot drift from the list underneath it.
+      summary: {
+        hosts: observedTally(hosts.map((host) => host.reading.state)),
+        services: observedTally(hosts.flatMap((host) => host.services.map((service) => service.reading.state)))
+      },
       observedFrom: observed.length > 0 ? new Date(Math.min(...observed.map((at) => at.getTime()))) : null
     };
   }

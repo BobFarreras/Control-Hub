@@ -4,11 +4,13 @@ import {
   evaluateAlertRules,
   hostMatchKey,
   incidentFor,
+  observedTally,
   type AlertRule,
   type DeclaredService,
   type JsonValue,
   type LiveAlert,
   type ObservedRecord,
+  type ObservedState,
   type OperationFreshness
 } from "./infrastructure.js";
 
@@ -588,6 +590,7 @@ describe("what the dashboard sees", () => {
     expect(read({ matchKey: "host:vps", records: [record] })).toEqual({
       state: "up",
       observedAt: new Date(now.getTime() - 90_000),
+      instanceId,
       data: { cpuBusyRatio: 0.12, load1: 0.4 }
     });
   });
@@ -607,7 +610,7 @@ describe("what the dashboard sees", () => {
   });
 
   it("is down when the pass is current and there is no reading at all", () => {
-    expect(read({ matchKey: "host:vps" })).toEqual({ state: "down", observedAt: null, data: {} });
+    expect(read({ matchKey: "host:vps" })).toEqual({ state: "down", observedAt: null, instanceId: null, data: {} });
   });
 
   /**
@@ -686,5 +689,90 @@ describe("what the dashboard sees", () => {
     const record = seen("pull_container_state", "container:old-worker", 9000);
 
     expect(read({ matchKey: "container:old-worker", records: [record], freshness })).toMatchObject({ state: "down" });
+  });
+});
+
+describe("where a reading came from", () => {
+  const now = new Date("2026-08-13T12:00:00.000Z");
+  const budgets = { pull_host_metrics: 900 };
+
+  const read = (records: readonly ObservedRecord[], freshness: readonly OperationFreshness[]) =>
+    currentReading({ matchKey: "host:vps", records, freshness, budgets, now });
+
+  const record = (instance: string, secondsAgo: number): ObservedRecord => ({
+    instanceId: instance,
+    operation: "pull_host_metrics",
+    externalId: "host:vps",
+    data: {},
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const passing = (instance: string) => ({
+    instanceId: instance,
+    operation: "pull_host_metrics",
+    lastSuccessAt: new Date(now.getTime() - 60_000)
+  });
+
+  /**
+   * Without this, a fleet read by two collectors cannot be filtered by which one reads it, and
+   * the machine's own page cannot say where its figures came from. The connector is a property
+   * of the reading and not of the machine: the same VPS may be read by a different one tomorrow.
+   */
+  it("names the connector instance whose record was read", () => {
+    expect(read([record("instance-1", 30)], [passing("instance-1")])).toMatchObject({
+      state: "up",
+      instanceId: "instance-1"
+    });
+  });
+
+  it("names the instance of the reading it actually used, not the first one offered", () => {
+    const records = [record("instance-2", 1200), record("instance-1", 30)];
+
+    expect(read(records, [passing("instance-1"), passing("instance-2")])).toMatchObject({
+      state: "up",
+      instanceId: "instance-1"
+    });
+  });
+
+  it("has no instance to name when the pass ran and found nothing", () => {
+    expect(read([], [passing("instance-1")])).toEqual({
+      state: "down",
+      observedAt: null,
+      instanceId: null,
+      data: {}
+    });
+  });
+
+  /** A collector we have lost sight of is not a source: nothing here was read from anywhere. */
+  it("has no instance to name when nobody has looked", () => {
+    expect(read([record("instance-1", 30)], [])).toMatchObject({ state: "unknown", instanceId: null });
+  });
+});
+
+describe("counting a fleet by what it is doing", () => {
+  it("counts each state and the whole of them", () => {
+    expect(observedTally(["up", "up", "down", "unknown", "up"])).toEqual({
+      total: 5,
+      up: 3,
+      down: 1,
+      unknown: 1
+    });
+  });
+
+  it("counts nothing as zeroes rather than as an absence", () => {
+    expect(observedTally([])).toEqual({ total: 0, up: 0, down: 0, unknown: 0 });
+  });
+
+  /**
+   * The summary and the list have to agree, and they only can if every declared thing lands in
+   * exactly one of the three. A total that is not the sum of the parts is the bug this catches.
+   */
+  it("puts every thing in exactly one column", () => {
+    const states: ObservedState[] = ["up", "down", "unknown", "up", "down", "down", "unknown"];
+    const tally = observedTally(states);
+
+    expect(tally.up + tally.down + tally.unknown).toBe(tally.total);
+    expect(tally.total).toBe(states.length);
   });
 });

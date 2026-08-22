@@ -1,12 +1,22 @@
 import { getInfrastructureDictionary, locales } from "@control-hub/i18n";
 import { describe, expect, it } from "vitest";
-import type { InfrastructureAlert, Reading, ReadingValue } from "./api-types";
+import type {
+  HostEnvironment,
+  InfrastructureAlert,
+  ObservedHost,
+  ObservedService,
+  ObservedState,
+  Reading,
+  ReadingValue
+} from "./api-types";
 import {
   ageLabel,
   alertState,
   alertStateTone,
+  filterInventory,
   observedStateTone,
   readingAge,
+  readingSources,
   readingFigures,
   severityTone,
   staleAfterMinutes
@@ -143,6 +153,7 @@ describe("what a machine currently looks like", () => {
   const reading = (data: Record<string, ReadingValue>): Reading => ({
     state: "up",
     observedAt: "2026-08-13T11:58:00.000Z",
+    instanceId: "prom-a",
     data
   });
   const shown = (data: Record<string, ReadingValue>) => readingFigures(labels, "ca", reading(data), now);
@@ -244,5 +255,123 @@ describe("what a machine currently looks like", () => {
         expect(`${figure.label}${figure.value}`, locale).not.toContain("{count}");
       }
     }
+  });
+});
+
+describe("showing part of a fleet without changing any of it", () => {
+  const reading = (state: ObservedState, instanceId: string | null = "prom-a"): Reading => ({
+    state,
+    observedAt: "2026-08-13T11:59:00.000Z",
+    instanceId,
+    data: {}
+  });
+
+  const service = (id: string, state: ObservedState, instanceId: string | null = "prom-a"): ObservedService => ({
+    id,
+    hostId: "host-1",
+    name: id,
+    kind: "container",
+    matchKey: `container:${id}`,
+    expectedState: "up",
+    customerId: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading(state, instanceId)
+  });
+
+  const host = (
+    id: string,
+    environment: HostEnvironment,
+    state: ObservedState,
+    services: ObservedService[] = [],
+    instanceId: string | null = "prom-a"
+  ): ObservedHost => ({
+    id,
+    name: id,
+    hostname: `${id}.example`,
+    environment,
+    notes: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading(state, instanceId),
+    services
+  });
+
+  const nothing = { environments: [], states: [], instanceIds: [] };
+
+  const production = host("host-1", "production", "up", [service("n8n", "down"), service("caddy", "up")]);
+  const staging = host("host-2", "staging", "down", [service("api", "up")], "prom-b");
+  const fleet = [production, staging];
+
+  it("shows the whole fleet when nothing is asked of it", () => {
+    expect(filterInventory(fleet, nothing)).toEqual(fleet);
+  });
+
+  it("shows only the machines of the environments asked for", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["staging"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+  });
+
+  it("treats two environments as either of them, not as both at once", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["production", "staging"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-1", "host-2"]);
+  });
+
+  /**
+   * A machine is kept for a service of its own that matches, because a service on its own has
+   * nowhere to be drawn. What it is not is a machine that quietly reports a state nobody asked
+   * for: the services shown are narrowed to the ones that matched.
+   */
+  it("keeps a machine for a service that matched, and shows only the services that did", () => {
+    const shown = filterInventory(fleet, { ...nothing, states: ["down"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-1", "host-2"]);
+    expect(shown[0]!.services.map((item) => item.id)).toEqual(["n8n"]);
+    expect(shown[1]!.services).toEqual([]);
+  });
+
+  it("drops a machine when neither it nor anything on it matched", () => {
+    expect(filterInventory(fleet, { ...nothing, states: ["unknown"] })).toEqual([]);
+  });
+
+  it("shows only what a given collector read", () => {
+    const shown = filterInventory(fleet, { ...nothing, instanceIds: ["prom-b"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+  });
+
+  /** Three questions at once, and the answer has to satisfy all three rather than any of them. */
+  it("adds up: a staging machine that is down and read by the second collector", () => {
+    const shown = filterInventory(fleet, {
+      environments: ["staging"],
+      states: ["down"],
+      instanceIds: ["prom-b"]
+    });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+    expect(filterInventory(fleet, { environments: ["production"], states: ["down"], instanceIds: ["prom-b"] })).toEqual(
+      []
+    );
+  });
+
+  /**
+   * The one thing a filter must never do. It hides rows; it does not restate what any of them
+   * says, and the object handed back for a row that passed is the very object that came in.
+   */
+  it("never recomputes a state it was given", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["production"] });
+
+    expect(shown[0]!.reading).toBe(production.reading);
+    expect(shown[0]!.services[0]!.reading).toBe(production.services[0]!.reading);
+  });
+
+  it("offers every collector that read something, once each and in a settled order", () => {
+    expect(readingSources(fleet)).toEqual(["prom-a", "prom-b"]);
+  });
+
+  it("offers no collector for a fleet nothing has been read from", () => {
+    expect(readingSources([host("host-3", "development", "unknown", [], null)])).toEqual([]);
   });
 });

@@ -766,6 +766,14 @@ export type Reading = {
   state: ObservedState;
   /** When the figure below was read, or null when there is none. Never drawn as an age of zero. */
   observedAt: string | null;
+  /**
+   * Which connector instance read this, or null when nothing was read.
+   *
+   * Ours and never the provider's: the id of a row in `connector_instances`, the same one every
+   * automation and alert rule on this screen already carries. It is what the fleet is filtered by
+   * and what a machine's own page names as the source of its figures.
+   */
+  instanceId: string | null;
   data: Record<string, ReadingValue>;
 };
 
@@ -800,8 +808,15 @@ export type InfrastructureService = {
 export type ObservedService = InfrastructureService & { reading: Reading };
 export type ObservedHost = InfrastructureHost & { reading: Reading; services: ObservedService[] };
 
+/** How many things are in each state. Counted by the API; a screen that re-counted could differ. */
+export type ObservedTally = { total: number; up: number; down: number; unknown: number };
+
+export type InventorySummary = { hosts: ObservedTally; services: ObservedTally };
+
 export type InfrastructureInventory = {
   hosts: ObservedHost[];
+  /** The machines and the services counted by state, from the same readings the rows carry. */
+  summary: InventorySummary;
   /** The oldest reading behind the screen, or null when nothing has been read yet. */
   observedFrom: string | null;
 };

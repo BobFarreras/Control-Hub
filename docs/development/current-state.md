@@ -71,7 +71,7 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te el C1 entregat i el C2 per comencar.** L'entrega 7.2 es a
+**La 7.3 te el C1 i el C2 entregats, i el C3 per comencar.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
 el resum i els filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no
@@ -120,6 +120,37 @@ paleta per defecte de Tailwind. Tot el modul de tiquets estava escrit contra un 
 que aqui no ha existit mai. Ara tot apunta a la paleta real i s'ha declarat `--info-subtle`, l'unic
 color semantic que no tenia superficie tenyida. L'unica variable no declarada que queda es
 `--row-index`, que ve inline des de `smart-data-table.tsx`.
+
+**El C2 esta complet: el resum, els filtres i la fitxa per maquina.** Cap taula nova i cap
+migracio, com deia l'especificacio.
+
+El resum compta maquines i serveis pel seu estat, i els compta `observedTally` al domini a partir
+de les mateixes lectures amb que es dibuixen les files. La xifra de dalt i la llista de sota son
+una sola afirmacio comptada dues vegades, i comptar-la a la pantalla seria una segona opinio sobre
+quantes maquines han caigut. Viatja dins la resposta d'inventari, no dins la de resum: es d'alla
+que surten les lectures, i demanar-ho a `/overview` voldria dir llegir la flota dues vegades per
+pintar una pantalla.
+
+Els filtres son tres preguntes acumulables sobre l'inventari —entorn, resposta de la lectura i
+recollidor d'origen— i cadascuna es una llista: buida no demana res, dos valors demanen qualsevol
+dels dos, i dues llistes amb contingut s'han de complir totes dues. **No canvien res del que es
+llegeix**: `filterInventory` amaga files i prou, i l'objecte que torna per a una fila que passa es
+el mateix objecte que li va entrar —hi ha una prova que ho comprova amb `toBe`. El resum de dalt no
+es filtra a proposit: quanta flota hi ha caiguda no depen del que algu estigui mirant en aquell
+moment. Una maquina es queda tambe quan el que coincideix es un servei seu, perque un servei no te
+on dibuixar-se sol, i llavors nomes se n'ensenyen els serveis que han coincidit.
+
+Perque tot aixo fos possible, `CurrentReading` ara diu **de quin connector ve cada lectura**
+(`instanceId`). Es una propietat de la lectura i mai de la cosa llegida: la mateixa VPS la pot
+llegir un altre recollidor dema, i dos poden llegir-la avui. Es l'identificador d'una fila nostra
+de `connector_instances`, el mateix que ja porten les automatitzacions i les regles d'alerta — mai
+una adreca del proveidor.
+
+La fitxa d'una maquina es `/infrastructure/hosts/{hostId}`, i llegeix el mateix inventari que la
+llista per triar-ne una: **no hi ha ruta per host a l'API i no n'hi ha d'haver**, perque una segona
+ruta que calculi la mateixa resposta es una segona ocasio de calcular-la diferent. El que hi afegeix
+es la procedencia: quin recollidor ha llegit cada linia i fa quant, junts, perque una xifra fresca
+d'un recollidor inesperat i una d'una hora del recollidor correcte son problemes diferents.
 
 La decisio que mes forma dona a la fase: **el programari diagnostica i escriu ordres, no n'executa
 cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de

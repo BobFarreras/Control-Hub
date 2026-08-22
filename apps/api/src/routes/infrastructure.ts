@@ -185,7 +185,10 @@ export function readingResponse(matchKey: string, reading: CurrentReading) {
     const value = reading.data[field];
     if (value !== undefined) data[field] = value;
   }
-  return { state: reading.state, observedAt: reading.observedAt, data };
+  // The connector instance is ours and not the provider's: an identifier of a row in our own
+  // `connector_instances`, which every automation and every alert rule on this surface already
+  // carries. It says which collector read this line, never where that collector reaches.
+  return { state: reading.state, observedAt: reading.observedAt, instanceId: reading.instanceId, data };
 }
 
 export function observedServiceResponse(service: ObservedService) {
@@ -201,8 +204,17 @@ export function observedHostResponse(host: ObservedHost) {
   };
 }
 
+/**
+ * `summary` travels through untouched. Counting it again here would give the route and the use
+ * case two ways of arriving at how many machines are down, and one of them would eventually be
+ * the one somebody reads.
+ */
 export function inventoryResponse(inventory: Inventory) {
-  return { hosts: inventory.hosts.map(observedHostResponse), observedFrom: inventory.observedFrom };
+  return {
+    hosts: inventory.hosts.map(observedHostResponse),
+    summary: inventory.summary,
+    observedFrom: inventory.observedFrom
+  };
 }
 
 /**
@@ -424,7 +436,7 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
         tags: ["infrastructure"],
         summary: "Every machine and service, with what is currently known of it",
         description:
-          "The declared inventory joined to its readings, judged exactly as the `service_down` rule judges one, so a dashboard and an alert cannot disagree about what down means. `state` has three values and the third is the point: `unknown` is a collector we have lost sight of, and it is never drawn as an outage. `observedFrom` is the oldest reading behind the answer, because a dashboard is only as fresh as the stalest thing on it."
+          "The declared inventory joined to its readings, judged exactly as the `service_down` rule judges one, so a dashboard and an alert cannot disagree about what down means. `state` has three values and the third is the point: `unknown` is a collector we have lost sight of, and it is never drawn as an outage. `summary` counts the machines and the services by that same state, counted from these very readings so the figure at the top of a screen cannot drift from the list under it. Each reading names the connector instance it was read from — ours, never the provider's — which is what lets a fleet be filtered by which collector sees it. `observedFrom` is the oldest reading behind the answer, because a dashboard is only as fresh as the stalest thing on it."
       }
     },
     async (request) => {

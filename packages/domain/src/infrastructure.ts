@@ -585,6 +585,16 @@ export type CurrentReading = {
   state: ObservedState;
   /** When the reading behind this state was last refreshed, or null when there is none. */
   observedAt: Date | null;
+  /**
+   * The connector instance whose record this state was read from, or null when there is no record
+   * behind it.
+   *
+   * A property of the reading and never of the thing read: the same machine may be scraped by a
+   * different collector tomorrow, and two of them may scrape it today. It is what lets a fleet be
+   * filtered by which collector sees it, and a machine's own page say where its figures came from
+   * -- neither of which is answerable from the declaration alone.
+   */
+  instanceId: string | null;
   /** The projection the connector wrote, handed over whole for the screen to name fields of. */
   data: Readonly<Record<string, JsonValue>>;
 };
@@ -620,7 +630,7 @@ export function currentReading(input: {
   budgets: Readonly<Record<string, number>>;
   now: Date;
 }): CurrentReading {
-  const blind: CurrentReading = { state: "unknown", observedAt: null, data: {} };
+  const blind: CurrentReading = { state: "unknown", observedAt: null, instanceId: null, data: {} };
 
   const operation = operationForPrefix[prefixOf(input.matchKey)];
   if (operation === undefined) return blind;
@@ -639,10 +649,33 @@ export function currentReading(input: {
   if (!lastPass || input.now.getTime() - lastPass.getTime() > budget * 1000) return blind;
 
   const record = latestRecord(input.records, operation, input.matchKey, null);
-  if (!record) return { state: "down", observedAt: null, data: {} };
+  if (!record) return { state: "down", observedAt: null, instanceId: null, data: {} };
 
   const alive = refreshedWithin(record, budget, input.now) && !contradicted(input.matchKey, record);
-  return { state: alive ? "up" : "down", observedAt: record.lastSeenAt, data: record.data };
+  return {
+    state: alive ? "up" : "down",
+    observedAt: record.lastSeenAt,
+    instanceId: record.instanceId,
+    data: record.data
+  };
+}
+
+/** How many declared things are in each of the three states, and how many there are at all. */
+export type ObservedTally = { total: number; up: number; down: number; unknown: number };
+
+/**
+ * The fleet counted by what it is doing right now.
+ *
+ * Here rather than on the screen for the same reason `currentReading` is here: the summary at the
+ * top of a dashboard and the rows below it have to be the same claim counted twice, and a screen
+ * that tallied for itself would be a second opinion about how many machines are down. Every state
+ * lands in exactly one column, so the total is always the sum of the three -- a summary whose
+ * parts do not add up is worse than no summary.
+ */
+export function observedTally(states: readonly ObservedState[]): ObservedTally {
+  const tally: ObservedTally = { total: states.length, up: 0, down: 0, unknown: 0 };
+  for (const state of states) tally[state] += 1;
+  return tally;
 }
 
 /**

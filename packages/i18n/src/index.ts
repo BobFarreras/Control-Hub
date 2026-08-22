@@ -3948,6 +3948,8 @@ const infrastructureDictionaries = {
     overviewAcknowledged: "Reconegudes",
     observedFrom: "Lectura mes antiga",
     observedNever: "Cap lectura encara",
+    overviewHosts: "Maquines",
+    overviewServices: "Serveis",
 
     sectionAutomations: "Automatitzacions",
     sectionAlerts: "Alertes",
@@ -4032,6 +4034,19 @@ const infrastructureDictionaries = {
 
     sectionHosts: "Maquines",
     hostsEmpty: "Encara no s'ha declarat cap maquina.",
+
+    filterEnvironment: "Entorn",
+    filterState: "Resposta",
+    filterSource: "Llegit per",
+    filterShowing: "Es mostren {shown} maquines de {total}.",
+    filterClear: "Treure els filtres",
+    filterNoMatch: "Cap maquina no respon a tot el que has demanat alhora.",
+
+    hostBack: "Tota la infraestructura",
+    hostNotFound: "Aquesta maquina no existeix, o no la pots veure.",
+    hostReadBy: "Llegit per",
+    hostReadByNobody: "Cap recollidor",
+    hostServicesCount: "{count} serveis declarats",
     stateUp: "Respon",
     stateDown: "No respon",
     stateUnknown: "Sense lectura",
@@ -4134,6 +4149,8 @@ const infrastructureDictionaries = {
     overviewAcknowledged: "Reconocidas",
     observedFrom: "Lectura mas antigua",
     observedNever: "Ninguna lectura todavia",
+    overviewHosts: "Maquinas",
+    overviewServices: "Servicios",
 
     sectionAutomations: "Automatizaciones",
     sectionAlerts: "Alertas",
@@ -4218,6 +4235,19 @@ const infrastructureDictionaries = {
 
     sectionHosts: "Maquinas",
     hostsEmpty: "Todavia no se ha declarado ninguna maquina.",
+
+    filterEnvironment: "Entorno",
+    filterState: "Respuesta",
+    filterSource: "Leido por",
+    filterShowing: "Se muestran {shown} maquinas de {total}.",
+    filterClear: "Quitar los filtros",
+    filterNoMatch: "Ninguna maquina cumple todo lo que has pedido a la vez.",
+
+    hostBack: "Toda la infraestructura",
+    hostNotFound: "Esta maquina no existe, o no puedes verla.",
+    hostReadBy: "Leido por",
+    hostReadByNobody: "Ningun recolector",
+    hostServicesCount: "{count} servicios declarados",
     stateUp: "Responde",
     stateDown: "No responde",
     stateUnknown: "Sin lectura",
@@ -4320,6 +4350,8 @@ const infrastructureDictionaries = {
     overviewAcknowledged: "Acknowledged",
     observedFrom: "Oldest reading",
     observedNever: "Nothing read yet",
+    overviewHosts: "Machines",
+    overviewServices: "Services",
 
     sectionAutomations: "Automations",
     sectionAlerts: "Alerts",
@@ -4404,6 +4436,19 @@ const infrastructureDictionaries = {
 
     sectionHosts: "Machines",
     hostsEmpty: "No machine has been declared yet.",
+
+    filterEnvironment: "Environment",
+    filterState: "Answer",
+    filterSource: "Read by",
+    filterShowing: "Showing {shown} machines of {total}.",
+    filterClear: "Clear the filters",
+    filterNoMatch: "No machine answers everything asked of it at once.",
+
+    hostBack: "The whole infrastructure",
+    hostNotFound: "This machine does not exist, or you cannot see it.",
+    hostReadBy: "Read by",
+    hostReadByNobody: "No collector",
+    hostServicesCount: "{count} declared services",
     stateUp: "Answers",
     stateDown: "Not answering",
     stateUnknown: "No reading",

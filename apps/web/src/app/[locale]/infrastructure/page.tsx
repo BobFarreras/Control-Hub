@@ -19,6 +19,7 @@ import type {
   InfrastructureInventoryResponse,
   InfrastructureOverview,
   InfrastructureOverviewResponse,
+  InventorySummary,
   IntegrationsResponse,
   Page as ApiPage
 } from "@/lib/api-types";
@@ -51,7 +52,11 @@ import { requireSession } from "@/lib/require-session";
 
 type Loaded = {
   overview: InfrastructureOverview | null;
+  /** The fleet counted by state, as the API counted it. Never narrowed by a filter. */
+  summary: InventorySummary | null;
   hosts: HostRow[];
+  /** What each connector instance is called, so a filter can offer names instead of ids. */
+  instanceNames: Record<string, string>;
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -62,7 +67,9 @@ type Loaded = {
 
 const empty: Loaded = {
   overview: null,
+  summary: null,
   hosts: [],
+  instanceNames: {},
   automations: [],
   alerts: [],
   rules: [],
@@ -117,24 +124,31 @@ async function load(locale: string, labels: Record<string, string>, showResolved
     );
     const named = (instanceId: string) => bases.get(instanceId)?.name ?? instanceId;
 
+    // Read once and used twice: the rows below and the summary above have to come out of the
+    // same answer, or the screen would count one fleet and list another.
+    const inventory = inventoryResponse.ok
+      ? (await readJson<InfrastructureInventoryResponse>(inventoryResponse)).inventory
+      : null;
+
     return {
       overview: (await readJson<InfrastructureOverviewResponse>(overviewResponse)).overview,
       // A reading arrives with the two things only this side can add: how old it is, and what its
       // figures say in words. Both are worked out against the one instant above. The state itself
       // travels untouched -- the API decided it against the cadence the collector declares, and a
       // second opinion on this side is exactly what must not exist.
-      hosts: inventoryResponse.ok
-        ? (await readJson<InfrastructureInventoryResponse>(inventoryResponse)).inventory.hosts.map<HostRow>((host) => ({
-            ...host,
-            age: readingAge(host.reading.observedAt, now),
-            figures: readingFigures(labels, locale, host.reading, now),
-            services: host.services.map((service) => ({
-              ...service,
-              age: readingAge(service.reading.observedAt, now),
-              figures: readingFigures(labels, locale, service.reading, now)
-            }))
+      summary: inventory?.summary ?? null,
+      hosts:
+        inventory?.hosts.map<HostRow>((host) => ({
+          ...host,
+          age: readingAge(host.reading.observedAt, now),
+          figures: readingFigures(labels, locale, host.reading, now),
+          services: host.services.map((service) => ({
+            ...service,
+            age: readingAge(service.reading.observedAt, now),
+            figures: readingFigures(labels, locale, service.reading, now)
           }))
-        : [],
+        })) ?? [],
+      instanceNames: Object.fromEntries([...bases].map(([id, base]) => [id, base.name])),
       automations: (await readJson<InfrastructureAutomationsResponse>(automationsResponse)).automations.map(
         (automation) => ({
           ...automation,
@@ -194,8 +208,10 @@ export default async function InfrastructurePage({
         <main className="compact-main">
           <InfrastructureWorkspace
             overview={data.overview}
+            summary={data.summary}
             observedFromAge={readingAge(data.overview?.observedFrom, now)}
             hosts={data.hosts}
+            instanceNames={data.instanceNames}
             automations={data.automations}
             alerts={data.alerts}
             rules={data.rules}

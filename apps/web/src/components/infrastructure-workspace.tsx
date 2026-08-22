@@ -13,6 +13,7 @@ import {
   Trash2,
   UserPlus
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
@@ -27,8 +28,11 @@ import type {
   InfrastructureAlertRule,
   InfrastructureAutomation,
   InfrastructureOverview,
+  InventorySummary,
+  ObservedTally,
   ObservedHost,
   ObservedService,
+  ObservedState,
   Reading,
   ServiceExpectedState,
   ServiceKind
@@ -39,9 +43,12 @@ import {
   ageLabel,
   alertState,
   alertStateTone,
+  filterInventory,
   observedStateTone,
+  readingSources,
   severityTone,
   type Figure,
+  type InventoryFilter,
   type ReadingAge
 } from "@/lib/infrastructure";
 import { errorMessage, problemCode } from "@/lib/integrations";
@@ -85,6 +92,7 @@ export type HostRow = Omit<ObservedHost, "services"> & {
 
 const severities: AlertSeverity[] = ["critical", "high", "normal", "low"];
 const environments: HostEnvironment[] = ["production", "staging", "development"];
+const observedStates: ObservedState[] = ["up", "down", "unknown"];
 const serviceKinds: ServiceKind[] = ["container", "http", "database", "automation"];
 const expectedStates: ServiceExpectedState[] = ["up", "stopped", "ignored"];
 
@@ -102,6 +110,21 @@ async function call(path: string, init: RequestInit): Promise<Result> {
 /** `critical` becomes `severityCritical`: one derivation, no table to keep in step with the union. */
 function capitalised(value: string): string {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+/**
+ * The three states under a total, in words.
+ *
+ * All three are always written, zeroes included: a fleet with nothing down should say so rather
+ * than leave the reader to notice an absence, and a footnote whose parts change shape between one
+ * machine and the next is one nobody reads twice.
+ */
+function tallyFootnote(t: Labels, tally: ObservedTally): string {
+  return [
+    `${tally.up} ${t.stateUp ?? ""}`,
+    `${tally.down} ${t.stateDown ?? ""}`,
+    `${tally.unknown} ${t.stateUnknown ?? ""}`
+  ].join(" · ");
 }
 
 function severityLabel(t: Labels, severity: AlertSeverity): string {
@@ -130,6 +153,49 @@ function ReadingState({ reading, age, labels: t }: { reading: Reading; age: Read
   );
 }
 
+/**
+ * One group of the filter: a legend and a chip per value.
+ *
+ * Checkboxes and not a select, because the three questions are answered with any number of values
+ * each and a multiple select is the control nobody discovers. They are real inputs under the
+ * chips rather than buttons with a class, so the group is a group to a screen reader and the
+ * keyboard already works.
+ */
+function FilterGroup<T extends string>({
+  legend,
+  options,
+  chosen,
+  onChange
+}: {
+  legend: string;
+  options: readonly { value: T; label: string }[];
+  chosen: readonly T[];
+  onChange: (values: T[]) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <fieldset className="fleet-filter-group">
+      <legend>{legend}</legend>
+      {options.map((option) => (
+        <label className="fleet-chip" key={option.value}>
+          <input
+            type="checkbox"
+            checked={chosen.includes(option.value)}
+            onChange={() =>
+              onChange(
+                chosen.includes(option.value)
+                  ? chosen.filter((value) => value !== option.value)
+                  : [...chosen, option.value]
+              )
+            }
+          />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 function automationStateLabel(t: Labels, automation: AutomationRow): string {
   if (automation.archived) return t.automationArchived ?? "";
   return (automation.active ? t.automationActive : t.automationInactive) ?? "";
@@ -137,8 +203,10 @@ function automationStateLabel(t: Labels, automation: AutomationRow): string {
 
 export function InfrastructureWorkspace({
   overview,
+  summary,
   observedFromAge,
   hosts,
+  instanceNames,
   automations,
   alerts,
   rules,
@@ -150,8 +218,12 @@ export function InfrastructureWorkspace({
   loadError
 }: {
   overview: InfrastructureOverview | null;
+  /** The fleet counted by the API. Never narrowed by the filters below it. */
+  summary: InventorySummary | null;
   observedFromAge: ReadingAge | null;
   hosts: HostRow[];
+  /** What each connector instance is called, so the filter offers names and not identifiers. */
+  instanceNames: Record<string, string>;
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -171,6 +243,19 @@ export function InfrastructureWorkspace({
   const [hostDialog, setHostDialog] = useState<{ host: HostRow | null } | null>(null);
   const [serviceDialog, setServiceDialog] = useState<{ hostId: string; service: ServiceRow | null } | null>(null);
   const [ruleDialog, setRuleDialog] = useState(false);
+  // What somebody asked to be shown. Client state and not a query string: it narrows a list
+  // already in the browser, changes nothing on the server, and reloading to filter would refetch
+  // the whole fleet to draw less of it.
+  const [filter, setFilter] = useState<InventoryFilter>({ environments: [], states: [], instanceIds: [] });
+
+  // What the filter offers and what it currently shows. Both derived from the fleet already in
+  // hand: nothing is fetched to narrow a list, and no state is recomputed while narrowing it.
+  const sources = readingSources(hosts);
+  const shown = filterInventory(hosts, filter);
+  // True whenever anything has been asked of the fleet, and not merely when fewer machines came
+  // back: a filter that happens to match everything still has to be visible and still has to be
+  // clearable.
+  const narrowed = Object.values(filter).some((values) => values.length > 0);
   const [formError, setFormError] = useState("");
   const [ruleInstanceId, setRuleInstanceId] = useState("");
   const [ruleTargetType, setRuleTargetType] = useState<"instance" | "automation">("instance");
@@ -352,19 +437,40 @@ export function InfrastructureWorkspace({
         </p>
       )}
 
-      {overview && (
+      {(overview || summary) && (
         <section className="metric-row" aria-label={t.title}>
-          <MetricTile label={t.overviewAutomations!} value={overview.automations.total} />
-          <MetricTile label={t.overviewActive!} value={overview.automations.active} />
-          <MetricTile label={t.overviewLinked!} value={overview.automations.linked} />
-          <MetricTile
-            label={t.overviewAlerts!}
-            value={overview.alerts.total}
-            footnote={`${t.overviewAcknowledged} ${overview.alerts.acknowledged}`}
-          />
-          {/* The oldest reading behind the figures, never the newest: a summary is only as fresh
-              as the stalest thing that went into it. */}
-          <MetricTile label={t.observedFrom!} value={ageLabel(t, observedFromAge, t.observedNever ?? "")} />
+          {/* The fleet as the API counted it, from the very readings the rows below are drawn
+              from. Deliberately not narrowed by the filters: how much of the fleet is down does
+              not depend on what somebody is currently looking at. */}
+          {summary && (
+            <>
+              <MetricTile
+                label={t.overviewHosts!}
+                value={summary.hosts.total}
+                footnote={tallyFootnote(t, summary.hosts)}
+              />
+              <MetricTile
+                label={t.overviewServices!}
+                value={summary.services.total}
+                footnote={tallyFootnote(t, summary.services)}
+              />
+            </>
+          )}
+          {overview && (
+            <>
+              <MetricTile label={t.overviewAutomations!} value={overview.automations.total} />
+              <MetricTile label={t.overviewActive!} value={overview.automations.active} />
+              <MetricTile label={t.overviewLinked!} value={overview.automations.linked} />
+              <MetricTile
+                label={t.overviewAlerts!}
+                value={overview.alerts.total}
+                footnote={`${t.overviewAcknowledged} ${overview.alerts.acknowledged}`}
+              />
+              {/* The oldest reading behind the figures, never the newest: a summary is only as fresh
+                  as the stalest thing that went into it. */}
+              <MetricTile label={t.observedFrom!} value={ageLabel(t, observedFromAge, t.observedNever ?? "")} />
+            </>
+          )}
         </section>
       )}
 
@@ -463,15 +569,69 @@ export function InfrastructureWorkspace({
             </button>
           )}
         </header>
+        {hosts.length > 0 && (
+          <div className="fleet-filter">
+            <FilterGroup
+              legend={t.filterEnvironment!}
+              options={environments.map((environment) => ({
+                value: environment,
+                label: t[`environment${capitalised(environment)}`] ?? environment
+              }))}
+              chosen={filter.environments}
+              onChange={(environments) => setFilter({ ...filter, environments })}
+            />
+            <FilterGroup
+              legend={t.filterState!}
+              options={observedStates.map((state) => ({
+                value: state,
+                label: t[`state${capitalised(state)}`] ?? state
+              }))}
+              chosen={filter.states}
+              onChange={(states) => setFilter({ ...filter, states })}
+            />
+            {/* Only the collectors that actually read something here, so choosing one can never
+                empty the list, and named rather than identified by their row in the database. */}
+            <FilterGroup
+              legend={t.filterSource!}
+              options={sources.map((instanceId) => ({
+                value: instanceId,
+                label: instanceNames[instanceId] ?? instanceId
+              }))}
+              chosen={filter.instanceIds}
+              onChange={(instanceIds) => setFilter({ ...filter, instanceIds })}
+            />
+            {narrowed && (
+              <p className="fleet-filter-count">
+                <span>
+                  {(t.filterShowing ?? "")
+                    .replace("{shown}", String(shown.length))
+                    .replace("{total}", String(hosts.length))}
+                </span>
+                <button
+                  className="link-button"
+                  onClick={() => setFilter({ environments: [], states: [], instanceIds: [] })}
+                >
+                  {t.filterClear}
+                </button>
+              </p>
+            )}
+          </div>
+        )}
         {hosts.length === 0 ? (
           <p className="muted">{t.hostsEmpty}</p>
+        ) : shown.length === 0 ? (
+          <p className="muted">{t.filterNoMatch}</p>
         ) : (
           <ul className="infra-hosts">
-            {hosts.map((host) => (
+            {shown.map((host) => (
               <li className="infra-host" key={host.id}>
                 <header>
                   <div>
-                    <span className="ticket-subject">{host.name}</span>
+                    {/* A machine with fifteen services does not fit in a card, and this is the way
+                        to the page where it does. */}
+                    <Link className="ticket-subject" href={`/${locale}/infrastructure/hosts/${host.id}`}>
+                      {host.name}
+                    </Link>
                     <small className="muted">
                       {host.hostname} · {t[`environment${capitalised(host.environment)}`] ?? host.environment}
                     </small>

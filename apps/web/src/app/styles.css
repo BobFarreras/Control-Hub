@@ -6105,3 +6105,133 @@ main {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+/* The filter over the fleet, and the page one machine gets to itself (phase 7.3, increment C2).
+
+   The chips are real checkboxes with the box hidden, not buttons wearing a class: the group is a
+   group to a screen reader, the keyboard works without anybody writing key handlers, and the
+   checked state is the input's own rather than a class somebody has to remember to toggle. */
+.fleet-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.fleet-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.fleet-filter-group legend {
+  padding: 0;
+  margin-right: 8px;
+  float: left;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fleet-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+/* Off-screen rather than `display: none`, which would take the input out of the tab order and
+   leave the chip unreachable without a mouse. */
+.fleet-chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.fleet-chip:hover {
+  border-color: var(--brand);
+}
+.fleet-chip:has(input:checked) {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+  font-weight: 600;
+}
+.fleet-chip:has(input:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.fleet-filter-count {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* A control that is a link in everything but destination, or a link that is one. */
+.link-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+.link-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.infra-provenance {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.infra-services {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.infra-services > li {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.infra-services > li > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.infra-services > li > header > div {
+  display: grid;
+}

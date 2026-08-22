@@ -749,6 +749,46 @@ describe("the inventory a dashboard reads", () => {
     expect((await service.readInventory(owner, now)).hosts[0]!.services).toEqual([]);
   });
 
+  /**
+   * The figure at the top of the screen and the rows below it are one claim counted twice. It is
+   * counted here, from the same readings the rows are drawn from, so that a screen cannot arrive
+   * at a different number of machines being down than the machines it is listing.
+   */
+  it("counts the machines and the services by the state each of them is in", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.summary).toEqual({
+      hosts: { total: 1, up: 1, down: 0, unknown: 0 },
+      services: { total: 1, up: 1, down: 0, unknown: 0 }
+    });
+  });
+
+  it("counts a collector nobody has heard from as unknown and never as down", async () => {
+    repository.inventoryState = { ...repository.inventoryState, records: [], freshness: [] };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.summary.hosts).toEqual({ total: 1, up: 0, down: 0, unknown: 1 });
+    expect(inventory.summary.services).toEqual({ total: 1, up: 0, down: 0, unknown: 1 });
+  });
+
+  it("counts an empty inventory as zeroes rather than leaving the summary out", async () => {
+    repository.inventoryState = { ...repository.inventoryState, hosts: [], services: [] };
+
+    expect((await service.readInventory(owner, now)).summary).toEqual({
+      hosts: { total: 0, up: 0, down: 0, unknown: 0 },
+      services: { total: 0, up: 0, down: 0, unknown: 0 }
+    });
+  });
+
+  /** Which collector read a line is what the fleet is filtered by, so it has to survive the trip. */
+  it("carries the connector instance each reading came from", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.reading.instanceId).toBe(instanceId);
+    expect(inventory.hosts[0]!.services[0]!.reading.instanceId).toBe(instanceId);
+  });
+
   it("lets Administrator read it and refuses somebody with no infrastructure permission", async () => {
     const asAdministrator = await service.readInventory(administrator, now);
     expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);

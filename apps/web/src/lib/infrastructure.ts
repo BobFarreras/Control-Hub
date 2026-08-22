@@ -1,5 +1,12 @@
 import type { StatusTone } from "@/components/status-pill";
-import type { AlertSeverity, InfrastructureAlert, ObservedState, Reading, ReadingValue } from "@/lib/api-types";
+import type {
+  AlertSeverity,
+  HostEnvironment,
+  InfrastructureAlert,
+  ObservedState,
+  Reading,
+  ReadingValue
+} from "@/lib/api-types";
 
 /**
  * How the infrastructure screen reads what the API said.
@@ -206,4 +213,85 @@ export function readingFigures(labels: Labels, locale: string, reading: Reading,
     if (formatted) figures.push({ field, label: labels[labelKey] ?? field, value: formatted });
   }
   return figures;
+}
+
+/**
+ * What a person has asked to be shown of the fleet.
+ *
+ * Three independent questions, each of them a list rather than a single value: an empty list asks
+ * nothing, several values in one list ask for any of them, and two lists with something in them
+ * both have to be satisfied. That is what "cumulative" means here, and writing it as three lists
+ * rather than three optional values is what keeps "any of these two environments" expressible.
+ */
+export type InventoryFilter = {
+  environments: readonly HostEnvironment[];
+  states: readonly ObservedState[];
+  instanceIds: readonly string[];
+};
+
+/** An empty list asks nothing of the value; anything else asks it to be one of them. */
+function allows<T>(wanted: readonly T[], value: T): boolean {
+  return wanted.length === 0 || wanted.includes(value);
+}
+
+/**
+ * The little of a row this file needs, so it works on the rows the screen actually holds.
+ *
+ * The infrastructure page hands each row its age and its figures before drawing it, so what it
+ * has is never a bare `ObservedHost`. Asking only for what is read here keeps those additions on
+ * the row instead of stripping them off at the filter, which is how a filtered list would end up
+ * missing exactly the fields it needs to be drawn.
+ */
+type Observed = { reading: Reading };
+type Declared<S extends Observed> = Observed & { environment: HostEnvironment; services: readonly S[] };
+
+/**
+ * The part of the fleet somebody asked to see.
+ *
+ * It hides rows and it does nothing else. Every reading handed back is the very object that came
+ * in, never a restatement of it: the state of a machine is the API's answer, and a screen that
+ * recomputed it while narrowing a list would be a second opinion about whether something is down.
+ * The summary above the list is counted by the API over the whole fleet and is deliberately not
+ * filtered -- how much of the fleet is on fire does not depend on what somebody is looking at.
+ *
+ * A machine is kept when it matches itself, and also when something declared on it matches, since
+ * a service has nowhere to be drawn without its machine. In that second case the services shown
+ * are narrowed to those that matched, so a machine listed for one failing container does not
+ * quietly show the fifteen that are fine.
+ */
+export function filterInventory<S extends Observed, H extends Declared<S>>(
+  hosts: readonly H[],
+  filter: InventoryFilter
+): H[] {
+  const matches = (reading: Reading) =>
+    allows(filter.states, reading.state) && allows(filter.instanceIds, reading.instanceId ?? "");
+
+  const shown: H[] = [];
+  for (const host of hosts) {
+    if (!allows(filter.environments, host.environment)) continue;
+
+    const services = host.services.filter((service) => matches(service.reading));
+    if (!matches(host.reading) && services.length === 0) continue;
+
+    // A host that kept all of its services is handed back as it arrived, untouched; the copy is
+    // the same row with a shorter list and nothing else changed.
+    shown.push(services.length === host.services.length ? host : { ...host, services });
+  }
+  return shown;
+}
+
+/**
+ * Every collector that has read something in this fleet, once each.
+ *
+ * Taken from the readings rather than from the list of installed connectors: the filter offers
+ * what is actually visible on this screen, so choosing one can never empty the list. Sorted, so
+ * the control does not reorder itself when a machine is read by a different one.
+ */
+export function readingSources(hosts: readonly Declared<Observed>[]): string[] {
+  const sources = new Set<string>();
+  for (const host of hosts) {
+    if (host.reading.instanceId) sources.add(host.reading.instanceId);
+    for (const service of host.services) if (service.reading.instanceId) sources.add(service.reading.instanceId);
+  }
+  return [...sources].sort();
 }

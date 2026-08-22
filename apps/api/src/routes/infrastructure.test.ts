@@ -286,6 +286,7 @@ describe("what a reading says on the way out", () => {
   const reading = {
     state: "up" as const,
     observedAt: new Date("2026-08-13T11:59:00.000Z"),
+    instanceId: "instance-1",
     data: {
       cpuBusyRatio: 0.12,
       memoryUsedRatio: 0.4,
@@ -318,6 +319,7 @@ describe("what a reading says on the way out", () => {
     const container = readingResponse("container:n8n", {
       state: "up",
       observedAt: null,
+      instanceId: "instance-1",
       data: { memoryBytes: 512, cpuCores: 0.01, host: "node-exporter:9100", cpuBusyRatio: 0.9 }
     });
 
@@ -328,6 +330,7 @@ describe("what a reading says on the way out", () => {
     const probe = readingResponse("probe:https://example.test/healthz", {
       state: "down",
       observedAt: null,
+      instanceId: "instance-1",
       data: { success: false, scrapeUp: true, durationSeconds: 1.2, certificateExpiresAt: "2026-10-09T00:00:00.000Z" }
     });
 
@@ -341,22 +344,38 @@ describe("what a reading says on the way out", () => {
 
   /** A prefix nobody listed shows its state and its age and nothing else, which is the safe way. */
   it("gives a kind nobody has decided about nothing but its state", () => {
-    expect(readingResponse("printer:hp", { state: "unknown", observedAt: null, data: { serial: "X" } })).toEqual({
+    expect(
+      readingResponse("printer:hp", { state: "unknown", observedAt: null, instanceId: null, data: { serial: "X" } })
+    ).toEqual({
       state: "unknown",
       observedAt: null,
+      instanceId: null,
       data: {}
     });
   });
 
   it("omits a field the collector did not write rather than sending it as null", () => {
-    expect(readingResponse("host:vps", { state: "down", observedAt: null, data: { load1: 0.2 } }).data).toEqual({
+    expect(
+      readingResponse("host:vps", { state: "down", observedAt: null, instanceId: "instance-1", data: { load1: 0.2 } })
+        .data
+    ).toEqual({
       load1: 0.2
     });
   });
 });
 
 describe("the inventory a dashboard receives", () => {
-  const reading = { state: "up" as const, observedAt: new Date("2026-08-13T11:59:00.000Z"), data: {} };
+  const reading = {
+    state: "up" as const,
+    observedAt: new Date("2026-08-13T11:59:00.000Z"),
+    instanceId: "instance-1",
+    data: {}
+  };
+
+  const emptySummary = {
+    hosts: { total: 0, up: 0, down: 0, unknown: 0 },
+    services: { total: 0, up: 0, down: 0, unknown: 0 }
+  };
 
   it("hangs the services under their host and looks the host up by its own identifier", () => {
     const response = inventoryResponse({
@@ -367,6 +386,7 @@ describe("the inventory a dashboard receives", () => {
           services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }]
         }
       ],
+      summary: emptySummary,
       observedFrom: new Date("2026-08-13T11:58:00.000Z")
     });
 
@@ -377,7 +397,43 @@ describe("the inventory a dashboard receives", () => {
   });
 
   it("says it has no age rather than inventing one", () => {
-    expect(inventoryResponse({ hosts: [], observedFrom: null })).toEqual({ hosts: [], observedFrom: null });
+    expect(inventoryResponse({ hosts: [], summary: emptySummary, observedFrom: null })).toEqual({
+      hosts: [],
+      summary: emptySummary,
+      observedFrom: null
+    });
+  });
+
+  /**
+   * The summary is passed through and never recomputed here. Counting it a second time on the way
+   * out would let the route and the use case disagree about how many machines are down, which is
+   * exactly the drift that keeping the count in the domain exists to prevent.
+   */
+  it("hands the summary over as it was counted", () => {
+    const summary = {
+      hosts: { total: 3, up: 1, down: 1, unknown: 1 },
+      services: { total: 8, up: 6, down: 2, unknown: 0 }
+    };
+
+    expect(inventoryResponse({ hosts: [], summary, observedFrom: null }).summary).toEqual(summary);
+  });
+
+  /** Which collector read a line is what the fleet is filtered by, so the response has to carry it. */
+  it("says which connector instance each reading came from", () => {
+    const response = inventoryResponse({
+      hosts: [
+        {
+          ...host,
+          reading: { ...reading, instanceId: "instance-1" },
+          services: [{ ...service, reading: { ...reading, instanceId: "instance-2" } }]
+        }
+      ],
+      summary: emptySummary,
+      observedFrom: null
+    });
+
+    expect(response.hosts[0]!.reading.instanceId).toBe("instance-1");
+    expect(response.hosts[0]!.services[0]!.reading.instanceId).toBe("instance-2");
   });
 });
 
