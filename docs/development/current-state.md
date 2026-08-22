@@ -71,18 +71,29 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te la meitat de servidor del C1 feta i la pantalla pendent.** L'entrega 7.2 es a
+**La 7.3 te el C1 entregat i el C2 per comencar.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
 el resum i els filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no
 s'ha declarat (C3).
 
-Del C1 hi ha el domini, el cas d'us, la lectura contra PostgreSQL i la ruta
+**El C1 esta complet.** Hi ha el domini, el cas d'us, la lectura contra PostgreSQL i la ruta
 `GET /api/v1/infrastructure/connectors/{instanceId}/diagnosis`, amb sis esglaons dels set que
 llista l'especificacio: el primer no hi es a proposit, perque amb la flag tancada no hi ha ruta a
-preguntar i la resposta es el 404. **Encara no hi ha pantalla, ni les paraules dels esglaons en
-`ca`, `es` i `en`**, aixi que el diagnostic existeix pero ningu el pot llegir sense cridar l'API a
-ma. Aixo es el que tanca el C1.
+preguntar i la resposta es el 404.
+
+La pantalla es un panell a la fitxa de la integracio (`/integrations/{instanceId}`), i nomes surt
+per a connectors que han d'arribar a una adreca de la llista de l'operador i amb la flag
+`infrastructure` oberta. Dibuixa la cadena sencera i obre nomes l'esglao trencat, amb l'ordre per
+copiar. **Les dues ordres es componen al navegador amb l'adreca que hi ha al formulari del
+costat**, no amb la desada ni amb cap cosa que vingui de la resposta. El modul
+`connector-diagnosis.ts` de `apps/web/src/lib` en treu l'origen i el port i descarta credencials,
+camins i qualsevol nom que pogues fer de segona ordre en una consola. Quan l'adreca escrita es la mateixa maquina,
+el forat del davant queda visible en comptes d'inventar-se una VPS.
+
+El criteri 11 ja te la seva prova: `packages/i18n/src/index.test.ts` recorre
+`infrastructureErrorCodes` i falla si un codi no te frase en els tres idiomes o si cau a la frase
+generica.
 
 La decisio que mes forma dona a la fase: **el programari diagnostica i escriu ordres, no n'executa
 cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de

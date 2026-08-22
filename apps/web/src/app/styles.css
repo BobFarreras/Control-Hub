@@ -6013,3 +6013,93 @@ main {
     border-bottom: 0;
   }
 }
+
+/* The guided check.
+
+   The chain is drawn as a chain: a rail down the left that every rung hangs off, so the order is
+   read as an order rather than as a list of six unrelated verdicts. Only the rung that broke
+   opens, and it is the only one that carries a remedy -- six remedies at once would be the
+   runbook this screen exists to replace. What sits above the break is muted rather than red,
+   because a rung the chain never reached has not failed. */
+.diagnosis-verdict {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  color: var(--success);
+  background: var(--success-subtle);
+}
+.diagnosis-chain {
+  margin: 16px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--border);
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.diagnosis-rung {
+  display: grid;
+  gap: 8px;
+}
+.diagnosis-rung[data-status="unchecked"],
+.diagnosis-rung[data-status="unknown"] {
+  color: var(--muted);
+}
+.diagnosis-rung-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.diagnosis-rung-name {
+  font-weight: 600;
+}
+.diagnosis-remedy {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-subtle);
+}
+.diagnosis-remedy p {
+  margin: 0;
+}
+.diagnosis-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.diagnosis-command code {
+  flex: 1;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  white-space: pre;
+}
+.diagnosis-labels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.diagnosis-evidence h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.diagnosis-evidence ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.diagnosis-evidence code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}

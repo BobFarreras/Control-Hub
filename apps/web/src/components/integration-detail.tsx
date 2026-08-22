@@ -15,7 +15,7 @@ import {
   X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type RefObject } from "react";
 import {
   ConfigForm,
   ConfigIssues,
@@ -31,16 +31,22 @@ import {
   type Failure
 } from "@/components/connector-forms";
 import { TextField } from "@/components/form-field";
-import { StatusPill } from "@/components/status-pill";
+import { StatusPill, type StatusTone } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
 import type {
   ConnectorCatalogueEntry,
+  ConnectorDiagnosis,
+  ConnectorDiagnosisEvidence,
+  ConnectorDiagnosisResponse,
+  ConnectorDiagnosisStatus,
+  ConnectorDiagnosisStep,
   ConnectorRun,
   ConnectorRunsResponse,
   CreatedConnectorEndpointResponse,
   IntegrationDetail
 } from "@/lib/api-types";
 import { configFromForm } from "@/lib/connector-config";
+import { allowlistLine, tunnelCommand } from "@/lib/connector-diagnosis";
 import { credentialKindLabel, ingressAbout, type Labels } from "@/lib/connector-labels";
 import { eventHandler } from "@/lib/handlers";
 import { errorMessage, healthTone, instanceStatusTone, runErrorMessage, webhookUrl } from "@/lib/integrations";
@@ -61,6 +67,7 @@ export function IntegrationDetailScreen({
   entry,
   canManage,
   canRotate,
+  infrastructureEnabled,
   labels: t,
   locale
 }: {
@@ -68,6 +75,7 @@ export function IntegrationDetailScreen({
   entry: ConnectorCatalogueEntry | undefined;
   canManage: boolean;
   canRotate: boolean;
+  infrastructureEnabled: boolean;
   labels: Labels;
   locale: string;
 }) {
@@ -79,6 +87,7 @@ export function IntegrationDetailScreen({
   // this screen unmounts. The only copy that outlives the render is the one the person saved.
   const [minted, setMinted] = useState<{ url: string; secret: string } | null>(null);
   const [removing, setRemoving] = useState(false);
+  const configForm = useRef<HTMLFormElement>(null);
   const instance = detail.instance;
   const live = detail.endpoints.filter((endpoint) => !endpoint.revokedAt);
 
@@ -242,7 +251,7 @@ export function IntegrationDetailScreen({
           {/* A connector this build no longer ships has no fields to draw and nothing that would
               accept an edit, so its configuration is shown rather than offered. */}
           {canManage && entry ? (
-            <form className="dialog-form" onSubmit={eventHandler(saveConfig, crashed)}>
+            <form className="dialog-form" ref={configForm} onSubmit={eventHandler(saveConfig, crashed)}>
               <ConfigForm
                 type={instance.connectorType}
                 fields={entry.configFields}
@@ -261,6 +270,14 @@ export function IntegrationDetailScreen({
             <pre className="integration-config">{JSON.stringify(instance.config, null, 2)}</pre>
           )}
         </article>
+
+        {/* The guided check belongs to connectors that have to reach an address on the operator's
+            own allowlist -- which is what its second and third rungs are about -- and only where
+            the module that answers it is installed. Anywhere else the button would ask a route
+            that is not declared. */}
+        {infrastructureEnabled && entry?.capabilities.egress?.destination === "operator_allowlist" && (
+          <DiagnosisPanel instanceId={instance.id} form={configForm} labels={t} />
+        )}
 
         {entry?.capabilities.ingress && detail.vaultAvailable && (
           <article className="detail-panel">
@@ -608,6 +625,230 @@ function DeleteDialog({
           </footer>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** The rungs, in the order they are climbed, so the panel never draws them in another. */
+const diagnosisSteps: ConnectorDiagnosisStep[] = [
+  "migrations",
+  "allowlist",
+  "reachable",
+  "answers_prometheus",
+  "scraping",
+  "matching"
+];
+
+const pascal = (step: string) =>
+  step
+    .split("_")
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join("");
+
+const statusWord: Record<ConnectorDiagnosisStatus, string> = {
+  passed: "diagnosisPassed",
+  failed: "diagnosisFailed",
+  unknown: "diagnosisUnknown",
+  unchecked: "diagnosisUnchecked"
+};
+
+/**
+ * A rung's state, in the vocabulary the rest of the product already reads.
+ *
+ * `unknown` and `unchecked` share the neutral tone because neither is a failure: one is a rung
+ * nobody gathered evidence for, the other one the chain never reached. Drawing either in red
+ * would report a tunnel nobody knocked on as a tunnel somebody found shut, which is the exact
+ * confusion this panel exists to end.
+ */
+const statusTone: Record<ConnectorDiagnosisStatus, StatusTone> = {
+  passed: "done",
+  failed: "danger",
+  unknown: "neutral",
+  unchecked: "neutral"
+};
+
+/**
+ * Why this collector is telling us nothing, one rung at a time.
+ *
+ * The chain stops at the first rung that does not hold, and the panel draws it that way: what is
+ * above the break is `unchecked` rather than failing, because a tunnel nobody knocked on is not a
+ * tunnel somebody found shut. Only the broken rung gets a remedy, since a screen that offered six
+ * fixes at once would be the runbook again.
+ *
+ * The two commands are composed from the address in the form beside this panel, never from the
+ * stored configuration and never from the answer -- the API deliberately sends neither. That is
+ * also why the form is reached through a ref: the value that matters is the one on screen now,
+ * which is the one somebody is about to save, not the one that was saved before it.
+ */
+function DiagnosisPanel({
+  instanceId,
+  form,
+  labels: t
+}: {
+  instanceId: string;
+  form: RefObject<HTMLFormElement | null>;
+  labels: Labels;
+}) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<ConnectorDiagnosis | null>(null);
+  const [typedBaseUrl, setTypedBaseUrl] = useState("");
+
+  function copy(value: string) {
+    void navigator.clipboard.writeText(value).then(
+      () => toast("success", t.copied ?? ""),
+      () => toast("error", errorMessage(t, null))
+    );
+  }
+
+  async function check() {
+    // Read before the request, not after: this is what is on the screen at the moment somebody
+    // asked, and the answer is going to be read next to it.
+    const written = form.current ? new FormData(form.current).get("config.baseUrl") : null;
+    const typed = typeof written === "string" ? written : "";
+    setTypedBaseUrl(typed);
+    setBusy(true);
+    const result = await request<ConnectorDiagnosisResponse>(
+      `/api/v1/infrastructure/connectors/${instanceId}/diagnosis`
+    );
+    setBusy(false);
+    if (!result.ok) return toast("error", errorMessage(t, result.code));
+    setDiagnosis(result.data.diagnosis);
+  }
+
+  const tunnel = tunnelCommand(typedBaseUrl);
+  const allowlist = allowlistLine(typedBaseUrl);
+  const byStep = new Map(diagnosis?.findings.map((finding) => [finding.step, finding]) ?? []);
+
+  return (
+    <article className="detail-panel">
+      <h2>{t.diagnosisTitle}</h2>
+      <p className="field-help">{t.diagnosisAbout}</p>
+
+      <button className="secondary-button" onClick={() => void check()} disabled={busy} type="button">
+        <Stethoscope size={16} aria-hidden="true" />
+        {busy ? t.diagnosisRunning : t.diagnosisRun}
+      </button>
+
+      {!diagnosis ? (
+        <p className="crm-empty">{t.diagnosisNotRun}</p>
+      ) : (
+        <>
+          {!diagnosis.problem && <p className="diagnosis-verdict">{t.diagnosisAllGood}</p>}
+          <ol className="diagnosis-chain">
+            {diagnosisSteps.map((step) => {
+              const finding = byStep.get(step);
+              if (!finding) return null;
+              const broken = diagnosis.problem === step;
+              return (
+                <li key={step} className="diagnosis-rung" data-status={finding.status}>
+                  <div className="diagnosis-rung-head">
+                    <StatusPill tone={statusTone[finding.status]} label={t[statusWord[finding.status]] ?? ""} />
+                    <span className="diagnosis-rung-name">{t[`diagnosisStep${pascal(step)}`]}</span>
+                  </div>
+
+                  {broken && (
+                    <div className="diagnosis-remedy">
+                      <p>{t[`diagnosisFix${pascal(step)}`]}</p>
+                      {finding.code && <p className="field-help">{runErrorMessage(t, finding.code)}</p>}
+
+                      {step === "migrations" && (
+                        <>
+                          {finding.evidence.migrations && (
+                            <Evidence
+                              title={t.diagnosisMissingMigrations ?? ""}
+                              evidence={finding.evidence.migrations}
+                              more={t.diagnosisMore ?? ""}
+                            />
+                          )}
+                          <Command value="pnpm db:migrate" onCopy={copy} label={t.diagnosisCopy ?? ""} />
+                        </>
+                      )}
+
+                      {step === "allowlist" &&
+                        (allowlist ? (
+                          <Command value={allowlist} onCopy={copy} label={t.diagnosisCopy ?? ""} />
+                        ) : (
+                          <p className="field-help">{t.diagnosisNeedsBaseUrl}</p>
+                        ))}
+
+                      {step === "reachable" &&
+                        (tunnel ? (
+                          <>
+                            <Command value={tunnel.command} onCopy={copy} label={t.diagnosisCopy ?? ""} />
+                            <p className="field-help">{t.diagnosisTunnelRunsHere}</p>
+                          </>
+                        ) : (
+                          <p className="field-help">{t.diagnosisNeedsBaseUrl}</p>
+                        ))}
+
+                      {step === "matching" && (
+                        <div className="diagnosis-labels">
+                          <Evidence
+                            title={t.diagnosisSeen ?? ""}
+                            evidence={finding.evidence.seen}
+                            more={t.diagnosisMore ?? ""}
+                          />
+                          <Evidence
+                            title={t.diagnosisDeclared ?? ""}
+                            evidence={finding.evidence.declared}
+                            more={t.diagnosisMore ?? ""}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      )}
+    </article>
+  );
+}
+
+/**
+ * A list of names with the count behind it.
+ *
+ * A collector scraping four hundred targets sends the first twenty and says so. Drawing the
+ * twenty as though they were the whole list is the same class of lie as a stale figure drawn
+ * without its age, so the remainder is always spelled out.
+ */
+function Evidence({
+  title,
+  evidence,
+  more
+}: {
+  title: string;
+  evidence: ConnectorDiagnosisEvidence | undefined;
+  more: string;
+}) {
+  if (!evidence || evidence.values.length === 0) return null;
+  const hidden = evidence.total - evidence.values.length;
+  return (
+    <div className="diagnosis-evidence">
+      <h3>{title}</h3>
+      <ul>
+        {evidence.values.map((value) => (
+          <li key={value}>
+            <code>{value}</code>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && <p className="field-help">{more.replace("{count}", String(hidden))}</p>}
+    </div>
+  );
+}
+
+/** Something to be run elsewhere, shown whole so nobody has to guess what was cut off. */
+function Command({ value, onCopy, label }: { value: string; onCopy: (value: string) => void; label: string }) {
+  return (
+    <div className="diagnosis-command">
+      <code>{value}</code>
+      <button className="ghost-button" onClick={() => onCopy(value)} type="button" aria-label={label}>
+        <Copy size={14} aria-hidden="true" />
+      </button>
     </div>
   );
 }

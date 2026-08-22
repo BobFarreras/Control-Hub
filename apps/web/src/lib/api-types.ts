@@ -809,3 +809,33 @@ export type InfrastructureInventory = {
 export type InfrastructureInventoryResponse = { inventory: InfrastructureInventory };
 export type InfrastructureHostResponse = { host: InfrastructureHost };
 export type InfrastructureServiceResponse = { service: InfrastructureService };
+
+/**
+ * The guided check, as it crosses the wire.
+ *
+ * Every rung says what it is and how it went, and the evidence is deliberately narrow: migration
+ * file names and `instance` labels, each with the total behind them so a list cut short is drawn
+ * as one. No address, no credential and no provider hostname appears here, because none is in the
+ * answer -- the sentence that needs one is composed in the browser out of what was just typed.
+ */
+export type ConnectorDiagnosisStep =
+  "migrations" | "allowlist" | "reachable" | "answers_prometheus" | "scraping" | "matching";
+
+export type ConnectorDiagnosisStatus = "passed" | "failed" | "unknown" | "unchecked";
+
+export type ConnectorDiagnosisEvidence = { values: string[]; total: number };
+
+export type ConnectorDiagnosisFinding = {
+  step: ConnectorDiagnosisStep;
+  status: ConnectorDiagnosisStatus;
+  code: string | null;
+  evidence: Partial<Record<"migrations" | "seen" | "declared", ConnectorDiagnosisEvidence>>;
+};
+
+export type ConnectorDiagnosis = {
+  /** The first rung that does not hold, or `null` when the whole chain does. */
+  problem: ConnectorDiagnosisStep | null;
+  findings: ConnectorDiagnosisFinding[];
+};
+
+export type ConnectorDiagnosisResponse = { diagnosis: ConnectorDiagnosis };
