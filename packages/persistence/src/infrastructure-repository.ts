@@ -5,6 +5,7 @@ import {
   type AlertRuleRecord,
   type AppliedVerdict,
   type AutomationRecord,
+  type ConnectorDiagnosisState,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
@@ -18,7 +19,7 @@ import {
   type UpdateHostInput,
   type UpdateServiceInput
 } from "@control-hub/application";
-import { withTenant, type DatabaseClient } from "@control-hub/database";
+import { infrastructureSchemaProbes, withTenant, type DatabaseClient } from "@control-hub/database";
 import { hostMatchKey } from "@control-hub/domain";
 import type {
   AlertSeverity,
@@ -383,6 +384,93 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     });
   }
 
+  /**
+   * Everything the guided check reads, and the one read here that has to survive a schema that is
+   * not all there.
+   *
+   * The order is not an optimisation. If a migration is missing, the tables the rest of this
+   * method selects from are the tables that are missing, so asking anyway would raise an
+   * undefined-relation error and answer the generic sentence -- which is precisely the failure
+   * the check exists to replace. So the probes run first and everything else is skipped.
+   *
+   * `lastAttempt` merges two facts that both mean "a call went out and this is what came back":
+   * `connector_instances` holds the last health check and the last failed run of any kind, and
+   * `connector_operation_state` holds the last pass that succeeded. Reading only the first would
+   * report an installation that has been polling happily for a week as one nobody has looked at,
+   * because a successful pass writes no health at all.
+   */
+  async readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const probes = infrastructureSchemaProbes;
+      const missing = await tx<{ migration: string }[]>`
+        select probe.migration from unnest(
+            ${probes.map((probe) => probe.relation)}::text[],
+            ${probes.map((probe) => probe.constraintName ?? "")}::text[],
+            ${probes.map((probe) => probe.migration)}::text[]
+          ) as probe(relation, constraint_name, migration)
+        where to_regclass(probe.relation) is null
+          or (probe.constraint_name <> '' and not exists (
+            select 1 from pg_constraint c
+            where c.conrelid = to_regclass(probe.relation) and c.conname = probe.constraint_name))
+        order by probe.migration`;
+
+      const missingMigrations = missing.map((row) => row.migration);
+      if (missingMigrations.length > 0) {
+        return { instance: null, missingMigrations, seenInstances: [], declaredHostnames: [] };
+      }
+
+      const [instance] = await tx<
+        {
+          id: string;
+          connectorType: string;
+          baseUrl: string | null;
+          healthCheckedAt: Date | null;
+          lastErrorCode: string | null;
+          lastSuccessAt: Date | null;
+        }[]
+      >`
+        select i.id, i.connector_type as "connectorType", i.config ->> 'baseUrl' as "baseUrl",
+          i.health_checked_at as "healthCheckedAt", i.last_error_code as "lastErrorCode",
+          (select max(s.last_success_at) from connector_operation_state s
+            where s.tenant_id = i.tenant_id and s.instance_id = i.id) as "lastSuccessAt"
+        from connector_instances i
+        where i.tenant_id = ${context.tenantId} and i.id = ${instanceId}`;
+
+      if (!instance) return { instance: null, missingMigrations: [], seenInstances: [], declaredHostnames: [] };
+
+      /**
+       * The `instance` labels this connector has a reading for, prefix removed.
+       *
+       * Two sources, and both are what Prometheus itself scrapes: a host reading is one the
+       * configuration already named, and a probe reading carrying `scrapeUp` came from the `up`
+       * series, which has one line per target. A blackbox reading has no `scrapeUp` and is left
+       * out -- its `instance` is a probed URL, not a machine anybody could declare, and it is the
+       * one value here that could be an address with something private in it.
+       */
+      const seen = await tx<{ label: string }[]>`
+        select distinct substring(external_id from position(':' in external_id) + 1) as label
+        from connector_records
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId}
+          and (external_id like 'host:%'
+            or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))`;
+
+      const declared = await tx<{ hostname: string }[]>`
+        select hostname from infra_hosts where tenant_id = ${context.tenantId}`;
+
+      return {
+        instance: {
+          id: instance.id,
+          connectorType: instance.connectorType,
+          baseUrl: instance.baseUrl,
+          lastAttempt: lastAttemptOf(instance)
+        },
+        missingMigrations: [],
+        seenInstances: seen.map((row) => row.label),
+        declaredHostnames: declared.map((row) => row.hostname)
+      };
+    });
+  }
+
   async readEvaluationState(context: TenantContext): Promise<EvaluationState> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const rules = await tx<AlertRuleRecord[]>`
@@ -584,6 +672,28 @@ function mapInventoryConstraint(error: unknown): never {
     if (constraint.includes("name")) throw new InfrastructureServiceError("DUPLICATE_HOST_NAME");
   }
   return mapConstraint(error);
+}
+
+/**
+ * The last time a call went out and something came back, out of the two places that record it.
+ *
+ * A pass that succeeds writes no health at all: `recordHealth` is called by the health check and
+ * by runs that failed, so an instance polling correctly for a week still has a null
+ * `health_checked_at`. Reading that column alone would report a working installation as one
+ * nobody has ever asked anything of, and the guided check would answer "we do not know" about a
+ * connector that is plainly fine.
+ */
+function lastAttemptOf(row: {
+  healthCheckedAt: Date | null;
+  lastErrorCode: string | null;
+  lastSuccessAt: Date | null;
+}): { ok: boolean; code: string | null } | null {
+  const { healthCheckedAt, lastErrorCode, lastSuccessAt } = row;
+  if (!healthCheckedAt && !lastSuccessAt) return null;
+  if (healthCheckedAt && (!lastSuccessAt || healthCheckedAt > lastSuccessAt)) {
+    return { ok: lastErrorCode === null, code: lastErrorCode };
+  }
+  return { ok: true, code: null };
 }
 
 function mapConstraint(error: unknown): never {

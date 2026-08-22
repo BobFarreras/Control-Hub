@@ -71,11 +71,18 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 espera aprovacio de l'especificacio.** L'entrega 7.2 es a `develop` (merge `f96fab2`, sense
-fast-forward) i la branca `claude/connector-onboarding` en surt. El que hi ha escrit i pendent de
-visat es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1), el resum i els
-filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no s'ha declarat
-(C3). **No s'hi ha escrit codi**, que es el que mana el metode.
+**La 7.3 te la meitat de servidor del C1 feta i la pantalla pendent.** L'entrega 7.2 es a
+`develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
+L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
+el resum i els filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no
+s'ha declarat (C3).
+
+Del C1 hi ha el domini, el cas d'us, la lectura contra PostgreSQL i la ruta
+`GET /api/v1/infrastructure/connectors/{instanceId}/diagnosis`, amb sis esglaons dels set que
+llista l'especificacio: el primer no hi es a proposit, perque amb la flag tancada no hi ha ruta a
+preguntar i la resposta es el 404. **Encara no hi ha pantalla, ni les paraules dels esglaons en
+`ca`, `es` i `en`**, aixi que el diagnostic existeix pero ningu el pot llegir sense cridar l'API a
+ma. Aixo es el que tanca el C1.
 
 La decisio que mes forma dona a la fase: **el programari diagnostica i escriu ordres, no n'executa
 cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de

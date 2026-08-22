@@ -644,3 +644,61 @@ export function currentReading(input: {
   const alive = refreshedWithin(record, budget, input.now) && !contradicted(input.matchKey, record);
   return { state: alive ? "up" : "down", observedAt: record.lastSeenAt, data: record.data };
 }
+
+/**
+ * Every code an infrastructure response may carry, and the whole of it.
+ *
+ * The same closed list `connectorErrorCodes` is for the connector platform, and for the same
+ * reason: a code with no sentence is not a loud failure but a silent one. The screen falls back
+ * to "the operation could not be completed", which is exactly what a person was told when the
+ * real answer was that a migration had not been applied -- a minute's work, had anybody said so.
+ *
+ * Four sources contribute, and none of them can see the other three, which is why the agreement
+ * lives here: the session guard before a handler runs, the schema that refuses a malformed body,
+ * the service's own rules, and the constraints the adapter turns back into codes. `INTERNAL_ERROR`
+ * is a member because an unclassified failure still reaches a screen and still has to say
+ * something in the reader's language.
+ *
+ * `packages/i18n` walks this list in a test and refuses a code with no words, in any of the three
+ * languages; `apps/api` walks it and refuses one with no title. A code raised anywhere in the
+ * module and not written here is therefore a code somebody has to add on purpose.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, acceptance criterion 11.
+ */
+export const infrastructureErrorCodes = [
+  // The session guard, before any handler runs.
+  "AUTHENTICATION_REQUIRED",
+  "TENANT_ACCESS_DENIED",
+  "TENANT_SELECTION_REQUIRED",
+  "MFA_REQUIRED",
+  "PERMISSION_DENIED",
+  // A body or a parameter the schema refused, and the failure nobody classified.
+  "INVALID_INPUT",
+  "INTERNAL_ERROR",
+  // The module's own rules.
+  "FORBIDDEN",
+  "INVALID_NAME",
+  "INVALID_HOSTNAME",
+  "INVALID_MATCH_KEY",
+  "INVALID_FRESHNESS",
+  "NOTES_TOO_LONG",
+  "TARGET_REQUIRED",
+  "TARGET_NOT_ALLOWED",
+  // Something named that is not there, or is not this tenant's.
+  "INSTANCE_NOT_FOUND",
+  "HOST_NOT_FOUND",
+  "SERVICE_NOT_FOUND",
+  "RULE_NOT_FOUND",
+  "ALERT_NOT_FOUND",
+  "REFERENCE_NOT_FOUND",
+  // What the constraints refuse, which is two people acting at once as often as it is a mistake.
+  "DUPLICATE_ENTRY",
+  "DUPLICATE_HOST_NAME",
+  "DUPLICATE_HOSTNAME",
+  "DUPLICATE_SERVICE_NAME",
+  "DUPLICATE_MATCH_KEY",
+  "DUPLICATE_RULE_NAME",
+  "ALERT_ALREADY_HAS_INCIDENT"
+] as const;
+
+export type InfrastructureErrorCode = (typeof infrastructureErrorCodes)[number];

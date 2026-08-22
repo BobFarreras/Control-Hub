@@ -25,7 +25,8 @@ const app = buildApp({
   logLevel: environment.LOG_LEVEL,
   exposeApiDocs: environment.NODE_ENV !== "production",
   featureFlags: parseFeatureFlags(environment.CONTROL_HUB_FLAGS),
-  connectorKeyRing: environment.connectorKeyRing
+  connectorKeyRing: environment.connectorKeyRing,
+  connectorEgressAllowlist: environment.connectorEgressAllowlist
 });
 
 // A flag name nobody declared is a typo that would otherwise be indistinguishable from a

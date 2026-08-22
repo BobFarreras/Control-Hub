@@ -19,7 +19,15 @@ import {
   SupportError,
   SupportService
 } from "@control-hub/application";
-import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet, type KeyRing } from "@control-hub/config";
+import {
+  isAllowlistedDestination,
+  isFeatureEnabled,
+  parseEgressAllowlist,
+  parseFeatureFlags,
+  type AllowedDestination,
+  type FeatureFlagSet,
+  type KeyRing
+} from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { connectorQueueName } from "@control-hub/contracts/jobs";
@@ -104,6 +112,14 @@ type BuildAppOptions = {
    * secret with, and accepting one would be worse than refusing it. See ADR-0008.
    */
   connectorKeyRing?: KeyRing | null;
+  /**
+   * The origins this installation lets a connector reach besides the public internet.
+   *
+   * The API needs its own copy for one reason: the guided check answers "is this collector's own
+   * origin named here" without making a call. It is a deployment concern and never a tenant one,
+   * which is why it arrives from the environment and has no route that can write it.
+   */
+  connectorEgressAllowlist?: readonly AllowedDestination[];
 };
 
 /**
@@ -124,6 +140,8 @@ export function buildApp(options: BuildAppOptions) {
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
   const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
+  const egressAllowlist =
+    options.connectorEgressAllowlist ?? parseEgressAllowlist(process.env.CONNECTOR_INTERNAL_ALLOWLIST);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => app.log.warn({ err: error }, "queue connection unavailable"));
   // A connection of its own: sharing the health-check client would let a slow limiter command
@@ -367,7 +385,17 @@ export function buildApp(options: BuildAppOptions) {
             new PostgresInfrastructureRepository(database),
             // Read from the manifests rather than written here, so a collector shipped with a
             // different cadence needs no second place to be told about it.
-            observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type)))
+            observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type))),
+            // The comparison happens here, where the address is, and only a yes or no travels
+            // any further. A base nobody can parse is not on any list: refusing it is the same
+            // answer the guard itself would give.
+            (baseUrl) => {
+              try {
+                return isAllowlistedDestination(egressAllowlist, new URL(baseUrl));
+              } catch {
+                return false;
+              }
+            }
           )
         });
     }

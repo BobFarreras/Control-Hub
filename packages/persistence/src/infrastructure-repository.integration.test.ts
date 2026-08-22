@@ -888,6 +888,157 @@ suite("PostgresInfrastructureRepository", () => {
     });
   });
 
+  describe("the guided check", () => {
+    const promInstance = async (tenantId: string, membershipId: string) =>
+      connectors.createInstance(context(tenantId, membershipId), {
+        connectorType: "prometheus",
+        name: `prometheus ${randomUUID()}`,
+        config: { baseUrl: "http://127.0.0.1:9090" }
+      });
+
+    const later = new Date(now.getTime() + 60_000);
+
+    it("finds nothing missing when every migration the module needs has run", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+
+      const state = await repository.readDiagnosisState(asA(), instance.id);
+
+      expect(state.missingMigrations).toEqual([]);
+      expect(state.instance).toMatchObject({
+        id: instance.id,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090"
+      });
+    });
+
+    it("gives back no instance for an id this tenant does not have, without saying whose it is", async () => {
+      const foreign = await promInstance(tenantB, membershipB);
+
+      expect(await repository.readDiagnosisState(asC(), foreign.id)).toMatchObject({
+        instance: null,
+        missingMigrations: []
+      });
+    });
+
+    it("reports no attempt at all on an instance nobody has run or checked", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toBeNull();
+    });
+
+    /**
+     * Why this reads two tables rather than one. A pass that succeeds writes no health at all, so
+     * reading `connector_instances` alone would report an installation that has been polling for a
+     * week as one nobody has ever asked anything of, and the check would answer "we do not know"
+     * about a connector that is plainly working.
+     */
+    it("counts a successful pass as an attempt, though it wrote down no health", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: true,
+        code: null
+      });
+    });
+
+    it("carries the code of the failure when the failure is the newer of the two", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+      await connectors.recordHealth(asA(), instance.id, {
+        status: "failing",
+        checkedAt: later,
+        errorCode: "CONNECT_TIMEOUT"
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: false,
+        code: "CONNECT_TIMEOUT"
+      });
+    });
+
+    /** The stale `last_error_code` of a failure that has since been fixed is not evidence. */
+    it("stops carrying it once a later pass has worked", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.recordHealth(asA(), instance.id, {
+        status: "failing",
+        checkedAt: now,
+        errorCode: "CONNECT_TIMEOUT"
+      });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: later,
+        succeeded: true
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: true,
+        code: null
+      });
+    });
+
+    /**
+     * The labels that travel are the ones Prometheus itself scrapes: a host reading, and a probe
+     * reading carrying `scrapeUp`, which came from the `up` series. A blackbox reading is left
+     * out because its label is a probed address, not a machine anybody could declare -- and an
+     * address is the one thing acceptance criterion 5 says may never leave this process.
+     */
+    it("reads the labels of stored readings and leaves a probed address out of them", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const label = `vps-${randomUUID()}:9100`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${label}`, { cpuBusyRatio: 0.1 });
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", `probe:${label}`, { scrapeUp: true });
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", "probe:https://secret.example.test", {
+        success: true
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", "container:n8n", { state: "running" });
+
+      const state = await repository.readDiagnosisState(asA(), instance.id);
+
+      expect(state.seenInstances).toEqual([label]);
+    });
+
+    it("reads the readings of this instance only, so two collectors are diagnosed apart", async () => {
+      const [one, two] = [await promInstance(tenantA, membershipA), await promInstance(tenantA, membershipA)];
+      await putRecord(tenantA, membershipA, one.id, "pull_host_metrics", `host:vps-${randomUUID()}:9100`, {
+        cpuBusyRatio: 0.1
+      });
+
+      expect((await repository.readDiagnosisState(asA(), two.id)).seenInstances).toEqual([]);
+    });
+
+    it("lists what this tenant declared, and nothing another tenant did", async () => {
+      const declare = async (asTenant: () => TenantContext) =>
+        repository.declareHost(asTenant(), {
+          name: `VPS ${randomUUID()}`,
+          hostname: `node-${randomUUID()}:9100`,
+          environment: "production",
+          notes: null
+        });
+      const instance = await promInstance(tenantC, membershipC);
+      const [mine, theirs] = [await declare(asC), await declare(asA)];
+
+      const { declaredHostnames } = await repository.readDiagnosisState(asC(), instance.id);
+
+      expect(declaredHostnames).toContain(mine.hostname);
+      expect(declaredHostnames).not.toContain(theirs.hostname);
+    });
+  });
+
   describe("retention", () => {
     it("removes resolved alerts past the window and leaves the live ones alone", async () => {
       const instance = await newInstance(tenantA, membershipA);

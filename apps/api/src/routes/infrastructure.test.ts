@@ -5,11 +5,12 @@ import type {
   HostRecord,
   ServiceRecord
 } from "@control-hub/application";
-import { alertRuleKinds } from "@control-hub/domain";
+import { alertRuleKinds, type ConnectorDiagnosis, type DiagnosisFinding } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   alertResponse,
   automationResponse,
+  diagnosisResponse,
   hostResponse,
   inventoryResponse,
   overviewOf,
@@ -377,5 +378,90 @@ describe("the inventory a dashboard receives", () => {
 
   it("says it has no age rather than inventing one", () => {
     expect(inventoryResponse({ hosts: [], observedFrom: null })).toEqual({ hosts: [], observedFrom: null });
+  });
+});
+
+/**
+ * The second fence, on the side of the wire a browser is on.
+ *
+ * The domain already builds a diagnosis with no field an address could occupy, so nothing here is
+ * the only thing standing between a secret and a client. What it does hold is that a key a later
+ * rung starts attaching reaches nobody by the mere fact of existing -- the same rule
+ * `readableFields` holds for a reading, for the same reason.
+ */
+describe("what a diagnosis says on the way out", () => {
+  const finding = (overrides: Partial<DiagnosisFinding> = {}): DiagnosisFinding => ({
+    step: "matching",
+    status: "failed",
+    code: null,
+    evidence: {},
+    ...overrides
+  });
+
+  const answer = (findings: readonly DiagnosisFinding[], problem: ConnectorDiagnosis["problem"] = "matching") =>
+    diagnosisResponse({ findings, problem });
+
+  it("says which rung is the problem and what each of them found", () => {
+    const response = answer([finding({ step: "migrations", status: "passed" })], "migrations");
+
+    expect(response.problem).toBe("migrations");
+    expect(response.findings[0]).toEqual({ step: "migrations", status: "passed", code: null, evidence: {} });
+  });
+
+  it("carries the code, which is what a screen turns into a sentence", () => {
+    const response = answer([finding({ step: "reachable", code: "CONNECT_TIMEOUT" })], "reachable");
+    expect(response.findings[0]?.code).toBe("CONNECT_TIMEOUT");
+  });
+
+  it("names the migrations and the two lists a mismatch needs", () => {
+    const response = answer([
+      finding({ step: "migrations", evidence: { migrations: ["0037_infrastructure_hosts.sql"] } }),
+      finding({ evidence: { seen: ["node-exporter:9100"], declared: ["hub-vps"] } })
+    ]);
+
+    expect(response.findings[0]?.evidence).toEqual({
+      migrations: { values: ["0037_infrastructure_hosts.sql"], total: 1 }
+    });
+    expect(response.findings[1]?.evidence).toEqual({
+      seen: { values: ["node-exporter:9100"], total: 1 },
+      declared: { values: ["hub-vps"], total: 1 }
+    });
+  });
+
+  /** A key nobody listed travels nowhere, whatever a later rung decides to attach. */
+  it("drops a key the rung was never allowed to say", () => {
+    const leaky = finding({
+      step: "allowlist",
+      evidence: { baseUrl: ["http://prometheus.internal.example:9090"] }
+    });
+
+    expect(answer([leaky], "allowlist").findings[0]?.evidence).toEqual({});
+    expect(JSON.stringify(answer([leaky], "allowlist"))).not.toContain("prometheus.internal.example");
+  });
+
+  it("refuses the same key on a rung that is not the one it belongs to", () => {
+    const misplaced = finding({ step: "scraping", evidence: { seen: ["node-exporter:9100"] } });
+    expect(answer([misplaced], "scraping").findings[0]?.evidence).toEqual({});
+  });
+
+  /**
+   * A collector scraping four hundred targets would turn one question into a data dump, and the
+   * answer is settled by the first handful. The total goes with the list so the screen can say how
+   * many it is not showing: a list cut short and drawn as the whole thing is the same class of lie
+   * as a figure drawn without its age.
+   */
+  it("cuts a long list short and says how long it really was", () => {
+    const seen = Array.from({ length: 412 }, (_, index) => `node-${index}:9100`);
+    const evidence = answer([finding({ evidence: { seen, declared: ["hub-vps"] } })]).findings[0]?.evidence;
+
+    expect(evidence?.seen?.values).toHaveLength(20);
+    expect(evidence?.seen?.total).toBe(412);
+    expect(evidence?.seen?.values[0]).toBe("node-0:9100");
+  });
+
+  it("leaves out a list that is empty rather than sending an empty one", () => {
+    expect(answer([finding({ evidence: { seen: [], declared: ["hub-vps"] } })]).findings[0]?.evidence).toEqual({
+      declared: { values: ["hub-vps"], total: 1 }
+    });
   });
 });

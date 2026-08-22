@@ -70,6 +70,7 @@ const documentedInfrastructure = [
   ["get", "/api/v1/infrastructure/automations"],
   ["put", "/api/v1/infrastructure/automations/{instanceId}/{externalId}/link"],
   ["get", "/api/v1/infrastructure/inventory"],
+  ["get", "/api/v1/infrastructure/connectors/{instanceId}/diagnosis"],
   ["get", "/api/v1/infrastructure/hosts"],
   ["post", "/api/v1/infrastructure/hosts"],
   ["get", "/api/v1/infrastructure/hosts/{hostId}"],

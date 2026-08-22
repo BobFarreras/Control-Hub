@@ -1,10 +1,12 @@
 import {
   currentReading,
+  diagnoseConnector,
   evaluateAlertRules,
   hasPermission,
   hostMatchKey,
   incidentFor,
   type AlertRule,
+  type ConnectorDiagnosis,
   type AlertSeverity,
   type AlertVerdict,
   type AlertRuleKind,
@@ -223,6 +225,57 @@ export type ObservedHost = HostRecord & { reading: CurrentReading; services: rea
 export type Inventory = { hosts: readonly ObservedHost[]; observedFrom: Date | null };
 
 /**
+ * Everything the guided check reads, gathered in one pass so the answer describes one moment.
+ *
+ * `baseUrl` is here and travels no further than the service: it exists so the origin can be
+ * compared against this deployment's allowlist, and the comparison is reduced to a yes or no
+ * before the domain -- and therefore before any response -- ever sees it. Acceptance criterion 5
+ * is that nothing downstream is even given the address.
+ */
+export type ConnectorDiagnosisState = {
+  /** Null when this tenant has no such connector instance. */
+  instance: {
+    id: string;
+    connectorType: string;
+    /** The configured base, or null for an instance that has none. Never leaves this process. */
+    baseUrl: string | null;
+    /**
+     * The last call that went out for this instance and what came of it, or null when none ever
+     * has. A pass that succeeded is evidence as good as a health check that did -- an installation
+     * whose collector has been polling happily for a week has often never been health-checked at
+     * all, and reporting that as "nobody has looked" would be false about the one thing we know.
+     */
+    lastAttempt: { ok: boolean; code: string | null } | null;
+  } | null;
+  /**
+   * The module's migrations whose objects are not in the database.
+   *
+   * Answered first and on its own, because when it is not empty the rest of this state cannot be
+   * read at all: the tables the other fields come from are the tables that are missing.
+   */
+  missingMigrations: readonly string[];
+  /**
+   * Every `instance` label this connector has stored a reading for, prefix already removed.
+   *
+   * Read from records that are already there. Opening a screen must not be able to make a request
+   * go out, so nothing here asks Prometheus anything -- see the specification's C3 decision, which
+   * this check shares.
+   */
+  seenInstances: readonly string[];
+  declaredHostnames: readonly string[];
+};
+
+/**
+ * Whether this deployment's allowlist names an origin.
+ *
+ * Injected rather than read here, so the application layer neither touches the environment nor
+ * learns what an allowlist is: `CONNECTOR_INTERNAL_ALLOWLIST` is administrative and belongs to
+ * the composition root, and a service that could see it is one step from a screen that could
+ * write it.
+ */
+export type OriginAllowlistCheck = (baseUrl: string) => boolean;
+
+/**
  * What writing a verdict produced.
  *
  * `created` is the whole reason this is not a plain count: an incident is opened when an alert
@@ -256,6 +309,7 @@ export type InfrastructureRepository = {
 
   readInventoryState(context: TenantContext): Promise<InventoryState>;
   readEvaluationState(context: TenantContext): Promise<EvaluationState>;
+  readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState>;
   applyVerdicts(
     context: TenantContext,
     verdicts: readonly AlertVerdict[],
@@ -373,8 +427,45 @@ export class InfrastructureService {
    */
   constructor(
     private readonly repository: InfrastructureRepository,
-    private readonly budgets: OperationBudgets
+    private readonly budgets: OperationBudgets,
+    private readonly isOriginAllowlisted: OriginAllowlistCheck
   ) {}
+
+  /**
+   * Why a collector is not telling us anything, answered as the first rung of the chain that does
+   * not hold.
+   *
+   * A read, and audited nowhere, because it changes nothing and asks nobody anything: every fact
+   * it reasons from is already in our own tables. In particular it opens no connection -- the
+   * evidence about the far end is whatever the connector's own health check last reported, which
+   * is why the screen offers that check rather than this route performing one.
+   *
+   * The address never gets past this method. It is compared against the deployment's allowlist
+   * here and reduced to a boolean, so what the domain judges, and therefore what any response can
+   * carry, has no field an address would fit in.
+   */
+  async diagnose(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosis> {
+    requireRead(context);
+    const state = await this.repository.readDiagnosisState(context, instanceId);
+    // Only when the schema is whole. With a migration missing there is no `connector_instances`
+    // to look in, and answering "no such integration" would send somebody hunting for a row on a
+    // database that has no table to hold it -- which is the exact confusion this check exists to
+    // end. The migration rung fails first and says what to run.
+    if (!state.instance && state.missingMigrations.length === 0) {
+      throw new InfrastructureServiceError("INSTANCE_NOT_FOUND");
+    }
+
+    const baseUrl = state.instance?.baseUrl ?? null;
+    return diagnoseConnector({
+      missingMigrations: state.missingMigrations,
+      // An instance with no base configured has no origin to be on the list, which fails the same
+      // rung for the same reason: nothing can go out.
+      originAllowlisted: baseUrl !== null && this.isOriginAllowlisted(baseUrl),
+      lastAttempt: state.instance?.lastAttempt ?? null,
+      seenInstances: state.seenInstances,
+      declaredHostnames: state.declaredHostnames
+    });
+  }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {
     requireRead(context);

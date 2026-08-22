@@ -17,6 +17,8 @@ import type {
 import {
   alertRuleKinds,
   type AlertSeverity,
+  type ConnectorDiagnosis,
+  type ConnectorDiagnosisStep,
   type CurrentReading,
   type JsonValue,
   type TenantContext
@@ -203,6 +205,55 @@ export function inventoryResponse(inventory: Inventory) {
   return { hosts: inventory.hosts.map(observedHostResponse), observedFrom: inventory.observedFrom };
 }
 
+/**
+ * What a finding may say to a client, named per rung rather than handed over whole.
+ *
+ * The domain builds a diagnosis with no field an address could occupy, so this is the second
+ * fence and not the first — but it is the one on the side of the wire a browser is on, and it is
+ * the reason a key a later rung starts attaching reaches nobody by the mere fact of existing. A
+ * rung listed with no keys says only its status and its code, which is the safe way round.
+ */
+const evidenceKeys: Readonly<Record<ConnectorDiagnosisStep, readonly string[]>> = {
+  migrations: ["migrations"],
+  allowlist: [],
+  reachable: [],
+  answers_prometheus: [],
+  scraping: [],
+  matching: ["seen", "declared"]
+};
+
+/**
+ * How many names travel, and why the count travels with them.
+ *
+ * A collector scraping four hundred targets would otherwise turn one question into a data dump,
+ * and the answer somebody needs is settled by the first handful. The total goes too so the screen
+ * can say how many it is not showing: a list cut short and drawn as if it were the whole thing is
+ * the same class of lie as a stale figure drawn without its age.
+ */
+const evidenceLimit = 20;
+
+export function diagnosisResponse(diagnosis: ConnectorDiagnosis) {
+  return {
+    problem: diagnosis.problem,
+    findings: diagnosis.findings.map((finding) => {
+      const evidence: Record<string, { values: readonly string[]; total: number }> = {};
+      for (const key of evidenceKeys[finding.step]) {
+        const values = finding.evidence[key];
+        if (values && values.length > 0)
+          evidence[key] = { values: values.slice(0, evidenceLimit), total: values.length };
+      }
+      return { step: finding.step, status: finding.status, code: finding.code, evidence };
+    })
+  };
+}
+
+const instanceParams = {
+  type: "object",
+  additionalProperties: false,
+  required: ["instanceId"],
+  properties: { instanceId: { type: "string", format: "uuid" } }
+} as const;
+
 const hostParams = {
   type: "object",
   additionalProperties: false,
@@ -380,6 +431,24 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "infrastructure:read");
       return { inventory: inventoryResponse(await infrastructure.readInventory(context, new Date())) };
+    }
+  );
+
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/diagnosis",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Why a collector is telling us nothing",
+        params: instanceParams,
+        description:
+          "The chain of things that have to hold before a reading can appear, answered one rung at a time and stopped at the first that does not. A rung the chain never reached is `unchecked` and one nobody has gathered evidence for is `unknown` — neither is a failure, and reporting them as one is what turns a tunnel nobody has knocked on into a tunnel somebody reports as shut. The answer carries migration file names and `instance` labels and nothing else: no base address, no credential and no provider hostname, because the sentence that needs the address is composed on the screen out of what the person just typed."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { diagnosis: diagnosisResponse(await infrastructure.diagnose(context, request.params.instanceId)) };
     }
   );
 

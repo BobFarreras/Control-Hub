@@ -10,6 +10,7 @@ import {
   type AlertRuleRecord,
   type AppliedVerdict,
   type AutomationRecord,
+  type ConnectorDiagnosisState,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
@@ -141,6 +142,17 @@ class FakeRepository implements InfrastructureRepository {
   inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [] };
   readInventoryState = () => Promise.resolve(this.inventoryState);
   readEvaluationState = () => Promise.resolve(this.state);
+  diagnosisState: ConnectorDiagnosisState = {
+    instance: { id: instanceId, connectorType: "prometheus", baseUrl: "http://127.0.0.1:9090", lastAttempt: null },
+    missingMigrations: [],
+    seenInstances: [],
+    declaredHostnames: []
+  };
+  diagnosisAsked: string[] = [];
+  readDiagnosisState = (_context: TenantContext, asked: string) => {
+    this.diagnosisAsked.push(asked);
+    return Promise.resolve(this.diagnosisState);
+  };
   /** Retention has no tenant and no session, so nothing in this suite exercises it. */
   purgeAlertEvents = () => Promise.resolve(0);
   applyVerdicts = (_context: TenantContext, verdicts: readonly AlertVerdict[]) => {
@@ -217,9 +229,12 @@ const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_
 
 let repository: FakeRepository;
 let service: InfrastructureService;
+/** The deployment's allowlist, already reduced to the question the service is allowed to ask. */
+let allowlisted: Set<string>;
 beforeEach(() => {
   repository = new FakeRepository();
-  service = new InfrastructureService(repository, budgets);
+  allowlisted = new Set(["http://127.0.0.1:9090"]);
+  service = new InfrastructureService(repository, budgets, (baseUrl) => allowlisted.has(baseUrl));
 });
 
 const refused = (code: string): unknown => expect.objectContaining({ code });
@@ -738,5 +753,129 @@ describe("the inventory a dashboard reads", () => {
     const asAdministrator = await service.readInventory(administrator, now);
     expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);
     await expect(service.readInventory(stranger, now)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+});
+
+/**
+ * The guided check, as the use case assembles it.
+ *
+ * What is worth proving here rather than in the domain is the coordination: that reading is
+ * enough to ask, that the address is compared against the deployment's allowlist and then goes no
+ * further, and that the chain really does stop at the first rung that does not hold when the
+ * facts come from a repository instead of from a literal.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C1 -- La comprovacio guiada".
+ */
+describe("the guided check", () => {
+  const seeing = (overrides: Partial<ConnectorDiagnosisState> = {}) => {
+    repository.diagnosisState = {
+      instance: { id: instanceId, connectorType: "prometheus", baseUrl: "http://127.0.0.1:9090", lastAttempt: null },
+      missingMigrations: [],
+      seenInstances: ["node-exporter:9100"],
+      declaredHostnames: ["node-exporter:9100"],
+      ...overrides
+    };
+  };
+
+  const statuses = async (context = administrator) =>
+    Object.fromEntries((await service.diagnose(context, instanceId)).findings.map((f) => [f.step, f.status]));
+
+  it("is a read, so Administrator may ask for it", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090",
+        lastAttempt: { ok: true, code: null }
+      }
+    });
+
+    await expect(service.diagnose(administrator, instanceId)).resolves.toMatchObject({ problem: null });
+    expect(repository.diagnosisAsked).toEqual([instanceId]);
+  });
+
+  it("refuses somebody with no infrastructure permission at all", async () => {
+    seeing();
+    await expect(service.diagnose(stranger, instanceId)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("says so when this tenant has no such integration", async () => {
+    seeing({ instance: null });
+    await expect(service.diagnose(owner, instanceId)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  /**
+   * The failure this whole increment is named after. With the tables absent there is nowhere for
+   * the instance to be, and answering "no such integration" would send somebody looking for a row
+   * on a database that has no table to hold it.
+   */
+  it("answers the migration rung rather than 404 when the schema is not there at all", async () => {
+    seeing({ instance: null, missingMigrations: ["0037_infrastructure_hosts.sql"] });
+    await expect(service.diagnose(owner, instanceId)).resolves.toMatchObject({ problem: "migrations" });
+  });
+
+  /** Acceptance criterion 1: what would have saved the afternoon. */
+  it("names the migration that is missing before it judges anything else", async () => {
+    seeing({ missingMigrations: ["0037_infrastructure_hosts.sql"] });
+    const diagnosis = await service.diagnose(owner, instanceId);
+
+    expect(diagnosis.problem).toBe("migrations");
+    expect(diagnosis.findings[0]?.evidence).toEqual({ migrations: ["0037_infrastructure_hosts.sql"] });
+  });
+
+  /** Acceptance criterion 2, with the comparison made where the address is. */
+  it("fails the origin rung when this deployment's allowlist does not name it", async () => {
+    seeing();
+    allowlisted.clear();
+    await expect(statuses(owner)).resolves.toMatchObject({ allowlist: "failed" });
+  });
+
+  it("treats an instance with no base configured as an origin nothing can reach", async () => {
+    seeing({
+      instance: { id: instanceId, connectorType: "generic-webhook", baseUrl: null, lastAttempt: null }
+    });
+    await expect(statuses(owner)).resolves.toMatchObject({ allowlist: "failed" });
+  });
+
+  /**
+   * Acceptance criterion 5, at the boundary that holds the address. The service is the last place
+   * that sees a `baseUrl`; what it hands back has no field one could travel in, whatever the
+   * repository put on the row.
+   */
+  it("hands back nothing that carries the address it just compared", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://prometheus.internal.example:9090",
+        lastAttempt: null
+      }
+    });
+    allowlisted.add("http://prometheus.internal.example:9090");
+
+    expect(JSON.stringify(await service.diagnose(owner, instanceId))).not.toContain("prometheus.internal.example");
+  });
+
+  it("says it does not know about the far end until a health check has run", async () => {
+    seeing();
+    await expect(statuses(owner)).resolves.toMatchObject({ reachable: "unknown", answers_prometheus: "unchecked" });
+  });
+
+  /** Acceptance criterion 4: the answer that separates a dead machine from a typo. */
+  it("puts what it sees beside what was declared when none of them meet", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090",
+        lastAttempt: { ok: true, code: null }
+      },
+      seenInstances: ["node-exporter:9100"],
+      declaredHostnames: ["hub-vps"]
+    });
+
+    const diagnosis = await service.diagnose(owner, instanceId);
+    expect(diagnosis.problem).toBe("matching");
+    expect(diagnosis.findings.at(-1)?.evidence).toEqual({ seen: ["node-exporter:9100"], declared: ["hub-vps"] });
   });
 });
