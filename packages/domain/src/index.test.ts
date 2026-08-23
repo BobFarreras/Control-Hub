@@ -53,6 +53,14 @@ describe("RBAC", () => {
     expect(rolePermissions.technical).toContain("infrastructure:operate");
     expect(rolePermissions.technical).not.toContain("tenant:manage");
   });
+  it("separates usage pricing and budget administration from technical telemetry access", () => {
+    expect(rolePermissions.owner).toContain("usage:manage");
+    expect(rolePermissions.administrator).toContain("budgets:manage");
+    expect(rolePermissions.administrator).not.toContain("usage:manage");
+    expect(rolePermissions.technical).toContain("usage:read");
+    expect(rolePermissions.technical).not.toContain("financials:read");
+    expect(rolePermissions.technical).not.toContain("budgets:manage");
+  });
   it("denies permissions absent from the resolved membership", () =>
     expect(hasPermission(context(["owner"], []), "tenant:manage")).toBe(false));
 });

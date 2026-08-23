@@ -449,12 +449,17 @@ que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 `docs/development/phase-8-implementation-guide.md`. La revisio ha trobat tres ampliacions de model
 noves —fonts obligatories de pressupost, valoracio de correccions i snapshots mensuals— i ha creat
 `docs/specifications/phase-7b-actions-and-oauth.md` per OAuth, accions i el port IMAP. **A2 i A4
-han estat aprovats el 23 d'agost de 2026.** La branca arriba a la `0041`; la primera migracio de
-Fase 8 sera la `0042`. **U1 ja esta entregat** a `packages/domain/src/usage.ts`: unitats tipades,
+han estat aprovats el 23 d'agost de 2026.** La `0042` pertany a les etiquetes d'hosts de fase 7.2;
+la primera migracio de Fase 8 es `0043_usage_costs.sql`. **U1 ja esta entregat** a
+`packages/domain/src/usage.ts`: unitats tipades,
 tarifes progressives i versionades, half-up amb `BigInt`, FX racional, prioritat
 `reported | rated | unpriced` i pressupostos amb precedencia `stale > partial > exceeded > warning
-> healthy`, coberts per 12 proves i typecheck del paquet. El seguent increment es U2: esquema,
-ports, permisos i flags.
+> healthy`, coberts per 12 proves i typecheck del paquet. **U2 tambe esta entregat**: model additiu
+de fonts, events, correccions, tarifes, FX, valoracions, atribucio, pressupostos i snapshots; RLS
+`enable + force`, FK compostes, evidencia append-only, deduplicacio atomica; ports d'aplicacio i
+adaptador PostgreSQL; permisos separats `usage:manage` i `budgets:manage`; i flags independents
+`usage_costs` i `mail`. Totes les migracions i els cinc casos PostgreSQL obligatoris han passat en
+una base PostgreSQL 17 efimera. El seguent increment es U3: ingestio normalitzada des del worker.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

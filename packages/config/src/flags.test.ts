@@ -30,6 +30,12 @@ describe("feature flags", () => {
     expect(unknownFeatureFlags("infrastructure")).toEqual([]);
   });
 
+  it("keeps usage costs and mail independently deployable", () => {
+    const usageOnly = parseFeatureFlags("usage_costs");
+    expect(isFeatureEnabled(usageOnly, "usage_costs")).toBe(true);
+    expect(isFeatureEnabled(usageOnly, "mail")).toBe(false);
+  });
+
   it("gives every declared flag an owner and a date to be gone by", () => {
     for (const [name, flag] of Object.entries(featureFlags)) {
       expect(flag.owner, name).toBeTruthy();

@@ -66,12 +66,12 @@ No hi ha base de dades, Fastify, React ni noms de proveidor en les funcions pure
 
 ### U2 — Dades, ports i permisos
 
-Crear `0042_usage_costs.sql`. Afegir taules, RLS, FK compostes, checks, indexes i grants. Separar
+Crear `0043_usage_costs.sql` (`0042` ja pertany a les etiquetes d'hosts de la fase 7.2). Afegir taules, RLS, FK compostes, checks, indexes i grants. Separar
 `usage:manage` de `budgets:manage`.
 
 Fitxers principals:
 
-- `packages/database/migrations/0042_usage_costs.sql`
+- `packages/database/migrations/0043_usage_costs.sql`
 - `packages/application/src/usage.ts`
 - `packages/persistence/src/usage-repository.ts`
 - `packages/domain/src/index.ts`
