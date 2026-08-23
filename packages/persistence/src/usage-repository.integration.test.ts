@@ -19,6 +19,7 @@ suite("PostgresUsageRepository", () => {
   const tenantB = randomUUID();
   const sourceA = randomUUID();
   const sourceB = randomUUID();
+  const connectorA = randomUUID();
   const context = (
     tenantId: string,
     permissions: TenantContext["permissions"] = ["usage:read", "usage:manage", "financials:read"]
@@ -48,6 +49,8 @@ suite("PostgresUsageRepository", () => {
       (${tenantA}, ${`usage-${tenantA}`}, 'Usage A'), (${tenantB}, ${`usage-${tenantB}`}, 'Usage B')`;
     await admin`insert into usage_sources (id, tenant_id, kind, manual_code) values
       (${sourceA}, ${tenantA}, 'manual', 'test'), (${sourceB}, ${tenantB}, 'manual', 'test')`;
+    await admin`insert into connector_instances (id, tenant_id, connector_type, name)
+      values (${connectorA}, ${tenantA}, 'test', 'Usage connector')`;
   });
 
   afterAll(async () => {
@@ -58,6 +61,7 @@ suite("PostgresUsageRepository", () => {
       await admin`delete from usage_event_quantities where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from usage_events where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from usage_sources where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from connector_instances where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     } finally {
       for (const table of ["usage_event_quantities", "usage_events"]) {
@@ -93,6 +97,29 @@ suite("PostgresUsageRepository", () => {
     expect(
       (await repository.listEvents(context(tenantA), {})).filter((item) => item.externalId === "concurrent")
     ).toHaveLength(1);
+  });
+
+  it("retains reported cost and advances source completeness monotonically", async () => {
+    const source = await repository.ensureConnectorSource(context(tenantA), {
+      instanceId: connectorA,
+      operation: "pull_usage"
+    });
+    const completedAt = new Date("2026-08-23T14:00:00Z");
+    await repository.completeSource(context(tenantA), source.id, completedAt);
+    await repository.completeSource(context(tenantA), source.id, new Date("2026-08-23T13:00:00Z"));
+    const result = await repository.ingestEvent(context(tenantA), {
+      ...event(source.id),
+      externalId: "reported-cost",
+      reportedCost: { amountMinor: 17n, currency: "EUR" }
+    });
+    expect(result.record.reportedCost).toEqual({ amountMinor: 17n, currency: "EUR" });
+    const [stored] = await withTenant(
+      database,
+      tenantA,
+      (tx) => tx<{ lastCompleteAt: Date }[]>`select last_complete_at as "lastCompleteAt"
+        from usage_sources where id = ${source.id}`
+    );
+    expect(stored!.lastCompleteAt).toEqual(completedAt);
   });
 
   it("does not let the application role mutate evidence", async () => {

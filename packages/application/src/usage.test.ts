@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { UsageService, type UsageRepository } from "./usage.js";
 
 const repository = (): UsageRepository => ({
+  ensureConnectorSource: vi.fn(),
+  completeSource: vi.fn(),
   ingestEvent: vi.fn(),
   listEvents: vi.fn().mockResolvedValue([]),
   listCosts: vi.fn().mockResolvedValue([]),

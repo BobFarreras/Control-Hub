@@ -108,6 +108,13 @@ Prioritat de cost:
 
 El connector normalitza consum. No decideix tarifes ni escriu PostgreSQL.
 
+El contracte entre connector i worker es un envelope estricte `data.usage`: instant ISO amb zona,
+SKU, estat, una o mes quantitats enteres amb unitat allowlistada, cost reportat opcional i, com a
+maxim, una referencia d'atribucio. L'`externalId` del registre es la identitat estable del fet.
+El worker elimina qualsevol camp exterior a aquest contracte abans de cridar el servei de domini;
+mai hi envia el payload cru. Un envelope present pero invalid fa fallar la passada sense avancar
+cursor ni salut de la font; un registre sense envelope no es consum i s'ignora.
+
 ### Atribucio explicita
 
 Un event pertany sempre al tenant i pot referenciar una instancia i execucio de connector, client,

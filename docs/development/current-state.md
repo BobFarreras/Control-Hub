@@ -459,7 +459,12 @@ de fonts, events, correccions, tarifes, FX, valoracions, atribucio, pressupostos
 `enable + force`, FK compostes, evidencia append-only, deduplicacio atomica; ports d'aplicacio i
 adaptador PostgreSQL; permisos separats `usage:manage` i `budgets:manage`; i flags independents
 `usage_costs` i `mail`. Totes les migracions i els cinc casos PostgreSQL obligatoris han passat en
-una base PostgreSQL 17 efimera. El seguent increment es U3: ingestio normalitzada des del worker.
+una base PostgreSQL 17 efimera. **U3 ja esta entregat**: el runtime projecta envelopes
+`data.usage` estrictes despres de conservar el lot del connector, valida unitats, enters `BigInt`,
+cost reportat i atribucio XOR, deduplica per font i `external_id`, i nomes avanca font i cursor quan
+tot el lot acaba. `0044_usage_reported_cost.sql` conserva el cost original com evidencia. Hi ha 41
+proves focalitzades de worker i 6 casos PostgreSQL executats sobre PostgreSQL 17. El seguent
+increment es U4: valoracio, FX, pressupostos i snapshots.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

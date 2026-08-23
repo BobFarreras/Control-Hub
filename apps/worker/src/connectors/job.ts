@@ -34,13 +34,15 @@ export type ConnectorJobPayload = z.infer<typeof connectorJobSchema>;
  * here; the credential service refuses a write without one, and the worker never writes a
  * credential — it only opens what somebody with a second factor already stored.
  */
-export function jobContext(tenantId: string): TenantContext {
+export function jobContext(tenantId: string, usageEnabled = false): TenantContext {
   return {
     tenantId,
     membershipId: "system",
     userId: "system",
     roles: [],
-    permissions: ["integrations:read"],
+    // Explicit service-account scopes. Human Technical memberships never inherit usage:manage,
+    // and a worker with the feature closed does not carry its write scope either.
+    permissions: usageEnabled ? ["integrations:read", "usage:manage"] : ["integrations:read"],
     mfaEnabled: true
   };
 }
@@ -70,12 +72,16 @@ export class ConnectorJobError extends Error {
  * A permanent failure returns normally. The run row already says it failed; making the job fail
  * as well would retry it under the queue's rules, which is exactly what "permanent" rules out.
  */
-export async function runConnectorJob(runtime: ConnectorRuntime, job: QueuedJob): Promise<RunVerdict> {
+export async function runConnectorJob(
+  runtime: ConnectorRuntime,
+  job: QueuedJob,
+  usageEnabled = false
+): Promise<RunVerdict> {
   const parsed = connectorJobSchema.safeParse(job.data);
   if (!parsed.success) throw new ConnectorJobError("CONNECTOR_JOB_PAYLOAD_INVALID");
 
   const payload = parsed.data;
-  const verdict = await runtime.run(jobContext(payload.tenantId), {
+  const verdict = await runtime.run(jobContext(payload.tenantId, usageEnabled), {
     instanceId: payload.instanceId,
     operation: payload.operation,
     // The job id and the attempt together are what make a redelivery find its own row instead of

@@ -11,8 +11,10 @@ import type {
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { TenantContext, UsageUnit } from "@control-hub/domain";
 
-type EventRow = Omit<UsageEventRecord, "quantities"> & {
+type EventRow = Omit<UsageEventRecord, "quantities" | "reportedCost"> & {
   quantities: Array<{ unit: UsageUnit; quantity: string; qualifier: string }>;
+  reportedCostMinor: string | null;
+  reportedCurrency: string | null;
 };
 type CostRow = Omit<UsageCostRecord, "originalCostMinor" | "reportCostMinor"> & {
   originalCostMinor: string | null;
@@ -20,14 +22,39 @@ type CostRow = Omit<UsageCostRecord, "originalCostMinor" | "reportCostMinor"> & 
 };
 
 function eventRecord(row: EventRow): UsageEventRecord {
+  const { reportedCostMinor, reportedCurrency, ...event } = row;
   return {
-    ...row,
-    quantities: row.quantities.map((quantity) => ({ ...quantity, quantity: BigInt(quantity.quantity) }))
+    ...event,
+    quantities: event.quantities.map((quantity) => ({ ...quantity, quantity: BigInt(quantity.quantity) })),
+    ...(reportedCostMinor !== null && reportedCurrency !== null
+      ? { reportedCost: { amountMinor: BigInt(reportedCostMinor), currency: reportedCurrency } }
+      : {})
   };
 }
 
 export class PostgresUsageRepository implements UsageRepository {
   constructor(private readonly database: DatabaseClient) {}
+
+  ensureConnectorSource(context: TenantContext, input: { instanceId: string; operation: string }) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [source] = await tx<
+        Array<{ id: string; instanceId: string; operation: string; lastCompleteAt: Date | null }>
+      >`
+        insert into usage_sources (id, tenant_id, kind, connector_instance_id, operation)
+        values (${randomUUID()}, ${context.tenantId}, 'connector', ${input.instanceId}, ${input.operation})
+        on conflict (tenant_id, connector_instance_id, operation) where kind = 'connector'
+        do update set updated_at = usage_sources.updated_at
+        returning id, connector_instance_id as "instanceId", operation, last_complete_at as "lastCompleteAt"`;
+      return source!;
+    });
+  }
+
+  completeSource(context: TenantContext, sourceId: string, completedAt: Date) {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`update usage_sources set last_complete_at = greatest(coalesce(last_complete_at, '-infinity'), ${completedAt}),
+        updated_at = now() where tenant_id = ${context.tenantId} and id = ${sourceId}`;
+    });
+  }
 
   ingestEvent(context: TenantContext, input: UsageEventInput) {
     return withTenant(this.database, context.tenantId, async (tx) => {
@@ -35,11 +62,12 @@ export class PostgresUsageRepository implements UsageRepository {
       const inserted = await tx<{ id: string }[]>`
         insert into usage_events (
           id, tenant_id, source_id, external_id, occurred_at, operation, sku, provider_status,
-          customer_id, product_id, customer_service_id, project_id
+          customer_id, product_id, customer_service_id, project_id, reported_cost_minor, reported_currency
         ) values (
           ${id}, ${context.tenantId}, ${input.sourceId}, ${input.externalId}, ${input.occurredAt},
           ${input.operation}, ${input.sku}, ${input.status}, ${input.customerId ?? null},
-          ${input.productId ?? null}, ${input.customerServiceId ?? null}, ${input.projectId ?? null}
+          ${input.productId ?? null}, ${input.customerServiceId ?? null}, ${input.projectId ?? null},
+          ${input.reportedCost?.amountMinor.toString() ?? null}, ${input.reportedCost?.currency ?? null}
         ) on conflict (tenant_id, source_id, external_id) do nothing returning id`;
       const eventId = inserted[0]?.id;
       if (eventId) {
@@ -53,6 +81,7 @@ export class PostgresUsageRepository implements UsageRepository {
         select e.id, e.source_id as "sourceId", e.external_id as "externalId", e.occurred_at as "occurredAt",
           e.operation, e.sku, e.provider_status as status, e.customer_id as "customerId",
           e.product_id as "productId", e.customer_service_id as "customerServiceId", e.project_id as "projectId",
+          e.reported_cost_minor::text as "reportedCostMinor", e.reported_currency as "reportedCurrency",
           e.created_at as "createdAt",
           coalesce(jsonb_agg(jsonb_build_object('unit', q.unit, 'quantity', q.quantity::text,
             'qualifier', q.qualifier)) filter (where q.id is not null), '[]'::jsonb) as quantities
@@ -72,6 +101,7 @@ export class PostgresUsageRepository implements UsageRepository {
         select e.id, e.source_id as "sourceId", e.external_id as "externalId", e.occurred_at as "occurredAt",
           e.operation, e.sku, e.provider_status as status, e.customer_id as "customerId",
           e.product_id as "productId", e.customer_service_id as "customerServiceId", e.project_id as "projectId",
+          e.reported_cost_minor::text as "reportedCostMinor", e.reported_currency as "reportedCurrency",
           e.created_at as "createdAt",
           coalesce(jsonb_agg(jsonb_build_object('unit', q.unit, 'quantity', q.quantity::text,
             'qualifier', q.qualifier)) filter (where q.id is not null), '[]'::jsonb) as quantities

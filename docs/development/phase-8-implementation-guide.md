@@ -87,8 +87,16 @@ Proves obligatories:
 
 ### U3 — Ingestio i worker
 
-El runtime llegeix `connector_records`, normalitza i envia un DTO al servei d'aplicacio. La clau
-d'idempotencia inclou tenant, instancia, operacio i identificador extern estable.
+El runtime desa el lot a `connector_records` i projecta aquell mateix resultat, sense una segona
+lectura, a un DTO normalitzat del servei d'aplicacio. La clau d'idempotencia inclou tenant, font
+canonica —instancia i operacio— i identificador extern estable. La font nomes avanca
+`last_complete_at` quan tot el lot ha estat acceptat; una fallada tampoc avanca el cursor.
+
+Un registre de consum porta un envelope `data.usage` estricte amb `occurredAt`, `sku`, `status`,
+una o mes `quantities`, cost reportat opcional i com a maxim un desti d'atribucio. Quantitats i
+imports accepten enters decimals i es converteixen directament a `BigInt`; floats, IDs externs
+buits, unitats desconegudes i camps no declarats dins l'envelope es rebutgen amb codis estables.
+Els registres sense `data.usage` s'ignoren i continuen servint els altres moduls.
 
 Fitxers principals:
 
