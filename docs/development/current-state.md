@@ -450,7 +450,11 @@ que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 noves —fonts obligatories de pressupost, valoracio de correccions i snapshots mensuals— i ha creat
 `docs/specifications/phase-7b-actions-and-oauth.md` per OAuth, accions i el port IMAP. **A2 i A4
 han estat aprovats el 23 d'agost de 2026.** La branca arriba a la `0041`; la primera migracio de
-Fase 8 sera la `0042`. El seguent increment es U1, domini pur amb tests abans del codi.
+Fase 8 sera la `0042`. **U1 ja esta entregat** a `packages/domain/src/usage.ts`: unitats tipades,
+tarifes progressives i versionades, half-up amb `BigInt`, FX racional, prioritat
+`reported | rated | unpriced` i pressupostos amb precedencia `stale > partial > exceeded > warning
+> healthy`, coberts per 12 proves i typecheck del paquet. El seguent increment es U2: esquema,
+ports, permisos i flags.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
