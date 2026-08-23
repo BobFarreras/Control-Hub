@@ -6119,6 +6119,15 @@ main {
    The chips are real checkboxes with the box hidden, not buttons wearing a class: the group is a
    group to a screen reader, the keyboard works without anybody writing key handlers, and the
    checked state is the input's own rather than a class somebody has to remember to toggle. */
+/* Everything on the infrastructure screen is a band under the previous one, and the space
+   between two of them belongs to the stack rather than to either band: a margin on each would be
+   a margin to keep in step every time a band is added, removed or reordered. */
+.infra-stack {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
 /* The one choice the whole infrastructure screen hangs from, and the count of what it holds, on
    a single line. Two full-width bands -- one holding a select and one holding four tiles -- were
    the widest stretch of nothing on the screen. */
@@ -6357,6 +6366,11 @@ main {
   gap: 12px;
   align-items: start;
 }
+/* One group of twenty beside three groups of one leaves the twenty in a column and the rest of
+   the row empty. Past eight it takes the whole row and spreads its own cards across it. */
+.collector-group[data-many="yes"] {
+  grid-column: 1 / -1;
+}
 .collector-group {
   min-width: 0;
   padding: 0;
@@ -6434,17 +6448,38 @@ main {
   list-style: none;
 }
 
+.collector-list {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+/* A card each rather than a line each. Twenty containers as twenty lines is a wall that is read
+   by counting; as cards they are scanned, and the eye finds the one that is not green. */
 .collector-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
   min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.collector-row-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  align-items: baseline;
 }
 .collector-name {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: 550;
+  line-height: 1.25;
+}
+/* Inside a card it is the whole first line, not a column competing with the button under it. */
+.collector-row > .discovery-label {
+  flex: none;
+  align-self: stretch;
 }
 /* The figures sit right of the name and go quiet, so the column reads as a list of things and
    their state first, and as numbers only when somebody looks for one. */

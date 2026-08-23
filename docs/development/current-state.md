@@ -375,6 +375,14 @@ i del boto: eren tres bandes apilades fent una sola pregunta. I la franja de «c
 que diu, perque una banda de l'ample de la pantalla amb sis paraules es llegeix com un panell que
 no ha carregat.
 
+**Tres correccions mes sobre el mateix increment.** L'espai entre bandes el posa ara la pila
+(`.infra-stack`) i no cada banda: la franja d'alertes tocava el panell de sota perque ningu no el
+posava. **Un recollidor que no llegeix res d'aixo ja no dibuixa panell** —un n8n llegeix
+automatitzacions, que tenen la seva taula a la mateixa pantalla, i li estavem fent una pregunta
+sense subjecte; una fallada si que es dibuixa. I **cada cosa es una fitxa**: un grup amb mes de
+vuit s'emporta la fila sencera i hi escampa les seves fitxes, amb el nom primer i l'estat a sota,
+perque vint contenidors en columna al costat d'un grup que en te un era mig ample buit.
+
 **El selector de serveis de la fitxa ensenya l'estat** de cada cosa al costat de la casella, i la
 frase d'una maquina sense serveis declarats diu on mirar en comptes de deixar la pantalla morta.
 

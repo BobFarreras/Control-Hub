@@ -333,6 +333,10 @@ amb quatre decisions, cap d'elles decorativa:
 - **La franja de «cap alerta» ocupa el que diu.** Una banda de l'ample de la pantalla amb sis
   paraules a dins es llegeix com un panell que no ha carregat.
 
+- **L'espai entre bandes el posa la pila, no cada banda.** Un marge a cadascuna es un marge a
+  mantenir en ordre cada cop que se n'afegeix, se'n treu o se'n mou una, i el que passava era
+  exactament aixo: la franja d'alertes tocava el panell de sota.
+
 ### Tot el que hi ha, alhora
 
 **Sense recollidor triat es dibuixen tots.** Fins ara no se'n dibuixava cap, amb l'argument que
@@ -340,6 +344,18 @@ una llista de dos recollidors junts no diu res de cap dels dos. L'argument era b
 altra pregunta: no s'han de barrejar en una llista, i per aixo cadascun te el seu panell sota el
 seu nom. Qui obre Infraestructura vol la salut de les maquines sencera i d'un cop, no una pantalla
 que li demana una tria abans de dir-li res.
+
+**Un recollidor que no llegeix res d'aixo no es dibuixa.** Un n8n llegeix automatitzacions, que
+tenen la seva taula en aquesta mateixa pantalla; preguntar-li quines maquines i quins contenidors
+veu es una pregunta sense subjecte, i respondre-hi «encara no ha desat cap lectura» es un panell
+disculpant-se per una pregunta que ningu no li ha fet. **Una fallada si que es dibuixa**: no poder
+preguntar-ho val la pena dir-ho.
+
+**Cada cosa es una fitxa, i un grup gros s'emporta la fila.** Vint contenidors en columna al
+costat d'un grup que en te un es una barra de despaçament amb mig ample buit al costat. A partir
+de vuit, el grup ocupa la fila sencera i hi escampa les seves fitxes. El nom va primer i l'estat
+a sota: una columna de vint es recorre buscant un nom, i l'estat es el que es mira quan ja s'ha
+trobat.
 
 **Cada grup es plega.** Vint contenidors son el que algu ve a buscar el dia que alguna cosa va
 malament i desplaçament tots els altres dies. El plec s'obre pel que no esta be: un grup amb
@@ -428,6 +444,10 @@ tenants no es toca.
 27. Un grup de coses on tot respon surt plegat, i un que en te alguna de caiguda o sense veure,
     obert. Plegar i desplegar es fa amb el teclat.
 28. Cap marca de proveidor demana res a cap servidor de fora.
+29. Un recollidor que no llegeix res del que aquesta vista ensenya no dibuixa cap panell. Una
+    fallada en si que en dibuixa un.
+30. Un grup amb mes de vuit coses ocupa la fila sencera i les escampa; cap banda de la pantalla
+    en toca una altra.
 
 ## Pla de proves
 

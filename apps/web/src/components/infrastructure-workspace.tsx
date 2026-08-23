@@ -265,6 +265,12 @@ function CollectorView({
   const loading = !failure && (machines === null || services === null);
   const tally = tallyReadings((services ?? []).map((service) => service.reading));
 
+  // A collector that reads none of this is not drawn at all. An n8n reads workflows, which are
+  // automations and have their own table on this screen; asking it what machines and containers it
+  // sees is a question with no subject, and answering "nothing stored yet" is a panel apologising
+  // for a question nobody asked. Failures still show: not being able to ask is worth saying.
+  if (!failure && !loading && (machines?.length ?? 0) + (services?.length ?? 0) === 0) return null;
+
   return (
     <section className="project-panel collector-panel" aria-label={`${t.discoveryTitle} ${name}`}>
       <header className="project-panel-heading">
@@ -282,8 +288,6 @@ function CollectorView({
         </p>
       ) : loading ? (
         <p className="crm-empty">{t.collectorLoading}</p>
-      ) : (machines?.length ?? 0) + (services?.length ?? 0) === 0 ? (
-        <p className="crm-empty">{t.collectorReadsNothing}</p>
       ) : (
         <div className="collector-groups">
           {/* The machines first: they are the thing everything else sits on, and the only group
@@ -298,20 +302,22 @@ function CollectorView({
                 {machines!.map((instance) => (
                   <li key={instance.label} className="collector-row">
                     <code className="discovery-label">{instance.label}</code>
-                    {instance.declaredAs ? (
-                      <Link
-                        className="link-button"
-                        href={`/${locale}/infrastructure/hosts/${instance.declaredAs.hostId}`}
-                      >
-                        {instance.declaredAs.name}
-                      </Link>
-                    ) : canOperate ? (
-                      <button className="link-button" type="button" onClick={() => onDeclare(instance.label)}>
-                        {t.discoveryDeclare}
-                      </button>
-                    ) : (
-                      <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
-                    )}
+                    <span className="collector-row-state">
+                      {instance.declaredAs ? (
+                        <Link
+                          className="link-button"
+                          href={`/${locale}/infrastructure/hosts/${instance.declaredAs.hostId}`}
+                        >
+                          {instance.declaredAs.name}
+                        </Link>
+                      ) : canOperate ? (
+                        <button className="link-button" type="button" onClick={() => onDeclare(instance.label)}>
+                          {t.discoveryDeclare}
+                        </button>
+                      ) : (
+                        <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -321,7 +327,15 @@ function CollectorView({
           {[...groups].map(([kind, rows]) => {
             const group = tallyReadings(rows.map((row) => row.reading));
             return (
-              <details className="collector-group" key={kind} open={group.up < group.total}>
+              <details
+                className="collector-group"
+                key={kind}
+                open={group.up < group.total}
+                // Twenty containers in a column the width of a group holding one backup is a
+                // scroll beside a hand's width of nothing. Past eight, the group takes the row
+                // and lays its own cards out across it.
+                data-many={rows.length > 8 ? "yes" : undefined}
+              >
                 <summary>
                   <span className="collector-group-name">{t[`kind${capitalised(kind)}`] ?? kind}</span>
                   <span className="collector-group-count">{rows.length}</span>
@@ -332,11 +346,16 @@ function CollectorView({
                     const figures = readingFigures(t, locale, service.reading, now);
                     return (
                       <li key={service.matchKey} className="collector-row">
-                        <StatusPill
-                          tone={observedStateTone[service.reading.state]}
-                          label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
-                        />
+                        {/* The name first: a column of twenty of these is scanned for a name, and
+                            the state is what is checked once the name has been found. */}
                         <span className="collector-name">{service.name}</span>
+                        <span className="collector-row-state">
+                          <StatusPill
+                            tone={observedStateTone[service.reading.state]}
+                            label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
+                          />
+                          {!service.declared && <span className="discovery-undeclared">{t.discoveryUndeclared}</span>}
+                        </span>
                         {figures.length > 0 && (
                           <small className="collector-figures">
                             {figures.map((figure) => (
@@ -346,7 +365,6 @@ function CollectorView({
                             ))}
                           </small>
                         )}
-                        {!service.declared && <span className="discovery-undeclared">{t.discoveryUndeclared}</span>}
                       </li>
                     );
                   })}
@@ -679,7 +697,7 @@ export function InfrastructureWorkspace({
   };
 
   return (
-    <>
+    <div className="infra-stack">
       {loadError && (
         <p className="crm-error">
           <AlertTriangle size={17} />
@@ -1518,6 +1536,6 @@ export function InfrastructureWorkspace({
           </section>
         </div>
       )}
-    </>
+    </div>
   );
 }
