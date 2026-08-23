@@ -441,8 +441,8 @@ que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 `docs/development/phase-8-implementation-guide.md`. La revisio ha trobat tres ampliacions de model
 noves —fonts obligatories de pressupost, valoracio de correccions i snapshots mensuals— i ha creat
 `docs/specifications/phase-7b-actions-and-oauth.md` per OAuth, accions i el port IMAP. **A2 i A4
-estan pendents de vistiplau i bloquegen continuar.** La branca arriba a la `0041`; si s'aprova, la
-primera migracio de Fase 8 sera la `0042`.
+han estat aprovats el 23 d'agost de 2026.** La branca arriba a la `0041`; la primera migracio de
+Fase 8 sera la `0042`. El seguent increment es U1, domini pur amb tests abans del codi.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

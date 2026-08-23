@@ -1,8 +1,8 @@
 # Guia d'implementacio de la Fase 8
 
-**Estat:** guia de treball vinculada a l'especificacio aprovada
-`docs/specifications/communications-usage-costs.md`. El model de dades no s'executa fins que les
-tres ampliacions noves de l'especificacio rebin vistiplau.
+**Estat:** guia de treball vinculada a les especificacions aprovades
+`docs/specifications/communications-usage-costs.md` i
+`docs/specifications/phase-7b-actions-and-oauth.md`.
 
 ## Precondicions
 
@@ -10,7 +10,8 @@ Abans del primer commit:
 
 1. Els increments C1-C7 de la Fase 7.3 han d'estar presents a la branca compartida i les portes
    afectades han de passar.
-2. El propietari ha d'aprovar les tres ampliacions noves del model de dades.
+2. Les tres ampliacions del model de dades han d'estar aprovades; ho estan des del 23 d'agost de
+   2026.
 3. Per a Gmail, Graph o correu sortint, la Fase 7B ha d'estar especificada, aprovada i integrada.
 4. La implementacio continua a la branca compartida actual, sense crear cap worktree, i revisa
    abans de cada edicio si l'altra sessio ha modificat el mateix fitxer.

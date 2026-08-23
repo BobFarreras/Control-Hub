@@ -1,12 +1,11 @@
 # Especificacio de comunicacions, consum i costos variables
 
-**Fase 8. Estat: aprovada pel propietari el 23 d'agost de 2026, amb tres ampliacions de model
-pendents de vistiplau.**
+**Fase 8. Estat: aprovada pel propietari el 23 d'agost de 2026, incloses les tres ampliacions de
+model de la revisio.**
 
 Aquest document converteix el resum d'`IMPLEMENTATION_PLAN.md` en un contracte implementable. Les
-sis decisions originals son aprovades. Els tres forats detectats despres de la revisio estan
-marcats **NOU — PENDENT DE VISTIPLAU** i bloquegen el model de dades de la 8.1 fins que el
-propietari els resolgui. La guia d'execucio es a
+sis decisions originals i les tres ampliacions detectades a la revisio son aprovades. La guia
+d'execucio es a
 `docs/development/phase-8-implementation-guide.md`.
 
 ## Objectiu
@@ -75,7 +74,7 @@ una `usage_adjustment`; mai modifica ni esborra l'event original.
 una tarifa nova no altera informes antics. Revalorar es una operacio explicita que crea una versio
 nova i manté l'anterior auditable.
 
-#### NOU — PENDENT DE VISTIPLAU: valoracio de correccions
+#### Ampliacio aprovada: valoracio de correccions
 
 Una correccio porta les seves propies linies a `usage_adjustment_quantities`, expressades com a
 diferencies amb signe. `usage_valuations` deixa de referenciar obligatoriament nomes un event i
@@ -147,7 +146,7 @@ client, producte, servei contractat o projecte. Els estats son:
 Els canvis creen events idempotents. `warning` i `exceeded` no bloquegen crides externes. Un
 pressupost amb dades parcials o obsoletes mai es mostra com a sa.
 
-#### NOU — PENDENT DE VISTIPLAU: fonts obligatories del pressupost
+#### Ampliacio aprovada: fonts obligatories del pressupost
 
 Cada via d'ingestio te una fila `usage_sources`. Una font es `connector` —amb instancia i operacio—
 o `manual` —amb un codi estable del tenant—, exactament una de les dues formes. La font conserva
@@ -292,7 +291,7 @@ d'export i auditoria. Els errors segueixen `errors-and-api.md`.
 
 La politica definitiva necessita revisio RGPD i contractual abans de Release 1.0.
 
-### NOU — PENDENT DE VISTIPLAU: historic posterior a la purga
+### Ampliacio aprovada: historic posterior a la purga
 
 Abans de purgar events d'un mes, el worker crea una revisio immutable a
 `usage_monthly_snapshots`, separada per tenant, mes, font, dimensions d'atribucio, SKU, moneda
@@ -357,7 +356,7 @@ manera que els 24 mesos de detall no esborren l'historic financer.
 5. Moneda d'informe amb FX versionat i importacio manual inicial.
 6. Retencio inicial de 24 mesos per costos i 30 dies per correu temporal, pendent de revisio legal.
 
-## Ampliacions noves pendents de vistiplau
+## Ampliacions aprovades pel propietari el 23 d'agost de 2026
 
 1. Fonts canoniques i fonts obligatories explicites per pressupost a `usage_sources` i
    `usage_budget_sources`.

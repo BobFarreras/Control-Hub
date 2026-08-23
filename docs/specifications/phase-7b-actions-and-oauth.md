@@ -1,6 +1,6 @@
 # Especificacio de la Fase 7B: accions, OAuth i transport de bustia
 
-**Estat: proposta nova, pendent de vistiplau del propietari.**
+**Estat: aprovada pel propietari el 23 d'agost de 2026.**
 
 **Abast deliberat:** nomes la plataforma que la Fase 8 necessita per autoritzar Gmail i Microsoft
 Graph, llegir IMAP i enviar correu com una accio confirmada. No implementa xarxes socials, MCP,
@@ -211,7 +211,7 @@ correlation ID, amb input redactat.
 
 ## Transport IMAP
 
-### NOU — PENDENT DE VISTIPLAU: port `mailbox` tipat
+### Port `mailbox` tipat aprovat
 
 Es proposa afegir un port d'alt nivell `MailboxPort` al `ConnectorContext`, injectat nomes quan el
 manifest declara `mailbox`. **No s'exposa `net.Socket`, `tls.Socket`, callbacks de bytes ni una
@@ -349,7 +349,7 @@ Els detalls del proveidor queden en categories internes redactades.
 - Apagar OAuth impedeix noves autoritzacions i refresh; no esborra grants ni tokens.
 - La purga de material efimer i outbox continua amb les flags apagades.
 
-## Decisions pendents de vistiplau
+## Decisions aprovades pel propietari el 23 d'agost de 2026
 
 1. Aprovar el flux OAuth callback -> outbox -> exchange al worker.
 2. Aprovar el contracte d'accions, confirmacio vinculada al digest i estat `unknown`.
