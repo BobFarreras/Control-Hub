@@ -391,6 +391,12 @@ Verificat sobre la base de desenvolupament: a la primera passada despres de migr
 va obrir dues runs de debo i les va tancar amb `DESTINATION_NOT_ALLOWLISTED`. La integracio ara diu
 que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 
+**La Fase 8 te especificacio i guia en esborrany**, a
+`docs/specifications/communications-usage-costs.md` i
+`docs/development/phase-8-implementation-guide.md`. Es documentacio per a revisio: no autoritza
+migracions ni implementacio fins que el propietari n'aprovi les sis decisions. No reserva numero
+de migracio: aquesta branca ja arriba a la `0040` i altres branques poden avançar abans.
+
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
 porta d'entrada amb fitxatge, temps d'avui i del mes, proxims dies i sol·licituds; Calendari mostra

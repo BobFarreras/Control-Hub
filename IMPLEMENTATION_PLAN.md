@@ -496,6 +496,11 @@ que caduca es renova sense que ningu hi intervingui.
 
 **Objectiu:** integrar comunicacions i calcular el cost real per client i producte.
 
+**Especificacio en esborrany:** `docs/specifications/communications-usage-costs.md`, amb la guia
+incremental a `docs/development/phase-8-implementation-guide.md`. Separa consum i costos (8.1) del
+correu entrant (8.2) i sortint (8.3): OAuth i les accions depenen de la Fase 7B, pero el motor de
+costos nomes necessita els connectors de lectura ja entregats.
+
 ### Implementacio
 
 - SMTP i recepcio per IMAP o APIs oficials.

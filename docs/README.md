@@ -44,6 +44,10 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/connector-onboarding.md`: connectar una maquina sense endevinar res -- el
   diagnostic que diu que falta, el resum amb moltes maquines i el descobriment que proposa el
   que encara no s'ha declarat. **Proposta**, Fase 7.3, pendent d'aprovacio.
+- `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
+  consum i costos, correu entrant i correu sortint. Esborrany pendent d'aprovacio.
+- `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
+  implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El
