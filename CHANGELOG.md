@@ -6,6 +6,22 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 
 ## Sense publicar
 
+### Posar en marxa un recollidor sense endevinar (Fase 7.3)
+
+- **Una comprovacio guiada** que diu en quin punt s'ha aturat una integracio que no llegeix res,
+  esglao a esglao, en comptes de deixar la pantalla buida sense explicacio.
+- **El recollidor ensenya el que veu**: les maquines i els serveis que ja te desats, amb el que
+  encara no ha declarat ningu marcat com a tal, i es poden declarar des d'alli —d'un en un o
+  marcant-ne uns quants.
+- **La pantalla depen del recollidor que tries**: la taula del que no has triat no surt buida,
+  no surt.
+- **Fitxa d'una maquina** amb el que se'n llegeix, qui ho ha llegit i quan.
+- **Una maquina pot respondre a diverses etiquetes.** Un Prometheus agrupa per objectiu de scrape,
+  no per ordinador: una sola VPS reporta amb `node-exporter:9100`, `cadvisor:8080` i
+  `127.0.0.1:9090`. Ara es diu quines etiquetes son seves, i la seva fitxa ensenya **tot el que
+  els recollidors hi veuen, declarat o no**. Declarar passa a voler dir «vull alertes d'aixo», no
+  «vull veure-ho».
+
 - **L'API ja diu quina versio es.** `/health/live` i el document OpenAPI de `/api/docs` anunciaven
   `0.1.0` durant tota la `v0.2.0`, perque el numero estava escrit a ma al costat d'on es registra
   i res no el feia mentir quan la release avancava. Ara surt del manifest del paquet.

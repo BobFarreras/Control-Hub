@@ -71,13 +71,37 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te els vuit increments entregats: C1, C2, C3, C4, C5, C6, C7 i C8.** L'entrega 7.2 es a
-`develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
-L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
-el resum i els filtres per a moltes maquines (C2), el descobriment que proposa el que encara no
-s'ha declarat (C3), el selector de serveis (C4), la pantalla que depen del recollidor triat (C5), la maquina d'un
-cop d'ull (C6), la correccio de l'estat del que no s'ha declarat (C7) i les etiquetes que
-lliguen una maquina amb tot el que els recollidors hi veuen (C8).
+**La 7.3 esta acabada i verificada; el que falta es fusionar-la.** Els vuit increments son
+entregats —C1, C2, C3, C4, C5, C6, C7 i C8— i el 23 d'agost de 2026 el propietari va verificar el
+C8 a ma sobre la VPS de debo: reclamada l'etiqueta del cAdvisor, la fitxa de la maquina ensenya els
+contenidors i les sondes i es poden seleccionar. `pnpm check` sencer verd **amb les suites
+d'integracio de PostgreSQL executades de veritat**: 1.413 proves, cap saltada.
+
+**No es fusiona encara** perque la branca `claude/connector-onboarding` la comparteixen dues
+sessions: la Fase 8 s'hi esta implementant alhora. Cadascu hi fa commits del que es seu, fitxer a
+fitxer, i la fusio cap a `develop` espera. Falta `pnpm check:e2e`, que segueix comptant vermell per
+dues proves d'altres modules —fitxatge i despeses— que **nomes passen al reintent**, totes dues amb
+«el control no s'ha hidratat mai». Cap de les dues no toca infraestructura, i una prova que nomes
+passa al reintent no es verda: es la porta que queda per obrir.
+
+**El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9.** La Fase 9 es
+empaquetat i distribucio —imatges OCI, instal·lador, Ansible, SBOM, signatura— i nomes es paga quan
+una tercera empresa instal·la Control Hub, que avui no es el cas; a mes, els builds de Docker estan
+bloquejats en aquesta maquina. En canvi la plataforma de connectors ja esta pagada i sense
+amortitzar: l'inventari, el descobriment, la comprovacio guiada, el motor d'alertes i el vault els
+hereta de franc qualsevol connector nou.
+
+Per ordre: **Vercel** primer —cada web de client hi viu, i un build que peta o una produccio
+caiguda s'ha de saber abans que ho digui el client— i **Supabase** despres, on el mode de fallada
+tipic del pla petit es que el projecte es pausa sol. Tots dos son HTTP amb token de nomes lectura,
+que es exactament el que el contracte de connector admet: **no depenen de la meitat d'OAuth de la
+7B, que te zero codi**. Hostinger no: el que en trauriem —domini caducat, certificat expirat, lloc
+que no respon— ja ho llegeix la sonda blackbox del Prometheus.
+
+**Primer l'especificacio, i te una decisio de debo a dins:** un desplegament de Vercel no es ni una
+maquina ni un contenidor. El model d'infraestructura son maquines i serveis amb una clau de match,
+i el que llegeix son **estats**; un desplegament es un **esdeveniment**, i «l'ultim build ha
+fallat» no es «aixo esta caigut». Sense aixo decidit no s'escriu codi.
 
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i
@@ -210,11 +234,11 @@ Codi d'error nou: `MIGRATION_REQUIRED`, amb 503 i frase en tres idiomes. Amb l'e
 hi ha `connector_instances` on mirar, i respondre "aquesta integracio no hi es" seria una resposta
 falsa sobre una taula que no existeix — el mateix ordre d'esglaons que ja feia el diagnostic.
 
-**Les tres proves d'integracio noves de PostgreSQL no s'han pogut executar aqui**: la connexio TCP
-cap a `control_hub_test` no s'estableix des d'aquesta sessio, tot i que el port respon i el rol hi
-te acces, i les nou suites d'integracio del paquet fallen totes igual pel mateix motiu. Estan
-escrites amb la mateixa forma que les germanes i passen el `typecheck`; qui les validi ha de ser CI
-o una sessio amb la base accessible.
+~~**Les tres proves d'integracio noves de PostgreSQL no s'han pogut executar aqui**: la connexio
+TCP cap a `control_hub_test` no s'estableix des d'aquesta sessio.~~ **Corregit el 23 d'agost de
+2026**: la connexio si que funciona; el que passava es que les suites se salten soles quan no hi ha
+`TEST_DATABASE_URL` exportada, i llavors semblen executades i verdes. Passen totes. La recepta es
+a `docs/development/troubleshooting.md`.
 
 **Un defecte del C3, trobat usant-lo i tancat.** El panell de maquines oferia
 `https://sssupabase.digitaistudios.com/storage/v1/version` com si fos una maquina. Declarada, la
@@ -262,8 +286,8 @@ rebutjara es pitjor que no oferir-lo.
 
 La migracio `0041` afegeix `backup` a les menes acceptades per `infra_services`. Ampliar un `check`
 accepta tot el que ja era valid, aixi que s'aplica sobre un desplegament en marxa sense res per
-desfer. **Aplicada a `control_hub` i a `control_hub_e2e`; la de test (`control_hub_test`) es queda
-enrere fins que algu hi corri el migrador**, igual que la `0040`.
+desfer. Aplicada a `control_hub` i a `control_hub_e2e`; la de test (`control_hub_test`) es va
+quedar enrere, igual que la `0040`, **fins al 23 d'agost de 2026, en que es va migrar sencera**.
 
 **El C5 esta complet: la pantalla depen del que tries.** Fins ara Infraestructura ho ensenyava tot
 alhora: qui l'obria per mirar la VPS es trobava al davant la taula d'automatitzacions d'un n8n que
@@ -426,14 +450,23 @@ mai, i el C8 quedava inabastable des de la interficie. Ara el descobriment tambe
 on s'ha vist un contenidor, i una etiqueta ja reclamada surt com a maquina seva i no com a pendent
 de declarar —tant al descobriment com a la comprovacio guiada.
 
-Portes d'aquest increment: typecheck verd a `domain`, `application`, `persistence`, `database`,
-`api` i `web`; suites de `domain` (298), `application` (274), `i18n` (15), `api` (146) i `web`
-(154) passades; format verd als fitxers tocats. **Les onze proves d'integracio noves d'aquest
-increment no s'han vist passar**: les suites de PostgreSQL segueixen saltades (203) perque no hi ha
-`TEST_DATABASE_URL` en aquest entorn. La `0042` si que s'ha aplicat a la base de dades local. **No
-s'han executat `pnpm check`, `pnpm build` ni `pnpm check:e2e`**, ni s'ha vist la pantalla
-renderitzada des d'aqui. `pnpm lint` dona un error a `packages/persistence/src/usage-repository.ts`
-que **no es d'aquest increment**: es de la Fase 8, a la mateixa branca i d'una altra sessio.
+Portes d'aquest increment, i **per primer cop amb les suites d'integracio de PostgreSQL de debo**:
+`pnpm check` sencer verd sobre els tretze paquets —`lint`, `format:check`, `typecheck`, `test`,
+`test:scripts` i `build`— amb **1.413 proves passades i cap de saltada**. Fins ara la porta
+s'anunciava com «1.138 passades i 209 saltades»: les saltades eren precisament les que toquen
+l'esquema, l'RLS i l'aillament entre tenants, i **el gruix del que aquest increment afegeix viu
+alli**. La base de proves estava a la `0039` i li faltaven sis migracions; migrada i executada,
+les onze proves d'integracio noves passen.
+
+**La porta en va destapar una de mal escrita, i era meva.** «No llegeix res d'un tenant que no ha
+declarat res» comprovava tambe que aquell tenant no tenia cap maquina, i `tenantC` el comparteixen
+diverses proves del mateix fitxer: el que hi ha declarat quan aquesta corre depen de l'ordre en que
+han corregut les altres. Una prova que falla segons l'ordre no prova res. Ara comprova el que era
+seu —cap lectura i cap etiqueta— i res mes.
+
+**No s'ha executat `pnpm check:e2e`** en aquest increment, ni s'ha vist la pantalla renderitzada
+des d'aqui. El propietari si que ha verificat el C8 a ma sobre la VPS real: reclamada l'etiqueta
+del cAdvisor, la fitxa de la maquina ensenya els contenidors i les sondes, i es poden seleccionar.
 
 **`pnpm check:e2e`: 32 proves, 32 passades**, amb dos workers i base `_e2e` neta. **La porta, pero,
 la compta vermella**, i amb rao: dues proves d'altres modules —el fitxatge i les despeses— nomes
@@ -450,7 +483,8 @@ I `pnpm check` sencer sobre els tretze paquets: `lint`, `format:check`, `typeche
 `test:scripts` i `build`, tots verds, amb **1.138 proves passades i 209 saltades** — les
 d'integracio de PostgreSQL, que sense `TEST_DATABASE_URL` no es registren. **Aixo inclou les del
 C3 i el C4 que toquen `infra_services` i el descobriment: escrites, mai executades en aquesta
-maquina**, i per tant encara sense provar contra una base de debo.
+maquina**, i per tant encara sense provar contra una base de debo. **Ja no: el 23 d'agost de 2026
+la base de test es va migrar i totes van passar** —vegeu la porta del C8.
 
 **I la porta ha destapat tres defectes de la prova del C3, que mai no havia corregut.** Cap dels
 tres era del producte i cap no era visible sense obrir un navegador:
@@ -481,8 +515,8 @@ endavant.
 
 La `0040` puja el limit a 200, la llargada que el magatzem de registres ja admet per a un
 `external_id`. Ampliar un `check` accepta tot el que ja era valid, aixi que s'aplica sobre un
-desplegament en marxa sense res per desfer. Aplicada a `control_hub` i a `control_hub_e2e`; **la
-de test (`control_hub_test`) es queda enrere fins que algu hi corri el migrador.**
+desplegament en marxa sense res per desfer. Aplicada a `control_hub` i a `control_hub_e2e`; la
+de test (`control_hub_test`) es va quedar enrere **fins al 23 d'agost de 2026**.
 
 Verificat sobre la base de desenvolupament: a la primera passada despres de migrar, el Prometheus
 va obrir dues runs de debo i les va tancar amb `DESTINATION_NOT_ALLOWLISTED`. La integracio ara diu

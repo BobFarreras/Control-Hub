@@ -456,6 +456,35 @@ mai que la base ha quedat enrere. Val la pena comprovar de tant en tant que el r
 docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub_test -c "select count(*) from schema_migrations;"
 ```
 
+### Una tanda verda que no ha provat res del que creus
+
+**Simptoma.** `pnpm test` acaba verd i el recompte diu «passades» i «saltades» sense mes. Les
+proves que toquen l'esquema, l'RLS i l'aillament entre tenants son a les saltades, i alli hi poden
+estar mesos sense que ningu ho noti: una suite saltada no es vermella.
+
+**Causa.** Les suites d'integracio se salten soles quan no hi ha `TEST_DATABASE_URL`. Es
+deliberat —no tothom te la base aixecada— i te el cost que la porta sembla mes verda del que es.
+
+**Que fer.** Exportar les dues variables i tornar-hi. A PowerShell, en una sola linia:
+
+```text
+$env:TEST_DATABASE_URL="postgres://control_hub_app:local_only@127.0.0.1:55434/control_hub_test"; $env:TEST_DATABASE_ADMIN_URL="postgres://control_hub_admin:local_admin_only@127.0.0.1:55434/control_hub_test"; pnpm test
+```
+
+Amb les dues posades no s'ha de saltar res: **1.413 proves, cap saltada**, el 23 d'agost de 2026.
+Si en surten de saltades, les variables no han arribat a `vitest`.
+
+**Abans, la base ha d'estar al dia**, i normalment no ho esta: ni el migrador de desenvolupament
+ni el de verificacio la toquen. Es migra apuntant el migrador a la base de test:
+
+```text
+MIGRATION_DATABASE_URL="postgres://control_hub_admin:local_admin_only@127.0.0.1:55434/control_hub_test" pnpm --filter @control-hub/database migrate
+```
+
+El 23 d'agost de 2026 estava a la `0039` amb sis migracions per aplicar. La comprovacio rapida de
+si ha quedat enrere es la de l'apartat anterior: comparar el recompte de `schema_migrations` amb el
+nombre de fitxers de `packages/database/migrations`.
+
 ### Correr el suite autenticat contra la pila de verificacio
 
 No es cap error, pero costa de reconstruir cada vegada. Amb `pnpm dev:verify` aixecat a 3002:
