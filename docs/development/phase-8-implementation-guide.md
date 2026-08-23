@@ -119,6 +119,15 @@ Casos negatius:
 Afegir casos d'us, endpoints OpenAPI i auditoria. Una tarifa o FX publicada no s'edita; s'anul.la
 i se'n publica una altra. El pressupost consumeix valoracions, no payloads de proveidor.
 
+La valoracio d'un event amb diverses unitats crea una capcalera versionada i una
+`usage_valuation_line` immutable per quantitat. Cada linia congela tarifa, escala, import original,
+FX del dia UTC i import d'informe. La revaloracio es explicita i serialitzada amb advisory lock;
+mai modifica versions anteriors ni exigeix UPDATE sobre evidencia.
+
+Els snapshots mensuals tambe es serialitzen per tenant, mes i moneda. Nomes es finalitzen amb
+totes les valoracions `priced` i fonts completes; conserven quantitats agregades per unitat i
+qualificador. Un mes incomplet retorna `INCOMPLETE_EVIDENCE`, no una revisio parcial disfressada.
+
 Cap resposta de `usage:read` pot contenir imports. Fer proves sobre l'objecte serialitzat complet,
 no nomes sobre un camp.
 

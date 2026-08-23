@@ -507,8 +507,17 @@ una base PostgreSQL 17 efimera. **U3 ja esta entregat**: el runtime projecta env
 `data.usage` estrictes despres de conservar el lot del connector, valida unitats, enters `BigInt`,
 cost reportat i atribucio XOR, deduplica per font i `external_id`, i nomes avanca font i cursor quan
 tot el lot acaba. `0044_usage_reported_cost.sql` conserva el cost original com evidencia. Hi ha 42
-proves focalitzades de worker i 6 casos PostgreSQL executats sobre PostgreSQL 17. El seguent
-increment es U4: valoracio, FX, pressupostos i snapshots.
+proves focalitzades de worker i 6 casos PostgreSQL executats sobre PostgreSQL 17.
+
+**U4 ja esta entregat.** `0045_usage_valuation_controls.sql` afegeix linies immutables per
+quantitat, anul.lacio one-way de FX i els permisos que faltaven al cataleg PostgreSQL. El servei
+aplica `reported > rated > unpriced`, tarifes progressives, FX racional del dia UTC i revaloracions
+versionades; els pressupostos propaguen `stale` i `partial` abans dels llindars i nomes creen events
+en transicions. Els snapshots mensuals conserven quantitats i costos agregats i rebutgen evidencia
+incompleta. La superficie `/api/v1/usage/*` esta sota `usage_costs`, documentada a OpenAPI, auditada
+en mutacions i serialitza imports com enters decimals; `usage:read` elimina tot `reportedCost`.
+Les migracions i 9 casos d'integracio han passat sobre PostgreSQL 17. El seguent increment es U5:
+connectors OpenAI i Anthropic, un commit independent per proveidor.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

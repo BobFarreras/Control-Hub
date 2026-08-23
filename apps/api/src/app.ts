@@ -17,7 +17,9 @@ import {
   ProjectsError,
   ProjectsService,
   SupportError,
-  SupportService
+  SupportService,
+  UsageService,
+  UsageServiceError
 } from "@control-hub/application";
 import {
   isAllowlistedDestination,
@@ -46,7 +48,8 @@ import {
   InvitationError,
   PostgresInfrastructureRepository,
   PostgresProjectsRepository,
-  PostgresSupportRepository
+  PostgresSupportRepository,
+  PostgresUsageRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -73,6 +76,7 @@ import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerSupportRoutes } from "./routes/support.js";
+import { registerUsageRoutes } from "./routes/usage.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
@@ -200,6 +204,7 @@ export function buildApp(options: BuildAppOptions) {
         ].join(" ")
       },
       tags: [
+        { name: "usage", description: "Usage quantities, reproducible costs, exchange rates and budgets." },
         { name: "connectors", description: "What this release can connect to at all." },
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
@@ -345,6 +350,17 @@ export function buildApp(options: BuildAppOptions) {
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof UsageServiceError) {
+      const status =
+        error.code === "FORBIDDEN"
+          ? 403
+          : error.code === "NOT_FOUND"
+            ? 404
+            : error.code === "INCOMPLETE_EVIDENCE"
+              ? 409
+              : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     request.log.error({ err: error }, "request failed");
     return reply.code(500).send({ code: "INTERNAL_ERROR", requestId: request.id });
   });
@@ -376,6 +392,8 @@ export function buildApp(options: BuildAppOptions) {
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
+      if (isFeatureEnabled(featureFlags, "usage_costs"))
+        registerUsageRoutes({ ...context, usage: new UsageService(new PostgresUsageRepository(database)) });
       // Reads what the connectors stored, and nothing more: the module has its own flag
       // because the schema and the code ship before anybody has an n8n to point it at.
       if (isFeatureEnabled(featureFlags, "infrastructure"))

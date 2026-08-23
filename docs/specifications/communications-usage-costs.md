@@ -74,6 +74,12 @@ una `usage_adjustment`; mai modifica ni esborra l'event original.
 una tarifa nova no altera informes antics. Revalorar es una operacio explicita que crea una versio
 nova i manté l'anterior auditable.
 
+Quan un event te diverses quantitats, `usage_valuations` es la capcalera i
+`usage_valuation_lines` conserva una linia per quantitat valorada: unitat, qualificador, quantitat,
+tarifa exacta, FX exacte, imports original i d'informe, estat i mancança estable. El cost reportat
+pel proveidor viu a l'event i pot produir una capcalera sense linies de tarifa. La versio es
+serialitza per event amb advisory lock; no cal concedir UPDATE sobre l'evidencia immutable.
+
 #### Ampliacio aprovada: valoracio de correccions
 
 Una correccio porta les seves propies linies a `usage_adjustment_quantities`, expressades com a

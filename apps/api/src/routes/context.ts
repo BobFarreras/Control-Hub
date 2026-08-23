@@ -9,7 +9,8 @@ import type {
   CrmService,
   InfrastructureService,
   ProjectsService,
-  SupportService
+  SupportService,
+  UsageService
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
 import type { ControlHubAuth } from "../auth.js";
@@ -36,6 +37,7 @@ export type SupportContext = RouteContext & { support: SupportService };
 export type InfrastructureContext = RouteContext & { infrastructure: InfrastructureService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type AttendanceContext = RouteContext & { attendance: AttendanceService };
+export type UsageContext = RouteContext & { usage: UsageService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };
 
 /**
