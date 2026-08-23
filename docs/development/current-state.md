@@ -436,11 +436,13 @@ Verificat sobre la base de desenvolupament: a la primera passada despres de migr
 va obrir dues runs de debo i les va tancar amb `DESTINATION_NOT_ALLOWLISTED`. La integracio ara diu
 que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 
-**La Fase 8 te especificacio i guia en esborrany**, a
+**La Fase 8 te les sis decisions originals aprovades el 23 d'agost de 2026**, a
 `docs/specifications/communications-usage-costs.md` i
-`docs/development/phase-8-implementation-guide.md`. Es documentacio per a revisio: no autoritza
-migracions ni implementacio fins que el propietari n'aprovi les sis decisions. No reserva numero
-de migracio: aquesta branca ja arriba a la `0040` i altres branques poden avançar abans.
+`docs/development/phase-8-implementation-guide.md`. La revisio ha trobat tres ampliacions de model
+noves —fonts obligatories de pressupost, valoracio de correccions i snapshots mensuals— i ha creat
+`docs/specifications/phase-7b-actions-and-oauth.md` per OAuth, accions i el port IMAP. **A2 i A4
+estan pendents de vistiplau i bloquegen continuar.** La branca arriba a la `0041`; si s'aprova, la
+primera migracio de Fase 8 sera la `0042`.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

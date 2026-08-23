@@ -1,26 +1,28 @@
 # Guia d'implementacio de la Fase 8
 
-**Estat:** guia de treball vinculada a l'esborrany
-`docs/specifications/communications-usage-costs.md`. No s'executa fins que l'especificacio sigui
-aprovada.
+**Estat:** guia de treball vinculada a l'especificacio aprovada
+`docs/specifications/communications-usage-costs.md`. El model de dades no s'executa fins que les
+tres ampliacions noves de l'especificacio rebin vistiplau.
 
 ## Precondicions
 
 Abans del primer commit:
 
-1. La Fase 7.2 ha d'estar integrada i `pnpm check` ha de passar a `develop`.
-2. El propietari ha d'aprovar les sis decisions de l'especificacio.
+1. Els increments C1-C7 de la Fase 7.3 han d'estar presents a la branca compartida i les portes
+   afectades han de passar.
+2. El propietari ha d'aprovar les tres ampliacions noves del model de dades.
 3. Per a Gmail, Graph o correu sortint, la Fase 7B ha d'estar especificada, aprovada i integrada.
-4. S'ha de crear un worktree des del `develop` vigent i revisar migracions, flags i permisos.
-5. Els numeros de migracio s'assignen llavors; no es reserven des d'aquest document.
+4. La implementacio continua a la branca compartida actual, sense crear cap worktree, i revisa
+   abans de cada edicio si l'altra sessio ha modificat el mateix fitxer.
+5. Les migracions de la Fase 8 comencen a la `0042`; no es calculen des de `develop`, perque la
+   `0041` ja existeix en aquesta branca.
 
 Exemple PowerShell:
 
 ```powershell
-git switch develop
-git pull --ff-only origin develop
-git worktree add -b feature/phase-8-usage-costs `
-  "..\Control-Hub-phase-8" develop
+git status --short --branch
+git log -5 --oneline --decorate
+Get-ChildItem packages/database/migrations/*.sql | Sort-Object Name | Select-Object -Last 5
 ```
 
 ## Regles que no es renegocien
@@ -63,12 +65,12 @@ No hi ha base de dades, Fastify, React ni noms de proveidor en les funcions pure
 
 ### U2 — Dades, ports i permisos
 
-Assignar la migracio lliure des del `develop` del dia. Afegir taules, RLS, FK compostes, checks,
-indexes i grants. Separar `usage:manage` de `budgets:manage`.
+Crear `0042_usage_costs.sql`. Afegir taules, RLS, FK compostes, checks, indexes i grants. Separar
+`usage:manage` de `budgets:manage`.
 
 Fitxers principals:
 
-- `packages/database/migrations/<NNNN>_usage_costs.sql`
+- `packages/database/migrations/0042_usage_costs.sql`
 - `packages/application/src/usage.ts`
 - `packages/persistence/src/usage-repository.ts`
 - `packages/domain/src/index.ts`

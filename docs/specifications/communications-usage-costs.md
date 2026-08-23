@@ -1,9 +1,12 @@
 # Especificacio de comunicacions, consum i costos variables
 
-**Fase 8. Estat: esborrany per a revisio del propietari.**
+**Fase 8. Estat: aprovada pel propietari el 23 d'agost de 2026, amb tres ampliacions de model
+pendents de vistiplau.**
 
-Aquest document converteix el resum d'`IMPLEMENTATION_PLAN.md` en un contracte implementable. No
-autoritza migracions ni codi fins que s'aprovin les decisions del final. La guia d'execucio es a
+Aquest document converteix el resum d'`IMPLEMENTATION_PLAN.md` en un contracte implementable. Les
+sis decisions originals son aprovades. Els tres forats detectats despres de la revisio estan
+marcats **NOU — PENDENT DE VISTIPLAU** i bloquegen el model de dades de la 8.1 fins que el
+propietari els resolgui. La guia d'execucio es a
 `docs/development/phase-8-implementation-guide.md`.
 
 ## Objectiu
@@ -72,6 +75,18 @@ una `usage_adjustment`; mai modifica ni esborra l'event original.
 una tarifa nova no altera informes antics. Revalorar es una operacio explicita que crea una versio
 nova i manté l'anterior auditable.
 
+#### NOU — PENDENT DE VISTIPLAU: valoracio de correccions
+
+Una correccio porta les seves propies linies a `usage_adjustment_quantities`, expressades com a
+diferencies amb signe. `usage_valuations` deixa de referenciar obligatoriament nomes un event i
+porta `event_id` o `adjustment_id`, exactament un dels dos, protegit amb
+`check (num_nonnulls(event_id, adjustment_id) = 1)` i FK compostes amb `tenant_id`.
+
+El pressupost suma l'ultima valoracio vigent de cada event i totes les valoracions vigents de les
+seves correccions. Aixi una correccio arriba a pressupostos i informes sense mutar el fet original,
+i es pot reconciliar cada variacio amb el seu motiu i actor. Una anul.lacio de correccio crea una
+correccio inversa; no elimina files.
+
 ### Imports i unitats
 
 - Imports en unitats menors i moneda ISO 4217.
@@ -132,6 +147,24 @@ client, producte, servei contractat o projecte. Els estats son:
 Els canvis creen events idempotents. `warning` i `exceeded` no bloquegen crides externes. Un
 pressupost amb dades parcials o obsoletes mai es mostra com a sa.
 
+#### NOU — PENDENT DE VISTIPLAU: fonts obligatories del pressupost
+
+Cada via d'ingestio te una fila `usage_sources`. Una font es `connector` —amb instancia i operacio—
+o `manual` —amb un codi estable del tenant—, exactament una de les dues formes. La font conserva
+`last_complete_at`; una importacio manual nomes el mou quan el lot es declara complet, no per cada
+fila parcial.
+
+Cada pressupost declara com a minim una font a `usage_budget_sources`: `budget_id`, `source_id`,
+`max_age_minutes` i `required`. Una font de connector deriva l'estat de
+`connector_operation_state`; `max_age_minutes` decideix quan la seva ultima passada completa deixa
+de ser vigent.
+
+Un pressupost es `stale` si qualsevol font `required` no te una passada completa dins la seva
+finestra. Una font opcional obsoleta fa l'informe `partial`, no `stale`. Desactivar o eliminar una
+instancia no converteix el pressupost en sa: la vinculacio es conserva i queda stale fins que un
+gestor substitueix la font o desactiva explicitament el pressupost. Les FK compostes impedeixen
+vincular una font d'un altre tenant.
+
 ### Minimitzacio del contingut
 
 Els events d'IA no guarden prompts, respostes, headers, payloads crus ni identificadors personals
@@ -186,12 +219,16 @@ del `develop` vigent abans de cada increment.
   `(tenant_id, source_instance_id, external_id)`.
 - `usage_event_quantities`: event, unitat, quantitat i qualificador allowlistat.
 - `usage_adjustments`: event original, correccio, motiu i actor o font.
+- `usage_adjustment_quantities`: correccio, unitat i diferencia entera amb signe.
 - `usage_rates`: proveidor, SKU, unitat, escala, import, moneda, vigencia, font i anul.lacio.
-- `usage_valuations`: event, versio, imports, tarifa/font, canvi, estat i mancances.
+- `usage_valuations`: event XOR correccio, versio, imports, tarifa/font, canvi, estat i mancances.
 - `exchange_rates`: parell, dia, fraccio i font.
 - `usage_attribution_rules`: metadada allowlistada, valor, desti, vigencia i prioritat.
 - `usage_budgets`: abast XOR, periode, import, moneda i llindars.
+- `usage_sources`: font de connector XOR manual, identificador estable i ultima passada completa.
+- `usage_budget_sources`: pressupost, font, finestra de vigencia i obligatorietat.
 - `usage_budget_events`: canvi d'estat append-only i clau d'idempotencia.
+- `usage_monthly_snapshots`: revisio mensual finalitzada per dimensions, moneda i cobertura.
 
 Totes les taules empresarials porten RLS `enable` + `force`, FK compostes i indexes per periode,
 font i abast. Les evidencies no admeten `delete` del rol d'aplicacio; la purga reglada usa una
@@ -247,13 +284,26 @@ d'export i auditoria. Els errors segueixen `errors-and-api.md`.
 
 ## Retencio proposada
 
-- Events i valoracions: 24 mesos per defecte, configurable pel tenant.
-- Agregats mensuals: mentre existeixi relacio comercial o obligacio definida.
+- Events, correccions i valoracions: 24 mesos per defecte, configurable pel tenant.
+- Snapshots mensuals: mentre existeixi relacio comercial o obligacio definida.
 - Registres temporals de bustia no importats: 30 dies.
 - Imports i lliuraments: mateixa retencio que el ticket.
 - Contingut d'IA: no es desa.
 
 La politica definitiva necessita revisio RGPD i contractual abans de Release 1.0.
+
+### NOU — PENDENT DE VISTIPLAU: historic posterior a la purga
+
+Abans de purgar events d'un mes, el worker crea una revisio immutable a
+`usage_monthly_snapshots`, separada per tenant, mes, font, dimensions d'atribucio, SKU, moneda
+original i moneda d'informe. Conserva quantitats, cost, cobertura, percentatge atribuït,
+`observed_through`, fonts i mancances; no conserva contingut ni IDs individuals.
+
+Una revisio nomes es `finalized` quan totes les fonts obligatories del periode son completes i no
+hi ha valoracions pendents. La purga nomes pot eliminar events coberts per una revisio finalitzada
+i fora de legal hold. Una correccio tardana crea una revisio mensual nova; no modifica la vella.
+Els informes de marge anteriors a la finestra d'events llegeixen l'ultima revisio finalitzada, de
+manera que els 24 mesos de detall no esborren l'historic financer.
 
 ## Observabilitat i auditoria
 
@@ -298,11 +348,18 @@ La politica definitiva necessita revisio RGPD i contractual abans de Release 1.0
 - Cap proveidor es obligatori per arrencar el core.
 - Rollback preserva events i correus ja incorporats a suport.
 
-## Decisions pendents del propietari
+## Decisions aprovades pel propietari el 23 d'agost de 2026
 
-1. Aprovar la particio 8.1, 8.2 i 8.3.
-2. Aprovar que no es desin prompts/respostes i que el cos de correu nomes persisteixi a suport.
-3. Aprovar que el cost no atribuït no es reparteixi automaticament.
-4. Aprovar pressupostos informatius, no bloquejos de proveidor.
-5. Aprovar moneda d'informe amb FX versionat i importacio manual inicial.
-6. Aprovar 24 mesos per costos i 30 dies per correu temporal, pendent de revisio legal.
+1. Particio 8.1, 8.2 i 8.3.
+2. No desar prompts/respostes; el cos de correu nomes persisteix a suport.
+3. El cost no atribuït no es reparteix automaticament.
+4. Pressupostos informatius, no bloquejos de proveidor.
+5. Moneda d'informe amb FX versionat i importacio manual inicial.
+6. Retencio inicial de 24 mesos per costos i 30 dies per correu temporal, pendent de revisio legal.
+
+## Ampliacions noves pendents de vistiplau
+
+1. Fonts canoniques i fonts obligatories explicites per pressupost a `usage_sources` i
+   `usage_budget_sources`.
+2. Valoracions amb event XOR correccio i quantitats de correccio amb signe.
+3. Snapshots mensuals versionats abans de purgar el detall.

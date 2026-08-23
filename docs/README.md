@@ -45,7 +45,10 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   diagnostic que diu que falta, el resum amb moltes maquines i el descobriment que proposa el
   que encara no s'ha declarat. **Proposta**, Fase 7.3, pendent d'aprovacio.
 - `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
-  consum i costos, correu entrant i correu sortint. Esborrany pendent d'aprovacio.
+  consum i costos, correu entrant i correu sortint. Sis decisions aprovades; tres ampliacions de
+  model pendents de vistiplau.
+- `specifications/phase-7b-actions-and-oauth.md`: proposta acotada d'OAuth, accions asincrones i
+  transport IMAP que necessita la Fase 8. Pendent de vistiplau.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
