@@ -5963,6 +5963,14 @@ main {
 .infra-host .crm-table-wrap {
   margin-top: 12px;
 }
+/* The other labels a machine answers to, on one line beside its own. */
+.infra-host-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+}
 
 @media (max-width: 1199px) {
   .attendance-overview-grid {

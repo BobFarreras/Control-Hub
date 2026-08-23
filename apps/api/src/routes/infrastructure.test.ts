@@ -383,7 +383,9 @@ describe("the inventory a dashboard receives", () => {
         {
           ...host,
           reading: { ...reading, data: { load1: 0.2, apiToken: "prom_9f2c8ab4" } },
-          services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }]
+          services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }],
+          labels: [],
+          observed: []
         }
       ],
       summary: emptySummary,
@@ -394,6 +396,45 @@ describe("the inventory a dashboard receives", () => {
     expect(response.hosts[0]!.services).toMatchObject([{ id: service.id, reading: { data: { memoryBytes: 512 } } }]);
     expect(JSON.stringify(response)).not.toContain("prom_9f2c8ab4");
     expect(response.observedFrom).toEqual(new Date("2026-08-13T11:58:00.000Z"));
+  });
+
+  /**
+   * The undeclared things a machine's page shows leave through the same allow-list as the rest.
+   *
+   * They are a newer field on an older answer, and a field added later is exactly the one that
+   * gets its filtering forgotten.
+   *
+   * Specification: `docs/specifications/connector-onboarding.md`, "C8".
+   */
+  it("carries what was seen on a machine's labels, with nothing the allow-list does not name", () => {
+    const response = inventoryResponse({
+      hosts: [
+        {
+          ...host,
+          reading,
+          services: [],
+          labels: ["cadvisor:8080"],
+          observed: [
+            {
+              matchKey: "container:traefik",
+              kind: "container" as const,
+              name: "traefik",
+              seenOn: "cadvisor:8080",
+              declared: false,
+              reading: { ...reading, data: { memoryBytes: 512, apiToken: "prom_9f2c8ab4" } }
+            }
+          ]
+        }
+      ],
+      summary: emptySummary,
+      observedFrom: null
+    });
+
+    expect(response.hosts[0]!.labels).toEqual(["cadvisor:8080"]);
+    expect(response.hosts[0]!.observed).toMatchObject([
+      { matchKey: "container:traefik", declared: false, reading: { data: { memoryBytes: 512 } } }
+    ]);
+    expect(JSON.stringify(response)).not.toContain("prom_9f2c8ab4");
   });
 
   it("says it has no age rather than inventing one", () => {
@@ -425,7 +466,9 @@ describe("the inventory a dashboard receives", () => {
         {
           ...host,
           reading: { ...reading, instanceId: "instance-1" },
-          services: [{ ...service, reading: { ...reading, instanceId: "instance-2" } }]
+          services: [{ ...service, reading: { ...reading, instanceId: "instance-2" } }],
+          labels: [],
+          observed: []
         }
       ],
       summary: emptySummary,

@@ -78,6 +78,8 @@ const documentedInfrastructure = [
   ["get", "/api/v1/infrastructure/hosts/{hostId}"],
   ["patch", "/api/v1/infrastructure/hosts/{hostId}"],
   ["post", "/api/v1/infrastructure/hosts/{hostId}/services"],
+  ["post", "/api/v1/infrastructure/hosts/{hostId}/labels"],
+  ["delete", "/api/v1/infrastructure/hosts/{hostId}/labels/{label}"],
   ["get", "/api/v1/infrastructure/services"],
   ["post", "/api/v1/infrastructure/services"],
   ["patch", "/api/v1/infrastructure/services/{serviceId}"],
@@ -93,8 +95,34 @@ const documentedInfrastructure = [
 
 const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const), connectorKeyRing: keyRing() };
 const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
+const withUsage = { ...base, featureFlags: new Set(["usage_costs"] as const) };
+const documentedUsage = [
+  ["get", "/api/v1/usage/events"],
+  ["get", "/api/v1/usage/costs"],
+  ["get", "/api/v1/usage/rates"],
+  ["post", "/api/v1/usage/rates"],
+  ["post", "/api/v1/usage/rates/{rateId}/annul"],
+  ["get", "/api/v1/usage/exchange-rates"],
+  ["post", "/api/v1/usage/exchange-rates"],
+  ["post", "/api/v1/usage/exchange-rates/{exchangeRateId}/annul"],
+  ["post", "/api/v1/usage/events/{eventId}/valuations"],
+  ["get", "/api/v1/usage/budgets"],
+  ["post", "/api/v1/usage/budgets"],
+  ["post", "/api/v1/usage/budgets/{budgetId}/evaluate"]
+] as const;
 
 describe("openapi document", () => {
+  it("documents every enabled usage operation with the declared tag and a summary", async () => {
+    const document = await documentOf(withUsage);
+    const declared = new Set((document.tags ?? []).map((tag) => tag.name));
+    expect(declared).toContain("usage");
+    expect(
+      documentedUsage.filter(([method, path]) => {
+        const operation = document.paths[path]?.[method];
+        return !operation?.summary || !operation.tags?.includes("usage");
+      })
+    ).toEqual([]);
+  });
   /**
    * The document said `0.1.0` for the whole of `v0.2.0`, because the version was a literal
    * written beside the registration and nothing made it wrong when the release moved. This reads

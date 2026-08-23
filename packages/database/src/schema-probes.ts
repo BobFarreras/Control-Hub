@@ -43,5 +43,8 @@ export const infrastructureSchemaProbes: readonly SchemaProbe[] = [
     migration: "0039_infrastructure_alert_kinds.sql",
     relation: "infra_alert_rules",
     constraintName: "infra_alert_rules_target_kind_check"
-  }
+  },
+  // The inventory reads this table on every dashboard load, so a deployment without it has to
+  // be told which file to run rather than answering an unexplained failure.
+  { migration: "0042_infrastructure_host_labels.sql", relation: "infra_host_labels", constraintName: null }
 ];

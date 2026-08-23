@@ -280,7 +280,10 @@ export function discoverInstances(facts: {
   seenInstances: readonly string[];
   declaredMachines: readonly DeclaredMachine[];
 }): readonly DiscoveredInstance[] {
-  // `hostname` is unique per tenant in the schema, so there is no pair to choose between here.
+  // One entry per name a machine answers to, its `hostname` and its claimed labels alike -- the
+  // question here is only whose a label is. No pair to choose between: a label belongs to one
+  // machine and cannot be another's `hostname`, which the schema and the repository enforce
+  // between them.
   const declared = new Map(facts.declaredMachines.map((machine) => [machine.hostname, machine]));
 
   return distinct(facts.seenInstances).map((label) => {
@@ -315,7 +318,14 @@ const nameLimits = { min: 3, max: 120 } as const;
 /** One thing a collector has stored, reduced to what a proposal needs. */
 export type DiscoverableRecord = {
   externalId: string;
-  /** The label of whoever saw it, or null. Context for a person, never a join key. */
+  /**
+   * The label of whoever saw it, or null.
+   *
+   * Context for a person until a machine claims that label, and a join key once one does: see
+   * `servicesSeenOnHost`. What it is never is an inferred correspondence -- a container seen on
+   * `cadvisor:8080` belongs to a machine because somebody said that machine is also that label,
+   * not because the two happen to run on the same computer.
+   */
   seenOn: string | null;
 };
 
@@ -387,4 +397,37 @@ export function discoverServices(facts: {
         declared: declared.has(record.externalId)
       };
     });
+}
+
+/**
+ * What the collectors have seen on one machine, whether or not anybody declared it.
+ *
+ * The join is the label and nothing else. A Prometheus aggregates by `instance`, which is the
+ * scrape target that reported a figure and not the computer it came from, so one ordinary VPS is
+ * several of them: the machine gets declared with `node-exporter:9100` and its containers arrive
+ * with `cadvisor:8080`. `labels` is what the machine has said it also answers to, and a reading
+ * belongs to it when the label it was seen on is one of those. Nothing is inferred: two exporters
+ * that happen to run on the same computer say nothing to us about being the same computer.
+ *
+ * Only what carries a label can be attributed, and that is containers. It is not a gap in this
+ * function but what the other kinds are: a probe of an address is about the address, and a backup
+ * is about a job -- for neither of them is "which machine" a property of the fact observed. Those
+ * reach a machine by being declared services of it, which is exactly what declaring says.
+ *
+ * `discoverServices` does the naming and the kinds, so a thing shown here and the same thing shown
+ * in the collector's own panel cannot end up with two different names.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, increment C8.
+ */
+export function servicesSeenOnHost(facts: {
+  /** Every label the machine answers to, its `hostname` included. */
+  labels: readonly string[];
+  records: readonly DiscoverableRecord[];
+  declaredMatchKeys: readonly string[];
+}): readonly DiscoveredService[] {
+  const mine = new Set(facts.labels);
+  return discoverServices({
+    seenRecords: facts.records.filter((record) => record.seenOn !== null && mine.has(record.seenOn)),
+    declaredMatchKeys: facts.declaredMatchKeys
+  });
 }

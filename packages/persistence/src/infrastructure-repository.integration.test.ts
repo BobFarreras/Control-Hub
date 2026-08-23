@@ -690,17 +690,26 @@ suite("PostgresInfrastructureRepository", () => {
     });
 
     /**
-     * The read is driven by what was declared, not by what the collectors happen to see. A tenant
-     * watching four containers must not pay for every container its Prometheus can enumerate.
+     * The read takes what was declared and what could be attributed to a machine, and stops there.
+     *
+     * Until C8 it took only what was declared, and a machine's page could then say it ran nothing
+     * while twenty of its containers sat in the table -- a container arrives under the cAdvisor's
+     * label and the machine is declared under the node_exporter's, so nothing joined them. The
+     * discoverable prefixes now come too, which is the same set the discovery route already reads.
+     * What stays out is what no machine can hold: a `workflow:` is an automation and has its own
+     * screen.
      */
-    it("asks for the identifiers it declared and for nothing else", async () => {
+    it("asks for what was declared and for what a machine could answer for, and nothing else", async () => {
       const instance = await newInstance(tenantA, membershipA);
-      const undeclared = `container:stranger-${randomUUID()}`;
-      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", undeclared, { memoryBytes: 1 });
+      const container = `container:stranger-${randomUUID()}`;
+      const workflow = `workflow:${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", container, { memoryBytes: 1 });
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", workflow, {});
 
       const state = await repository.readInventoryState(asA());
 
-      expect(state.records.some((item) => item.externalId === undeclared)).toBe(false);
+      expect(state.records.some((item) => item.externalId === container)).toBe(true);
+      expect(state.records.some((item) => item.externalId === workflow)).toBe(false);
     });
 
     it("reads no host, no service and no reading of another tenant", async () => {
@@ -717,11 +726,103 @@ suite("PostgresInfrastructureRepository", () => {
       expect(state.records.some((item) => item.externalId === theirs.service.matchKey)).toBe(false);
     });
 
-    it("reads nothing at all for a tenant that declared nothing", async () => {
+    it("reads no machine and no label for a tenant that declared nothing", async () => {
       const instance = await newInstance(tenantC, membershipC);
-      await putRecord(tenantC, membershipC, instance.id, "pull_container_state", `container:${randomUUID()}`, {});
+      await putRecord(tenantC, membershipC, instance.id, "pull_workflows", `workflow:${randomUUID()}`, {});
 
-      expect((await repository.readInventoryState(asC())).records).toEqual([]);
+      const state = await repository.readInventoryState(asC());
+
+      expect(state.hosts).toEqual([]);
+      expect(state.records).toEqual([]);
+      expect(state.labels).toEqual([]);
+    });
+  });
+
+  /**
+   * The other labels a machine answers to.
+   *
+   * Specification: `docs/specifications/connector-onboarding.md`, "C8 -- Una maquina, diverses
+   * etiquetes".
+   */
+  describe("the labels a machine answers to", () => {
+    const machine = async () =>
+      repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+    it("hands the labels back with the inventory, so a screen asks once", async () => {
+      const host = await machine();
+      const label = `cadvisor-${randomUUID()}:8080`;
+      await repository.addHostLabel(asA(), host.id, label);
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.labels).toEqual(expect.arrayContaining([{ hostId: host.id, label }]));
+    });
+
+    /** One label, one machine: two claiming it would make one outage arrive as two alerts. */
+    it("refuses a label another machine already answers to", async () => {
+      const [one, other] = [await machine(), await machine()];
+      const label = `cadvisor-${randomUUID()}:8080`;
+      await repository.addHostLabel(asA(), one.id, label);
+
+      await expect(repository.addHostLabel(asA(), other.id, label)).rejects.toMatchObject({
+        code: "DUPLICATE_HOSTNAME"
+      });
+    });
+
+    /**
+     * The half no constraint can express: `hostname` lives in another table, so the check is a
+     * query inside the same transaction as the insert.
+     */
+    it("refuses a label that is already some machine's hostname", async () => {
+      const [one, other] = [await machine(), await machine()];
+
+      await expect(repository.addHostLabel(asA(), one.id, other.hostname)).rejects.toMatchObject({
+        code: "DUPLICATE_HOSTNAME"
+      });
+    });
+
+    it("refuses to label a machine of another tenant, even by naming its identifier", async () => {
+      const theirs = await repository.declareHost(context(tenantB, membershipB), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+      await expect(repository.addHostLabel(asA(), theirs.id, `cadvisor-${randomUUID()}:8080`)).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+    });
+
+    it("withdraws one label and leaves the others", async () => {
+      const host = await machine();
+      const [first, second] = [`cadvisor-${randomUUID()}:8080`, `prom-${randomUUID()}:9090`];
+      await repository.addHostLabel(asA(), host.id, first);
+      await repository.addHostLabel(asA(), host.id, second);
+
+      await repository.removeHostLabel(asA(), host.id, first);
+
+      const state = await repository.readInventoryState(asA());
+      const mine = state.labels.filter((entry) => entry.hostId === host.id).map((entry) => entry.label);
+      expect(mine).toEqual([second]);
+    });
+
+    /** Withdrawing a label the machine does not answer to leaves it not answering to it. */
+    it("succeeds at withdrawing a label that was never there", async () => {
+      const host = await machine();
+
+      await expect(repository.removeHostLabel(asA(), host.id, `nothing-${randomUUID()}`)).resolves.toBeUndefined();
+    });
+
+    it("says so when the machine does not exist", async () => {
+      await expect(repository.removeHostLabel(asA(), randomUUID(), "cadvisor:8080")).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
     });
   });
 
@@ -1074,6 +1175,45 @@ suite("PostgresInfrastructureRepository", () => {
 
       expect(state).toMatchObject({ instanceExists: true, missingMigrations: [], seenInstances: [label] });
       expect(state.declaredMachines).toContainEqual({ hostId: host.id, name: host.name, hostname: label });
+    });
+
+    /**
+     * The label a container was seen on is a machine label, and until C8 it was the one label the
+     * screen never showed. A cAdvisor appears in no `host:` reading, so the label a person had to
+     * claim was invisible: the containers were stored, the machine was declared, and there was
+     * nowhere to say the two were the same computer.
+     */
+    it("offers the label a container was seen on, which no host reading carries", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const cadvisor = `cadvisor-${randomUUID()}:8080`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", `container:${randomUUID()}`, {
+        host: cadvisor
+      });
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state.seenInstances).toContain(cadvisor);
+    });
+
+    it("says a claimed label is that machine's, so it is not offered for declaring twice", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const cadvisor = `cadvisor-${randomUUID()}:8080`;
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", `container:${randomUUID()}`, {
+        host: cadvisor
+      });
+      await repository.addHostLabel(asA(), host.id, cadvisor);
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state.declaredMachines).toEqual(
+        expect.arrayContaining([{ hostId: host.id, name: host.name, hostname: cadvisor }])
+      );
     });
 
     it("says the instance is not there for one another tenant owns, and reads nothing of it", async () => {

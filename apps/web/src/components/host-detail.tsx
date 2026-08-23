@@ -1,6 +1,6 @@
 import type { HostRow, ServiceRow } from "@/components/infrastructure-workspace";
 import { StatusPill } from "@/components/status-pill";
-import type { Reading } from "@/lib/api-types";
+import type { DiscoveredService, Reading } from "@/lib/api-types";
 import { ageLabel, observedStateTone, type ReadingAge } from "@/lib/infrastructure";
 
 /**
@@ -73,6 +73,73 @@ function Figures({ figures }: { figures: HostRow["figures"] }) {
   );
 }
 
+/**
+ * The other labels this machine answers to.
+ *
+ * Drawn beside its own because they are the reason anything below is attributed here at all: a
+ * reader who wonders why a container belongs to this machine finds the answer in one line rather
+ * than in the shape of a Prometheus configuration.
+ */
+function OtherLabels({ labels, title }: { labels: string[]; title: string }) {
+  if (labels.length === 0) return null;
+  return (
+    <p className="infra-host-labels">
+      <small className="muted">{title}</small>
+      {labels.map((label) => (
+        <code className="discovery-label" key={label}>
+          {label}
+        </code>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * What the collectors have read under one of this machine's labels, declared or not.
+ *
+ * The section exists because declaring answers "I want alerts about this" and the page was using
+ * it to answer "what is on this machine", which is a different question: a machine with twenty
+ * containers and none of them declared was drawn as a machine with nothing on it. Declared ones
+ * are marked rather than left out -- the difference matters to somebody asking why a thing that
+ * is plainly down produced no alert.
+ *
+ * Only containers reach here. It is not a gap: a probe is about an address and a backup about a
+ * job, and for neither of them is which machine ran it a property of the fact observed. Those
+ * reach a machine by being declared services of it, and appear above.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, increment C8.
+ */
+function Observed({ observed, labels: t }: { observed: DiscoveredService[]; labels: Labels }) {
+  return (
+    <section className="project-panel" aria-label={t.sectionObserved ?? ""}>
+      <header className="project-panel-heading">
+        <h3>{t.sectionObserved}</h3>
+        <small className="muted">{observed.length}</small>
+      </header>
+      <p className="muted">{t.observedAbout}</p>
+      {observed.length === 0 ? (
+        <p className="muted">{t.observedEmpty}</p>
+      ) : (
+        <ul className="collector-list">
+          {observed.map((service) => (
+            <li className="collector-row" key={service.matchKey}>
+              <span className="ticket-subject">{service.name}</span>
+              <small className="muted">{service.matchKey}</small>
+              <span className="collector-row-state">
+                <StatusPill
+                  tone={observedStateTone[service.reading.state]}
+                  label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
+                />
+                {service.declared && <small className="muted">{t.observedDeclaredMark}</small>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function HostDetail({
   host,
   instanceNames,
@@ -90,6 +157,7 @@ export function HostDetail({
           <Provenance reading={host.reading} age={host.age} instanceNames={instanceNames} labels={t} />
         </header>
         <Figures figures={host.figures} />
+        <OtherLabels labels={host.labels} title={t.hostLabels ?? ""} />
         {host.notes && <p className="muted">{host.notes}</p>}
       </section>
 
@@ -121,6 +189,8 @@ export function HostDetail({
           </ul>
         )}
       </section>
+
+      <Observed observed={host.observed} labels={t} />
     </>
   );
 }

@@ -3,6 +3,7 @@ import {
   diagnoseConnector,
   discoverInstances,
   discoverServices,
+  servicesSeenOnHost,
   evaluateAlertRules,
   hasPermission,
   hostMatchKey,
@@ -224,13 +225,40 @@ export function observationBudgets(
 export type InventoryState = {
   hosts: readonly HostRecord[];
   services: readonly ServiceRecord[];
+  /**
+   * Every reading a line of this inventory could be built from.
+   *
+   * The declared keys and, since C8, everything carrying a discoverable prefix: a container
+   * nobody has declared is drawn on the machine that claims the label it was seen on, and it can
+   * only be drawn from its own record. One set rather than two, so the state of a container is
+   * decided by one function over one pile whether or not somebody has declared it.
+   */
   records: readonly ObservedRecord[];
   freshness: readonly OperationFreshness[];
+  /** The other labels each machine answers to. Its `hostname` is not repeated here. */
+  labels: readonly HostLabel[];
 };
+
+/** One collector label a machine has claimed. */
+export type HostLabel = { hostId: string; label: string };
 
 export type ObservedService = ServiceRecord & { reading: CurrentReading };
 
-export type ObservedHost = HostRecord & { reading: CurrentReading; services: readonly ObservedService[] };
+export type ObservedHost = HostRecord & {
+  reading: CurrentReading;
+  services: readonly ObservedService[];
+  /** The other labels this machine answers to, so a screen can offer to withdraw one. */
+  labels: readonly string[];
+  /**
+   * What the collectors see on this machine that nobody has declared.
+   *
+   * Beside the declared services and not instead of them, because they are two different
+   * questions and the product used to answer only one: declaring means "alert me about this", and
+   * a machine's page that showed nothing until somebody had declared something was answering
+   * "what do you want alerts about" to somebody asking "what is running here".
+   */
+  observed: readonly ObservedDiscoveredService[];
+};
 
 /**
  * The declared inventory with what is currently known about each line of it.
@@ -405,6 +433,8 @@ export type InfrastructureRepository = {
   resolveAlert(context: TenantContext, alertId: string, at: Date): Promise<AlertEventRecord>;
 
   readInventoryState(context: TenantContext): Promise<InventoryState>;
+  addHostLabel(context: TenantContext, hostId: string, label: string): Promise<void>;
+  removeHostLabel(context: TenantContext, hostId: string, label: string): Promise<void>;
   readEvaluationState(context: TenantContext): Promise<EvaluationState>;
   readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState>;
   readDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorDiscoveryState>;
@@ -738,6 +768,30 @@ export class InfrastructureService {
   }
 
   /**
+   * Another name one machine answers to.
+   *
+   * The same validation a `hostname` gets, because it is the same kind of thing: a label the
+   * collector will be compared against. A label already taken -- by this table or by another
+   * machine's `hostname` -- comes back as `DUPLICATE_HOSTNAME`, and both halves are decided in
+   * the repository's transaction: one is a primary key, the other a query, and doing the second
+   * one here would leave a window where two machines can claim the same label at once.
+   */
+  async addHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    requireOperate(context);
+    await this.repository.addHostLabel(context, hostId, checkHostname(label));
+  }
+
+  /**
+   * Withdrawing one loses nothing: no service, no alert and no history hangs off a label, and the
+   * readings it matched stay exactly where they are. That is why this exists and `deleteHost`
+   * does not.
+   */
+  async removeHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    requireOperate(context);
+    await this.repository.removeHostLabel(context, hostId, label);
+  }
+
+  /**
    * Deciding a service no longer matters is ordinary and audited, which is why this exists and
    * `deleteHost` does not: the privilege on the table says the same thing.
    */
@@ -769,13 +823,33 @@ export class InfrastructureService {
       return reading;
     };
 
-    const hosts = state.hosts.map<ObservedHost>((host) => ({
-      ...host,
-      reading: remember(read(hostMatchKey(host.hostname))),
-      services: state.services
-        .filter((service) => service.hostId === host.id)
-        .map<ObservedService>((service) => ({ ...service, reading: remember(read(service.matchKey)) }))
+    // Every declared key of the tenant, not this machine's: a key is unique across the inventory,
+    // so one already spoken for elsewhere must not be offered here as undeclared either.
+    const declaredMatchKeys = state.services.map((service) => service.matchKey);
+    const seen = state.records.map((record) => ({
+      externalId: record.externalId,
+      seenOn: typeof record.data.host === "string" ? record.data.host : null
     }));
+
+    const hosts = state.hosts.map<ObservedHost>((host) => {
+      const labels = state.labels.filter((entry) => entry.hostId === host.id).map((entry) => entry.label);
+      return {
+        ...host,
+        reading: remember(read(hostMatchKey(host.hostname))),
+        services: state.services
+          .filter((service) => service.hostId === host.id)
+          .map<ObservedService>((service) => ({ ...service, reading: remember(read(service.matchKey)) })),
+        labels,
+        // Not remembered into `observed`: the freshness at the top of the screen is about the
+        // inventory somebody keeps, and a container nobody declared should not be able to make a
+        // dashboard look stale. It carries its own age on its own row.
+        observed: servicesSeenOnHost({
+          labels: [host.hostname, ...labels],
+          records: seen,
+          declaredMatchKeys
+        }).map((service) => ({ ...service, reading: read(service.matchKey) }))
+      };
+    });
 
     return {
       hosts,

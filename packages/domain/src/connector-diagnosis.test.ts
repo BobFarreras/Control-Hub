@@ -5,6 +5,7 @@ import {
   diagnoseConnector,
   discoverInstances,
   discoverServices,
+  servicesSeenOnHost,
   type ConnectorDiagnosisFacts,
   type DeclaredMachine,
   type ConnectorDiagnosisStep,
@@ -421,5 +422,64 @@ describe("what could name a machine at all", () => {
   it("refuses a label with nothing in it", () => {
     expect(couldNameMachine("")).toBe(false);
     expect(couldNameMachine("   ")).toBe(false);
+  });
+});
+
+/**
+ * C8. What a machine can be said to run, given the labels it answers to.
+ *
+ * The questions worth asking here are the two that were wrong before it existed: that nothing is
+ * attributed by a coincidence of collectors, and that a machine's own hostname counts as one of
+ * its labels without anybody having to write it down twice.
+ */
+describe("what the collectors have seen on one machine", () => {
+  const seen = (externalId: string, seenOn: string | null = null) => ({ externalId, seenOn });
+
+  it("takes what arrived on a label the machine answers to", () => {
+    const found = servicesSeenOnHost({
+      labels: ["node-exporter:9100", "cadvisor:8080"],
+      records: [seen("container:n8n", "cadvisor:8080")],
+      declaredMatchKeys: []
+    });
+
+    expect(found.map((service) => service.matchKey)).toEqual(["container:n8n"]);
+  });
+
+  /** Two exporters on one computer say nothing to us about being one computer. Somebody says it. */
+  it("leaves out what arrived on a label nobody claimed", () => {
+    const found = servicesSeenOnHost({
+      labels: ["node-exporter:9100"],
+      records: [seen("container:n8n", "cadvisor:8080")],
+      declaredMatchKeys: []
+    });
+
+    expect(found).toEqual([]);
+  });
+
+  it("leaves out a reading that says nothing about where it was seen", () => {
+    const found = servicesSeenOnHost({
+      labels: ["node-exporter:9100"],
+      records: [seen("probe:https://n8n.example.tld/healthz")],
+      declaredMatchKeys: []
+    });
+
+    expect(found).toEqual([]);
+  });
+
+  it("marks what somebody has already declared, and still hands it over", () => {
+    const found = servicesSeenOnHost({
+      labels: ["cadvisor:8080"],
+      records: [seen("container:n8n", "cadvisor:8080"), seen("container:traefik", "cadvisor:8080")],
+      declaredMatchKeys: ["container:n8n"]
+    });
+
+    expect(found.map((service) => [service.matchKey, service.declared])).toEqual([
+      ["container:n8n", true],
+      ["container:traefik", false]
+    ]);
+  });
+
+  it("finds nothing on a machine no collector has seen anything on", () => {
+    expect(servicesSeenOnHost({ labels: ["node-exporter:9100"], records: [], declaredMatchKeys: [] })).toEqual([]);
   });
 });

@@ -13,6 +13,7 @@ import {
   type DeclareServiceInput,
   type DeclareServicesInput,
   type EvaluationState,
+  type HostLabel,
   type HostRecord,
   type InfrastructureRepository,
   type InventoryState,
@@ -110,8 +111,16 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
 
       const seenInstances = await seenInstanceLabels(tx, context.tenantId, instanceId);
 
+      // A machine answers to its `hostname` and to every label it has claimed, and the discovery
+      // asks only "is this label somebody's". Handing the claimed ones over as machines of their
+      // own name is what stops a label from being offered for declaring twice over.
       const declaredMachines = await tx<{ hostId: string; name: string; hostname: string }[]>`
-        select id as "hostId", name, hostname from infra_hosts where tenant_id = ${context.tenantId}`;
+        select id as "hostId", name, hostname from infra_hosts where tenant_id = ${context.tenantId}
+        union all
+        select h.id as "hostId", h.name, l.label as hostname
+        from infra_host_labels l join infra_hosts h
+          on h.tenant_id = l.tenant_id and h.id = l.host_id
+        where l.tenant_id = ${context.tenantId}`;
 
       return { instanceExists: true, missingMigrations: [], seenInstances, declaredMachines };
     });
@@ -336,6 +345,52 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     if (deleted === 0) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
   }
 
+  /**
+   * Another label this machine answers to.
+   *
+   * Both halves of the uniqueness are decided inside one transaction. One is the primary key
+   * `(tenant_id, label)`; the other is a query, because a label must also not be some other
+   * machine's `hostname` and no PostgreSQL constraint spans two tables. Deciding that half in the
+   * service would leave a window in which two machines claim the same label at once, and a label
+   * claimed twice makes one outage arrive as two alerts about the same computer.
+   *
+   * The machine is looked up first so that a wrong id answers `HOST_NOT_FOUND` rather than a
+   * foreign key violation nobody can read.
+   */
+  async addHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+
+      const [taken] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and hostname = ${label}`;
+      if (taken) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+
+      await tx`insert into infra_host_labels (tenant_id, host_id, label)
+        values (${context.tenantId}, ${hostId}, ${label})`.catch(mapInventoryConstraint);
+    });
+  }
+
+  /**
+   * Withdrawing a label, which loses nothing: the readings it matched stay where they are.
+   *
+   * A label that is not there is not an error. The caller asked for a machine that does not answer
+   * to it and that is the state afterwards either way, so two people withdrawing the same label at
+   * once both succeed. An unknown machine still fails: that is a mistaken request, not a request
+   * whose work was already done.
+   */
+  async removeHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+
+      await tx`delete from infra_host_labels
+        where tenant_id = ${context.tenantId} and host_id = ${hostId} and label = ${label}`;
+    });
+  }
+
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       return tx<AlertRuleRecord[]>`
@@ -483,18 +538,26 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         ...new Set([...hosts.map((host) => hostMatchKey(host.hostname)), ...services.map((s) => s.matchKey)])
       ];
 
-      const records =
-        wanted.length === 0
-          ? []
-          : await tx<ObservedRecord[]>`
-              select ${tx.unsafe(recordColumns)} from connector_records
-              where tenant_id = ${context.tenantId} and external_id in ${tx(wanted)}`;
+      // The declared keys, and everything discoverable. Since C8 a machine draws the containers
+      // seen on a label it claims even when nobody has declared them, and a container can only be
+      // drawn from its own record -- selecting by declared key alone is what used to leave the
+      // whole discovery with no reading and every container reading `down`.
+      const prefixes = tx.array([...discoverableServicePrefixes]);
+      const records = await tx<ObservedRecord[]>`
+        select ${tx.unsafe(recordColumns)} from connector_records
+        where tenant_id = ${context.tenantId}
+          and (${wanted.length === 0 ? tx`false` : tx`external_id in ${tx(wanted)}`}
+               or split_part(external_id, ':', 1) = any(${prefixes}))`;
 
       const freshness = await tx<OperationFreshness[]>`
         select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
         from connector_operation_state where tenant_id = ${context.tenantId}`;
 
-      return { hosts, services, records, freshness };
+      const labels = await tx<HostLabel[]>`
+        select host_id as "hostId", label from infra_host_labels
+        where tenant_id = ${context.tenantId} order by label`;
+
+      return { hosts, services, records, freshness, labels };
     });
   }
 
@@ -539,19 +602,17 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
 
       if (!instance) return { instance: null, missingMigrations: [], seenInstances: [], declaredHostnames: [] };
 
-      /**
-       * The `instance` labels this connector has a reading for, prefix removed.
-       *
-       * Two sources, and both are what Prometheus itself scrapes: a host reading is one the
-       * configuration already named, and a probe reading carrying `scrapeUp` came from the `up`
-       * series, which has one line per target. A blackbox reading has no `scrapeUp` and is left
-       * out -- its `instance` is a probed URL, not a machine anybody could declare, and it is the
-       * one value here that could be an address with something private in it.
-       */
+      // Every `instance` label this connector has a reading under. Which readings those are, and
+      // why a blackbox target is not one of them, is written where the query is.
       const seen = await seenInstanceLabels(tx, context.tenantId, instanceId);
 
+      // Claimed labels count as declared here too: the rung asks whether what the collector
+      // sees has been claimed by anybody, and a label claimed as a second name for a machine
+      // has been.
       const declared = await tx<{ hostname: string }[]>`
-        select hostname from infra_hosts where tenant_id = ${context.tenantId}`;
+        select hostname from infra_hosts where tenant_id = ${context.tenantId}
+        union all
+        select label as hostname from infra_host_labels where tenant_id = ${context.tenantId}`;
 
       return {
         instance: {
@@ -762,6 +823,9 @@ function mapInventoryConstraint(error: unknown): never {
   const databaseError = error as DatabaseError;
   const constraint = databaseError.constraint_name ?? "";
   if (databaseError.code === "23505") {
+    // The extra labels table before the `hostname` test: its own name contains neither word,
+    // and a label already claimed is the same answer whichever of the two tables holds it.
+    if (constraint.includes("infra_host_labels")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
     if (constraint.includes("hostname")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
     if (constraint.includes("match_key")) throw new InfrastructureServiceError("DUPLICATE_MATCH_KEY");
     if (constraint.includes("infra_services")) throw new InfrastructureServiceError("DUPLICATE_SERVICE_NAME");
@@ -836,6 +900,28 @@ async function missingInfrastructureMigrations(tx: postgres.TransactionSql): Pro
  * different conclusions about the same label. A URL is still read and still offered: as a service,
  * in the selector, which is the screen that can actually make something of it.
  */
+/**
+ * Every `instance` label this collector has a reading under, whatever kind of reading it was.
+ *
+ * Three sources, and they are three different things Prometheus scrapes:
+ *
+ * - a `host:` reading, whose label is the target the configuration already named for machine
+ *   figures -- normally a `node-exporter:9100`;
+ * - a `probe:` reading carrying `scrapeUp`, which came from the `up` series and has one line per
+ *   target, so its label is a target too. A blackbox reading has no `scrapeUp` and stays out: its
+ *   `instance` is a probed URL rather than a machine, and it is the one value here that could be
+ *   an address with something private in it;
+ * - the label a container was seen on, which is stored in the record's `host` and is the cAdvisor
+ *   that reported it -- never the container's own name, which is what the `external_id` holds.
+ *
+ * The third came with C8 and is the reason it works at all. A cAdvisor's label appears in no
+ * `host:` reading, so before this the one label a person needed to claim was the one label the
+ * screen never showed: the containers were stored, the machine was declared, and there was
+ * nowhere to say they were the same computer.
+ *
+ * `couldNameMachine` is applied to all three alike, so a probed URL that reached here through any
+ * of them still does not get offered as a machine.
+ */
 async function seenInstanceLabels(
   tx: postgres.TransactionSql,
   tenantId: string,
@@ -846,7 +932,12 @@ async function seenInstanceLabels(
     from connector_records
     where tenant_id = ${tenantId} and instance_id = ${instanceId}
       and (external_id like 'host:%'
-        or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))`;
+        or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))
+    union
+    select distinct data ->> 'host' as label
+    from connector_records
+    where tenant_id = ${tenantId} and instance_id = ${instanceId}
+      and external_id like 'container:%' and data ->> 'host' is not null`;
   return seen.map((row) => row.label).filter(couldNameMachine);
 }
 

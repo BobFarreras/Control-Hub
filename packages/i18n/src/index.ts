@@ -4039,6 +4039,20 @@ const infrastructureDictionaries = {
     discoveryCollector: "Recollidor",
     discoveryUndeclared: "Sense declarar",
     discoveryDeclare: "Declarar-la",
+
+    discoveryClaim: "Es d'una maquina que ja tinc",
+    claimTitle: "De quina maquina es aquesta etiqueta?",
+    claimAbout:
+      "Un Prometheus agrupa per objectiu de scrape, no per ordinador: una sola VPS reporta amb node-exporter:9100, cadvisor:8080 i 127.0.0.1:9090. Digues de quina maquina es aquesta etiqueta i tot el que s'hi llegeixi sera d'ella.",
+    claimHost: "Maquina",
+    claimSubmit: "Assignar-la",
+    labelClaimed: "Etiqueta assignada a la maquina.",
+    hostLabels: "Tambe respon a",
+    sectionObserved: "El que els recollidors hi veuen",
+    observedAbout:
+      "Tot el que s'ha llegit en alguna etiqueta d'aquesta maquina, declarat o no. Declarar vol dir «vull alertes d'aixo», no «vull veure-ho».",
+    observedEmpty: "Cap recollidor ha llegit res en cap etiqueta d'aquesta maquina.",
+    observedDeclaredMark: "Declarat",
     pickTitle: "Serveis que el recollidor veu",
     pickAbout:
       "El que aquest recollidor ja ha llegit i encara ningu no ha declarat. Marca el que vulguis vigilar en aquesta maquina: no es consulta res enfora, nomes es llegeix el que ja hi ha desat.",
@@ -4264,6 +4278,20 @@ const infrastructureDictionaries = {
     discoveryCollector: "Recolector",
     discoveryUndeclared: "Sin declarar",
     discoveryDeclare: "Declararla",
+
+    discoveryClaim: "Es de una maquina que ya tengo",
+    claimTitle: "?De que maquina es esta etiqueta?",
+    claimAbout:
+      "Un Prometheus agrupa por objetivo de scrape, no por ordenador: una sola VPS reporta con node-exporter:9100, cadvisor:8080 y 127.0.0.1:9090. Di de que maquina es esta etiqueta y todo lo que se lea en ella sera suyo.",
+    claimHost: "Maquina",
+    claimSubmit: "Asignarla",
+    labelClaimed: "Etiqueta asignada a la maquina.",
+    hostLabels: "Tambien responde a",
+    sectionObserved: "Lo que los recolectores ven en ella",
+    observedAbout:
+      "Todo lo leido en alguna etiqueta de esta maquina, declarado o no. Declarar significa «quiero alertas de esto», no «quiero verlo».",
+    observedEmpty: "Ningun recolector ha leido nada en ninguna etiqueta de esta maquina.",
+    observedDeclaredMark: "Declarado",
     pickTitle: "Servicios que el recolector ve",
     pickAbout:
       "Lo que este recolector ya ha leido y todavia nadie ha declarado. Marca lo que quieras vigilar en esta maquina: no se consulta nada fuera, solo se lee lo que ya hay guardado.",
@@ -4489,6 +4517,20 @@ const infrastructureDictionaries = {
     discoveryCollector: "Collector",
     discoveryUndeclared: "Not declared",
     discoveryDeclare: "Declare it",
+
+    discoveryClaim: "It belongs to a machine I already have",
+    claimTitle: "Which machine is this label?",
+    claimAbout:
+      "A Prometheus aggregates by scrape target, not by computer: one VPS reports under node-exporter:9100, cadvisor:8080 and 127.0.0.1:9090. Say which machine this label is and everything read under it belongs to that machine.",
+    claimHost: "Machine",
+    claimSubmit: "Assign it",
+    labelClaimed: "Label assigned to the machine.",
+    hostLabels: "Also answers to",
+    sectionObserved: "What the collectors see on it",
+    observedAbout:
+      'Everything read under one of this machine\'s labels, declared or not. Declaring means "I want alerts about this", not "I want to see this".',
+    observedEmpty: "No collector has read anything under any label of this machine.",
+    observedDeclaredMark: "Declared",
     pickTitle: "Services this collector can see",
     pickAbout:
       "What this collector has already read and nobody has declared yet. Tick what you want watched on this machine: nothing is asked of Prometheus, this only reads what is already stored.",

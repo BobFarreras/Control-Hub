@@ -210,7 +210,8 @@ function CollectorView({
   canOperate,
   labels: t,
   locale,
-  onDeclare
+  onDeclare,
+  onClaim
 }: {
   /** The collector the panel is about. Never empty: it is only mounted with one. */
   instanceId: string;
@@ -222,6 +223,11 @@ function CollectorView({
   locale: string;
   /** Opens the dialog below with the label already in the field that gets typed wrongly. */
   onDeclare: (hostname: string) => void;
+  /**
+   * Says the label is another name for a machine already declared, which is the other thing
+   * an undeclared label can be. Absent when there is no machine to attach it to.
+   */
+  onClaim: ((label: string) => void) | null;
 }) {
   const [machines, setMachines] = useState<DiscoveredInstance[] | null>(null);
   const [services, setServices] = useState<DiscoveredService[] | null>(null);
@@ -311,9 +317,20 @@ function CollectorView({
                           {instance.declaredAs.name}
                         </Link>
                       ) : canOperate ? (
-                        <button className="link-button" type="button" onClick={() => onDeclare(instance.label)}>
-                          {t.discoveryDeclare}
-                        </button>
+                        <>
+                          {/* Two things an unclaimed label can be, offered side by side: a
+                              machine nobody has declared yet, or another name for one already
+                              declared. A Prometheus aggregates by scrape target, so one VPS
+                              arrives here as three labels and only the first is a new machine. */}
+                          <button className="link-button" type="button" onClick={() => onDeclare(instance.label)}>
+                            {t.discoveryDeclare}
+                          </button>
+                          {onClaim && (
+                            <button className="link-button" type="button" onClick={() => onClaim(instance.label)}>
+                              {t.discoveryClaim}
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
                       )}
@@ -432,6 +449,7 @@ export function InfrastructureWorkspace({
   // it is read only when there is no host, because correcting a machine starts from its own value.
   const [hostDialog, setHostDialog] = useState<{ host: HostRow | null; hostname?: string } | null>(null);
   const [serviceDialog, setServiceDialog] = useState<{ hostId: string; service: ServiceRow | null } | null>(null);
+  const [labelDialog, setLabelDialog] = useState<{ label: string } | null>(null);
   const [ruleDialog, setRuleDialog] = useState(false);
   // What somebody asked to be shown. Client state and not a query string: it narrows a list
   // already in the browser, changes nothing on the server, and reloading to filter would refetch
@@ -584,6 +602,34 @@ export function InfrastructureWorkspace({
     if (!result.ok) return setFormError(errorMessage(t, result.code));
     setHostDialog(null);
     toast("success", (existing ? t.hostUpdated : t.hostCreated) ?? "");
+    router.refresh();
+  }
+
+  /**
+   * Says a collector label is another name for a machine already declared.
+   *
+   * A Prometheus aggregates by scrape target and a scrape target is not a computer: one VPS is a
+   * `node-exporter:9100` for its own figures, a `cadvisor:8080` for its containers and a
+   * `127.0.0.1:9090` for the Prometheus itself. The machine gets declared with one of them and
+   * everything else arrives under another, which is why its page could show twenty containers
+   * stored and none of them hers. Somebody says which labels are the same machine; nothing is
+   * guessed here, because two machines make any guess wrong.
+   */
+  async function submitLabel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!labelDialog) return;
+    const data = new FormData(event.currentTarget);
+    setBusy(true);
+    setFormError("");
+    const result = await call(`/api/v1/infrastructure/hosts/${formValue(data, "hostId")}/labels`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ label: labelDialog.label })
+    });
+    setBusy(false);
+    if (!result.ok) return setFormError(errorMessage(t, result.code));
+    setLabelDialog(null);
+    toast("success", t.labelClaimed ?? "");
     router.refresh();
   }
 
@@ -1091,6 +1137,14 @@ export function InfrastructureWorkspace({
             setFormError("");
             setHostDialog({ host: null, hostname });
           }}
+          onClaim={
+            canOperate && hosts.length > 0
+              ? (label) => {
+                  setFormError("");
+                  setLabelDialog({ label });
+                }
+              : null
+          }
         />
       ))}
 
@@ -1302,6 +1356,47 @@ export function InfrastructureWorkspace({
                 </button>
                 <button type="submit" className="primary-button" disabled={busy}>
                   {t.save}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {labelDialog && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLabelDialog(null);
+          }}
+        >
+          <section className="crm-dialog" role="dialog" aria-modal="true" aria-label={t.claimTitle}>
+            <header>
+              <h2>{t.claimTitle}</h2>
+              <p className="muted">{t.claimAbout}</p>
+            </header>
+            <form className="dialog-form" onSubmit={eventHandler(submitLabel, onError)}>
+              <p className="wide">
+                <code className="discovery-label">{labelDialog.label}</code>
+              </p>
+              <SelectField
+                label={t.claimHost!}
+                name="hostId"
+                defaultValue={hosts[0]?.id ?? ""}
+                options={hosts.map((host) => ({ value: host.id, label: `${host.name} · ${host.hostname}` }))}
+              />
+              {formError && (
+                <p className="form-error wide" role="alert">
+                  {formError}
+                </p>
+              )}
+              <footer>
+                <button type="button" className="secondary-button" onClick={() => setLabelDialog(null)}>
+                  {t.cancel}
+                </button>
+                <button type="submit" className="primary-button" disabled={busy}>
+                  {t.claimSubmit}
                 </button>
               </footer>
             </form>

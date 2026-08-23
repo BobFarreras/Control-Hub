@@ -71,12 +71,13 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te els set increments entregats: C1, C2, C3, C4, C5, C6 i C7.** L'entrega 7.2 es a
+**La 7.3 te els vuit increments entregats: C1, C2, C3, C4, C5, C6, C7 i C8.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
 el resum i els filtres per a moltes maquines (C2), el descobriment que proposa el que encara no
 s'ha declarat (C3), el selector de serveis (C4), la pantalla que depen del recollidor triat (C5), la maquina d'un
-cop d'ull (C6) i la correccio de l'estat del que no s'ha declarat (C7).
+cop d'ull (C6), la correccio de l'estat del que no s'ha declarat (C7) i les etiquetes que
+lliguen una maquina amb tot el que els recollidors hi veuen (C8).
 
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i
@@ -391,6 +392,49 @@ Portes d'aquest increment: `pnpm typecheck` verd als 13 paquets, `pnpm lint` ver
 executat `pnpm test:scripts`, `pnpm build` ni `pnpm check:e2e`** en aquest increment, ni s'ha vist
 la pantalla renderitzada a cap navegador des d'aqui. Queda dit.
 
+**El C8 arregla el que la fitxa d'una maquina no podia dir.** La VPS deia «cap servei declarat en
+aquesta maquina» amb vint contenidors desats al costat, i no era cap descuit: **a les dades no hi
+havia res que els lligues**. El connector agrega `by (instance)`, i `instance` es l'objectiu de
+scrape que ho ha reportat, no l'ordinador —una VPS normal en te tres: `node-exporter:9100` per a
+la maquina, `cadvisor:8080` per als contenidors i `127.0.0.1:9090` per al Prometheus mateix. Es va
+declarar amb el primer i els contenidors arriben amb el segon.
+
+**Ara una maquina declara les etiquetes que son seves** (migracio `0042`, taula
+`infra_host_labels`, RLS `enable` i `force`, clau primaria `(tenant_id, label)`), i tot el que
+arriba amb qualsevol d'elles es d'ella. **Es declara i no s'endevina**, pel mateix motiu que un
+servei es declara: endevinar-ho seria fals el dia que hi ha dues VPS, i el Prometheus d'un client
+no el configurem nosaltres. Al panell del recollidor, una etiqueta sense declarar ofereix ara dues
+sortides —«declarar-la» i «es d'una maquina que ja tinc»— i la fitxa de la maquina ensenya **tot el
+que els recollidors hi veuen, declarat o no**, amb el que esta declarat marcat: declarar vol dir
+«vull alertes d'aixo» i no «vull veure-ho», i el producte en feia una sola pregunta.
+
+**El limit es dit i no amagat: nomes els contenidors es poden atribuir.** Son l'unica mena de
+lectura que porta l'etiqueta de qui la va veure. Una sonda es sobre una adreça i una copia sobre
+una feina; per a cap de les dues «quina maquina» no es una propietat del fet observat, i qui les
+vulgui penjades d'una maquina **les declara com a servei d'aquella maquina**.
+
+Aixo canvia una decisio del B2 que s'ha de dir: **l'inventari ja no llegeix nomes el que s'ha
+declarat**, sino tambe tot el que porta un prefix atribuible (`container:`, `probe:`, `backup:`) —
+el mateix conjunt que la ruta de descobriment ja llegia. El que segueix fora es el que cap maquina
+pot contenir: un `workflow:` es una automatitzacio i te la seva pantalla.
+
+**El descobriment ensenyava tot menys l'etiqueta que calia reclamar.** Llistava les etiquetes de
+les lectures `host:` i de les sondes amb `scrapeUp` —el que el Prometheus escaneja—, i el
+`cadvisor:8080` no es cap de les dues: viatja dins de cada contenidor, al camp `host` del registre.
+Aixi que la unica etiqueta que algu havia de reclamar era la unica que la pantalla no ensenyava
+mai, i el C8 quedava inabastable des de la interficie. Ara el descobriment tambe llegeix l'etiqueta
+on s'ha vist un contenidor, i una etiqueta ja reclamada surt com a maquina seva i no com a pendent
+de declarar —tant al descobriment com a la comprovacio guiada.
+
+Portes d'aquest increment: typecheck verd a `domain`, `application`, `persistence`, `database`,
+`api` i `web`; suites de `domain` (298), `application` (274), `i18n` (15), `api` (146) i `web`
+(154) passades; format verd als fitxers tocats. **Les onze proves d'integracio noves d'aquest
+increment no s'han vist passar**: les suites de PostgreSQL segueixen saltades (203) perque no hi ha
+`TEST_DATABASE_URL` en aquest entorn. La `0042` si que s'ha aplicat a la base de dades local. **No
+s'han executat `pnpm check`, `pnpm build` ni `pnpm check:e2e`**, ni s'ha vist la pantalla
+renderitzada des d'aqui. `pnpm lint` dona un error a `packages/persistence/src/usage-repository.ts`
+que **no es d'aquest increment**: es de la Fase 8, a la mateixa branca i d'una altra sessio.
+
 **`pnpm check:e2e`: 32 proves, 32 passades**, amb dos workers i base `_e2e` neta. **La porta, pero,
 la compta vermella**, i amb rao: dues proves d'altres modules —el fitxatge i les despeses— nomes
 han passat al reintent, totes dues amb «el control no s'ha hidratat mai» sota una maquina
@@ -449,7 +493,7 @@ que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
 `docs/development/phase-8-implementation-guide.md`. La revisio ha trobat tres ampliacions de model
 noves —fonts obligatories de pressupost, valoracio de correccions i snapshots mensuals— i ha creat
 `docs/specifications/phase-7b-actions-and-oauth.md` per OAuth, accions i el port IMAP. **A2 i A4
-han estat aprovats el 23 d'agost de 2026.** La `0042` pertany a les etiquetes d'hosts de fase 7.2;
+han estat aprovats el 23 d'agost de 2026.** La `0042` pertany a les etiquetes d'hosts de la fase 7.3 (C8);
 la primera migracio de Fase 8 es `0043_usage_costs.sql`. **U1 ja esta entregat** a
 `packages/domain/src/usage.ts`: unitats tipades,
 tarifes progressives i versionades, half-up amb `BigInt`, FX racional, prioritat

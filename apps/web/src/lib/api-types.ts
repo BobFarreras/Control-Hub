@@ -806,7 +806,24 @@ export type InfrastructureService = {
 };
 
 export type ObservedService = InfrastructureService & { reading: Reading };
-export type ObservedHost = InfrastructureHost & { reading: Reading; services: ObservedService[] };
+/**
+ * A machine as the inventory hands it over.
+ *
+ * `services` is what somebody declared on it -- what alert rules are about. `observed` is
+ * what the collectors have actually seen on one of its labels, declared or not, because
+ * declaring means "I want alerts about this" and not "I want to see this", and the machine's
+ * page answers the second question. What is in both appears in `observed` with
+ * `declared: true`.
+ *
+ * `labels` is the other names the machine answers to, beside its `hostname`: a Prometheus
+ * aggregates by scrape target, so one VPS reports under several.
+ */
+export type ObservedHost = InfrastructureHost & {
+  reading: Reading;
+  services: ObservedService[];
+  labels: string[];
+  observed: DiscoveredService[];
+};
 
 /** How many things are in each state. Counted by the API; a screen that re-counted could differ. */
 export type ObservedTally = { total: number; up: number; down: number; unknown: number };

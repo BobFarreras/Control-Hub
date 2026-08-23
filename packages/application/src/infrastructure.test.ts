@@ -143,8 +143,22 @@ class FakeRepository implements InfrastructureRepository {
     Promise.resolve({ ...alertEvent(alertId), acknowledgedAt: now, acknowledgedByMembershipId: membershipId });
   resolveAlert = (_context: TenantContext, alertId: string, at: Date) =>
     Promise.resolve({ ...alertEvent(alertId), status: "resolved" as const, resolvedAt: at });
-  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [] };
+  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [], labels: [] };
   readInventoryState = () => Promise.resolve(this.inventoryState);
+  addHostLabel = (_context: TenantContext, hostId: string, label: string) => {
+    if (this.inventoryState.labels.some((entry) => entry.label === label)) {
+      return Promise.reject(new InfrastructureServiceError("DUPLICATE_HOSTNAME"));
+    }
+    this.inventoryState = { ...this.inventoryState, labels: [...this.inventoryState.labels, { hostId, label }] };
+    return Promise.resolve();
+  };
+  removeHostLabel = (_context: TenantContext, hostId: string, label: string) => {
+    this.inventoryState = {
+      ...this.inventoryState,
+      labels: this.inventoryState.labels.filter((entry) => entry.hostId !== hostId || entry.label !== label)
+    };
+    return Promise.resolve();
+  };
   readEvaluationState = () => Promise.resolve(this.state);
   diagnosisState: ConnectorDiagnosisState = {
     instance: { id: instanceId, connectorType: "prometheus", baseUrl: "http://127.0.0.1:9090", lastAttempt: null },
@@ -735,7 +749,8 @@ describe("the inventory a dashboard reads", () => {
         seen("pull_host_metrics", "host:node-exporter:9100", 60, { cpuBusyRatio: 0.2 }),
         seen("pull_container_state", "container:n8n", 120, { memoryBytes: 512 })
       ],
-      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)]
+      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)],
+      labels: []
     };
   });
 
@@ -829,6 +844,101 @@ describe("the inventory a dashboard reads", () => {
     const asAdministrator = await service.readInventory(administrator, now);
     expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);
     await expect(service.readInventory(stranger, now)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  /**
+   * The defect C8 exists for: a machine declared with one scrape target, its containers arriving
+   * with another, and a page saying the machine runs nothing while twenty containers are stored.
+   */
+  it("shows nothing seen on a label the machine has not claimed", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "cadvisor:8080" })]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed).toEqual([]);
+  });
+
+  it("hangs what a claimed label saw under the machine that claimed it", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "cadvisor:8080" })],
+      labels: [{ hostId: "host-1", label: "cadvisor:8080" }]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.labels).toEqual(["cadvisor:8080"]);
+    expect(inventory.hosts[0]!.observed.map((item) => item.matchKey)).toEqual(["container:traefik"]);
+    expect(inventory.hosts[0]!.observed[0]!.declared).toBe(false);
+    expect(inventory.hosts[0]!.observed[0]!.reading.state).toBe("up");
+  });
+
+  /** Declaring is "I want alerts about this"; the machine's page shows it either way, marked. */
+  it("marks as declared what somebody already declared, and still shows it", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      records: [seen("pull_container_state", "container:n8n", 120, { host: "cadvisor:8080" })],
+      labels: [{ hostId: "host-1", label: "cadvisor:8080" }]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed.map((item) => [item.matchKey, item.declared])).toEqual([
+      ["container:n8n", true]
+    ]);
+  });
+
+  it("takes the machine's own hostname as a label, without anybody declaring it twice", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "node-exporter:9100" })]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed.map((item) => item.matchKey)).toEqual(["container:traefik"]);
+  });
+});
+
+/**
+ * Claiming and withdrawing a label.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C8 -- Una maquina, diverses
+ * etiquetes".
+ */
+describe("the other labels a machine answers to", () => {
+  it("needs the permission that changes the inventory, not the one that reads it", async () => {
+    await expect(service.addHostLabel(administrator, "host-1", "cadvisor:8080")).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.removeHostLabel(administrator, "host-1", "cadvisor:8080")).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+    await expect(service.addHostLabel(stranger, "host-1", "cadvisor:8080")).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  /** The same rule that guards `hostname`: a label that cannot be an `external_id` is refused. */
+  it("checks a label exactly as it checks a hostname", async () => {
+    await expect(service.addHostLabel(owner, "host-1", "  ")).rejects.toEqual(refused("INVALID_HOSTNAME"));
+    await expect(service.addHostLabel(owner, "host-1", "a".repeat(200))).rejects.toEqual(refused("INVALID_HOSTNAME"));
+  });
+
+  it("stores the label trimmed, so a stray space cannot make a second one of the same thing", async () => {
+    await service.addHostLabel(owner, "host-1", "  cadvisor:8080  ");
+
+    expect(repository.inventoryState.labels).toEqual([{ hostId: "host-1", label: "cadvisor:8080" }]);
+  });
+
+  it("withdraws one and leaves the rest", async () => {
+    await service.addHostLabel(owner, "host-1", "cadvisor:8080");
+    await service.addHostLabel(owner, "host-1", "127.0.0.1:9090");
+    await service.removeHostLabel(owner, "host-1", "cadvisor:8080");
+
+    expect(repository.inventoryState.labels.map((entry) => entry.label)).toEqual(["127.0.0.1:9090"]);
   });
 });
 

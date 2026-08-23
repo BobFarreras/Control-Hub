@@ -203,7 +203,15 @@ export function observedHostResponse(host: ObservedHost) {
   return {
     ...hostResponse(host),
     reading: readingResponse(`host:${host.hostname}`, host.reading),
-    services: host.services.map(observedServiceResponse)
+    services: host.services.map(observedServiceResponse),
+    labels: host.labels,
+    // What the collectors saw on one of this machine's labels, declared or not. The same
+    // allow-list as every other reading: nothing reaches a screen by a collector having
+    // started to publish it.
+    observed: host.observed.map((service) => ({
+      ...service,
+      reading: readingResponse(service.matchKey, service.reading)
+    }))
   };
 }
 
@@ -604,6 +612,91 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
       const host = await infrastructure.updateHost(context, hostId, request.body);
       await writeAudit(database, context, request, { ...event, outcome: "success" });
       return { host: hostResponse(host) };
+    }
+  );
+
+  /**
+   * Claiming another label for a machine, which is C8.
+   *
+   * A Prometheus aggregates by `instance`, and `instance` is the scrape target that reported a
+   * figure rather than the computer it came from: one VPS is a `node-exporter:9100`, a
+   * `cadvisor:8080` and a `127.0.0.1:9090`. The machine says which of them are itself, and
+   * everything seen on any of them is then its own. Declared and not guessed, for the same reason
+   * a service is declared -- the hub does not invent a correspondence the reading does not carry.
+   *
+   * `infrastructure:operate` and audited, because it changes what an alert is about: a label
+   * claimed by the wrong machine sends the wrong person out of bed.
+   */
+  app.post<{ Params: { hostId: string }; Body: { label: string } }>(
+    "/api/v1/infrastructure/hosts/:hostId/labels",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Another label this machine answers to",
+        params: hostParams,
+        description:
+          "Adds a collector label to a machine, beside its `hostname`. Everything read under that label is then this machine's -- which is how the containers a cAdvisor reports reach the machine a node_exporter reports. A label belongs to one machine and no more: one already taken, by this table or by another machine's `hostname`, answers `DUPLICATE_HOSTNAME`, because two machines claiming one label would turn a single outage into two alerts about the same computer.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label"],
+          properties: { label: hostFields.hostname }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { hostId } = request.params;
+      const event = {
+        action: "infrastructure.host_label_added",
+        targetType: "infra_host",
+        targetId: hostId,
+        metadata: { label: request.body.label }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.addHostLabel(context, hostId, request.body.label);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return reply.code(204).send();
+    }
+  );
+
+  /**
+   * Withdrawing a label, which loses nothing: the readings it matched stay where they are, and
+   * what it was joining to this machine simply stops being joined to it.
+   *
+   * The label travels in the path, so it is URL-encoded by whoever calls -- a collector label
+   * holds a colon and often a slash. A label this machine does not answer to is not an error: the
+   * machine does not answer to it afterwards either way, which is what was asked for.
+   */
+  app.delete<{ Params: { hostId: string; label: string } }>(
+    "/api/v1/infrastructure/hosts/:hostId/labels/:label",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Withdraw a label from a machine",
+        description:
+          "The machine stops answering to that label. Nothing stored is lost: the readings it matched stay where they are and stop being attributed here. Withdrawing a label the machine does not have succeeds -- the state asked for is the state afterwards. An unknown machine still answers `HOST_NOT_FOUND`.",
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["hostId", "label"],
+          properties: { hostId: { type: "string", format: "uuid" }, label: { type: "string", minLength: 1 } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { hostId, label } = request.params;
+      const event = {
+        action: "infrastructure.host_label_removed",
+        targetType: "infra_host",
+        targetId: hostId,
+        metadata: { label }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.removeHostLabel(context, hostId, label);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return reply.code(204).send();
     }
   );
 

@@ -367,6 +367,111 @@ resolt al teclat, al lector de pantalla i a la cerca dins la pagina.
 ara mateix al costat, no amb una clau nua. I quan una maquina no te cap servei declarat, la frase
 diu on mirar en comptes de deixar la pantalla morta.
 
+## C8 — Una maquina, diverses etiquetes
+
+### El problema
+
+La fitxa de la VPS deia «cap servei declarat en aquesta maquina» mentre el recollidor en tenia
+vint contenidors desats. No era un descuit: **a les dades no hi ha res que els lligui a la
+maquina.**
+
+El connector agrega les xifres de maquina `by (instance)` i les de contenidor
+`by (name, instance, job)`, i **`instance` es l'objectiu de scrape que ho ha reportat, no la
+maquina fisica**. A una VPS normal aixo son tres objectius diferents del mateix ordinador:
+
+| Etiqueta | Qui es | Que en surt |
+|---|---|---|
+| `node-exporter:9100` | l'exportador de la maquina | CPU, memoria, disc, carrega |
+| `cadvisor:8080` | l'exportador de contenidors | **els vint contenidors** |
+| `127.0.0.1:9090` | el Prometheus mateix | la seva propia salut |
+
+Es va declarar la maquina amb la primera, i els contenidors arriben amb la segona. Endevinar que
+son la mateixa cosa seria fals el dia que hi hagi dues VPS, i callar-ho es el que passava.
+
+### La decisio
+
+**Una maquina declara les etiquetes que son seves.** La VPS ia diu que a mes de
+`node-exporter:9100` tambe es `cadvisor:8080` i `127.0.0.1:9090`, i llavors tot el que arriba amb
+qualsevol de les tres es d'ella.
+
+Es declara i no s'endevina, pel mateix motiu que un servei es declara: **el hub no inventa una
+correspondencia que la dada no conte.** I es al hub i no al Prometheus perque el Prometheus d'un
+client no el configurem nosaltres: una solucio que exigeix un `relabel_configs` escrit d'una
+manera concreta no es una solucio del producte.
+
+L'etiqueta principal segueix sent `hostname`. Aquestes son **addicionals**, i una etiqueta es
+d'una maquina com a maxim: dues maquines reclamant la mateixa farien que una sola caiguda arribes
+com dues alertes de dues coses que son la mateixa.
+
+### Que se n'ensenya
+
+**La fitxa d'una maquina ensenya tot el que els recollidors hi veuen, declarat o no**, amb l'estat
+de cada cosa. Declarar passa a voler dir nomes **«vull alertes d'aixo»**, no «vull veure-ho»: son
+dues preguntes diferents i el producte en feia una de sola.
+
+El que esta declarat surt marcat com a tal, perque es el que entra a les regles d'alerta i la
+diferencia importa quan algu es pregunta per que d'una cosa caiguda no n'ha arribat res.
+
+### El limit, dit i no amagat
+
+**Nomes els contenidors es poden atribuir.** Es l'unica mena de lectura que porta l'etiqueta de
+qui la va veure (`data.host`). I no es una mancança de la implementacio, es el que les altres son:
+
+- una **sonda** de `https://n8n.example.tld/healthz` es sobre una adreça, no sobre un ordinador;
+  la maquina des d'on es mira no es una propietat del fet observat;
+- una **copia de seguretat** es sobre una feina (`backup_job`), i la maquina on va correr tampoc
+  no hi es.
+
+Qui vulgui una sonda o una copia penjades d'una maquina **les declara com a servei d'aquella
+maquina**, que es exactament el que declarar serveix per dir, i el selector de serveis ja ho fa.
+La fitxa les ensenya llavors com a declarades.
+
+### Model de dades
+
+Una taula, `infra_host_labels`: `tenant_id`, `host_id`, `label`, `created_at`. Clau primaria
+`(tenant_id, label)` —que es el que fa que una etiqueta sigui d'una maquina i prou— i clau forana
+composta cap a `(tenant_id, id)` d'`infra_hosts` amb `on delete cascade`. RLS `enable` i `force`,
+com la resta.
+
+**Una etiqueta que ja es el `hostname` d'una maquina no s'admet**, i aixo ho comprova el servei
+dins la mateixa transaccio: es una unicitat entre dues taules i cap restriccio de PostgreSQL la
+pot expressar. Es diu aqui perque una comprovacio que viu al servei i no a l'esquema s'ha de poder
+trobar escrita en algun lloc.
+
+### API
+
+```text
+POST   /api/v1/infrastructure/hosts/:hostId/labels
+DELETE /api/v1/infrastructure/hosts/:hostId/labels/:label
+```
+
+Dues, no tres: **no hi ha cap ruta per llegir-les**. L'inventari ja porta les etiquetes de cada
+maquina i el que s'hi ha vist sense declarar, i una segona ruta que respongues el mateix seria
+una segona ocasio de respondre-ho diferent. Es la mateixa rao per la qual la fitxa d'una maquina
+es una vista de l'inventari i no una consulta propia.
+
+Les dues escriuen, i per tant demanen `infrastructure:operate` i s'auditen: una etiqueta posada
+a la maquina equivocada canvia de qui parlen les alertes.
+
+**Retirar una etiqueta que la maquina no te no es un error.** L'estat que es demanava es l'estat
+que hi ha despres, i dues persones retirant-la alhora han de poder acabar totes dues be. Una
+maquina que no existeix si que ho es.
+
+### Pantalla
+
+**El descobriment ha d'ensenyar l'etiqueta que cal reclamar, i abans no ho feia.** Llistava nomes
+les etiquetes de lectures `host:` i de sondes amb `scrapeUp` —les que el Prometheus escaneja— i
+el `cadvisor:8080` no surt a cap de les dues: viatja dins de cada contenidor, al camp `host` del
+registre. Aixi que **la unica etiqueta que algu havia de reclamar era la unica que la pantalla no
+ensenyava mai**. Ara el descobriment tambe llegeix l'etiqueta on s'ha vist un contenidor, i una
+etiqueta ja reclamada surt com a maquina seva, no com a pendent de declarar.
+
+Al panell del recollidor, una etiqueta de maquina sense declarar ja no ofereix nomes «Declarar-la»:
+ofereix tambe **«es una etiqueta d'una maquina que ja tinc»**, amb la llista de maquines. Es el
+lloc on algu te la pregunta al davant.
+
+A la fitxa de la maquina, el que s'hi ha vist i ningu no ha declarat surt amb la resta, marcat.
+
 ## Model de dades
 
 **Cap taula nova.** Els increments llegeixen el que ja hi ha: registres de connector, maquines,
@@ -448,6 +553,13 @@ tenants no es toca.
     fallada en si que en dibuixa un.
 30. Un grup amb mes de vuit coses ocupa la fila sencera i les escampa; cap banda de la pantalla
     en toca una altra.
+31. Una maquina pot declarar etiquetes addicionals, i el que arriba amb qualsevol d'elles es seu.
+32. Una etiqueta es d'una maquina com a maxim, i no pot ser el `hostname` d'una altra.
+33. La fitxa d'una maquina ensenya el que els recollidors hi veuen encara que ningu no ho hagi
+    declarat, i diu quines coses estan declarades.
+34. L'esquema fa que esborrar una maquina s'endugui les seves etiquetes (`on delete cascade`).
+    Avui no hi ha cap manera d'esborrar una maquina, de manera que el criteri es sobre
+    l'esquema i no sobre una pantalla.
 
 ## Pla de proves
 
@@ -481,3 +593,4 @@ commit. Cada un es entregable sol.
 | C5 | La pantalla per recollidor: el selector, els KPI que segueixen la seleccio, els panells buits que deixen d'ocupar lloc, els filtres amb el component generalitzat i l'E2E |
 | C6 | La maquina d'un cop d'ull: l'estat de tot el que el recollidor llegeix, la vista en dues columnes i la comanda del tunel que no publica el port |
 | C7 | La correccio de l'estat de les coses sense declarar, la franja de xifres, els grups plegables i tots els recollidors alhora |
+| C8 | Les etiquetes d'una maquina: la migracio, la declaracio, i la fitxa que ensenya el que el recollidor hi veu sense declarar |

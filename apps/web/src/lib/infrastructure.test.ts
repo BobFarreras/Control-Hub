@@ -297,7 +297,9 @@ describe("showing part of a fleet without changing any of it", () => {
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
     reading: reading(state, instanceId),
-    services
+    services,
+    labels: [],
+    observed: []
   });
 
   const nothing = { environments: [], states: [], instanceIds: [] };
@@ -401,7 +403,9 @@ describe("what one collector accounts for", () => {
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
     reading: reading("up", instanceId),
-    services
+    services,
+    labels: [],
+    observed: []
   });
 
   const everything = {
