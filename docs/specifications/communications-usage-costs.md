@@ -35,6 +35,11 @@ despesa en temps real.
 La 8.1 utilitza les operacions de lectura i el magatzem de registres de connectors ja entregats.
 No depen de la Fase 7B.
 
+OpenAI aporta consum diari oficial per projecte i model. El seu report de costos agrega per
+projecte i partida, no per model, i per tant no es reconcilia artificialment amb cada event de
+consum: el connector no incorpora tarifes ni reparteix imports. La valoracio utilitza tarifes
+versionades o una importacio manual reconciliada.
+
 ### 8.2 — Correu entrant
 
 - Salut i lectura incremental de busties per IMAP o API oficial.

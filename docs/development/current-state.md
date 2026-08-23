@@ -550,8 +550,15 @@ versionades; els pressupostos propaguen `stale` i `partial` abans dels llindars 
 en transicions. Els snapshots mensuals conserven quantitats i costos agregats i rebutgen evidencia
 incompleta. La superficie `/api/v1/usage/*` esta sota `usage_costs`, documentada a OpenAPI, auditada
 en mutacions i serialitza imports com enters decimals; `usage:read` elimina tot `reportedCost`.
-Les migracions i 9 casos d'integracio han passat sobre PostgreSQL 17. El seguent increment es U5:
-connectors OpenAI i Anthropic, un commit independent per proveidor.
+Les migracions i 9 casos d'integracio han passat sobre PostgreSQL 17.
+
+**U5, primer proveidor entregat: OpenAI.** El connector build-time llegeix l'API oficial de consum
+de l'organitzacio amb clau administrativa, pagina dins de cada passada i projecta nomes quantitats
+diaries per projecte, model, batch i tier. Rellegir una finestra solapada es idempotent pels
+identificadors deterministes. No desa prompts, respostes, payload cru, tarifes ni costos agregats
+que no es poden reconciliar amb el grup de model. Te fixture anonimitzada de l'API 2020-10-01 i
+proves de paginacio, camps absents, 429, 5xx, health i redaccio del secret. El seguent commit de la
+U5 es Anthropic.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

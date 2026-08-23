@@ -144,6 +144,12 @@ Cada connector entra en un commit independent i inclou:
 Si una API no ofereix detall reconciliable, el connector declara la limitacio i s'utilitza import
 manual. No es fa scraping de consoles web.
 
+OpenAI usa `GET /v1/organization/usage/completions`, agrupa per projecte, model, batch i tier, i
+rellegeix una finestra UTC solapada per absorbir correccions. El cursor de pagina nomes viu dins
+de la passada: no es un watermark estable. El cost de `/organization/costs` no es pot casar amb
+aquells grups per model, de manera que no s'adjunta ni es reparteix; entra per tarifa versionada o
+import manual.
+
 ### U6 — UI de consum i costos
 
 Rutes proposades:
