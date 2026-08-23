@@ -284,6 +284,7 @@ publicar tarifes. L'API no retorna camps financers a qui nomes te `usage:read`.
 ```text
 GET  /api/v1/usage/overview
 GET  /api/v1/usage/events
+GET  /api/v1/usage/sources
 GET  /api/v1/usage/costs
 GET  /api/v1/usage/attribution-gaps
 GET  /api/v1/usage/rates
@@ -303,6 +304,19 @@ GET  /api/v1/tickets/:ticketId/mail-deliveries
 
 Els llistats son paginats server-side. Els exports financers exigeixen `financials:read`, permis
 d'export i auditoria. Els errors segueixen `errors-and-api.md`.
+
+## Interficie de consum i costos
+
+La Fase 8.1 te una entrada propia a la sidebar, **Consum i costos**, amb tres subseccions:
+
+- Resum: volum observat, cobertura de valoracio i frescor real de les fonts.
+- Costos: valoracions versionades, estat i imports, nomes amb `financials:read`.
+- Pressupostos: limits informatius i avaluacio explicita; les accions exigeixen
+  `budgets:manage`.
+
+No forma part d'Eines i despeses recurrents. Aquell modul representa obligacions fixes; el consum
+es evidencia variable que pot arribar tard, quedar parcial o requerir revaloracio. La pantalla no
+converteix una absencia de dades en zero ni una font sense passada completa en estat saludable.
 
 ## Retencio proposada
 

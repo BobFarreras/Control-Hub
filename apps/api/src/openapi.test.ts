@@ -97,6 +97,7 @@ const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const)
 const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
 const withUsage = { ...base, featureFlags: new Set(["usage_costs"] as const) };
 const documentedUsage = [
+  ["get", "/api/v1/usage/sources"],
   ["get", "/api/v1/usage/events"],
   ["get", "/api/v1/usage/costs"],
   ["get", "/api/v1/usage/rates"],

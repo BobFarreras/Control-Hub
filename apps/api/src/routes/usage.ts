@@ -23,6 +23,16 @@ export function usageCostResponse(cost: UsageCostRecord) {
 }
 
 export function registerUsageRoutes({ app, database, auth, usage }: UsageContext) {
+  app.get(
+    "/api/v1/usage/sources",
+    { schema: { tags: ["usage"], summary: "List usage source freshness" } },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "usage:read");
+      return { sources: await usage.listSources(context) };
+    }
+  );
+
   app.get<{ Querystring: { eventId?: string; from?: string; to?: string; limit?: number } }>(
     "/api/v1/usage/events",
     {

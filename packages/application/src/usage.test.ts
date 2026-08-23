@@ -7,6 +7,7 @@ const repository = (): UsageRepository => ({
   completeSource: vi.fn(),
   ingestEvent: vi.fn(),
   listEvents: vi.fn().mockResolvedValue([]),
+  listSources: vi.fn().mockResolvedValue([]),
   listCosts: vi.fn().mockResolvedValue([]),
   createRate: vi.fn(),
   listRates: vi.fn(),
@@ -77,6 +78,7 @@ describe("UsageService permissions", () => {
     const port = repository();
     const service = new UsageService(port);
     await expect(service.listEvents(context(["usage:read"]), { eventId: "known-event" })).resolves.toEqual([]);
+    await expect(service.listSources(context(["usage:read"]))).resolves.toEqual([]);
     expect(() => service.listCosts(context(["usage:read"]), { eventId: "known-event" })).toThrow(
       expect.objectContaining({ code: "FORBIDDEN" })
     );

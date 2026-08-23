@@ -136,6 +136,7 @@ export interface UsageRepository {
   completeSource(context: TenantContext, sourceId: string, completedAt: Date): Promise<void>;
   ingestEvent(context: TenantContext, input: UsageEventInput): Promise<{ record: UsageEventRecord; inserted: boolean }>;
   listEvents(context: TenantContext, query: UsageListQuery): Promise<UsageEventRecord[]>;
+  listSources(context: TenantContext): Promise<UsageSourceRecord[]>;
   listCosts(context: TenantContext, query: UsageListQuery): Promise<UsageCostRecord[]>;
   createRate(context: TenantContext, input: UsageRateInput): Promise<{ id: string }>;
   listRates(context: TenantContext): Promise<UsageRateRecord[]>;
@@ -188,6 +189,10 @@ export class UsageService {
   listEvents(context: TenantContext, query: UsageListQuery = {}) {
     this.require(context, "usage:read");
     return this.repository.listEvents(context, query);
+  }
+  listSources(context: TenantContext) {
+    this.require(context, "usage:read");
+    return this.repository.listSources(context);
   }
   listCosts(context: TenantContext, query: UsageListQuery = {}) {
     this.require(context, "financials:read");

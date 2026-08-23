@@ -136,6 +136,13 @@ suite("PostgresUsageRepository", () => {
     const completedAt = new Date("2026-08-23T14:00:00Z");
     await repository.completeSource(context(tenantA), source.id, completedAt);
     await repository.completeSource(context(tenantA), source.id, new Date("2026-08-23T13:00:00Z"));
+    expect(await repository.listSources(context(tenantA))).toContainEqual({
+      id: source.id,
+      instanceId: connectorA,
+      operation: "pull_usage",
+      lastCompleteAt: completedAt
+    });
+    expect(await repository.listSources(context(tenantB))).toEqual([]);
     const result = await repository.ingestEvent(context(tenantA), {
       ...event(source.id),
       externalId: "reported-cost",

@@ -13,6 +13,7 @@ import type {
   UsageRateInput,
   UsageRateRecord,
   UsageRepository,
+  UsageSourceRecord,
   UsageValuationEvidence,
   UsageValuationInput
 } from "@control-hub/application";
@@ -122,6 +123,19 @@ export class PostgresUsageRepository implements UsageRepository {
         group by e.id order by e.occurred_at desc, e.id limit ${limit}`;
       return rows.map(eventRecord);
     });
+  }
+
+  listSources(context: TenantContext) {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      async (tx) =>
+        await tx<UsageSourceRecord[]>`
+        select id, connector_instance_id as "instanceId", operation, last_complete_at as "lastCompleteAt"
+        from usage_sources
+        where tenant_id = ${context.tenantId} and kind = 'connector'
+        order by last_complete_at desc nulls last, id`
+    );
   }
 
   listCosts(context: TenantContext, query: UsageListQuery) {

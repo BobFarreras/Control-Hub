@@ -157,6 +157,8 @@ report de cost tampoc no es un-a-un; no s'inventa cap repartiment.
 
 ### U6 — UI de consum i costos
 
+**Estat:** implementada el 23 d'agost de 2026 sota la flag `usage_costs`.
+
 Rutes proposades:
 
 - `/{locale}/usage`: volum, salut i cobertura.
@@ -167,6 +169,17 @@ Reutilitzar `PageTopbar`, `SmartDataTable`, tokens semantics i `SelectControl`/`
 Incloure light, dark, teclat, mobile, reduced motion i `ca`/`es`/`en`.
 
 Els estats partial i stale han de dir quina font o dada falta; no poden ser un color sense text.
+
+La navegacio queda com un grup propi, **Consum i costos**, i no dins d'Eines i despeses
+recurrents: les subscripcions son compromisos contractuals fixos, mentre que aquesta superficie
+presenta evidencia variable, cobertura de valoracio i pressupostos. `usage:read` pot veure volum i
+frescor de fonts sense cap import; Costos i Pressupostos nomes carreguen dades amb
+`financials:read`, i les accions de pressupost nomes apareixen amb `budgets:manage`.
+
+La UI no deriva salut de l'existencia d'events. `GET /api/v1/usage/sources` exposa, tenant-scoped,
+l'ultima passada completa de cada font de connector. Les valoracions incompletes i les fonts
+obsoletes mostren el motiu textual i el recompte afectat. Les taules conserven paginacio i
+preferencies per usuari mitjancant `SmartDataTable`.
 
 ### M1 — IMAP entrant
 

@@ -209,6 +209,7 @@ describe("feature flags", () => {
     ["POST", "/api/v1/rates/billing"]
   ] as const;
   const usageRoutes = [
+    ["GET", "/api/v1/usage/sources"],
     ["GET", "/api/v1/usage/events"],
     ["GET", "/api/v1/usage/costs"],
     ["GET", "/api/v1/usage/rates"],

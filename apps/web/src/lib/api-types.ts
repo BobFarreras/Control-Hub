@@ -569,6 +569,63 @@ export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
 export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
 export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };
 
+export type UsageQuantity = { unit: string; qualifier?: string; quantity: string };
+export type UsageEvent = {
+  id: string;
+  sourceId: string;
+  externalId: string;
+  occurredAt: string;
+  operation: string;
+  sku: string;
+  status: "observed" | "estimated" | "void";
+  quantities: UsageQuantity[];
+  createdAt: string;
+  customerId?: string;
+  productId?: string;
+  customerServiceId?: string;
+  projectId?: string;
+};
+export type UsageCost = {
+  id: string;
+  eventId: string | null;
+  adjustmentId: string | null;
+  state: "priced" | "unpriced" | "partial";
+  originalCostMinor: string | null;
+  originalCurrency: string | null;
+  reportCostMinor: string | null;
+  reportCurrency: string;
+};
+export type UsageBudget = {
+  id: string;
+  name: string;
+  amountMinor: string;
+  currency: string;
+  period: "monthly" | "quarterly" | "annual";
+  warningBasisPoints: number;
+  enabled: boolean;
+  sources: { sourceId: string; required: boolean; maxAgeMinutes: number }[];
+  customerId?: string;
+  productId?: string;
+  customerServiceId?: string;
+  projectId?: string;
+};
+export type UsageBudgetEvaluation = {
+  budgetId: string;
+  amountMinor: string;
+  currency: string;
+  periodStart: string;
+  spentMinor: string;
+  hasMissingValuation: boolean;
+  state: "healthy" | "warning" | "exceeded" | "partial" | "stale";
+  observedThrough: string;
+  sources: { required: boolean; lastCompleteAt: string | null; maxAgeMinutes: number }[];
+};
+export type UsageEventsResponse = { events: UsageEvent[] };
+export type UsageSource = { id: string; instanceId: string; operation: string; lastCompleteAt: string | null };
+export type UsageSourcesResponse = { sources: UsageSource[] };
+export type UsageCostsResponse = { costs: UsageCost[] };
+export type UsageBudgetsResponse = { budgets: UsageBudget[] };
+
 /**
  * The connector platform, as the integrations screen sees it.
  *

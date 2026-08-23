@@ -574,8 +574,18 @@ cache write d'1h, cache read, output i web search son events separats amb SKU es
 aquesta diferencia es el que permet tarifes reproduibles. Com OpenAI, pagina dins de la passada,
 rellegeix una finestra solapada, no desa contingut ni payload cru i no reparteix un cost agregat
 entre events que el proveidor no permet reconciliar. OpenAI i Anthropic tenen commits independents,
-fixtures anonimitzades versionades, health checks i contract tests. El seguent increment es U6: UI
-de consum, costos i pressupostos.
+fixtures anonimitzades versionades, health checks i contract tests.
+
+**U6 ja esta implementada.** La sidebar incorpora el grup propi `Consum i costos`, separat de les
+despeses recurrents, amb Resum (`/{locale}/usage`), Costos (`/usage/costs`) i Pressupostos
+(`/usage/budgets`) sota la flag `usage_costs`. Resum mostra volum, cobertura i l'ultima passada
+completa de fonts reals; no inventa salut a partir de l'existencia d'events. Technical nomes rep
+volum i frescor amb `usage:read`; imports i pressupostos nomes es consulten amb `financials:read`,
+i les accions nomes apareixen amb `budgets:manage`. Els estats parcials i obsolets expliquen la
+dada o font que falta en text. U6 afegeix `GET /api/v1/usage/sources`, tenant-scoped, i proves de
+permisos, precisio `BigInt`, cobertura, OpenAPI i PostgreSQL. L'E2E autenticat sobre la pila
+3002/4002 comprova login amb MFA, les tres rutes i el contracte real de fonts. El punt de
+continuacio de la Fase 8 es M1: IMAP entrant incremental.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

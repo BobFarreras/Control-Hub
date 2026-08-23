@@ -6,6 +6,15 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 
 ## Sense publicar
 
+### Consum i costos variables (Fase 8.1)
+
+- Nova seccio **Consum i costos** amb Resum, Costos i Pressupostos, separada de les despeses
+  recurrents perque mostra consum variable, cobertura de valoracio i frescor de fonts.
+- Els perfils tecnics poden veure volum i salut sense imports; els costos i pressupostos respecten
+  els permisos financers, i les accions de pressupost nomes apareixen quan es poden executar.
+- Els estats parcials i obsolets expliquen quina dada o font falta en comptes de dependre nomes
+  d'un color.
+
 ### Vercel, llegit des del Control Hub (Fase 7.4)
 
 - **Els projectes de Vercel i els desplegaments de produccio que han fallat** es llegeixen cada
