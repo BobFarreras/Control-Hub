@@ -94,6 +94,11 @@ boto pel seu `aria-label`. Dues coses a vigilar:
   metadades i el desplegable d'estat es diuen tots dos "Estat"; cal buscar dins de
   `aside.ticket-meta` i no a tota la pagina.
 
+- **Trobar-lo no es prou: tampoc s'hi pot fer `selectOption`.** El localitzador arriba al boto, i
+  `selectOption` hi respon `Element is not a <select> element`. Fes servir l'ajudant
+  `selectFieldOption` de `tests/e2e/support/fixture.ts`, que reconeix les dues formes: si es un
+  `<select>` natiu el fa servir, i si no, obre el boto i clica l'opcio pel seu text.
+
 Ho va destapar la migracio de tots els `<select>` natius a `SelectControl`, que va canviar els
 components sense tocar cap prova: `pnpm check` passava sencer i la suite E2E queia en dos tests
 de suport. Es l'unica porta que ho veu.
@@ -553,6 +558,59 @@ docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc
 **La regla.** Quan una migracio nova nomes canvia permisos, afegir-la al repositori no la fa
 efectiva enlloc. Despres d'escriure-la, migra les tres bases o assumeix que la de desenvolupament
 et mentira a la primera prova manual.
+### Una maquina declarada diu «no respon» i no en dira mai res mes
+
+**Simptoma.** Una maquina acabada de declarar surt amb «No respon / Cap lectura» i no canvia mai,
+mentre el recollidor passa cada dos minuts i les altres maquines si que ensenyen xifres.
+
+**Causa.** El que es va declarar no es una maquina. Les xifres d'una maquina venen de
+`pull_host_metrics`, que desa un registre `host:<etiqueta>`; si l'etiqueta declarada no es la d'un
+`node_exporter`, no hi haura mai cap registre que hi casi. El cas real va ser una URL sondejada amb
+blackbox (`https://.../storage/v1/version`) declarada com a maquina des del panell de descobriment.
+
+**Com reconeixer-ho.** Mira si el recollidor te cap lectura de maquina amb aquella etiqueta:
+
+```bash
+docker exec control-hub-postgres-1 psql "$DATABASE_URL" -c "select external_id from connector_records where external_id like 'host:%'"
+```
+
+Si l'etiqueta declarada no hi es, la fitxa no s'encendra per molt que s'esperi.
+
+**Solucio.** Allo no era una maquina, era un **servei**: declara'l al selector de serveis de la
+maquina que el serveix, amb la clau sencera (`probe:https://...`). La fitxa sobrera **no es pot
+esborrar des del producte** —no hi ha ruta per fer-ho, a proposit— aixi que de moment cal treure la
+fila d'`infra_hosts` a ma.
+
+**La regla.** Una pantalla que ofereix per declarar coses que despres no poden encendre's es pitjor
+que una que no ofereix res: fabrica fitxes mortes que despres ningu pot retirar. Si una llista
+proposa, ha de proposar nomes el que el magatzem pot arribar a casar.
+
+### Una variable del `.env` no te el valor que hi has escrit
+
+**Simptoma.** Cada passada d'un connector mor amb `DESTINATION_NOT_ALLOWLISTED` contra una adreca
+que es a `CONNECTOR_INTERNAL_ALLOWLIST`. La linia hi es, escrita be, i el reinici no canvia res.
+
+**Causa.** La variable estava escrita **dues vegades** al `.env`, en linies diferents. El
+`--env-file` de Node es queda l'ultima aparicio i descarta les anteriors sense dir-ho, aixi que el
+valor viu era el de la segona linia i el que algu llegia al fitxer era el de la primera. Cap avis,
+cap error: nomes una variable que no diu el que sembla.
+
+**Com reconeixer-ho.** Pregunta-ho al mateix parser que ho llegeix, no al fitxer:
+
+```bash
+node --env-file=.env -e "console.log(process.env.CONNECTOR_INTERNAL_ALLOWLIST)"
+```
+
+Si el que surt no es tot el que hi ha escrit, la clau esta duplicada. `grep -n` per la clau ho
+confirma en una linia.
+
+**Solucio.** Una sola linia amb tots els origens separats per comes. L'allotja tambe la seccio 7
+de `docs/runbooks/connect-a-vps.md`, que es on s'hi afegeixen maquines noves.
+
+**La regla.** Un valor d'entorn no es comprova mirant el fitxer: es comprova preguntant-l'hi al
+proces. I **la llista es llegeix un sol cop en arrencar el worker**, aixi que afegir-hi un origen
+sense reiniciar tampoc no fa res.
+
 ### Un connector diu «mai comprovat, mai executat» mentre el worker el consulta cada cinc minuts
 
 **Simptoma.** La integracio surt `Activa` i alhora `Sense comprovar / Mai`. No hi ha cap fila a

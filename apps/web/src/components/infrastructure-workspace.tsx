@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
 import { MetricTile } from "@/components/metric-tile";
 import { StatusPill } from "@/components/status-pill";
@@ -23,8 +23,10 @@ import { useToast } from "@/components/toast";
 import type {
   AlertSeverity,
   ConnectorDiscoveryResponse,
+  ConnectorServicesResponse,
   CustomerOption,
   DiscoveredInstance,
+  DiscoveredService,
   HostEnvironment,
   InfrastructureAlert,
   InfrastructureAlertRule,
@@ -39,6 +41,7 @@ import type {
   ServiceExpectedState,
   ServiceKind
 } from "@/lib/api-types";
+import { ask } from "@/lib/ask";
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
 import {
@@ -47,8 +50,11 @@ import {
   alertStateTone,
   filterInventory,
   observedStateTone,
-  readingSources,
+  oldestAge,
+  readingFigures,
   severityTone,
+  sliceByCollector,
+  tallyReadings,
   type Figure,
   type InventoryFilter,
   type ReadingAge
@@ -95,7 +101,7 @@ export type HostRow = Omit<ObservedHost, "services"> & {
 const severities: AlertSeverity[] = ["critical", "high", "normal", "low"];
 const environments: HostEnvironment[] = ["production", "staging", "development"];
 const observedStates: ObservedState[] = ["up", "down", "unknown"];
-const serviceKinds: ServiceKind[] = ["container", "http", "database", "automation"];
+const serviceKinds: ServiceKind[] = ["container", "http", "database", "automation", "backup"];
 const expectedStates: ServiceExpectedState[] = ["up", "stopped", "ignored"];
 
 const jsonHeaders = { "content-type": "application/json" };
@@ -107,15 +113,6 @@ async function call(path: string, init: RequestInit): Promise<Result> {
   if (response.ok) return { ok: true };
   const payload: unknown = await response.json().catch(() => null);
   return { ok: false, code: problemCode(payload) };
-}
-
-type Answered<T> = { ok: true; data: T } | { ok: false; code: string | null };
-
-/** The same call, for the one read on this screen whose answer is the point rather than its success. */
-async function ask<T>(path: string): Promise<Answered<T>> {
-  const response = await fetch(path);
-  const payload: unknown = await response.json().catch(() => null);
-  return response.ok ? { ok: true, data: payload as T } : { ok: false, code: problemCode(payload) };
 }
 
 /** `critical` becomes `severityCritical`: one derivation, no table to keep in step with the union. */
@@ -165,152 +162,165 @@ function ReadingState({ reading, age, labels: t }: { reading: Reading; age: Read
 }
 
 /**
- * One group of the filter: a legend and a chip per value.
+ * The machine as the collector sees it: everything it reads, with what is currently known of each.
  *
- * Checkboxes and not a select, because the three questions are answered with any number of values
- * each and a multiple select is the control nobody discovers. They are real inputs under the
- * chips rather than buttons with a class, so the group is a group to a screen reader and the
- * keyboard already works.
+ * The panel this replaces listed bare labels behind a button and answered "3 etiquetes vistes".
+ * That is a true sentence about our database and a useless one about a server: it did not say
+ * which of twenty containers is running, so the next thing anybody did was open a terminal. What
+ * a person opening this screen wants is the machine at a glance, and the software already holds
+ * it -- the readings are stored, they simply were not drawn.
+ *
+ * **The state is the one the inventory uses**, decided by the same function over the same records,
+ * whether or not somebody has declared the thing. A container drawn as running here and as down on
+ * the machine's page would be the product arguing with itself.
+ *
+ * It reads on its own now, without waiting to be asked. Nothing leaves for Prometheus either way
+ * -- both endpoints read records already stored -- and the click that used to guard it was
+ * guarding the wrong thing: the reason to open this screen *is* this question.
+ *
+ * Declaring stays a decision a person makes. What changed is that they now decide with the state
+ * in front of them instead of a bare key.
  */
-function FilterGroup<T extends string>({
-  legend,
-  options,
-  chosen,
-  onChange
-}: {
-  legend: string;
-  options: readonly { value: T; label: string }[];
-  chosen: readonly T[];
-  onChange: (values: T[]) => void;
-}) {
-  if (options.length === 0) return null;
-  return (
-    <fieldset className="fleet-filter-group">
-      <legend>{legend}</legend>
-      {options.map((option) => (
-        <label className="fleet-chip" key={option.value}>
-          <input
-            type="checkbox"
-            checked={chosen.includes(option.value)}
-            onChange={() =>
-              onChange(
-                chosen.includes(option.value)
-                  ? chosen.filter((value) => value !== option.value)
-                  : [...chosen, option.value]
-              )
-            }
-          />
-          <span>{option.label}</span>
-        </label>
-      ))}
-    </fieldset>
-  );
-}
-
-/**
- * What a collector is reading, and which of it nobody has declared.
- *
- * It lives on this screen rather than beside the guided check because of the button: declaring is
- * `infrastructure:operate` and the form that does it is the dialog below, already written and
- * already permissioned. Putting the list next to the check would mean either a second copy of
- * that dialog or carrying a hostname across a navigation, and a hostname in a query string is the
- * kind of thing the module's own rules exist to prevent.
- *
- * It is asked for, never fetched on load. Nothing goes out to Prometheus either way -- the labels
- * come from readings already stored -- but a panel that reads the whole fleet's records to draw
- * itself every time somebody opens the screen would be a cost paid by everyone for a question few
- * people are asking.
- */
-function DiscoveryPanel({
-  collectors,
+function CollectorView({
+  instanceId,
   canOperate,
   labels: t,
   locale,
   onDeclare
 }: {
-  collectors: { value: string; label: string }[];
+  /** The collector the screen is showing. Never empty: the panel is only mounted with one. */
+  instanceId: string;
   canOperate: boolean;
   labels: Labels;
   locale: string;
   /** Opens the dialog below with the label already in the field that gets typed wrongly. */
   onDeclare: (hostname: string) => void;
 }) {
-  const { toast } = useToast();
-  const [instanceId, setInstanceId] = useState(collectors[0]?.value ?? "");
-  const [busy, setBusy] = useState(false);
-  const [seen, setSeen] = useState<DiscoveredInstance[] | null>(null);
+  const [machines, setMachines] = useState<DiscoveredInstance[] | null>(null);
+  const [services, setServices] = useState<DiscoveredService[] | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
-  async function look() {
-    if (!instanceId) return;
-    setBusy(true);
-    const result = await ask<ConnectorDiscoveryResponse>(`/api/v1/infrastructure/connectors/${instanceId}/discovery`);
-    setBusy(false);
-    if (!result.ok) {
-      setSeen(null);
-      return toast("error", errorMessage(t, result.code));
-    }
-    setSeen(result.data.instances);
+  useEffect(() => {
+    // No reset here: the panel is mounted keyed by the collector, so a change of collector builds
+    // a new one rather than emptying this one.
+    let live = true;
+
+    void (async () => {
+      const [seen, read] = await Promise.all([
+        ask<ConnectorDiscoveryResponse>(`/api/v1/infrastructure/connectors/${instanceId}/discovery`),
+        ask<ConnectorServicesResponse>(`/api/v1/infrastructure/connectors/${instanceId}/services`)
+      ]);
+      // The answer belongs to the collector that was asked. A late reply from the previous one
+      // would be one collector's labels drawn under another's name.
+      if (!live) return;
+      if (!seen.ok) return setFailure(errorMessage(t, seen.code));
+      if (!read.ok) return setFailure(errorMessage(t, read.code));
+      setMachines(seen.data.instances);
+      setServices(read.data.services);
+    })();
+
+    return () => {
+      live = false;
+    };
+  }, [instanceId, t]);
+
+  // Figures are worked out here because this panel never renders on the server: it has no data
+  // until the browser has asked, so there is no first paint for a second clock to disagree with.
+  const now = new Date();
+
+  const groups = new Map<ServiceKind, DiscoveredService[]>();
+  for (const service of services ?? []) {
+    const group = groups.get(service.kind);
+    if (group) group.push(service);
+    else groups.set(service.kind, [service]);
   }
 
-  const undeclared = seen?.filter((instance) => !instance.declaredAs).length ?? 0;
+  const undeclared = (services ?? []).filter((service) => !service.declared).length;
+  const loading = !failure && (machines === null || services === null);
 
   return (
     <section className="project-panel" aria-label={t.discoveryTitle}>
-      <h3>{t.discoveryTitle}</h3>
-      <p className="field-help">{t.discoveryAbout}</p>
-
-      <div className="discovery-ask">
-        <SelectField
-          label={t.discoveryCollector ?? ""}
-          name="discoveryCollector"
-          value={instanceId}
-          onChange={(event) => {
-            setInstanceId(event.target.value);
-            // The answer belonged to the collector that was chosen when it was asked for. Leaving
-            // it on screen under a different name would be one collector's labels attributed to
-            // another, which is the exact confusion this panel exists to end.
-            setSeen(null);
-          }}
-          options={collectors}
-        />
-        <button className="secondary-button" onClick={() => void look()} disabled={busy || !instanceId} type="button">
-          <Eye size={16} aria-hidden="true" />
-          {busy ? t.discoveryRunning : t.discoveryRun}
-        </button>
-      </div>
-
-      {!seen ? (
-        <p className="crm-empty">{t.discoveryNotRun}</p>
-      ) : seen.length === 0 ? (
-        <p className="crm-empty">{t.discoveryEmpty}</p>
-      ) : (
-        <>
-          <p className="muted">
-            {(t.discoveryCount ?? "")
-              .replace("{seen}", String(seen.length))
+      <header className="project-panel-heading">
+        <h3>{t.discoveryTitle}</h3>
+        {services && (
+          <small className="muted">
+            {(t.collectorReads ?? "")
+              .replace("{seen}", String(services.length + (machines?.length ?? 0)))
               .replace("{undeclared}", String(undeclared))}
-          </p>
-          <ul className="discovery-list">
-            {seen.map((instance) => (
-              <li key={instance.label} className="discovery-row" data-declared={instance.declaredAs ? "yes" : "no"}>
-                <code className="discovery-label">{instance.label}</code>
-                {instance.declaredAs ? (
-                  <Link className="link-button" href={`/${locale}/infrastructure/hosts/${instance.declaredAs.hostId}`}>
-                    {(t.discoveryDeclaredAs ?? "").replace("{name}", instance.declaredAs.name)}
-                  </Link>
-                ) : (
-                  <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
-                )}
-                {!instance.declaredAs && canOperate && (
-                  <button className="secondary-button" type="button" onClick={() => onDeclare(instance.label)}>
-                    <Plus size={16} aria-hidden="true" />
-                    {t.discoveryDeclare}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
+          </small>
+        )}
+      </header>
+
+      {failure ? (
+        <p className="crm-error">
+          <AlertTriangle size={17} aria-hidden="true" />
+          {failure}
+        </p>
+      ) : loading ? (
+        <p className="crm-empty">{t.collectorLoading}</p>
+      ) : (
+        <div className="collector-groups">
+          {/* The machines first: they are the thing everything else sits on, and the only group
+              whose undeclared rows lead to the dialog that declares a machine. */}
+          {machines!.length > 0 && (
+            <article className="collector-group">
+              <h4>{t.sectionHosts}</h4>
+              <ul className="collector-list">
+                {machines!.map((instance) => (
+                  <li key={instance.label} className="collector-row">
+                    <code className="discovery-label">{instance.label}</code>
+                    {instance.declaredAs ? (
+                      <Link
+                        className="link-button"
+                        href={`/${locale}/infrastructure/hosts/${instance.declaredAs.hostId}`}
+                      >
+                        {instance.declaredAs.name}
+                      </Link>
+                    ) : canOperate ? (
+                      <button className="link-button" type="button" onClick={() => onDeclare(instance.label)}>
+                        {t.discoveryDeclare}
+                      </button>
+                    ) : (
+                      <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          )}
+
+          {[...groups].map(([kind, rows]) => (
+            <article className="collector-group" key={kind}>
+              <h4>
+                {t[`kind${capitalised(kind)}`] ?? kind} <span className="muted">{rows.length}</span>
+              </h4>
+              <ul className="collector-list">
+                {rows.map((service) => {
+                  const figures = readingFigures(t, locale, service.reading, now);
+                  return (
+                    <li key={service.matchKey} className="collector-row">
+                      <StatusPill
+                        tone={observedStateTone[service.reading.state]}
+                        label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
+                      />
+                      <span className="collector-name">{service.name}</span>
+                      {figures.length > 0 && (
+                        <small className="collector-figures">
+                          {figures.map((figure) => (
+                            <span key={figure.field}>
+                              {figure.label} {figure.value}
+                            </span>
+                          ))}
+                        </small>
+                      )}
+                      {!service.declared && <span className="discovery-undeclared">{t.discoveryUndeclared}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </article>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -333,6 +343,7 @@ export function InfrastructureWorkspace({
   customers,
   canOperate,
   showResolved,
+  initialCollector,
   labels: t,
   locale,
   loadError
@@ -351,6 +362,8 @@ export function InfrastructureWorkspace({
   canOperate: boolean;
   /** Whether the list includes the alerts that are already over. It lives in the query string. */
   showResolved: boolean;
+  /** The collector the address bar asked for, or null for the whole of it. */
+  initialCollector: string | null;
   labels: Labels;
   locale: string;
   loadError: boolean;
@@ -369,15 +382,99 @@ export function InfrastructureWorkspace({
   // already in the browser, changes nothing on the server, and reloading to filter would refetch
   // the whole fleet to draw less of it.
   const [filter, setFilter] = useState<InventoryFilter>({ environments: [], states: [], instanceIds: [] });
+  // Which collector the screen is about. Unlike the filters below it this one does live in the
+  // address bar, because it decides which sections the screen has at all: a screen showing the
+  // machine collector and a screen showing the automation one are two different screens, and one
+  // of them has to be something somebody can send to somebody else.
+  const [collector, setCollector] = useState<string | null>(initialCollector);
 
-  // What the filter offers and what it currently shows. Both derived from the fleet already in
-  // hand: nothing is fetched to narrow a list, and no state is recomputed while narrowing it.
-  const sources = readingSources(hosts);
-  const shown = filterInventory(hosts, filter);
+  /** Every collector configured, named, so the choice is a name and never a row identifier. */
+  const collectors = Object.entries(instanceNames)
+    .map(([value, label]) => ({ value, label }))
+    .sort((one, other) => one.label.localeCompare(other.label));
+
+  /**
+   * Everything the screen holds, reduced to what the chosen collector accounts for.
+   *
+   * The whole page is drawn from this and never from the props again, so a section cannot show
+   * one collector while the heading above it counts another. With nothing chosen it is the props
+   * themselves, and the screen is what it always was.
+   */
+  const chosen = sliceByCollector({ hosts, automations, alerts, rules }, collector);
+
+  function chooseCollector(value: string) {
+    const next = value === "" ? null : value;
+    setCollector(next);
+    // Written into the address without navigating: the fleet is already in the browser, and
+    // reloading the page to draw less of it would refetch everything to show a subset.
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("collector", next);
+    else url.searchParams.delete("collector");
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  /** Where the alerts link goes, keeping whatever collector is being looked at. */
+  const alertsHref = (resolved: boolean) => {
+    const query = new URLSearchParams();
+    if (resolved) query.set("resolved", "1");
+    if (collector) query.set("collector", collector);
+    const rest = query.toString();
+    return `/${locale}/infrastructure${rest ? `?${rest}` : ""}`;
+  };
+
+  // What the filter currently shows, derived from the slice already in hand: nothing is fetched
+  // to narrow a list, and no state is recomputed while narrowing it.
+  const shown = filterInventory(chosen.hosts, filter);
   // True whenever anything has been asked of the fleet, and not merely when fewer machines came
   // back: a filter that happens to match everything still has to be visible and still has to be
   // clearable.
   const narrowed = Object.values(filter).some((values) => values.length > 0);
+
+  /**
+   * The figures above the lists, counted over whatever is being shown.
+   *
+   * With nothing chosen they are the API's own count of the whole fleet, which is the only count
+   * that can speak for machines this screen never received. With a collector chosen they are
+   * counted here instead, because the API counted a fleet and the screen is showing a part of
+   * one -- and a heading that kept saying "twelve machines" over a list of two would be the
+   * screen contradicting itself. The states are the ones the API decided; nothing is judged
+   * again on this side, only added up.
+   */
+  const services = chosen.hosts.flatMap((host) => host.services);
+  const figures =
+    collector === null
+      ? {
+          hosts: summary?.hosts ?? null,
+          services: summary?.services ?? null,
+          automations: overview?.automations ?? null,
+          alerts: overview?.alerts ?? null,
+          observedFrom: observedFromAge
+        }
+      : {
+          hosts: tallyReadings(chosen.hosts.map((host) => host.reading)),
+          services: tallyReadings(services.map((service) => service.reading)),
+          automations: {
+            total: chosen.automations.length,
+            active: chosen.automations.filter((row) => row.active).length,
+            linked: chosen.automations.filter((row) => row.customerId).length
+          },
+          alerts: {
+            total: chosen.alerts.length,
+            acknowledged: chosen.alerts.filter((alert) => alert.acknowledgedAt).length
+          },
+          // Chosen among the ages the server worked out, never measured again here.
+          observedFrom: oldestAge([
+            ...chosen.hosts.map((host) => host.age),
+            ...services.map((service) => service.age),
+            ...chosen.automations.map((row) => row.age)
+          ])
+        };
+
+  /** Whether any of the figures survived the rule above, so the row itself can go too. */
+  const countable = [figures.hosts, figures.services, figures.automations, figures.alerts].some(
+    (figure) => (figure?.total ?? 0) > 0
+  );
+
   const [formError, setFormError] = useState("");
   const [ruleInstanceId, setRuleInstanceId] = useState("");
   const [ruleTargetType, setRuleTargetType] = useState<"instance" | "automation">("instance");
@@ -559,57 +656,80 @@ export function InfrastructureWorkspace({
         </p>
       )}
 
-      {(overview || summary) && (
-        <section className="metric-row" aria-label={t.title}>
-          {/* The fleet as the API counted it, from the very readings the rows below are drawn
-              from. Deliberately not narrowed by the filters: how much of the fleet is down does
-              not depend on what somebody is currently looking at. */}
-          {summary && (
-            <>
+      {/* What the screen is about. Everything under it follows this one choice, so it sits above
+          everything, and it uses the product's own selector rather than a control invented here. */}
+      <div className="collector-band">
+        <div className="collector-pick">
+          <SelectField
+            label={t.collectorScope ?? ""}
+            name="collector"
+            value={collector ?? ""}
+            onChange={(event) => chooseCollector(event.target.value)}
+            options={[{ value: "", label: t.collectorAll ?? "" }, ...collectors]}
+          />
+        </div>
+
+        {countable && (
+          <section className="metric-row compact" aria-label={t.title}>
+            {/* Counted over what is being shown, and drawn only where there is something to count: a
+            tile reading zero over a selection that holds no such thing is a question nobody
+            asked, and seven of them are the empty space this screen was losing. */}
+            {figures.hosts && figures.hosts.total > 0 && (
               <MetricTile
                 label={t.overviewHosts!}
-                value={summary.hosts.total}
-                footnote={tallyFootnote(t, summary.hosts)}
+                value={figures.hosts.total}
+                footnote={tallyFootnote(t, figures.hosts)}
               />
+            )}
+            {figures.services && figures.services.total > 0 && (
               <MetricTile
                 label={t.overviewServices!}
-                value={summary.services.total}
-                footnote={tallyFootnote(t, summary.services)}
+                value={figures.services.total}
+                footnote={tallyFootnote(t, figures.services)}
               />
-            </>
-          )}
-          {overview && (
-            <>
-              <MetricTile label={t.overviewAutomations!} value={overview.automations.total} />
-              <MetricTile label={t.overviewActive!} value={overview.automations.active} />
-              <MetricTile label={t.overviewLinked!} value={overview.automations.linked} />
+            )}
+            {figures.automations && figures.automations.total > 0 && (
+              <>
+                <MetricTile label={t.overviewAutomations!} value={figures.automations.total} />
+                <MetricTile label={t.overviewActive!} value={figures.automations.active} />
+                <MetricTile label={t.overviewLinked!} value={figures.automations.linked} />
+              </>
+            )}
+            {figures.alerts && figures.alerts.total > 0 && (
               <MetricTile
                 label={t.overviewAlerts!}
-                value={overview.alerts.total}
-                footnote={`${t.overviewAcknowledged} ${overview.alerts.acknowledged}`}
+                value={figures.alerts.total}
+                footnote={`${t.overviewAcknowledged} ${figures.alerts.acknowledged}`}
               />
-              {/* The oldest reading behind the figures, never the newest: a summary is only as fresh
-                  as the stalest thing that went into it. */}
-              <MetricTile label={t.observedFrom!} value={ageLabel(t, observedFromAge, t.observedNever ?? "")} />
-            </>
-          )}
-        </section>
-      )}
+            )}
+            {/* The oldest reading behind the figures, never the newest: a summary is only as fresh
+            as the stalest thing that went into it. */}
+            {figures.observedFrom && (
+              <MetricTile label={t.observedFrom!} value={ageLabel(t, figures.observedFrom, t.observedNever ?? "")} />
+            )}
+          </section>
+        )}
+      </div>
 
-      <section className="project-panel" aria-label={t.sectionAlerts}>
-        <header className="project-panel-heading">
-          <h3>{t.sectionAlerts}</h3>
-          {/* A link and not a checkbox: what the list contains is then something somebody can send. */}
-          <a
-            className="secondary-button"
-            href={showResolved ? `/${locale}/infrastructure` : `/${locale}/infrastructure?resolved=1`}
-          >
+      {/* Nothing on fire is one line, not a panel. The way to the alerts that are already over
+          stays on that line: a screen that hid the door because there was nothing behind it
+          today would leave nowhere to look at what there was yesterday. */}
+      {chosen.alerts.length === 0 ? (
+        <p className="infra-strip">
+          <span>{t.alertsEmpty}</span>
+          <a className="link-button" href={alertsHref(!showResolved)}>
             {showResolved ? t.onlyFiring : t.showResolved}
           </a>
-        </header>
-        {alerts.length === 0 ? (
-          <p className="muted">{t.alertsEmpty}</p>
-        ) : (
+        </p>
+      ) : (
+        <section className="project-panel" aria-label={t.sectionAlerts}>
+          <header className="project-panel-heading">
+            <h3>{t.sectionAlerts}</h3>
+            {/* A link and not a checkbox: what the list contains is then something somebody can send. */}
+            <a className="secondary-button" href={alertsHref(!showResolved)}>
+              {showResolved ? t.onlyFiring : t.showResolved}
+            </a>
+          </header>
           <div className="crm-table-wrap inside-panel">
             <table className="crm-table">
               <thead>
@@ -623,7 +743,7 @@ export function InfrastructureWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {alerts.map((alert) => {
+                {chosen.alerts.map((alert) => {
                   const state = alertState(alert);
                   return (
                     <tr key={alert.id}>
@@ -672,380 +792,414 @@ export function InfrastructureWorkspace({
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      <section className="project-panel" aria-label={t.sectionHosts}>
-        <header className="project-panel-heading">
-          <h3>{t.sectionHosts}</h3>
-          {canOperate && (
-            <button
-              className="primary-command"
-              onClick={() => {
-                setFormError("");
-                setHostDialog({ host: null });
-              }}
-            >
-              <Plus size={17} />
-              {t.newHost}
-            </button>
-          )}
-        </header>
-        {hosts.length > 0 && (
-          <div className="fleet-filter">
-            <FilterGroup
-              legend={t.filterEnvironment!}
-              options={environments.map((environment) => ({
-                value: environment,
-                label: t[`environment${capitalised(environment)}`] ?? environment
-              }))}
-              chosen={filter.environments}
-              onChange={(environments) => setFilter({ ...filter, environments })}
-            />
-            <FilterGroup
-              legend={t.filterState!}
-              options={observedStates.map((state) => ({
-                value: state,
-                label: t[`state${capitalised(state)}`] ?? state
-              }))}
-              chosen={filter.states}
-              onChange={(states) => setFilter({ ...filter, states })}
-            />
-            {/* Only the collectors that actually read something here, so choosing one can never
-                empty the list, and named rather than identified by their row in the database. */}
-            <FilterGroup
-              legend={t.filterSource!}
-              options={sources.map((instanceId) => ({
-                value: instanceId,
-                label: instanceNames[instanceId] ?? instanceId
-              }))}
-              chosen={filter.instanceIds}
-              onChange={(instanceIds) => setFilter({ ...filter, instanceIds })}
-            />
-            {narrowed && (
-              <p className="fleet-filter-count">
-                <span>
-                  {(t.filterShowing ?? "")
-                    .replace("{shown}", String(shown.length))
-                    .replace("{total}", String(hosts.length))}
-                </span>
-                <button
-                  className="link-button"
-                  onClick={() => setFilter({ environments: [], states: [], instanceIds: [] })}
-                >
-                  {t.filterClear}
-                </button>
-              </p>
+      {(collector === null || chosen.hosts.length > 0) && (
+        <section className="project-panel" aria-label={t.sectionHosts}>
+          <header className="project-panel-heading">
+            <h3>{t.sectionHosts}</h3>
+            {canOperate && (
+              <button
+                className="primary-command"
+                onClick={() => {
+                  setFormError("");
+                  setHostDialog({ host: null });
+                }}
+              >
+                <Plus size={17} />
+                {t.newHost}
+              </button>
             )}
-          </div>
-        )}
-        {hosts.length === 0 ? (
-          <p className="muted">{t.hostsEmpty}</p>
-        ) : shown.length === 0 ? (
-          <p className="muted">{t.filterNoMatch}</p>
-        ) : (
-          <ul className="infra-hosts">
-            {shown.map((host) => (
-              <li className="infra-host" key={host.id}>
-                <header>
-                  <div>
-                    {/* A machine with fifteen services does not fit in a card, and this is the way
+          </header>
+          {chosen.hosts.length > 0 && (
+            <div className="fleet-filter">
+              {/* The product's own selector, the one every other list on this screen is filtered
+                with, instead of two rows of chips invented here. Each question takes one answer
+                and "any" is the first of them, which is what the chips were really for: an empty
+                set of chips and a chosen "any" mean the same thing, and only one of the two can
+                be read at a glance. There is no collector question left here -- the selector at
+                the top of the screen already answered it, and asking twice is how a list ends up
+                narrowed to a collector that is not the one on the heading. */}
+              <SelectField
+                label={t.filterEnvironment!}
+                name="filterEnvironment"
+                value={filter.environments[0] ?? ""}
+                onChange={(event) =>
+                  setFilter({
+                    ...filter,
+                    environments: event.target.value ? [event.target.value as HostEnvironment] : []
+                  })
+                }
+                options={[
+                  { value: "", label: t.filterAny ?? "" },
+                  ...environments.map((environment) => ({
+                    value: environment,
+                    label: t[`environment${capitalised(environment)}`] ?? environment
+                  }))
+                ]}
+              />
+              <SelectField
+                label={t.filterState!}
+                name="filterState"
+                value={filter.states[0] ?? ""}
+                onChange={(event) =>
+                  setFilter({ ...filter, states: event.target.value ? [event.target.value as ObservedState] : [] })
+                }
+                options={[
+                  { value: "", label: t.filterAny ?? "" },
+                  ...observedStates.map((state) => ({
+                    value: state,
+                    label: t[`state${capitalised(state)}`] ?? state
+                  }))
+                ]}
+              />
+              {narrowed && (
+                <p className="fleet-filter-count">
+                  <span>
+                    {(t.filterShowing ?? "")
+                      .replace("{shown}", String(shown.length))
+                      .replace("{total}", String(chosen.hosts.length))}
+                  </span>
+                  <button
+                    className="link-button"
+                    onClick={() => setFilter({ environments: [], states: [], instanceIds: [] })}
+                  >
+                    {t.filterClear}
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
+          {chosen.hosts.length === 0 ? (
+            <p className="muted">{t.hostsEmpty}</p>
+          ) : shown.length === 0 ? (
+            <p className="muted">{t.filterNoMatch}</p>
+          ) : (
+            <ul className="infra-hosts">
+              {shown.map((host) => (
+                <li className="infra-host" key={host.id}>
+                  <header>
+                    <div>
+                      {/* A machine with fifteen services does not fit in a card, and this is the way
                         to the page where it does. */}
-                    <Link className="ticket-subject" href={`/${locale}/infrastructure/hosts/${host.id}`}>
-                      {host.name}
-                    </Link>
-                    <small className="muted">
-                      {host.hostname} · {t[`environment${capitalised(host.environment)}`] ?? host.environment}
-                    </small>
-                  </div>
-                  <ReadingState reading={host.reading} age={host.age} labels={t} />
-                  {canOperate && (
-                    <span className="pending-actions">
-                      <button
-                        className="icon-button"
-                        disabled={busy}
-                        aria-label={t.editHost}
-                        onClick={() => {
-                          setFormError("");
-                          setHostDialog({ host });
-                        }}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        className="icon-button"
-                        disabled={busy}
-                        aria-label={t.newService}
-                        onClick={() => {
-                          setFormError("");
-                          setServiceDialog({ hostId: host.id, service: null });
-                        }}
-                      >
-                        <Plus size={16} />
-                      </button>
-                    </span>
-                  )}
-                </header>
-
-                {host.figures.length > 0 && (
-                  <dl className="infra-figures">
-                    {host.figures.map((figure) => (
-                      <div key={figure.field}>
-                        <dt>{figure.label}</dt>
-                        <dd>{figure.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-                {host.notes && <p className="muted">{host.notes}</p>}
-
-                {host.services.length === 0 ? (
-                  <p className="muted">{t.servicesEmpty}</p>
-                ) : (
-                  <div className="crm-table-wrap inside-panel">
-                    <table className="crm-table" aria-label={`${t.sectionServices} · ${host.name}`}>
-                      <thead>
-                        <tr>
-                          <th>{t.serviceName}</th>
-                          <th>{t.serviceKind}</th>
-                          <th>{t.state}</th>
-                          <th>{t.observed}</th>
-                          {canOperate && <th />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {host.services.map((service) => (
-                          <tr key={service.id}>
-                            <td>
-                              <span className="ticket-subject">{service.name}</span>
-                              <small className="muted">{service.matchKey}</small>
-                            </td>
-                            <td>
-                              {t[`kind${capitalised(service.kind)}`] ?? service.kind}
-                              {service.expectedState !== "up" && (
-                                <small className="muted">
-                                  {t[`expected${capitalised(service.expectedState)}`] ?? service.expectedState}
-                                </small>
-                              )}
-                            </td>
-                            <td>
-                              <ReadingState reading={service.reading} age={service.age} labels={t} />
-                            </td>
-                            <td>
-                              {service.figures.length === 0 ? (
-                                <span className="muted">-</span>
-                              ) : (
-                                service.figures.map((figure) => (
-                                  <small className="muted" key={figure.field}>
-                                    {figure.label}: {figure.value}
-                                  </small>
-                                ))
-                              )}
-                            </td>
-                            {canOperate && (
-                              <td className="pending-actions">
-                                <button
-                                  className="icon-button"
-                                  disabled={busy}
-                                  aria-label={t.editService}
-                                  onClick={() => {
-                                    setFormError("");
-                                    setServiceDialog({ hostId: host.id, service });
-                                  }}
-                                >
-                                  <Pencil size={16} />
-                                </button>
-                                <button
-                                  className="icon-button"
-                                  disabled={busy}
-                                  aria-label={t.removeService}
-                                  onClick={actionHandler(removeService, onError).bind(null, service)}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <DiscoveryPanel
-        collectors={Object.entries(instanceNames)
-          .map(([value, label]) => ({ value, label }))
-          .sort((one, other) => one.label.localeCompare(other.label))}
-        canOperate={canOperate}
-        labels={t}
-        locale={locale}
-        onDeclare={(hostname) => {
-          setFormError("");
-          setHostDialog({ host: null, hostname });
-        }}
-      />
-
-      <section className="project-panel" aria-label={t.sectionAutomations}>
-        <h3>{t.sectionAutomations}</h3>
-        {automations.length === 0 ? (
-          <p className="muted">{t.automationsEmpty}</p>
-        ) : (
-          <div className="crm-table-wrap inside-panel">
-            <table className="crm-table">
-              <thead>
-                <tr>
-                  <th>{t.name}</th>
-                  <th>{t.state}</th>
-                  <th>{t.customer}</th>
-                  <th>{t.observed}</th>
-                  {canOperate && <th />}
-                </tr>
-              </thead>
-              <tbody>
-                {automations.map((automation) => (
-                  <tr key={`${automation.instanceId}:${automation.externalId}`}>
-                    <td>
-                      {automation.link ? (
-                        <a className="ticket-subject" href={automation.link} target="_blank" rel="noopener noreferrer">
-                          {automation.name}
-                          <ExternalLink size={14} aria-label={t.open} />
-                        </a>
-                      ) : (
-                        <span className="ticket-subject">{automation.name}</span>
-                      )}
-                      <small className="muted">{automation.instanceName}</small>
-                    </td>
-                    <td>
-                      <StatusPill
-                        tone={automation.archived ? "closed" : automation.active ? "active" : "neutral"}
-                        label={automationStateLabel(t, automation)}
-                      />
-                    </td>
-                    <td>
-                      {customers.find((customer) => customer.id === automation.customerId)?.displayName ?? (
-                        <span className="muted">{t.noCustomer}</span>
-                      )}
-                    </td>
-                    <td>
-                      <time dateTime={automation.observedAt}>{ageLabel(t, automation.age, t.observedNever ?? "")}</time>
-                      {automation.age?.stale && (
-                        <small className="muted" title={t.staleHint}>
-                          {t.stale}
-                        </small>
-                      )}
-                    </td>
+                      <Link className="ticket-subject" href={`/${locale}/infrastructure/hosts/${host.id}`}>
+                        {host.name}
+                      </Link>
+                      <small className="muted">
+                        {host.hostname} · {t[`environment${capitalised(host.environment)}`] ?? host.environment}
+                      </small>
+                    </div>
+                    <ReadingState reading={host.reading} age={host.age} labels={t} />
                     {canOperate && (
-                      <td className="pending-actions">
+                      <span className="pending-actions">
                         <button
                           className="icon-button"
                           disabled={busy}
-                          aria-label={t.assign}
+                          aria-label={t.editHost}
                           onClick={() => {
                             setFormError("");
-                            setLinking(automation);
+                            setHostDialog({ host });
                           }}
                         >
-                          <UserPlus size={16} />
+                          <Pencil size={16} />
                         </button>
-                      </td>
+                        <button
+                          className="icon-button"
+                          disabled={busy}
+                          aria-label={t.newService}
+                          onClick={() => {
+                            setFormError("");
+                            setServiceDialog({ hostId: host.id, service: null });
+                          }}
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </span>
                     )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                  </header>
 
-      <section className="project-panel" aria-label={t.sectionRules}>
-        <header className="project-panel-heading">
-          <h3>{t.sectionRules}</h3>
-          {canOperate && (
-            <button
-              className="primary-command"
-              disabled={instances.length === 0}
-              onClick={() => {
-                setFormError("");
-                setRuleInstanceId(instances[0]?.value ?? "");
-                setRuleTargetType("instance");
-                setRuleDialog(true);
-              }}
-            >
-              <Plus size={17} />
-              {t.newRule}
-            </button>
+                  {host.figures.length > 0 && (
+                    <dl className="infra-figures">
+                      {host.figures.map((figure) => (
+                        <div key={figure.field}>
+                          <dt>{figure.label}</dt>
+                          <dd>{figure.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  {host.notes && <p className="muted">{host.notes}</p>}
+
+                  {host.services.length === 0 ? (
+                    <p className="muted">{t.servicesEmpty}</p>
+                  ) : (
+                    <div className="crm-table-wrap inside-panel">
+                      <table className="crm-table" aria-label={`${t.sectionServices} · ${host.name}`}>
+                        <thead>
+                          <tr>
+                            <th>{t.serviceName}</th>
+                            <th>{t.serviceKind}</th>
+                            <th>{t.state}</th>
+                            <th>{t.observed}</th>
+                            {canOperate && <th />}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {host.services.map((service) => (
+                            <tr key={service.id}>
+                              <td>
+                                <span className="ticket-subject">{service.name}</span>
+                                <small className="muted">{service.matchKey}</small>
+                              </td>
+                              <td>
+                                {t[`kind${capitalised(service.kind)}`] ?? service.kind}
+                                {service.expectedState !== "up" && (
+                                  <small className="muted">
+                                    {t[`expected${capitalised(service.expectedState)}`] ?? service.expectedState}
+                                  </small>
+                                )}
+                              </td>
+                              <td>
+                                <ReadingState reading={service.reading} age={service.age} labels={t} />
+                              </td>
+                              <td>
+                                {service.figures.length === 0 ? (
+                                  <span className="muted">-</span>
+                                ) : (
+                                  service.figures.map((figure) => (
+                                    <small className="muted" key={figure.field}>
+                                      {figure.label}: {figure.value}
+                                    </small>
+                                  ))
+                                )}
+                              </td>
+                              {canOperate && (
+                                <td className="pending-actions">
+                                  <button
+                                    className="icon-button"
+                                    disabled={busy}
+                                    aria-label={t.editService}
+                                    onClick={() => {
+                                      setFormError("");
+                                      setServiceDialog({ hostId: host.id, service });
+                                    }}
+                                  >
+                                    <Pencil size={16} />
+                                  </button>
+                                  <button
+                                    className="icon-button"
+                                    disabled={busy}
+                                    aria-label={t.removeService}
+                                    onClick={actionHandler(removeService, onError).bind(null, service)}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
-        </header>
-        {rules.length === 0 ? (
-          <p className="muted">{t.rulesEmpty}</p>
-        ) : (
-          <div className="crm-table-wrap inside-panel">
-            <table className="crm-table">
-              <thead>
-                <tr>
-                  <th>{t.ruleName}</th>
-                  <th>{t.ruleTarget}</th>
-                  <th>{t.severity}</th>
-                  <th>{t.ruleFreshness}</th>
-                  <th>{t.ruleEnabled}</th>
-                  {canOperate && <th />}
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr key={rule.id}>
-                    <td>
-                      <span className="ticket-subject">{rule.name}</span>
-                      <small className="muted">{t.kindWorkflowFailed}</small>
-                    </td>
-                    <td>
-                      {rule.targetType === "automation" ? (
-                        <>
-                          {t.targetAutomation}
-                          <small className="muted">{rule.targetId}</small>
-                        </>
-                      ) : (
-                        t.targetInstance
-                      )}
-                      <small className="muted">{rule.instanceName}</small>
-                    </td>
-                    <td>
-                      <StatusPill tone={severityTone[rule.severity]} label={severityLabel(t, rule.severity)} />
-                    </td>
-                    <td>{rule.freshnessSeconds}</td>
-                    <td>{rule.enabled ? t.ruleEnabled : t.disable}</td>
-                    {canOperate && (
-                      <td className="pending-actions">
-                        <button
-                          className="icon-button"
-                          disabled={busy}
-                          aria-label={rule.enabled ? t.disable : t.enable}
-                          onClick={actionHandler(toggleRule, onError).bind(null, rule)}
-                        >
-                          {rule.enabled ? <PowerOff size={16} /> : <Power size={16} />}
-                        </button>
-                        <button
-                          className="icon-button"
-                          disabled={busy}
-                          aria-label={t.removeRule}
-                          onClick={actionHandler(removeRule, onError).bind(null, rule)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    )}
+        </section>
+      )}
+
+      {/* Only once there is a collector to ask. With the whole of the infrastructure on screen
+          the question has no subject: two collectors read two different sets of labels, and a
+          list of both together says nothing about either. Keyed by the collector so the answer
+          on screen always belongs to the one named above it. */}
+      {collector && (
+        <CollectorView
+          key={collector}
+          instanceId={collector}
+          canOperate={canOperate}
+          labels={t}
+          locale={locale}
+          onDeclare={(hostname) => {
+            setFormError("");
+            setHostDialog({ host: null, hostname });
+          }}
+        />
+      )}
+
+      {/* A section with nothing of this collector in it is not drawn at all. Somebody looking at
+          the machine collector is not looking for an empty automations table, and the empty
+          panel was the space this screen was spending on questions nobody asked. */}
+      {(collector === null || chosen.automations.length > 0) && (
+        <section className="project-panel" aria-label={t.sectionAutomations}>
+          <h3>{t.sectionAutomations}</h3>
+          {chosen.automations.length === 0 ? (
+            <p className="muted">{t.automationsEmpty}</p>
+          ) : (
+            <div className="crm-table-wrap inside-panel">
+              <table className="crm-table">
+                <thead>
+                  <tr>
+                    <th>{t.name}</th>
+                    <th>{t.state}</th>
+                    <th>{t.customer}</th>
+                    <th>{t.observed}</th>
+                    {canOperate && <th />}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {chosen.automations.map((automation) => (
+                    <tr key={`${automation.instanceId}:${automation.externalId}`}>
+                      <td>
+                        {automation.link ? (
+                          <a
+                            className="ticket-subject"
+                            href={automation.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {automation.name}
+                            <ExternalLink size={14} aria-label={t.open} />
+                          </a>
+                        ) : (
+                          <span className="ticket-subject">{automation.name}</span>
+                        )}
+                        <small className="muted">{automation.instanceName}</small>
+                      </td>
+                      <td>
+                        <StatusPill
+                          tone={automation.archived ? "closed" : automation.active ? "active" : "neutral"}
+                          label={automationStateLabel(t, automation)}
+                        />
+                      </td>
+                      <td>
+                        {customers.find((customer) => customer.id === automation.customerId)?.displayName ?? (
+                          <span className="muted">{t.noCustomer}</span>
+                        )}
+                      </td>
+                      <td>
+                        <time dateTime={automation.observedAt}>
+                          {ageLabel(t, automation.age, t.observedNever ?? "")}
+                        </time>
+                        {automation.age?.stale && (
+                          <small className="muted" title={t.staleHint}>
+                            {t.stale}
+                          </small>
+                        )}
+                      </td>
+                      {canOperate && (
+                        <td className="pending-actions">
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            aria-label={t.assign}
+                            onClick={() => {
+                              setFormError("");
+                              setLinking(automation);
+                            }}
+                          >
+                            <UserPlus size={16} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* The rules a collector has, on the same terms as the tables above. Making one is reached
+          from the whole infrastructure, where every collector is on offer in the dialog. */}
+      {(collector === null || chosen.rules.length > 0) && (
+        <section className="project-panel" aria-label={t.sectionRules}>
+          <header className="project-panel-heading">
+            <h3>{t.sectionRules}</h3>
+            {canOperate && (
+              <button
+                className="primary-command"
+                disabled={instances.length === 0}
+                onClick={() => {
+                  setFormError("");
+                  setRuleInstanceId(instances[0]?.value ?? "");
+                  setRuleTargetType("instance");
+                  setRuleDialog(true);
+                }}
+              >
+                <Plus size={17} />
+                {t.newRule}
+              </button>
+            )}
+          </header>
+          {chosen.rules.length === 0 ? (
+            <p className="muted">{t.rulesEmpty}</p>
+          ) : (
+            <div className="crm-table-wrap inside-panel">
+              <table className="crm-table">
+                <thead>
+                  <tr>
+                    <th>{t.ruleName}</th>
+                    <th>{t.ruleTarget}</th>
+                    <th>{t.severity}</th>
+                    <th>{t.ruleFreshness}</th>
+                    <th>{t.ruleEnabled}</th>
+                    {canOperate && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {chosen.rules.map((rule) => (
+                    <tr key={rule.id}>
+                      <td>
+                        <span className="ticket-subject">{rule.name}</span>
+                        <small className="muted">{t.kindWorkflowFailed}</small>
+                      </td>
+                      <td>
+                        {rule.targetType === "automation" ? (
+                          <>
+                            {t.targetAutomation}
+                            <small className="muted">{rule.targetId}</small>
+                          </>
+                        ) : (
+                          t.targetInstance
+                        )}
+                        <small className="muted">{rule.instanceName}</small>
+                      </td>
+                      <td>
+                        <StatusPill tone={severityTone[rule.severity]} label={severityLabel(t, rule.severity)} />
+                      </td>
+                      <td>{rule.freshnessSeconds}</td>
+                      <td>{rule.enabled ? t.ruleEnabled : t.disable}</td>
+                      {canOperate && (
+                        <td className="pending-actions">
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            aria-label={rule.enabled ? t.disable : t.enable}
+                            onClick={actionHandler(toggleRule, onError).bind(null, rule)}
+                          >
+                            {rule.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                          </button>
+                          <button
+                            className="icon-button"
+                            disabled={busy}
+                            aria-label={t.removeRule}
+                            onClick={actionHandler(removeRule, onError).bind(null, rule)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {linking && (
         <div

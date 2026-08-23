@@ -15,11 +15,14 @@ import {
   alertStateTone,
   filterInventory,
   observedStateTone,
+  oldestAge,
+  sliceByCollector,
+  tallyReadings,
   readingAge,
-  readingSources,
   readingFigures,
   severityTone,
-  staleAfterMinutes
+  staleAfterMinutes,
+  type ReadingAge
 } from "./infrastructure";
 
 const at = (iso: string) => new Date(iso);
@@ -366,12 +369,138 @@ describe("showing part of a fleet without changing any of it", () => {
     expect(shown[0]!.reading).toBe(production.reading);
     expect(shown[0]!.services[0]!.reading).toBe(production.services[0]!.reading);
   });
+});
 
-  it("offers every collector that read something, once each and in a settled order", () => {
-    expect(readingSources(fleet)).toEqual(["prom-a", "prom-b"]);
+describe("what one collector accounts for", () => {
+  const reading = (state: ObservedState, instanceId: string | null): Reading => ({
+    state,
+    observedAt: "2026-08-13T11:59:00.000Z",
+    instanceId,
+    data: {}
   });
 
-  it("offers no collector for a fleet nothing has been read from", () => {
-    expect(readingSources([host("host-3", "development", "unknown", [], null)])).toEqual([]);
+  const service = (id: string, instanceId: string | null): ObservedService => ({
+    id,
+    hostId: "host-1",
+    name: id,
+    kind: "container",
+    matchKey: `container:${id}`,
+    expectedState: "up",
+    customerId: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading("up", instanceId)
+  });
+
+  const host = (id: string, instanceId: string | null, services: ObservedService[] = []): ObservedHost => ({
+    id,
+    name: id,
+    hostname: `${id}.example`,
+    environment: "production",
+    notes: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading("up", instanceId),
+    services
+  });
+
+  const everything = {
+    hosts: [host("vps", "prom"), host("other", "prom-two")],
+    automations: [
+      { id: "w-1", instanceId: "n8n" },
+      { id: "w-2", instanceId: "prom" }
+    ],
+    alerts: [alert({ id: "a-prom", ruleId: "r-prom" }), alert({ id: "a-n8n", ruleId: "r-n8n" })],
+    rules: [
+      { id: "r-prom", instanceId: "prom" },
+      { id: "r-n8n", instanceId: "n8n" }
+    ]
+  };
+
+  it("hands everything back when nothing is chosen", () => {
+    const all = sliceByCollector(everything, null);
+
+    expect(all.hosts).toHaveLength(2);
+    expect(all.automations).toHaveLength(2);
+    expect(all.alerts).toHaveLength(2);
+    expect(all.rules).toHaveLength(2);
+  });
+
+  it("keeps the machines that collector read, and no others", () => {
+    expect(sliceByCollector(everything, "prom").hosts.map((row) => row.id)).toEqual(["vps"]);
+  });
+
+  it("keeps a machine another collector read when this one reads a service of it", () => {
+    const shared = { ...everything, hosts: [host("vps", "prom-two", [service("n8n-container", "prom")])] };
+    const mine = sliceByCollector(shared, "prom");
+
+    expect(mine.hosts.map((row) => row.id)).toEqual(["vps"]);
+    expect(mine.hosts[0]!.services.map((row) => row.id)).toEqual(["n8n-container"]);
+  });
+
+  it("keeps the automations and the rules of that collector", () => {
+    const mine = sliceByCollector(everything, "n8n");
+
+    expect(mine.automations.map((row) => row.id)).toEqual(["w-1"]);
+    expect(mine.rules.map((row) => row.id)).toEqual(["r-n8n"]);
+  });
+
+  it("attributes an alert through the rule that raised it", () => {
+    expect(sliceByCollector(everything, "prom").alerts.map((row) => row.id)).toEqual(["a-prom"]);
+  });
+
+  /**
+   * An alert we cannot attribute is left out of a collector's slice and kept in the whole. Showing
+   * it under a collector would be a guess, and a guess here reads as that collector being in
+   * trouble when the trouble may be somewhere else entirely.
+   */
+  it("leaves out an alert whose rule is not on the list", () => {
+    const orphan = { ...everything, alerts: [alert({ id: "a-orphan", ruleId: "r-gone" })] };
+
+    expect(sliceByCollector(orphan, "prom").alerts).toEqual([]);
+    expect(sliceByCollector(orphan, null).alerts.map((row) => row.id)).toEqual(["a-orphan"]);
+  });
+});
+
+describe("counting readings the domain already decided", () => {
+  const of = (state: ObservedState): Reading => ({ state, observedAt: null, instanceId: null, data: {} });
+
+  it("counts each answer once, and the total", () => {
+    expect(tallyReadings([of("up"), of("up"), of("down"), of("unknown")])).toEqual({
+      total: 4,
+      up: 2,
+      down: 1,
+      unknown: 1
+    });
+  });
+
+  it("counts nothing as nothing rather than as unknown", () => {
+    expect(tallyReadings([])).toEqual({ total: 0, up: 0, down: 0, unknown: 0 });
+  });
+});
+
+describe("how fresh a set of figures is", () => {
+  const age = (unit: ReadingAge["unit"], count: number, stale = false): ReadingAge => ({ unit, count, stale });
+
+  it("answers with the stalest of them, because that is what the set is worth", () => {
+    expect(oldestAge([age("minute", 2), age("day", 1), age("hour", 3)])).toEqual(age("day", 1));
+  });
+
+  it("compares counts inside the same unit", () => {
+    expect(oldestAge([age("hour", 2), age("hour", 9), age("hour", 5)])).toEqual(age("hour", 9));
+  });
+
+  it("keeps the age that was handed in, warning included", () => {
+    const stale = age("hour", 4, true);
+    expect(oldestAge([age("minute", 1), stale])).toBe(stale);
+  });
+
+  it("passes over what was never read rather than calling it old", () => {
+    expect(oldestAge([null, age("minute", 7), null])).toEqual(age("minute", 7));
+  });
+
+  it("has no answer when nothing has been read at all", () => {
+    expect(oldestAge([])).toBeNull();
+    expect(oldestAge([null, null])).toBeNull();
   });
 });

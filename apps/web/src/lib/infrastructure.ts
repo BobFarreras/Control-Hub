@@ -4,6 +4,7 @@ import type {
   HostEnvironment,
   InfrastructureAlert,
   ObservedState,
+  ObservedTally,
   Reading,
   ReadingValue
 } from "@/lib/api-types";
@@ -281,17 +282,92 @@ export function filterInventory<S extends Observed, H extends Declared<S>>(
 }
 
 /**
- * Every collector that has read something in this fleet, once each.
+ * What one collector accounts for, out of everything the screen holds.
  *
- * Taken from the readings rather than from the list of installed connectors: the filter offers
- * what is actually visible on this screen, so choosing one can never empty the list. Sorted, so
- * the control does not reorder itself when a machine is read by a different one.
+ * The collector is not one more filter over one list. It decides which lists the screen has
+ * anything to say about at all: somebody who opened Infraestructura to look at a VPS should not
+ * have to scroll past twenty-two automations of an n8n to reach it. So the slice is taken once,
+ * over everything, and each section reads its own part off it -- and a section whose part is
+ * empty is not drawn, which is the whole rule of the increment.
+ *
+ * `null` means everything, and hands each list back as it arrived. Machines go through
+ * `filterInventory`, so a machine another collector declared still appears when this one reads a
+ * service of it, carrying only the services this collector saw: the same behaviour the filter by
+ * origin already had, because it is the same question.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C5 -- Una pantalla que depen del
+ * que has triat".
  */
-export function readingSources(hosts: readonly Declared<Observed>[]): string[] {
-  const sources = new Set<string>();
-  for (const host of hosts) {
-    if (host.reading.instanceId) sources.add(host.reading.instanceId);
-    for (const service of host.services) if (service.reading.instanceId) sources.add(service.reading.instanceId);
+export function sliceByCollector<
+  S extends Observed,
+  H extends Declared<S>,
+  A extends { instanceId: string },
+  L extends { ruleId: string },
+  R extends { id: string; instanceId: string }
+>(
+  everything: { hosts: readonly H[]; automations: readonly A[]; alerts: readonly L[]; rules: readonly R[] },
+  instanceId: string | null
+): { hosts: H[]; automations: A[]; alerts: L[]; rules: R[] } {
+  if (instanceId === null)
+    return {
+      hosts: [...everything.hosts],
+      automations: [...everything.automations],
+      alerts: [...everything.alerts],
+      rules: [...everything.rules]
+    };
+
+  // Which collector an alert belongs to is a property of the rule that raised it, and the rule is
+  // looked up in the whole list rather than in the narrowed one: an alert of another collector has
+  // to be recognised as such to be left out.
+  const instanceOfRule = new Map(everything.rules.map((rule) => [rule.id, rule.instanceId]));
+
+  return {
+    hosts: filterInventory(everything.hosts, { environments: [], states: [], instanceIds: [instanceId] }),
+    automations: everything.automations.filter((row) => row.instanceId === instanceId),
+    alerts: everything.alerts.filter((row) => instanceOfRule.get(row.ruleId) === instanceId),
+    rules: everything.rules.filter((row) => row.instanceId === instanceId)
+  };
+}
+
+/**
+ * The readings in hand, counted by the answer each one gives.
+ *
+ * The API counts the whole fleet and that count is the authority for the whole fleet; this counts
+ * what is on screen when somebody has chosen one collector, which is a different question and
+ * cannot be answered by a number computed over everything. No state is decided here: `up`,
+ * `down` and `unknown` were decided by `currentReading` in the domain and this only adds them up.
+ */
+/** Largest unit last, so two ages compare by unit before they compare by count. */
+const ageRank: Record<ReadingAge["unit"], number> = { minute: 0, hour: 1, day: 2 };
+
+/**
+ * The stalest of a set of ages, which is what the whole set is worth.
+ *
+ * A heading that says how fresh a group of figures is has to answer with its oldest member: a
+ * summary is only as current as the last thing that went into it. It chooses among ages the
+ * server already worked out instead of measuring again, because a second measurement taken by
+ * the browser at hydration is exactly how the same figure comes to say two different things
+ * before and after it.
+ *
+ * A row that has never been read is passed over rather than treated as infinitely old: nothing
+ * was read, so there is no age to report, and calling that "a day ago" would be inventing one.
+ * When every row is like that the answer is null, and the screen says so in words.
+ */
+export function oldestAge(ages: readonly (ReadingAge | null)[]): ReadingAge | null {
+  let oldest: ReadingAge | null = null;
+  for (const age of ages) {
+    if (!age) continue;
+    if (!oldest || ageRank[age.unit] > ageRank[oldest.unit] || (age.unit === oldest.unit && age.count > oldest.count))
+      oldest = age;
   }
-  return [...sources].sort();
+  return oldest;
+}
+
+export function tallyReadings(readings: readonly Reading[]): ObservedTally {
+  const tally: ObservedTally = { total: 0, up: 0, down: 0, unknown: 0 };
+  for (const reading of readings) {
+    tally.total += 1;
+    tally[reading.state] += 1;
+  }
+  return tally;
 }

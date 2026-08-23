@@ -28,6 +28,8 @@
  * Specification: `docs/specifications/connector-onboarding.md`, "C1 -- La comprovacio guiada".
  */
 
+import type { ServiceKind } from "./infrastructure.js";
+
 /**
  * The rungs, in the order they are climbed.
  *
@@ -240,6 +242,26 @@ export type DiscoveredInstance = {
 };
 
 /**
+ * Whether a label a collector reads could ever name a machine.
+ *
+ * A machine's figures come from `pull_host_metrics`, which stores them under `host:<label>`.
+ * Anything else the collector scrapes is a door it knocks on, and a URL among those doors is a
+ * service, never a machine. Declared as one it can never light up: no host reading will ever
+ * carry that label, so the screen says "no readings" for ever and looks exactly like a machine
+ * that died.
+ *
+ * This existed as an assumption before it existed as a rule, and the assumption was wrong: the
+ * discovery believed a blackbox target had no scrape state of its own and could be told apart
+ * that way. It has one -- Prometheus relabels a blackbox scrape so `up` carries the probed URL as
+ * its `instance` -- so the panel offered `https://.../version` as a machine and somebody declared
+ * it. The test that does work is the scheme: a machine is named by an address on a network,
+ * `node-exporter:9100`, and never by a URL.
+ */
+export function couldNameMachine(label: string): boolean {
+  return label.trim().length > 0 && !label.includes("://");
+}
+
+/**
  * What the collector sees, set against what somebody declared.
  *
  * This is the `matching` rung turned into a list. The rung answers whether anything matched and
@@ -265,4 +287,104 @@ export function discoverInstances(facts: {
     const machine = declared.get(label);
     return { label, declaredAs: machine ? { hostId: machine.hostId, name: machine.name } : null };
   });
+}
+
+/**
+ * The record prefixes that can become a declared service, and what each one usually is.
+ *
+ * `host:` is a machine, which is the C3's question, and `workflow:` is not infrastructure at all.
+ * Offering either here would put something on the screen the declaring dialog cannot store.
+ */
+const serviceKindForPrefix: Readonly<Record<string, ServiceKind>> = {
+  container: "container",
+  probe: "http",
+  backup: "backup"
+};
+
+/**
+ * The same prefixes, for whoever has to ask the store for them.
+ *
+ * Derived rather than written twice: a query that looked for one set while the proposal read
+ * another would drop a service silently, and silently is the only way this list can be wrong.
+ */
+export const discoverableServicePrefixes: readonly string[] = Object.keys(serviceKindForPrefix);
+
+/** What `infra_services.name` accepts, so a proposal is never one the table would refuse. */
+const nameLimits = { min: 3, max: 120 } as const;
+
+/** One thing a collector has stored, reduced to what a proposal needs. */
+export type DiscoverableRecord = {
+  externalId: string;
+  /** The label of whoever saw it, or null. Context for a person, never a join key. */
+  seenOn: string | null;
+};
+
+export type DiscoveredService = {
+  /** The whole `externalId`, prefix included: it is what the matching compares. */
+  matchKey: string;
+  kind: ServiceKind;
+  /** A proposal, meant to be edited. The key is not. */
+  name: string;
+  seenOn: string | null;
+  declared: boolean;
+};
+
+/**
+ * The name to put in front of somebody, given the key a reading arrived under.
+ *
+ * The bare identifier is what a person recognises -- `container:n8n` is "n8n" to everybody who
+ * runs it -- but the column takes between 3 and 120 characters, and a proposal that cannot be
+ * saved is worse than a clumsy one. So a name that would come out too short falls back to the
+ * whole key, which is always long enough because it carries a prefix and a colon.
+ */
+function proposedName(matchKey: string, identifier: string): string {
+  if (identifier.length < nameLimits.min) return matchKey.slice(0, nameLimits.max);
+  return identifier.slice(0, nameLimits.max);
+}
+
+/**
+ * What the collector has seen that could be declared, set against what already has been.
+ *
+ * The sibling of `discoverInstances`, one level down, and deliberately the same shape: it is
+ * keyed on what was seen, it compares character for character, and it decides nothing. A service
+ * nobody claimed is noise until a person claims it -- decision 1 of the specification -- so this
+ * proposes and the screen lets somebody tick.
+ *
+ * What it does not do is guess which machine a container belongs to. A container record carries
+ * the label of the cAdvisor that saw it, and a machine is declared by its `node_exporter` label;
+ * nothing in the data joins the two. `seenOn` carries that label through so a person with two
+ * machines can tell them apart, and every service the instance sees is offered. Filtering on an
+ * invented correspondence would hide real services without saying why, and a hidden service costs
+ * more than a spare one.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C4 -- El selector de serveis".
+ */
+export function discoverServices(facts: {
+  seenRecords: readonly DiscoverableRecord[];
+  declaredMatchKeys: readonly string[];
+}): readonly DiscoveredService[] {
+  const declared = new Set(facts.declaredMatchKeys);
+
+  // First seen wins, so a duplicate key cannot make the same service appear twice with two
+  // different labels behind it.
+  const unique = new Map<string, DiscoverableRecord>();
+  for (const record of facts.seenRecords) {
+    const colon = record.externalId.indexOf(":");
+    if (colon === -1) continue;
+    if (serviceKindForPrefix[record.externalId.slice(0, colon)] === undefined) continue;
+    if (!unique.has(record.externalId)) unique.set(record.externalId, record);
+  }
+
+  return [...unique.values()]
+    .sort((left, right) => (left.externalId < right.externalId ? -1 : left.externalId > right.externalId ? 1 : 0))
+    .map((record) => {
+      const colon = record.externalId.indexOf(":");
+      return {
+        matchKey: record.externalId,
+        kind: serviceKindForPrefix[record.externalId.slice(0, colon)]!,
+        name: proposedName(record.externalId, record.externalId.slice(colon + 1)),
+        seenOn: record.seenOn,
+        declared: declared.has(record.externalId)
+      };
+    });
 }

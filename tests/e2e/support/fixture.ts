@@ -33,6 +33,8 @@ export type Fixture = {
     collector: string;
     /** A label that collector reads and nobody has declared, which is what the panel is for. */
     undeclaredHostname: string;
+    /** Two labels that collector reads and nobody has declared, which is what the selector is for. */
+    offered: Record<"container" | "backup", { name: string; matchKey: string }>;
     /** One service per answer a reading can give: it answers, it stopped, we cannot see it. */
     services: Record<"up" | "down" | "unknown", { name: string; matchKey: string }>;
   };

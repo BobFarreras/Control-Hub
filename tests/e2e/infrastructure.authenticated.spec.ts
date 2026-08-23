@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFixture, waitForHydration } from "./support/fixture";
+import { readFixture, selectFieldOption, waitForHydration } from "./support/fixture";
 
 /**
  * The infrastructure screen, driven the way an operator drives it.
@@ -35,14 +35,18 @@ const t = {
   up: "Respon",
   down: "No respon",
   unknown: "Sense lectura",
-  discovery: "Que veu cada recollidor",
-  discoveryRun: "Mira que veu",
+  discovery: "Que llegeix aquest recollidor",
   collector: "Recollidor",
   declare: "Declarar-la",
-  undeclared: "Sense declarar",
   hostname: "Etiqueta",
   name: "Nom",
-  create: "Crear"
+  create: "Crear",
+  scope: "Que estas mirant",
+  everything: "Tota la infraestructura",
+  selector: "Serveis que el recollidor veu",
+  selectorRun: "Mira que hi ha",
+  services: "Serveis",
+  backup: "Copia de seguretat"
 } as const;
 
 test("shows what runs with the age of its reading, and acknowledges a live alert", async ({ page }) => {
@@ -149,39 +153,48 @@ test("declares a machine the collector can see and nobody had declared", async (
 
   await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
 
-  const discovery = page.getByRole("region", { name: t.discovery });
-  const look = discovery.getByRole("button", { name: t.discoveryRun });
-  await waitForHydration(look);
-  await discovery.getByLabel(t.collector).selectOption({ label: collector });
-
   /**
    * Nothing goes out to Prometheus to draw this. The panel reads records that are already stored,
-   * and the one request the click may make is to our own API.
+   * and the only request it makes is to our own API -- which it now makes on its own, so the wait
+   * is armed before the collector is chosen rather than after a click.
    */
   const answered = page.waitForResponse((response) => response.url().includes("/discovery"));
-  await look.click();
+
+  // The collector is chosen once, at the top, for the whole screen: the panel below is about
+  // whatever the screen is about, and it is not drawn until there is a collector to ask.
+  await selectFieldOption(page.getByLabel(t.scope), { label: collector });
   expect((await answered).status()).toBe(200);
 
-  // Exact text, because `e2e-vps` is the beginning of `e2e-vps-nou`: the two rows this test is
-  // about would otherwise be one locator matching both.
-  const rowFor = (label: string) => discovery.getByRole("listitem").filter({ hasText: new RegExp(`^${label}`) });
+  const discovery = page.getByRole("region", { name: t.discovery });
+
+  /**
+   * The label whole, and not as a prefix of the row.
+   *
+   * `e2e-vps` is the beginning of `e2e-vps-nou`, and `hasText` matches a substring of the row --
+   * an anchored regexp included, because it is anchored to the row's text and not to the label.
+   * So one locator answered for both rows and the declared one appeared to be offering a button
+   * that belonged to the other. Filtering on an element whose text *is* the label picks one.
+   */
+  const rowFor = (label: string) =>
+    discovery.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) });
 
   // The declared one says which machine it is, and offers nothing to declare.
   const declared = rowFor(host.hostname);
-  await expect(declared.getByRole("link", { name: new RegExp(host.name) })).toBeVisible();
+  await expect(declared.getByRole("link", { name: new RegExp(host.name) })).toBeVisible({ timeout: 15_000 });
   await expect(declared.getByRole("button", { name: t.declare })).toHaveCount(0);
 
   const undeclared = rowFor(undeclaredHostname);
   const declare = undeclared.getByRole("button", { name: t.declare });
   if ((await declare.count()) > 0) {
-    await expect(undeclared.getByText(t.undeclared)).toBeVisible();
     await declare.click();
 
     // The dialog opens already carrying the label. That is criterion 8, whole.
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByLabel(t.hostname)).toHaveValue(undeclaredHostname);
 
-    await dialog.getByLabel(t.name).fill(name);
+    // By role and exact, not by label: the hint beside the label field carries an `aria-label`
+    // that contains the word "nom", and a substring match answers with two elements.
+    await dialog.getByRole("textbox", { name: t.name, exact: true }).fill(name);
     const created = page.waitForResponse(
       (response) => response.url().includes("/infrastructure/hosts") && response.request().method() === "POST"
     );
@@ -193,4 +206,114 @@ test("declares a machine the collector can see and nobody had declared", async (
   await expect(page.getByRole("region", { name: t.hosts }).getByText(undeclaredHostname)).toBeVisible({
     timeout: 15_000
   });
+});
+
+/**
+ * From "the collector reads a container" to "that container is a declared service".
+ *
+ * The counterpart of the discovery above, one level down, and the same argument for testing it
+ * end to end: what breaks here is never the arithmetic, it is a key that arrives on the screen
+ * and leaves it changed. Declaring used to mean typing `container:e2e-cua` into a free field, and
+ * a single wrong character produced a service that never lit up with nothing anywhere to say why.
+ * So what is asserted is that the key the collector reads is the key that ends up stored: the box
+ * is ticked by its key, and the machine's page is read back for the name that key proposed.
+ *
+ * Two services and not one, of two different kinds, because `backup` is a kind this increment
+ * added to the database and a migration that did not run fails here and nowhere else in this
+ * suite.
+ *
+ * Declaring is one way, like acknowledging and declaring a machine above, so the clicking happens
+ * only while there is still something to tick, and the closing assertion is the one that holds on
+ * a retry too.
+ *
+ * Acceptance criteria 12 to 15 of `docs/specifications/connector-onboarding.md`.
+ */
+test("declares services the collector sees, by ticking them", async ({ page }) => {
+  const { collector, host, offered } = readFixture().infrastructure;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+  await page.getByRole("region", { name: t.hosts }).getByRole("link", { name: host.name, exact: true }).click();
+  await expect(page.getByRole("heading", { name: host.name, level: 1 })).toBeVisible();
+
+  const selector = page.getByRole("region", { name: t.selector });
+  const look = selector.getByRole("button", { name: t.selectorRun });
+  await waitForHydration(look);
+  await selectFieldOption(selector.getByLabel(t.collector), { label: collector });
+
+  // Nothing leaves for Prometheus to draw this either: the list is read out of records already
+  // stored, and the only request the click makes is to our own API.
+  const answered = page.waitForResponse((response) => response.url().includes("/services"));
+  await look.click();
+  expect((await answered).status()).toBe(200);
+
+  // By key, not by name: the key is what the matching is done on, and a box that ticks the right
+  // name under the wrong key is the exact failure this screen was built to stop.
+  const box = (matchKey: string) => selector.getByRole("checkbox", { name: new RegExp(matchKey) });
+
+  if ((await box(offered.container.matchKey).count()) > 0) {
+    await box(offered.container.matchKey).check();
+    await box(offered.backup.matchKey).check();
+
+    const declared = page.waitForResponse(
+      (response) => response.url().includes("/services") && response.request().method() === "POST"
+    );
+    await selector.getByRole("button", { name: /Declarar els marcats/ }).click();
+    expect((await declared).status()).toBe(201);
+  }
+
+  // And they are services of this machine now, under the names the collector's own labels
+  // proposed -- the backup among them, which is what says the new kind survived the round trip.
+  const services = page.getByRole("region", { name: t.services, exact: true });
+  const row = (matchKey: string) => services.getByRole("listitem").filter({ hasText: matchKey });
+  await expect(row(offered.container.matchKey)).toBeVisible({ timeout: 15_000 });
+  await expect(row(offered.container.matchKey).getByText(offered.container.name, { exact: true })).toBeVisible();
+  await expect(row(offered.backup.matchKey).getByText(t.backup)).toBeVisible();
+});
+
+/**
+ * One screen, and one choice that decides what is on it.
+ *
+ * The complaint this answers was concrete: looking at the machines meant scrolling past a table
+ * of automations that had nothing to do with them, and past a row of counters reading zero. So
+ * what is asserted is subtraction, which is the part that cannot be proved without a browser --
+ * that a section which holds nothing of the chosen collector is **not on the page at all**,
+ * rather than present and empty. Two collectors are seeded and each owns a different table, so
+ * choosing one has to remove the other's, both ways round.
+ *
+ * The address bar is asserted too: the choice decides which sections the screen has, which makes
+ * it a different screen, and a screen somebody cannot send to somebody else is half a screen.
+ *
+ * Acceptance criteria 16 to 20 of `docs/specifications/connector-onboarding.md`.
+ */
+test("shows only what the chosen collector accounts for", async ({ page }) => {
+  const { collector, instance } = readFixture().infrastructure;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+
+  const machines = page.getByRole("region", { name: t.hosts, exact: true });
+  const automations = page.getByRole("region", { name: t.automations, exact: true });
+  const scope = page.getByLabel(t.scope);
+
+  // With nothing chosen the screen is the whole of it, and both collectors are on it.
+  await waitForHydration(scope);
+  await expect(machines).toBeVisible();
+  await expect(automations).toBeVisible();
+
+  // The collector that reads machines. The automations of the other one are not narrowed to
+  // none: the table is gone.
+  await selectFieldOption(scope, { label: collector });
+  await expect(automations).toHaveCount(0);
+  await expect(machines).toBeVisible();
+  await expect(page).toHaveURL(/[?&]collector=/);
+
+  // And the other way round, which is what proves the rule is the collector and not the table.
+  await selectFieldOption(scope, { label: instance });
+  await expect(machines).toHaveCount(0);
+  await expect(automations).toBeVisible();
+
+  // Back to everything, and the address stops asking for a collector.
+  await selectFieldOption(scope, { label: t.everything });
+  await expect(machines).toBeVisible();
+  await expect(automations).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]collector=/);
 });

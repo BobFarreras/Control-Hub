@@ -275,6 +275,8 @@ describe("feature flags", () => {
     ["GET", "/api/v1/infrastructure/automations"],
     ["GET", "/api/v1/infrastructure/connectors/:instanceId/diagnosis"],
     ["GET", "/api/v1/infrastructure/connectors/:instanceId/discovery"],
+    ["GET", "/api/v1/infrastructure/connectors/:instanceId/services"],
+    ["POST", "/api/v1/infrastructure/hosts/:hostId/services"],
     ["PUT", "/api/v1/infrastructure/automations/:instanceId/:externalId/link"],
     ["GET", "/api/v1/infrastructure/alert-rules"],
     ["POST", "/api/v1/infrastructure/alert-rules"],

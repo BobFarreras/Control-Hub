@@ -153,11 +153,154 @@ fitxa. El que no esta declarat porta un boto que obre el dialeg de declarar **ja
 Es llegeix del que ja hi ha desat als registres del connector. **No dispara cap consulta nova** a
 Prometheus: obrir una pantalla no ha de poder generar trafic cap enfora.
 
+## C4 — El selector de serveis
+
+El C3 proposa **maquines**; aixo proposa **serveis**. Mateixa idea un nivell mes avall, i la
+mateixa regla de sempre: el programari ensenya el que el col·lector ja ha vist, i una persona tria.
+
+Una operacio de lectura torna, per a una instancia de connector, tot el que hi ha desat als seus
+registres que **pot ser un servei** —els prefixos `container:`, `probe:` i `backup:`— i de cada un
+diu la clau sencera, quina mena sembla, quin nom se li proposa, on s'ha vist i si ja esta declarat.
+Els prefixos `host:` i `workflow:` no hi surten: el primer es una maquina i ja el proposa el C3, i
+el segon no es infraestructura.
+
+La pantalla es una llista amb **una casella per servei**, agrupada per mena, a la fitxa de la
+maquina. El que ja esta declarat hi surt marcat i sense casella: es informacio, no una accio.
+Marcar-ne uns quants i confirmar **els declara tots alhora, en una sola transaccio**, amb el nom
+proposat, la mena del prefix i l'estat esperat `up`. Qualsevol d'ells s'edita despres des de la
+fitxa, com un servei declarat a ma.
+
+### El que la llista no sap, i no fingeix saber
+
+Un registre de contenidor porta l'etiqueta del col·lector que l'ha vist —el cAdvisor—, **no la de
+la maquina declarada**, que surt del `node_exporter`. Son dues etiquetes de la mateixa maquina i
+res, a les dades, no les lliga. Aixi que la llista **ofereix tot el que la instancia veu**, digui el
+que digui aquella etiqueta, i la mostra al costat de cada fila perque qui tingui dues maquines les
+sapiga distingir. Filtrar per una correspondencia inventada amagaria serveis reals sense dir per
+que, i un servei amagat costa mes que un de sobrer.
+
+### Els noms proposats
+
+El nom surt de la clau sense el prefix, que es el que una persona reconeix: `container:n8n` es
+proposa com a `n8n`. La taula demana entre 3 i 120 caracteres, aixi que un nom que quedaria mes
+curt cau a la clau sencera i un de mes llarg es talla. **El nom es una proposta i s'edita; la clau
+no**, perque es el que fa la coincidencia.
+
+## C5 — Una pantalla que depen del que has triat
+
+### El problema
+
+La pantalla ho ensenya tot alhora, sempre. Qui obre Infraestructura per mirar la VPS es troba al
+davant la taula de vint-i-dues automatitzacions d'un n8n que en aquell moment no li importa, i qui
+la obre per mirar les automatitzacions es troba les maquines. Son dues feines diferents amb el
+mateix titol.
+
+I ho ensenya ocupant lloc encara que no tingui res a dir: un panell d'alertes de l'alcada d'un
+panell sencer per escriure-hi «cap alerta viva», una fila de maquina amb el mig buit, i el
+descobriment ocupant una pantalla per ensenyar un desplegable. L'espai que sobra no es neutre:
+empeny cap avall el que si que importa.
+
+### El selector, i que canvia
+
+Un selector de recollidor a dalt de tot, **amb el mateix component de seleccio que fa servir la
+resta del producte**, no amb pindoles proprias d'aquesta pantalla. Opcions: «Tot» i una per cada
+instancia habilitada.
+
+La regla del que s'ensenya no es una taula de correspondencies entre menes de connector i
+seccions —aixo envelliria el dia que hi hagi un connector nou— sino una sola frase: **una seccio
+que no te res d'aquell recollidor no es dibuixa.** Amb el Prometheus triat no hi ha
+automatitzacions perque no n'ha llegit cap; amb l'n8n triat no hi ha maquines pel mateix motiu. El
+dia que un connector llegeixi les dues coses, sortiran les dues, sense tocar res.
+
+La tria viu a la barra d'adreces i sobreviu a recarregar. **Un identificador d'instancia no es una
+adreca de proveidor**: es el mateix UUID que ja viatja pels camins de l'API, i la regla que ho
+prohibeix parla d'adreces i credencials, no d'identificadors nostres.
+
+### Els KPI
+
+Compactes —la majoria porten un sol numero i n'ocupen sis— i **segueixen la seleccio**:
+«Automatitzacions 22» no es dibuixa quan el que mires es una VPS. Un comptador d'una cosa que la
+seleccio no conte no s'ensenya a zero: no s'ensenya.
+
+### Els panells que no tenen res a dir
+
+Cap panell buit ocupa l'espai d'un panell ple. Les alertes passen a ser una franja que nomes hi es
+quan hi ha alguna cosa viva; el descobriment i el selector de serveis deixen de ser panells de la
+pantalla general i van dins la vista del recollidor, que es on tenen sentit.
+
+### Els filtres que queden
+
+El filtre «per connector d'origen» del C2 desapareix d'aqui: ja es el selector de dalt, i
+preguntar-ho dues vegades es com una llista acaba reduida a un recollidor que no es el del titol.
+
+Els altres dos —entorn i resposta— passen del grup de caselles al component de seleccio general, i
+amb aixo deixen de ser acumulables: una resposta cada un, amb «Qualsevol» com a primera. **Es una
+correccio deliberada del C2**, no un descuit: cap caselleta i un «Qualsevol» trian volen dir el
+mateix, i nomes un dels dos es llegeix d'un cop d'ull. Qui necessiti dos entorns alhora te la
+flota sencera, que es el que hi havia abans de demanar res.
+
+### Que no canvia
+
+- **L'inventari segueix sent un de sol.** Aixo es un filtre de que es mira, no una subseccio per
+  connector: la decisio de mes amunt segueix dempeus, i el C2 ja declarava el filtre «per connector
+  d'origen». Aixo el converteix en el principi que ordena la pantalla.
+- **No canvia res del que es llegeix ni del que es desa.** Cap taula nova, cap migracio, cap ruta
+  nova: la pantalla ja llegeix l'inventari i les integracions, i la seleccio nomes decideix que se'n
+  dibuixa.
+
+## C6 — La maquina d'un cop d'ull
+
+### El problema
+
+El C5 va deixar la pantalla neta i seguia sense servir. Amb el Prometheus triat, tot el que deia
+d'una VPS amb vint contenidors era una fila de maquina i tres etiquetes darrere d'un boto. El
+recollidor tenia els vint contenidors desats; ningu no els dibuixava. La consequencia practica es
+que despres de mirar la pantalla calia obrir un terminal igualment, que es exactament el que el
+modul existeix per estalviar.
+
+### Que s'ensenya
+
+Tot el que el recollidor ha llegit, agrupat per mena —maquines, contenidors, sondes, copies— i
+**cada cosa amb l'estat que se'n sap ara mateix** i les xifres que porta la lectura.
+
+**L'estat es el mateix que fa servir l'inventari**, decidit per la mateixa funcio (`currentReading`)
+sobre els mateixos registres, tant si algu ho ha declarat com si no. Un contenidor dibuixat
+«Respon» aqui i «No respon» a la fitxa de la maquina seria el producte discutint amb ell mateix.
+
+**Es llegeix sol en obrir.** El boto que hi havia guardava la pregunta equivocada: el motiu
+d'obrir aquesta pantalla *es* aquesta pregunta. Res no surt cap a Prometheus en cap dels dos
+casos —les dues rutes llegeixen registres ja desats— i per aixo el cost de treure el boto es una
+consulta a la nostra propia base.
+
+### Que no canvia
+
+**Declarar segueix sent una decisio d'una persona.** La decisio «el descobriment proposa, una
+persona declara» segueix dempeus i les alertes segueixen sent nomes sobre el que s'ha declarat.
+L'unic que canvia es que ara es decideix amb l'estat al davant en comptes d'una clau nua.
+
+### La comanda del tunel
+
+La que proposa el diagnostic porta tres opcions que no son decoracio, cadascuna una manera com la
+primera versio va fallar fent-la servir:
+
+- `-L 127.0.0.1:<port>:...` — sense el `127.0.0.1:` del davant, `ssh` publica el port a totes les
+  interficies i un Prometheus que es va deixar deliberadament al loopback de la VPS acaba obert a
+  la xarxa d'aquest ordinador.
+- `-o ExitOnForwardFailure=yes` — sense aixo un reenviament que no s'ha pogut obrir deixa l'`ssh`
+  connectat i sense reenviar res, i el panell diu que l'adreca no respon mentre hi ha una sessio
+  amb bona cara.
+- `-o ServerAliveInterval=30` — un tunel sense transit el tanca el que hi hagi al mig, en silenci,
+  i les lectures s'aturen sense error enlloc.
+
 ## Model de dades
 
-**Cap taula nova i cap migracio.** Els tres increments llegeixen el que ja hi ha: registres de
-connector, maquines, serveis i alertes. Si durant la implementacio en calgues una, es torna aqui
-abans d'escriure-la.
+**Cap taula nova.** Els increments llegeixen el que ja hi ha: registres de connector, maquines,
+serveis i alertes.
+
+**Una migracio, i nomes una: la mena `backup`.** La restriccio de `infra_services.kind` admetia
+`container`, `http`, `database` i `automation`, i una copia de seguretat no es cap de les quatre.
+Declarar-la com a `automation` faria funcionar l'alerta i deixaria la pantalla dient una cosa que
+no es, que es la mena de mentida petita que despres ningu no recorda per que hi era.
 
 ## API
 
@@ -167,8 +310,11 @@ Tres rutes noves, totes de lectura, totes darrere la flag `infrastructure` i el 
 - `GET /api/v1/infrastructure/connectors/:instanceId/diagnosis` — el C1
 - `GET /api/v1/infrastructure/connectors/:instanceId/discovery` — el C3
 - El resum ampliat viatja dins la resposta d'inventari que ja existeix — el C2
+- `GET /api/v1/infrastructure/connectors/:instanceId/services` — el C4, el que es pot declarar
+- `POST /api/v1/infrastructure/hosts/:hostId/services` — el C4, declarar-ne uns quants alhora.
+  **Es l'unica de les cinc que escriu**, i per tant l'unica que demana `infrastructure:operate`
 
-Amb la flag tancada, les tres son 404, com tota la resta del modul.
+Amb la flag tancada, totes son 404, com tota la resta del modul.
 
 ## Permisos i tenancy
 
@@ -196,24 +342,45 @@ tenants no es toca.
    comptes de dir "Cap lectura".
 5. Cap resposta del diagnostic no conte el `baseUrl` desat, cap credencial ni cap adreca desada.
 6. El resum compta maquines i serveis pel seu estat, i els numeros surten de `currentReading`.
-7. Els filtres son acumulables i no canvien cap estat.
+7. Els filtres no canvien cap estat (acumulables fins al C5; una resposta cada un a partir d'alla).
 8. El descobriment marca el que ja esta declarat i omple el dialeg amb el `hostname` vist.
 9. El descobriment no fa cap consulta a Prometheus.
 10. Amb la flag `infrastructure` tancada, les rutes noves responen 404.
 11. Cap error del modul no cau a `errorUnknown`: tots porten codi i tots tres idiomes.
+12. El selector ofereix `container:`, `probe:` i `backup:`, i cap altre prefix.
+13. El que ja esta declarat surt marcat i sense casella, i no es pot declarar dues vegades.
+14. Declarar-ne uns quants es **una sola transaccio**: si un falla, no se'n desa cap.
+15. El selector tampoc no fa cap consulta a Prometheus.
+
+16. Triar un recollidor amaga les seccions que no tenen res d'aquell recollidor.
+17. Un comptador d'una cosa que la seleccio no conte no es dibuixa, ni tan sols a zero.
+18. Cap panell buit no ocupa l'espai d'un panell ple.
+19. La tria del recollidor es a l'adreca i sobreviu a recarregar.
+20. Els filtres d'entorn i de resposta fan servir el mateix component de seleccio que la resta del
+    producte.
+
+21. El que el recollidor llegeix surt agrupat per mena i cada cosa amb el seu estat, declarada o no.
+22. L'estat d'una cosa sense declarar el decideix la mateixa funcio que el d'una de declarada.
+23. Obrir la vista d'un recollidor no envia res a cap proveidor.
+24. La comanda del tunel lliga el reenviament al loopback i no publica el port a la xarxa.
 
 ## Pla de proves
 
 Proves abans del codi, com sempre.
 
-- **Domini:** els esglaons del diagnostic com a funcio pura sobre un estat; el recompte del resum.
+- **Domini:** els esglaons del diagnostic com a funcio pura sobre un estat; el recompte del resum;
+  la proposta de serveis a partir de registres, amb els prefixos que no hi entren i els noms que
+  cauen fora dels limits de la taula.
 - **Aplicacio:** l'ordre dels esglaons i que s'atura al primer que falla; el descobriment contra
   registres desats, amb i sense coincidencia.
 - **API:** els 404 amb la flag tancada; el permis; i una prova que enumera la resposta del
   diagnostic i falla si hi apareix el `baseUrl` desat o qualsevol credencial.
-- **Web:** els filtres acumulables; que la pantalla no recalcula cap estat.
+- **Web:** els filtres; que la pantalla no recalcula cap estat; que la seleccio de recollidor
+  amaga les seccions buides i els comptadors que no li pertoquen; i que el recompte d'un tros de
+  la flota surt de les lectures que ja porten estat, sense tornar a jutjar-ne cap.
 - **E2E:** una llavor amb un `instance` declarat i un que no, i el cami de declarar-lo des del
-  descobriment.
+  descobriment; marcar dos serveis del selector i veure'ls a la fitxa de la maquina; i triar el
+  recollidor de Prometheus i comprovar que la taula d'automatitzacions **no hi es**.
 
 ## Pla d'increments
 
@@ -225,3 +392,6 @@ commit. Cada un es entregable sol.
 | C1 | El diagnostic: domini, aplicacio, ruta, pantalla, paraules en ca/es/en, i els codis d'error |
 | C2 | El resum ampliat, els filtres i la fitxa per maquina |
 | C3 | El descobriment: lectura, pantalla, el dialeg preomplert i l'E2E |
+| C4 | El selector de serveis: la migracio de la mena `backup`, la lectura, la declaracio en bloc, la pantalla i l'E2E |
+| C5 | La pantalla per recollidor: el selector, els KPI que segueixen la seleccio, els panells buits que deixen d'ocupar lloc, els filtres amb el component generalitzat i l'E2E |
+| C6 | La maquina d'un cop d'ull: l'estat de tot el que el recollidor llegeix, la vista en dues columnes i la comanda del tunel que no publica el port |

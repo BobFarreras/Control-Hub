@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   AlertEngine,
   InfrastructureService,
+  mostServicesPerDeclaration,
   InfrastructureServiceError,
   observationBudgets,
   type AlertEventRecord,
@@ -12,6 +13,8 @@ import {
   type AutomationRecord,
   type ConnectorDiagnosisState,
   type ConnectorDiscoveryState,
+  type ConnectorServiceDiscoveryState,
+  type DeclareServicesInput,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
@@ -159,6 +162,26 @@ class FakeRepository implements InfrastructureRepository {
   readDiscoveryState = (_context: TenantContext, asked: string) => {
     this.discoveryAsked.push(asked);
     return Promise.resolve(this.discoveryState);
+  };
+  serviceDiscoveryState: ConnectorServiceDiscoveryState = {
+    instanceExists: true,
+    missingMigrations: [],
+    seenRecords: [],
+    declaredMatchKeys: []
+  };
+  serviceDiscoveryAsked: string[] = [];
+  readServiceDiscoveryState = (_context: TenantContext, asked: string) => {
+    this.serviceDiscoveryAsked.push(asked);
+    return Promise.resolve(this.serviceDiscoveryState);
+  };
+  declaredBatches: DeclareServicesInput[] = [];
+  declareServices = (_context: TenantContext, input: DeclareServicesInput) => {
+    this.declaredBatches.push(input);
+    return Promise.resolve(
+      input.services.map((service, index) =>
+        serviceRecord({ id: `service-${index + 1}`, hostId: input.hostId, ...service })
+      )
+    );
   };
   diagnosisAsked: string[] = [];
   readDiagnosisState = (_context: TenantContext, asked: string) => {
@@ -991,5 +1014,175 @@ describe("what a collector is looking at", () => {
     looking({ instanceExists: false, missingMigrations: ["0037_infrastructure_hosts"] });
 
     await expect(service.discover(owner, instanceId)).rejects.toEqual(refused("MIGRATION_REQUIRED"));
+  });
+});
+
+/**
+ * The service selector, as the use case assembles it.
+ *
+ * The domain already decides what is proposed and what is withheld; what is asked here is the
+ * coordination around it -- the same three refusals as the machine discovery -- and the one thing
+ * the batch adds, which is that a batch cannot be a way past the checks a single declaration
+ * makes.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C4 -- El selector de serveis".
+ */
+describe("what a collector has seen that could be declared", () => {
+  const seeing = (overrides: Partial<ConnectorServiceDiscoveryState> = {}) => {
+    repository.serviceDiscoveryState = {
+      instanceExists: true,
+      missingMigrations: [],
+      seenRecords: [
+        { externalId: "container:n8n", seenOn: "cadvisor:8080" },
+        { externalId: "container:traefik", seenOn: "cadvisor:8080" }
+      ],
+      declaredMatchKeys: ["container:n8n"],
+      ...overrides
+    };
+  };
+
+  it("proposes what nobody claimed and marks what somebody did", async () => {
+    seeing();
+
+    expect(await service.discoverServices(owner, instanceId, now)).toEqual([
+      expect.objectContaining({ matchKey: "container:n8n", kind: "container", name: "n8n", declared: true }),
+      expect.objectContaining({ matchKey: "container:traefik", name: "traefik", declared: false })
+    ]);
+  });
+
+  /**
+   * The state of a container nobody has declared, decided by the same function that decides the
+   * state of one somebody has.
+   *
+   * This is the whole point of the panel: a list of twenty containers that does not say which of
+   * them is running is a list that sends somebody to a terminal anyway. And it has to be the one
+   * judgement, not a second one written for this screen -- a declared container reading "down"
+   * beside the same container undeclared reading "up" is the screen arguing with itself.
+   */
+  it("says of each one what is currently known of it, declared or not", async () => {
+    seeing();
+    repository.inventoryState = {
+      hosts: [],
+      services: [],
+      records: [
+        {
+          instanceId,
+          operation: "pull_container_state",
+          externalId: "container:traefik",
+          data: { memoryBytes: 512 },
+          firstSeenAt: new Date(now.getTime() - 86_400_000),
+          lastSeenAt: new Date(now.getTime() - 60_000)
+        }
+      ],
+      freshness: [
+        {
+          instanceId,
+          operation: "pull_container_state",
+          lastSuccessAt: new Date(now.getTime() - 30_000)
+        }
+      ]
+    };
+
+    const [declared, undeclared] = await service.discoverServices(owner, instanceId, now);
+
+    expect(undeclared?.reading).toMatchObject({ state: "up", data: { memoryBytes: 512 } });
+    // Seen by the collector and with no record of its own: the pass happened and it was not in
+    // it, which is "down" and not "we cannot see it".
+    expect(declared?.reading.state).toBe("down");
+  });
+
+  it("is a read, so Administrator may ask for it and a stranger may not", async () => {
+    seeing();
+
+    expect(await service.discoverServices(administrator, instanceId, now)).toHaveLength(2);
+    await expect(service.discoverServices(stranger, instanceId, now)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("asks about the instance it was given", async () => {
+    seeing();
+    await service.discoverServices(owner, instanceId, now);
+
+    expect(repository.serviceDiscoveryAsked).toEqual([instanceId]);
+  });
+
+  it("refuses an instance this tenant does not have", async () => {
+    seeing({ instanceExists: false });
+
+    await expect(service.discoverServices(owner, instanceId, now)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  it("says the schema is incomplete rather than that the integration is missing", async () => {
+    seeing({ instanceExists: false, missingMigrations: ["0037_infrastructure_hosts"] });
+
+    await expect(service.discoverServices(owner, instanceId, now)).rejects.toEqual(refused("MIGRATION_REQUIRED"));
+  });
+});
+
+describe("declaring several services at once", () => {
+  const ticked = (count: number) =>
+    Array.from({ length: count }, (_unused, index) => ({
+      name: `servei-${index}`,
+      kind: "container" as const,
+      matchKey: `container:c${index}`,
+      expectedState: "up" as const,
+      customerId: null
+    }));
+
+  it("hands the repository one batch, so it is one transaction and not several", async () => {
+    const declared = await service.declareServices(owner, { hostId: "host-1", services: ticked(3) });
+
+    expect(repository.declaredBatches).toHaveLength(1);
+    expect(declared).toHaveLength(3);
+  });
+
+  /** Writing is writing, however many rows it is. */
+  it("needs the permission a single declaration needs", async () => {
+    await expect(service.declareServices(administrator, { hostId: "host-1", services: ticked(1) })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+  });
+
+  it("refuses an empty batch rather than answering with an empty list", async () => {
+    await expect(service.declareServices(owner, { hostId: "host-1", services: [] })).rejects.toEqual(
+      refused("INVALID_INPUT")
+    );
+  });
+
+  it("refuses a batch bigger than one request has any business writing", async () => {
+    await expect(
+      service.declareServices(owner, { hostId: "host-1", services: ticked(mostServicesPerDeclaration + 1) })
+    ).rejects.toEqual(refused("INVALID_INPUT"));
+  });
+
+  /**
+   * The batch must not become the way to store a name or a key the single-service path refuses,
+   * which is why the checks run here and not in the repository.
+   */
+  it("checks every name and key, exactly as declaring one does", async () => {
+    await expect(
+      service.declareServices(owner, {
+        hostId: "host-1",
+        services: [{ ...ticked(1)[0]!, name: "ab" }]
+      })
+    ).rejects.toEqual(refused("INVALID_NAME"));
+
+    await expect(
+      service.declareServices(owner, {
+        hostId: "host-1",
+        services: [{ ...ticked(1)[0]!, matchKey: "" }]
+      })
+    ).rejects.toEqual(refused("INVALID_MATCH_KEY"));
+  });
+
+  it("trims what it stores, so a ticked box cannot smuggle padding in", async () => {
+    await service.declareServices(owner, {
+      hostId: "host-1",
+      services: [{ ...ticked(1)[0]!, name: "  n8n  ", matchKey: "  container:n8n  " }]
+    });
+
+    expect(repository.declaredBatches.at(-1)!.services[0]).toMatchObject({
+      name: "n8n",
+      matchKey: "container:n8n"
+    });
   });
 });

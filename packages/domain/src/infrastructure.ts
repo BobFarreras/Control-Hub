@@ -76,6 +76,17 @@ export type ObservedRecord = {
 /** When an operation last returned successfully. Null means it never has. */
 export type OperationFreshness = { instanceId: string; operation: string; lastSuccessAt: Date | null };
 
+/**
+ * What a declared service is, as opposed to how a collector happens to see it.
+ *
+ * The Postgres of a self-hosted Supabase is a database and cAdvisor reports it as a container:
+ * the kind is what somebody looking at the screen needs to read, and `matchKey` is what does the
+ * matching. `backup` is here because a copy is none of the other four, and calling it an
+ * automation would make the alert work while the screen said something untrue.
+ */
+export const serviceKinds = ["container", "http", "database", "automation", "backup"] as const;
+export type ServiceKind = (typeof serviceKinds)[number];
+
 /** What a service is expected to be doing, which is what makes its absence mean something. */
 export type ServiceExpectedState = "up" | "stopped" | "ignored";
 

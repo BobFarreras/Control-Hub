@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   connectorDiagnosisSteps,
+  couldNameMachine,
   diagnoseConnector,
   discoverInstances,
+  discoverServices,
   type ConnectorDiagnosisFacts,
   type DeclaredMachine,
   type ConnectorDiagnosisStep,
@@ -303,5 +305,121 @@ describe("what a collector can see that nobody has declared", () => {
 
   it("sees nothing when the collector has stored nothing", () => {
     expect(discoverInstances({ seenInstances: [], declaredMachines: [vps] })).toEqual([]);
+  });
+});
+
+/**
+ * C4. The same idea as `discoverInstances` one level down, so the tests ask the same kinds of
+ * question: what is offered, what is withheld, and what the proposal says about a thing nobody
+ * has claimed.
+ */
+describe("the services a collector has seen", () => {
+  const seen = (externalId: string, seenOn: string | null = null) => ({ externalId, seenOn });
+
+  it("proposes a container by the name a person would recognise, not by the key", () => {
+    const found = discoverServices({ seenRecords: [seen("container:n8n")], declaredMatchKeys: [] });
+
+    expect(found).toEqual([
+      { matchKey: "container:n8n", kind: "container", name: "n8n", seenOn: null, declared: false }
+    ]);
+  });
+
+  it("gives a probe the kind of the thing it is, which is not the prefix it arrived under", () => {
+    const found = discoverServices({
+      seenRecords: [seen("probe:https://n8n.example.tld/healthz")],
+      declaredMatchKeys: []
+    });
+
+    expect(found[0]).toMatchObject({ kind: "http", name: "https://n8n.example.tld/healthz" });
+  });
+
+  it("has somewhere to put a backup, which is the whole reason the kind exists", () => {
+    const found = discoverServices({ seenRecords: [seen("backup:hub-vps-daily")], declaredMatchKeys: [] });
+
+    expect(found[0]).toMatchObject({ kind: "backup", name: "hub-vps-daily" });
+  });
+
+  it("marks what somebody already declared, so the list never offers it twice", () => {
+    const found = discoverServices({
+      seenRecords: [seen("container:n8n"), seen("container:traefik")],
+      declaredMatchKeys: ["container:n8n"]
+    });
+
+    expect(found.map((service) => [service.matchKey, service.declared])).toEqual([
+      ["container:n8n", true],
+      ["container:traefik", false]
+    ]);
+  });
+
+  /**
+   * A machine is the C3's question and a workflow is not infrastructure at all. Offering either
+   * here would put a thing on the screen that the declaring dialog cannot store.
+   */
+  it("leaves out the prefixes that are not services", () => {
+    const found = discoverServices({
+      seenRecords: [seen("host:node-exporter:9100"), seen("workflow:42"), seen("container:n8n")],
+      declaredMatchKeys: []
+    });
+
+    expect(found.map((service) => service.matchKey)).toEqual(["container:n8n"]);
+  });
+
+  /**
+   * The label belongs to the collector that saw the container -- cAdvisor -- and not to the
+   * machine, which is named by its `node_exporter`. Nothing in the data joins the two, so the
+   * list carries it through rather than guessing.
+   */
+  it("carries the label of whoever saw it, so two machines can be told apart", () => {
+    const found = discoverServices({
+      seenRecords: [seen("container:n8n", "cadvisor:8080")],
+      declaredMatchKeys: []
+    });
+
+    expect(found[0]!.seenOn).toBe("cadvisor:8080");
+  });
+
+  it("falls back to the whole key when the bare name would be too short for the column", () => {
+    const found = discoverServices({ seenRecords: [seen("container:db")], declaredMatchKeys: [] });
+
+    expect(found[0]!.name).toBe("container:db");
+  });
+
+  it("trims a name the column could not hold, rather than proposing one that fails to save", () => {
+    const long = "a".repeat(200);
+    const found = discoverServices({ seenRecords: [seen(`container:${long}`)], declaredMatchKeys: [] });
+
+    expect(found[0]!.name).toHaveLength(120);
+    expect(found[0]!.matchKey).toBe(`container:${long}`);
+  });
+
+  it("lists each key once and in a settled order, however the readings came back", () => {
+    const found = discoverServices({
+      seenRecords: [seen("probe:b"), seen("container:z"), seen("probe:b"), seen("container:a")],
+      declaredMatchKeys: []
+    });
+
+    expect(found.map((service) => service.matchKey)).toEqual(["container:a", "container:z", "probe:b"]);
+  });
+
+  it("offers nothing when the collector has stored nothing", () => {
+    expect(discoverServices({ seenRecords: [], declaredMatchKeys: [] })).toEqual([]);
+  });
+});
+
+describe("what could name a machine at all", () => {
+  it("accepts an address on a network, which is how a machine is named", () => {
+    expect(couldNameMachine("node-exporter:9100")).toBe(true);
+    expect(couldNameMachine("127.0.0.1:9090")).toBe(true);
+    expect(couldNameMachine("cadvisor:8080")).toBe(true);
+  });
+
+  it("refuses a probed URL, which can never carry a machine's figures", () => {
+    expect(couldNameMachine("https://sssupabase.example.com/storage/v1/version")).toBe(false);
+    expect(couldNameMachine("http://example.com/healthz")).toBe(false);
+  });
+
+  it("refuses a label with nothing in it", () => {
+    expect(couldNameMachine("")).toBe(false);
+    expect(couldNameMachine("   ")).toBe(false);
   });
 });

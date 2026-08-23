@@ -1,3 +1,4 @@
+import { mostServicesPerDeclaration } from "@control-hub/application";
 import type {
   AlertEventRecord,
   AlertRuleRecord,
@@ -9,6 +10,7 @@ import type {
   Inventory,
   ObservedHost,
   ObservedService,
+  DeclareServicesInput,
   ServiceRecord,
   UpdateAlertRuleInput,
   UpdateHostInput,
@@ -16,6 +18,7 @@ import type {
 } from "@control-hub/application";
 import {
   alertRuleKinds,
+  serviceKinds,
   type AlertSeverity,
   type ConnectorDiagnosis,
   type ConnectorDiagnosisStep,
@@ -291,7 +294,7 @@ const hostFields = {
 /** `hostId` is absent from the patch on purpose: a service that moved machine is a new service. */
 const serviceFields = {
   name: { type: "string", minLength: 3, maxLength: 120 },
-  kind: { type: "string", enum: ["container", "http", "database", "automation"] },
+  kind: { type: "string", enum: [...serviceKinds] },
   matchKey: { type: "string", minLength: 1, maxLength: 200 },
   expectedState: { type: "string", enum: ["up", "stopped", "ignored"] },
   customerId: { type: ["string", "null"], format: "uuid" }
@@ -490,6 +493,40 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
     }
   );
 
+  /**
+   * The C4, and the same read as the discovery one level down.
+   *
+   * Nothing is cut short here either: the list *is* the answer, and a service dropped from it is
+   * a service nobody is offered the chance to declare. What it deliberately does not do is decide
+   * which machine a container belongs to -- `seenOn` carries the collector's label through and a
+   * person decides -- because nothing in a reading joins a cAdvisor label to a node_exporter one.
+   */
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "The services a collector is reading, declared or not",
+        params: instanceParams,
+        description:
+          "Everything this collector has stored a reading for that could be declared as a service -- the `container:`, `probe:` and `backup:` prefixes -- each with the kind and name proposed for it, the label of whoever saw it, and whether somebody has already declared it. A read of what is in our tables: opening it sends nothing to Prometheus. `host:` is left out because a machine is what the discovery answers, and `workflow:` because it is not infrastructure. Answers 503 with `MIGRATION_REQUIRED` when the module's tables are not there."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      const services = await infrastructure.discoverServices(context, request.params.instanceId, new Date());
+      // The reading leaves through the same allow-list every other reading does: a collector that
+      // starts publishing an address or a token reaches no screen by the mere fact of existing.
+      return {
+        services: services.map((service) => ({
+          ...service,
+          reading: readingResponse(service.matchKey, service.reading)
+        }))
+      };
+    }
+  );
+
   app.get(
     "/api/v1/infrastructure/hosts",
     {
@@ -625,6 +662,75 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
       });
       await writeAudit(database, context, request, { ...event, targetId: service.id, outcome: "success" });
       return reply.code(201).send({ service: serviceResponse(service) });
+    }
+  );
+
+  /**
+   * Several services on one machine, or none of them.
+   *
+   * The write the selector needs. It is one transaction on purpose: half a batch stored would
+   * leave somebody looking at a screen where some of what they ticked is declared and some is
+   * not, with nothing to say which. Each service still gets its own audit row, so a service
+   * declared by ticking a box is indistinguishable in the trail from one declared by hand --
+   * which is what it is.
+   */
+  app.post<{ Params: { hostId: string }; Body: { services: DeclareServicesInput["services"] } }>(
+    "/api/v1/infrastructure/hosts/:hostId/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Declare several services on a machine at once",
+        params: hostParams,
+        description:
+          "Declares every service in the body, or none: they go in one transaction, so a key already taken refuses the whole batch rather than leaving part of it stored. The same rules as declaring one at a time -- two services may not share a `matchKey`, and `expectedState` defaults to `up`.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["services"],
+          properties: {
+            services: {
+              type: "array",
+              minItems: 1,
+              maxItems: mostServicesPerDeclaration,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["name", "kind", "matchKey"],
+                properties: serviceFields
+              }
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const event = {
+        action: "infrastructure.service_declared",
+        targetType: "infra_service",
+        metadata: { hostId: request.params.hostId, count: String(request.body.services.length) }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+
+      const declared = await infrastructure.declareServices(context, {
+        hostId: request.params.hostId,
+        services: request.body.services.map((service) => ({
+          ...service,
+          expectedState: service.expectedState ?? "up",
+          customerId: service.customerId ?? null
+        }))
+      });
+
+      for (const service of declared) {
+        await writeAudit(database, context, request, {
+          ...event,
+          targetId: service.id,
+          metadata: { hostId: request.params.hostId, kind: service.kind, matchKey: service.matchKey },
+          outcome: "success"
+        });
+      }
+
+      return reply.code(201).send({ services: declared.map(serviceResponse) });
     }
   );
 

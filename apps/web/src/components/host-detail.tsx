@@ -11,11 +11,12 @@ import { ageLabel, observedStateTone, type ReadingAge } from "@/lib/infrastructu
  * collector that read it and how long ago, side by side, so a figure that looks wrong can be
  * traced to the thing that produced it.
  *
- * A server component on purpose. There is nothing to click here -- declaring and correcting stay
- * on the list, behind `infrastructure:operate` -- and a page that only reads should not ship a
- * bundle to say so.
+ * A server component on purpose: this draws and does not act, and a component that only reads
+ * should not ship a bundle to say so. Correcting a service still happens on the list, behind
+ * `infrastructure:operate`. The one thing on this page that writes is the service selector, and
+ * the page renders it beside this as its own island -- see `service-selector.tsx`.
  *
- * Specification: `docs/specifications/connector-onboarding.md`, increment C2.
+ * Specification: `docs/specifications/connector-onboarding.md`, increments C2 and C4.
  */
 
 type Labels = Record<string, string>;

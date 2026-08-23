@@ -83,6 +83,18 @@ export function allowlistLine(baseUrl: string): string | null {
  * `needsHost` is the honest half: when the address typed is itself a loopback, the far machine is
  * exactly what this module does not know, and inventing a plausible one is the failure mode the
  * whole increment exists to remove. The placeholder stays visible and the screen says to fill it.
+ *
+ * Three options that are not decoration, each of them a way the first version failed in use:
+ *
+ * - **`127.0.0.1:` in front of the forward.** Without it `ssh` binds the port on every interface
+ *   it can, and a Prometheus that was deliberately kept on the far machine's loopback ends up
+ *   published on the network this computer is on. The runbook forbids exposing the exporters;
+ *   this is the same rule on the near end.
+ * - **`ExitOnForwardFailure=yes`.** Without it a forward that could not be bound -- the usual
+ *   cause being a tunnel already open -- leaves `ssh` connected and forwarding nothing, and the
+ *   panel says the address does not answer while a session sits there looking healthy.
+ * - **`ServerAliveInterval=30`.** A tunnel with no traffic is dropped by whatever sits in the
+ *   middle, silently, and the readings stop with no error anywhere. This is what makes it say so.
  */
 export function tunnelCommand(baseUrl: string): { command: string; needsHost: boolean } | null {
   const address = typedAddress(baseUrl);
@@ -90,6 +102,10 @@ export function tunnelCommand(baseUrl: string): { command: string; needsHost: bo
 
   const needsHost = loopbacks.has(address.host.toLowerCase());
   const far = needsHost ? "VPS_ADDRESS" : address.host;
+  const options = "-N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30";
 
-  return { command: `ssh -N -L ${address.port}:127.0.0.1:${address.port} user@${far}`, needsHost };
+  return {
+    command: `ssh ${options} -L 127.0.0.1:${address.port}:127.0.0.1:${address.port} user@${far}`,
+    needsHost
+  };
 }

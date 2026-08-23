@@ -992,10 +992,15 @@ suite("PostgresInfrastructureRepository", () => {
     });
 
     /**
-     * The labels that travel are the ones Prometheus itself scrapes: a host reading, and a probe
-     * reading carrying `scrapeUp`, which came from the `up` series. A blackbox reading is left
-     * out because its label is a probed address, not a machine anybody could declare -- and an
-     * address is the one thing acceptance criterion 5 says may never leave this process.
+     * The labels that travel are the ones that could name a machine: a host reading, and a probe
+     * reading of an address on a network.
+     *
+     * **The probed URL here carries `scrapeUp`, and that is the point.** This test used to seed it
+     * without one, which quietly agreed with the belief that a blackbox target has no scrape state
+     * of its own. It has: Prometheus relabels a blackbox scrape so its `up` line carries the
+     * probed URL. With the record shaped the way the connector really writes it, only the rule in
+     * the domain keeps the URL out -- and an address is the one thing acceptance criterion 5 says
+     * may never leave this process.
      */
     it("reads the labels of stored readings and leaves a probed address out of them", async () => {
       const instance = await promInstance(tenantA, membershipA);
@@ -1003,6 +1008,7 @@ suite("PostgresInfrastructureRepository", () => {
       await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${label}`, { cpuBusyRatio: 0.1 });
       await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", `probe:${label}`, { scrapeUp: true });
       await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", "probe:https://secret.example.test", {
+        scrapeUp: true,
         success: true
       });
       await putRecord(tenantA, membershipA, instance.id, "pull_container_state", "container:n8n", { state: "running" });

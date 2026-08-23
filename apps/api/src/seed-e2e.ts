@@ -365,6 +365,19 @@ try {
      */
     collector: "Prometheus E2E",
     undeclaredHostname: "e2e-vps-nou",
+    /**
+     * What the collector reads and nobody has declared.
+     *
+     * The selector's reason to exist, and the one thing a seed can carry that the product cannot
+     * produce: a label read from outside that no one has claimed. A container and a backup, so
+     * the grouping by kind is exercised by more than one group. The names are the ones the domain
+     * proposes -- the identifier with the prefix taken off -- so the test can look for them
+     * without repeating that derivation here.
+     */
+    offered: {
+      container: { name: "e2e-cua", matchKey: "container:e2e-cua" },
+      backup: { name: "e2e-nocturn", matchKey: "backup:e2e-nocturn" }
+    },
     services: {
       up: { name: "E2E Base de dades", matchKey: "container:e2e-postgres" },
       down: { name: "E2E Panell antic", matchKey: "container:e2e-panell" },
@@ -509,6 +522,17 @@ try {
         name = excluded.name, kind = excluded.kind, match_key = excluded.match_key, updated_at = now()`;
   }
 
+  // The two the selector offers, taken back before every run. The suite declares them by ticking
+  // and the product has no way to undeclare a service, so without this the second run finds them
+  // already declared and there is nothing left to tick.
+  await database`
+    delete from infra_services
+    where tenant_id = ${tenantId}
+      and match_key = any(${database.array([
+        infrastructureFixture.offered.container.matchKey,
+        infrastructureFixture.offered.backup.matchKey
+      ])})`;
+
   /**
    * The readings, and the passes they came from.
    *
@@ -549,6 +573,21 @@ try {
       externalId: `host:${infrastructureFixture.undeclaredHostname}`,
       minutesAgo: 1,
       data: { cpuBusyRatio: 0.08, memoryUsedRatio: 0.31, filesystemUsedRatio: 0.12, load1: 0.11 }
+    },
+    // And the two services in the same position, for the selector. The container carries the
+    // label of the cAdvisor that saw it and the backup carries none: the screen has to say where
+    // it read one and stay quiet about the other, and only a pair proves it does both.
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.offered.container.matchKey,
+      minutesAgo: 3,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 128_000_000, cpuCores: 0.01, host: "cadvisor:8080" }
+    },
+    {
+      operation: "pull_probe_state",
+      externalId: infrastructureFixture.offered.backup.matchKey,
+      minutesAgo: 4,
+      data: { lastSuccessAt: null }
     }
   ] as const;
   for (const reading of readings)

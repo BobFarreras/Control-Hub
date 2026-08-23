@@ -71,11 +71,34 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te els tres increments entregats: C1, C2 i C3.** L'entrega 7.2 es a
+**La 7.3 te els sis increments entregats: C1, C2, C3, C4, C5 i C6.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
-el resum i els filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no
-s'ha declarat (C3).
+el resum i els filtres per a moltes maquines (C2), el descobriment que proposa el que encara no
+s'ha declarat (C3), el selector de serveis (C4), la pantalla que depen del recollidor triat (C5) i la maquina d'un
+cop d'ull (C6).
+
+**La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
+(`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i
+temps encesa, mes 20 contenidors, 5 sondes i la copia de seguretat diaria. **La VPS no va caldre
+tocar-la**: ja tenia el Prometheus nomes a loopback i els tres exportadors sense publicar cap port,
+tal com demana `docs/runbooks/connect-a-vps.md`. El que fallava era la installacio del Control Hub,
+i eren dues coses independents:
+
+- **`connector_sync_runs_job_id_check` limitava `job_id` a 120 caracteres**, i l'identificador de
+  BullMQ en gasta 104 abans del nom de l'operacio. `pull_executions` en feia 120 i passava just;
+  `pull_host_metrics` en feia 122 i no. La violacio saltava dins de `startRun`, **abans que
+  existis la fila de la passada**, aixi que no quedava ni passada, ni salut, ni codi d'error: un
+  modul sencer incapac de desar una lectura, fallant de l'unica manera que no deixa rastre a cap
+  pantalla. Ho corregeix la migracio `0040`.
+- **`CONNECTOR_INTERNAL_ALLOWLIST` estava escrita dues vegades al `.env`.** El `--env-file` de Node
+  es queda l'ultima i descarta la primera sense dir-ho, aixi que l'origen del Prometheus no hi era
+  mai i cada passada moria amb `DESTINATION_NOT_ALLOWLISTED`. La seccio 7 del runbook ho documenta.
+
+**Cap de les dues no l'hauria enxampada la comprovacio guiada del C1 tal com esta ara.** Amb
+`lastAttempt` a null la cadena s'atura al primer esglao dient que ningu no ho ha mirat, quan la
+veritat era que el modul no podia ni comencar. Val la pena, quan es reprengui el C1, distingir
+"ningu no ho ha intentat" de "no es pot intentar".
 
 **El C1 esta complet.** Hi ha el domini, el cas d'us, la lectura contra PostgreSQL i la ruta
 `GET /api/v1/infrastructure/connectors/{instanceId}/diagnosis`, amb sis esglaons dels set que
@@ -166,9 +189,9 @@ guiat, pero desplegat com a llista en comptes de reduit a un si o un no, i el ca
 funcio del domini (`discoverInstances`, a `connector-diagnosis.ts`) perque les dues respostes no
 puguin arribar a discrepar. A la persistencia, la consulta d'etiquetes es una sola i la comparteixen
 les dues lectures: dues copies d'aquell `where` acabarien discrepant, i la discrepancia es llegiria
-com una pantalla que ofereix una maquina que la comprovacio diu que no veu. La lectura de blackbox
-en queda fora a totes dues, perque la seva etiqueta es una adreca sondejada i no una maquina que
-ningu pugui declarar.
+com una pantalla que ofereix una maquina que la comprovacio diu que no veu. Les adreces sondejades
+en queden fora a totes dues, perque una URL no es una maquina que ningu pugui declarar — vegeu el
+defecte de sota, perque durant uns dies aixo era el que el document deia i no el que el codi feia.
 
 **No dispara cap consulta cap enfora.** Llegeix registres ja desats, i per aixo obrir la pantalla no
 pot generar trafic. Tampoc s'audita: es una lectura. Declarar des d'alla si que s'audita, com
@@ -191,6 +214,160 @@ cap a `control_hub_test` no s'estableix des d'aquesta sessio, tot i que el port 
 te acces, i les nou suites d'integracio del paquet fallen totes igual pel mateix motiu. Estan
 escrites amb la mateixa forma que les germanes i passen el `typecheck`; qui les validi ha de ser CI
 o una sessio amb la base accessible.
+
+**Un defecte del C3, trobat usant-lo i tancat.** El panell de maquines oferia
+`https://sssupabase.digitaistudios.com/storage/v1/version` com si fos una maquina. Declarada, la
+seva fitxa deia «no respon / cap lectura» i ho hauria dit per sempre: les xifres d'una maquina surten
+de `pull_host_metrics`, que desa `host:<etiqueta>`, i cap lectura no portara mai aquella etiqueta.
+Supabase no es una maquina: es un servei al qual el Prometheus truca amb el blackbox.
+
+La causa era una suposicio escrita com si fos una regla. La consulta filtrava per `scrapeUp` creient
+que una sonda de blackbox no en te; **si que en te**: Prometheus reetiqueta l'scrape de blackbox de
+manera que la linia `up` porta la URL sondejada com a `instance`. La prova d'integracio que ho
+guardava sembrava el registre **sense** `scrapeUp`, o sigui que confirmava la creenca en comptes de
+comprovar-la — i per aixo passava.
+
+Ara la regla es al domini (`couldNameMachine`) amb les seves proves, i s'aplica sobre la consulta
+compartida, de manera que la comprovacio guiada i el descobriment no poden discrepar. Una URL es
+continua llegint i continua sortint: **al selector de serveis**, com a mena `http`, que es la
+pantalla que en pot fer alguna cosa. La prova d'integracio ara sembra el registre tal com el
+connector l'escriu de debo.
+
+**El C4 esta complet: el selector de serveis.** El descobriment del C3 proposa maquines; aquest
+proposa serveis, un esglao mes avall i pel mateix motiu. Fins ara declarar un servei volia dir
+escriure `container:n8n` a ma dins d'un camp lliure, i un sol caracter equivocat produia un servei
+que no s'encenia mai, sense res a cap pantalla que digues per que. **Aquest error el vaig cometre
+jo mateix aconsellant-lo**: la clau ha de portar el prefix, i sense ell no casa amb res.
+
+La pantalla ensenya tot el que el recollidor ha desat amb un prefix declarable — `container:`,
+`probe:` i `backup:` — agrupat per mena, amb una casella per cada cosa encara sense declarar i els
+ja declarats a la vista pero sense casella, perque son informacio i no una accio. El nom proposat es
+l'identificador sense el prefix. Marcar-ne uns quants i confirmar els declara tots de cop, amb estat
+esperat `up`, fins a cent per crida, i **cada servei declarat deixa la seva fila d'auditoria**: una
+casella marcada ha de ser indistingible al rastre d'una declaracio escrita a ma.
+
+**El que la llista no sap, no ho fingeix.** Una lectura de contenidor porta l'etiqueta del cAdvisor
+que la va veure (`cadvisor:8080`) i una maquina es declara per l'etiqueta del `node_exporter`
+(`node-exporter:9100`); res no lliga les dues. Per aixo s'ofereix tot el que el recollidor veu i es
+mostra al costat de qui ho va veure, i decideix qui ho sap. Filtrar per una correspondencia
+inventada amagaria serveis de debo sense dir-ho.
+
+El calcul es al domini (`discoverServices`, al mateix `connector-diagnosis.ts` que `discoverInstances`)
+i la pantalla viu a la fitxa de la maquina: un servei pertany a una maquina i alla ja esta triada.
+Es l'unic tros d'aquella pagina que escriu, i per aixo es l'unica illa de client que hi ha; la resta
+segueix sent servidor. Llegir demana `infrastructure:read` i declarar `infrastructure:operate`, i la
+pagina ho pregunta a `/api/v1/me` en comptes de suposar-ho: oferir un boto que el servidor
+rebutjara es pitjor que no oferir-lo.
+
+La migracio `0041` afegeix `backup` a les menes acceptades per `infra_services`. Ampliar un `check`
+accepta tot el que ja era valid, aixi que s'aplica sobre un desplegament en marxa sense res per
+desfer. **Aplicada a `control_hub` i a `control_hub_e2e`; la de test (`control_hub_test`) es queda
+enrere fins que algu hi corri el migrador**, igual que la `0040`.
+
+**El C5 esta complet: la pantalla depen del que tries.** Fins ara Infraestructura ho ensenyava tot
+alhora: qui l'obria per mirar la VPS es trobava al davant la taula d'automatitzacions d'un n8n que
+en aquell moment no li importava, i qui l'obria per mirar les automatitzacions es trobava les
+maquines. Ara hi ha un selector a dalt de tot —«Tota la infraestructura» i una entrada per cada
+instancia— i **tot el que hi ha a sota es consequencia d'aquella tria**.
+
+La regla no es una taula de correspondencies entre menes de connector i seccions, que envelliria el
+dia que n'hi hagi una de nova, sino una sola frase: **una seccio que no te res d'aquell recollidor
+no es dibuixa.** Amb el Prometheus triat no hi ha taula d'automatitzacions perque no n'ha llegit
+cap; amb l'n8n triat no hi ha maquines pel mateix motiu. El dia que un connector llegeixi les dues
+coses sortiran les dues, sense tocar res.
+
+**Els comptadors segueixen la seleccio i no menteixen.** Amb tota la infraestructura son els que
+compta l'API, que es l'unic recompte que pot parlar de maquines que aquesta pantalla no ha rebut;
+amb un recollidor triat es compten aqui, perque l'API va comptar una flota i la pantalla n'ensenya
+un tros — i un titol que seguis dient «22 automatitzacions» sobre una llista de cap seria la
+pantalla contradint-se. **Els estats no es tornen a jutjar**: se sumen els que ja porta cada
+lectura, i la frescor es tria entre les edats que el servidor ja ha calculat (`oldestAge`), mai
+mesurada un altre cop al navegador.
+
+Un comptador d'una cosa que la seleccio no conte no s'ensenya a zero: no s'ensenya. Les fitxes son
+mes petites (`.metric-row.compact`), que es el que demanava una fila on la majoria porten un sol
+numero.
+
+**Els panells buits deixen d'ocupar lloc.** Les alertes, quan no n'hi ha cap de viva, passen de
+panell sencer a una franja d'una linia —amb el cami cap a les resoltes a dins, perque amagar la
+porta perque avui no hi ha res al darrere deixaria sense on mirar el que hi havia ahir— i el
+descobriment nomes es dibuixa quan hi ha un recollidor a qui preguntar-ho: amb tota la
+infraestructura la pregunta no te subjecte.
+
+**Els filtres passen al component de seleccio general.** El de connector d'origen desapareix de la
+flota: ja es el selector de dalt, i preguntar-ho dues vegades es com una llista acaba reduida a un
+recollidor que no es el del titol. Els altres dos —entorn i resposta— deixen de ser caselles
+acumulables i passen a una resposta cada un, amb «Qualsevol» com a primera. **Es una correccio
+deliberada del C2**, escrita a l'especificacio i no un descuit.
+
+La tria viu a la barra d'adreces, escrita amb `window.history.replaceState` —que aquesta versio de
+Next integra amb el router, documentat a `node_modules/next/dist/docs`— i per tant sense
+navegacio: la flota ja es al navegador i recarregar-la per dibuixar-ne menys seria demanar-ho tot
+per ensenyar-ne un tros. **Un identificador d'instancia no es una adreca de proveidor**: es el
+mateix UUID que ja viatja pels camins de l'API.
+
+**Cap taula nova, cap migracio, cap ruta nova.** Tot el canvi es de lectura i de pantalla:
+`sliceByCollector`, `tallyReadings` i `oldestAge` son funcions pures amb prova a
+`apps/web/src/lib/infrastructure.test.ts`. `readingSources` i el component `FilterGroup` han
+marxat amb el filtre que els feia servir; deixar-los hauria estat codi mort amb proves que el
+justifiquen.
+
+**El C6 esta complet: la maquina d'un cop d'ull.** El C5 va deixar la pantalla neta i seguia sense
+servir: amb el Prometheus triat, tot el que deia d'una VPS amb vint contenidors era una fila de
+maquina i tres etiquetes darrere d'un boto. Els vint contenidors hi eren desats; ningu no els
+dibuixava, i despres de mirar la pantalla calia obrir un terminal igualment.
+
+Ara la vista d'un recollidor ensenya **tot el que ha llegit, agrupat per mena i amb l'estat de
+cada cosa** i les xifres que porta la lectura. L'estat el decideix `currentReading`, la mateixa
+funcio que el decideix per a l'inventari i sobre els mateixos registres, declarada la cosa o no:
+un contenidor «Respon» aqui i «No respon» a la fitxa de la maquina seria el producte discutint amb
+ell mateix. **Es llegeix sol en obrir**, perque el boto que hi havia guardava la pregunta
+equivocada; res no surt cap a cap proveidor en cap dels dos casos.
+
+Declarar segueix sent una decisio d'una persona i les alertes segueixen sent nomes sobre el que
+s'ha declarat: l'unic que canvia es que ara es decideix amb l'estat al davant.
+
+**I l'espai buit.** Les maquines van a dues columnes quan la finestra hi cap, el selector i els
+comptadors comparteixen una franja en comptes d'ocupar-ne dues mig buides, i el filtre deixa de
+ser un panell amb vora dibuixat al voltant de dos desplegables estrets.
+
+**La comanda del tunel del diagnostic porta tres opcions que no son decoracio.** `-L 127.0.0.1:...`
+perque sense el davant `ssh` publica el port a totes les interficies i un Prometheus que es va
+deixar al loopback de la VPS acabaria obert a la xarxa d'aquest ordinador; `ExitOnForwardFailure`
+perque sense ell un reenviament que no s'ha pogut obrir deixa la sessio connectada i sense
+reenviar res, amb el panell dient que l'adreca no respon; i `ServerAliveInterval` perque un tunel
+sense transit el tanca el que hi ha al mig, en silenci.
+
+**`pnpm check:e2e`: 32 proves, 32 passades**, amb dos workers i base `_e2e` neta. **La porta, pero,
+la compta vermella**, i amb rao: dues proves d'altres modules —el fitxatge i les despeses— nomes
+han passat al reintent, totes dues amb «el control no s'ha hidratat mai» sota una maquina
+carregada. Cap de les dues no toca infraestructura i les cinc d'infraestructura han passat a la
+primera. Queda dit i no arreglat: una prova que nomes passa al reintent no es verda.
+
+Dues proves noves en aquesta tanda: la del C4 marca dos serveis del
+selector i els torna a llegir a la fitxa de la maquina, i la del C5 tria un recollidor i comprova
+que la taula de l'altre **no hi es** —no buida: absent— en els dos sentits, i que la tria queda a
+l'adreca.
+
+I `pnpm check` sencer sobre els tretze paquets: `lint`, `format:check`, `typecheck`, `test`,
+`test:scripts` i `build`, tots verds, amb **1.138 proves passades i 209 saltades** — les
+d'integracio de PostgreSQL, que sense `TEST_DATABASE_URL` no es registren. **Aixo inclou les del
+C3 i el C4 que toquen `infra_services` i el descobriment: escrites, mai executades en aquesta
+maquina**, i per tant encara sense provar contra una base de debo.
+
+**I la porta ha destapat tres defectes de la prova del C3, que mai no havia corregut.** Cap dels
+tres era del producte i cap no era visible sense obrir un navegador:
+
+- `selectOption` sobre un `SelectField`, que fa temps que no es un `<select>` natiu. Hi ha
+  l'ajudant `selectFieldOption` precisament per aixo.
+- `hasText` amb un regexp ancorat: l'ancora s'aplica al text **de la fila**, no al de l'etiqueta,
+  aixi que `^e2e-vps` casava tambe amb `e2e-vps-nou` i la fila declarada semblava oferir un boto
+  que era de l'altra.
+- `getByLabel("Nom")` casant amb dos elements, perque el `?` d'ajuda del costat porta un
+  `aria-label` on hi surt la paraula.
+
+La llico es la que ja diu el document mes avall i val la pena repetir aqui: **una prova E2E escrita
+i no executada no es una prova.** El `typecheck` la dona per bona i el `pnpm check` no l'obre mai.
 
 **Un defecte de la 7.2 que impedia al modul desar cap lectura, reparat.** El
 `check` de `connector_sync_runs.job_id` era de 120 caracters i l'identificador el composa BullMQ:
@@ -755,6 +932,16 @@ El detall i els checks dels increments de consolidacio previs son a
   d'infraestructura no porta cap adreca de proveidor, i la base surt de la superficie
   d'integracions, que demana el seu propi permis. Sense aquell permis no hi ha enllacos i els
   noms es dibuixen com a text, que es el mateix resultat que una base que ningu ha configurat.
+- **`connectorHealth` no la crida ningu.** La funcio de domini que pesa la comprovacio de salut i
+  les passades recents com a **evidencia** (`packages/domain/src/connectors.ts`) esta escrita i
+  provada, i el cami de lectura no la fa servir enlloc: `instanceResponse` envia la columna
+  `health_status` crua. Com que una passada correcta no escriu salut a proposit, i la comprovacio
+  **nomes s'encua des de l'API** i mai periodicament, una integracio que fa hores que llegeix be
+  segueix dient "fallando" amb l'error de l'ultima comprovacio fins que algu prem el boto — just a
+  sobre d'una llista de passades que diu "correcta". Es la mateixa mena de contradiccio que la
+  comprovacio guiada va neixer per matar, i li falta la ultima passa. Connectar-la vol una lectura
+  nova de les ultimes passades per instancia i, per al senyal del circuit, moure `CircuitStore` de
+  `apps/worker` a un paquet que l'API pugui importar: es una feina propia, no un afegit.
 
 ## Feature flags
 

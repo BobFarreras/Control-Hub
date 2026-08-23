@@ -14,7 +14,8 @@ import { allowlistLine, tunnelCommand } from "./connector-diagnosis.js";
 describe("the tunnel command the guided check offers", () => {
   it("opens the typed port against the loopback of the typed machine", () => {
     expect(tunnelCommand("http://vps.example.test:9090")).toEqual({
-      command: "ssh -N -L 9090:127.0.0.1:9090 user@vps.example.test",
+      command:
+        "ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:9090:127.0.0.1:9090 user@vps.example.test",
       needsHost: false
     });
   });
@@ -36,7 +37,11 @@ describe("the tunnel command the guided check offers", () => {
   it("leaves the far end blank when the typed address is the loopback itself", () => {
     const composed = tunnelCommand("http://127.0.0.1:9090");
 
-    expect(composed).toEqual({ command: "ssh -N -L 9090:127.0.0.1:9090 user@VPS_ADDRESS", needsHost: true });
+    expect(composed).toEqual({
+      command:
+        "ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:9090:127.0.0.1:9090 user@VPS_ADDRESS",
+      needsHost: true
+    });
     expect(composed?.command).not.toContain("127.0.0.1 user@");
   });
 
@@ -53,7 +58,9 @@ describe("the tunnel command the guided check offers", () => {
   it("never carries a credential somebody typed into the address", () => {
     const composed = tunnelCommand("http://admin:hunter2@vps.example.test:9090");
 
-    expect(composed?.command).toBe("ssh -N -L 9090:127.0.0.1:9090 user@vps.example.test");
+    expect(composed?.command).toBe(
+      "ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:9090:127.0.0.1:9090 user@vps.example.test"
+    );
     expect(composed?.command).not.toContain("hunter2");
     expect(composed?.command).not.toContain("admin");
   });

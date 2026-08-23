@@ -2,6 +2,7 @@ import {
   currentReading,
   diagnoseConnector,
   discoverInstances,
+  discoverServices,
   evaluateAlertRules,
   hasPermission,
   hostMatchKey,
@@ -15,6 +16,8 @@ import {
   type DeclaredMachine,
   type DeclaredService,
   type DiscoveredInstance,
+  type DiscoveredService,
+  type ServiceKind,
   type AlertRuleTargetType,
   type JsonValue,
   type LiveAlert,
@@ -39,6 +42,15 @@ import {
  *
  * Specification: `docs/specifications/infrastructure.md`.
  */
+
+/**
+ * A service the collector reads, with what is currently known of it.
+ *
+ * The proposal and the state travel together because the screen that shows them is not a form: it
+ * is the machine at a glance, and a container listed without saying whether it is running is the
+ * list that made somebody open a terminal anyway.
+ */
+export type ObservedDiscoveredService = DiscoveredService & { reading: CurrentReading };
 
 export class InfrastructureServiceError extends Error {
   constructor(public readonly code: string) {
@@ -87,7 +99,7 @@ export type LinkAutomationInput = {
 };
 
 export type HostEnvironment = "production" | "staging" | "development";
-export type ServiceKind = "container" | "http" | "database" | "automation";
+export type { ServiceKind };
 export type ServiceExpectedState = "up" | "stopped" | "ignored";
 
 /** A machine somebody declared, and the label the readings will be matched to it by. */
@@ -295,6 +307,42 @@ export type ConnectorDiagnosisState = {
  * `instanceExists` and not the instance itself, for the same reason: whether this tenant has such
  * a connector is the whole question, and a row would bring its configuration along with the answer.
  */
+/**
+ * What the service discovery is answered with, which is not what the machine discovery gets.
+ *
+ * Readings rather than labels, because a service proposal carries the collector that saw it, and
+ * declared *keys* rather than declared services, because all this asks of the inventory is
+ * whether a key is already spoken for. Neither the instance's configuration nor a service's name
+ * has any business here.
+ */
+export type ConnectorServiceDiscoveryState = {
+  instanceExists: boolean;
+  /** Answered first and on its own, exactly as in the guided check: see `discover`. */
+  missingMigrations: readonly string[];
+  seenRecords: readonly { externalId: string; seenOn: string | null }[];
+  declaredMatchKeys: readonly string[];
+};
+
+/**
+ * Several services declared in one go, on one machine.
+ *
+ * A batch and not a loop over the single-service call: somebody ticking eight boxes means the
+ * eight, and half of them saved with an error on the screen is a worse state than none of them.
+ * The repository puts them in one transaction.
+ */
+export type DeclareServicesInput = {
+  hostId: string;
+  services: readonly Omit<DeclareServiceInput, "hostId">[];
+};
+
+/**
+ * How many a single request may declare.
+ *
+ * Not a guess about screens: it is above anything a collector realistically offers -- the first
+ * real VPS came to twenty-six -- and it keeps one request from turning into an unbounded write.
+ */
+export const mostServicesPerDeclaration = 100;
+
 export type ConnectorDiscoveryState = {
   instanceExists: boolean;
   /** Answered first and on its own, exactly as in the guided check: see `discover`. */
@@ -349,6 +397,8 @@ export type InfrastructureRepository = {
   readEvaluationState(context: TenantContext): Promise<EvaluationState>;
   readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState>;
   readDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorDiscoveryState>;
+  readServiceDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorServiceDiscoveryState>;
+  declareServices(context: TenantContext, input: DeclareServicesInput): Promise<readonly ServiceRecord[]>;
   applyVerdicts(
     context: TenantContext,
     verdicts: readonly AlertVerdict[],
@@ -526,6 +576,70 @@ export class InfrastructureService {
     if (!state.instanceExists) throw new InfrastructureServiceError("INSTANCE_NOT_FOUND");
 
     return discoverInstances({ seenInstances: state.seenInstances, declaredMachines: state.declaredMachines });
+  }
+
+  /**
+   * What this collector has seen that could be declared, and what already has been.
+   *
+   * The sibling of `discover`, and the same three refusals in the same order: the migration rung
+   * first, because with the schema incomplete there is no table to look in and "no such
+   * integration" would be a false answer about something that is not there.
+   *
+   * Like the machine discovery, this reads what is already stored. Opening the screen cannot
+   * cause a request to leave the process.
+   */
+  async discoverServices(
+    context: TenantContext,
+    instanceId: string,
+    now: Date
+  ): Promise<readonly ObservedDiscoveredService[]> {
+    requireRead(context);
+    const state = await this.repository.readServiceDiscoveryState(context, instanceId);
+    if (state.missingMigrations.length > 0) throw new InfrastructureServiceError("MIGRATION_REQUIRED");
+    if (!state.instanceExists) throw new InfrastructureServiceError("INSTANCE_NOT_FOUND");
+
+    const found = discoverServices({ seenRecords: state.seenRecords, declaredMatchKeys: state.declaredMatchKeys });
+    if (found.length === 0) return [];
+
+    // The very same judgement the inventory makes, over the very same records: a container that
+    // somebody declared and the same container still undeclared cannot end up drawn two different
+    // ways, because there is one function deciding it and it does not know which of the two it is
+    // looking at. Reading what is stored a second time is a read; nothing leaves the process.
+    const inventory = await this.repository.readInventoryState(context);
+    return found.map((service) => ({
+      ...service,
+      reading: currentReading({
+        matchKey: service.matchKey,
+        records: inventory.records,
+        freshness: inventory.freshness,
+        budgets: this.budgets,
+        now
+      })
+    }));
+  }
+
+  /**
+   * Declares several services on one machine, or none of them.
+   *
+   * Every name and key goes through the same two checks as a service declared by hand, and it
+   * happens here rather than in the repository so that a batch cannot become the way to store a
+   * value the single-service path refuses. An empty batch is a caller mistake and not an
+   * expensive no-op, so it is refused rather than answered with an empty list.
+   */
+  async declareServices(context: TenantContext, input: DeclareServicesInput): Promise<readonly ServiceRecord[]> {
+    requireOperate(context);
+    if (input.services.length === 0 || input.services.length > mostServicesPerDeclaration) {
+      throw new InfrastructureServiceError("INVALID_INPUT");
+    }
+
+    return await this.repository.declareServices(context, {
+      hostId: input.hostId,
+      services: input.services.map((service) => ({
+        ...service,
+        name: checkName(service.name),
+        matchKey: checkMatchKey(service.matchKey)
+      }))
+    });
   }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {

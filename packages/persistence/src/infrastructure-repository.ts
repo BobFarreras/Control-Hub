@@ -7,9 +7,11 @@ import {
   type AutomationRecord,
   type ConnectorDiagnosisState,
   type ConnectorDiscoveryState,
+  type ConnectorServiceDiscoveryState,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
+  type DeclareServicesInput,
   type EvaluationState,
   type HostRecord,
   type InfrastructureRepository,
@@ -21,7 +23,7 @@ import {
   type UpdateServiceInput
 } from "@control-hub/application";
 import { infrastructureSchemaProbes, withTenant, type DatabaseClient } from "@control-hub/database";
-import { hostMatchKey } from "@control-hub/domain";
+import { couldNameMachine, discoverableServicePrefixes, hostMatchKey } from "@control-hub/domain";
 import type {
   AlertSeverity,
   AlertVerdict,
@@ -113,6 +115,73 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
 
       return { instanceExists: true, missingMigrations: [], seenInstances, declaredMachines };
     });
+  }
+
+  async readServiceDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorServiceDiscoveryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const missingMigrations = await missingInfrastructureMigrations(tx);
+      if (missingMigrations.length > 0) {
+        return { instanceExists: false, missingMigrations, seenRecords: [], declaredMatchKeys: [] };
+      }
+
+      const [instance] = await tx<{ id: string }[]>`
+        select id from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      if (!instance) {
+        return { instanceExists: false, missingMigrations: [], seenRecords: [], declaredMatchKeys: [] };
+      }
+
+      // The prefixes come from the domain, which is also what turns them into kinds. Asking for a
+      // set the proposal does not read -- or missing one it does -- would drop a service without
+      // anything to show for it.
+      //
+      // `data ->> 'host'` is the label of whoever saw the thing, and only container readings carry
+      // one. It is context for a person, never a join: see `discoverServices`.
+      const seenRecords = await tx<{ externalId: string; seenOn: string | null }[]>`
+        select external_id as "externalId", data ->> 'host' as "seenOn"
+        from connector_records
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId}
+          and split_part(external_id, ':', 1) = any(${tx.array([...discoverableServicePrefixes])})`;
+
+      // Every declared key of the tenant, not only this machine's: a key is unique across the
+      // inventory, so one already spoken for elsewhere must not be offered here either.
+      const declared = await tx<{ matchKey: string }[]>`
+        select distinct match_key as "matchKey" from infra_services where tenant_id = ${context.tenantId}`;
+
+      return {
+        instanceExists: true,
+        missingMigrations: [],
+        seenRecords,
+        declaredMatchKeys: declared.map((row) => row.matchKey)
+      };
+    });
+  }
+
+  /**
+   * Several services in one statement, inside the one transaction `withTenant` already opens.
+   *
+   * All or none is the point: a partial batch would leave somebody looking at a screen where some
+   * of what they ticked is declared and some is not, with no way to tell which without reading
+   * the list again.
+   */
+  async declareServices(context: TenantContext, input: DeclareServicesInput): Promise<readonly ServiceRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = input.services.map((service) => ({
+        id: randomUUID(),
+        tenant_id: context.tenantId,
+        host_id: input.hostId,
+        name: service.name,
+        kind: service.kind,
+        match_key: service.matchKey,
+        expected_state: service.expectedState,
+        customer_id: service.customerId
+      }));
+
+      return await tx<ServiceRecord[]>`
+        insert into infra_services ${tx(rows, "id", "tenant_id", "host_id", "name", "kind", "match_key", "expected_state", "customer_id")}
+        returning ${tx.unsafe(serviceColumns)}`;
+    }).catch(mapInventoryConstraint);
   }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {
@@ -750,9 +819,14 @@ async function missingInfrastructureMigrations(tx: postgres.TransactionSql): Pro
  *
  * Two sources, and both are what Prometheus itself scrapes: a host reading is one the
  * configuration already named, and a probe reading carrying `scrapeUp` came from the `up` series,
- * which has one line per target. A blackbox reading has no `scrapeUp` and is left out -- its
- * `instance` is a probed URL, not a machine anybody could declare, and it is the one value here
- * that could be an address with something private in it.
+ * which has one line per target.
+ *
+ * `scrapeUp` was once believed to keep blackbox targets out, and it does not: Prometheus relabels
+ * a blackbox scrape so its `up` line carries the probed URL as the `instance`. The rule that does
+ * the separating is `couldNameMachine`, in the domain and tested there, and it is applied here --
+ * on the one query both reads share -- so the guided check and the discovery cannot come to
+ * different conclusions about the same label. A URL is still read and still offered: as a service,
+ * in the selector, which is the screen that can actually make something of it.
  */
 async function seenInstanceLabels(
   tx: postgres.TransactionSql,
@@ -765,7 +839,7 @@ async function seenInstanceLabels(
     where tenant_id = ${tenantId} and instance_id = ${instanceId}
       and (external_id like 'host:%'
         or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))`;
-  return seen.map((row) => row.label);
+  return seen.map((row) => row.label).filter(couldNameMachine);
 }
 
 function mapConstraint(error: unknown): never {

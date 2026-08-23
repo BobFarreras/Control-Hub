@@ -778,7 +778,7 @@ export type Reading = {
 };
 
 export type HostEnvironment = "production" | "staging" | "development";
-export type ServiceKind = "container" | "http" | "database" | "automation";
+export type ServiceKind = "container" | "http" | "database" | "automation" | "backup";
 export type ServiceExpectedState = "up" | "stopped" | "ignored";
 
 export type InfrastructureHost = {
@@ -868,3 +868,22 @@ export type DiscoveredInstance = {
 };
 
 export type ConnectorDiscoveryResponse = { instances: DiscoveredInstance[] };
+
+/**
+ * One thing a collector has seen that could become a declared service.
+ *
+ * `seenOn` is the label of whoever saw it -- for a container, the cAdvisor, which is not the
+ * label the machine is declared under. It is shown so a person with two machines can tell them
+ * apart, and it is never matched on.
+ */
+export type DiscoveredService = {
+  matchKey: string;
+  kind: ServiceKind;
+  name: string;
+  seenOn: string | null;
+  declared: boolean;
+  /** What is currently known of it, decided by the same rule that decides a declared service. */
+  reading: Reading;
+};
+
+export type ConnectorServicesResponse = { services: DiscoveredService[] };

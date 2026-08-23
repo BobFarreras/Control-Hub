@@ -193,6 +193,11 @@ export default async function InfrastructurePage({
 
   const now = new Date();
   const showResolved = query.resolved === "1";
+  // Which collector the screen is about, straight from the address so a link to one collector
+  // opens on that collector. It is read as an opaque identifier and handed on: what it is allowed
+  // to be is settled by the fleet the browser already holds, and an unknown one narrows to
+  // nothing rather than asking the API about it.
+  const collector = query.collector ?? null;
   const data = await load(locale, labels, showResolved, now);
 
   return (
@@ -218,6 +223,7 @@ export default async function InfrastructurePage({
             customers={data.customers}
             canOperate={data.canOperate}
             showResolved={showResolved}
+            initialCollector={collector}
             labels={labels}
             locale={locale}
             loadError={data.loadError}
