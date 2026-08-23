@@ -553,3 +553,39 @@ docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc
 **La regla.** Quan una migracio nova nomes canvia permisos, afegir-la al repositori no la fa
 efectiva enlloc. Despres d'escriure-la, migra les tres bases o assumeix que la de desenvolupament
 et mentira a la primera prova manual.
+### Un connector diu «mai comprovat, mai executat» mentre el worker el consulta cada cinc minuts
+
+**Simptoma.** La integracio surt `Activa` i alhora `Sense comprovar / Mai`. No hi ha cap fila a
+`connector_sync_runs` ni a `connector_operation_state` per a aquell connector, cap lectura a
+`connector_records`, i les pantalles que en depenen diuen «Cap lectura». El worker esta amunt i
+altres connectors del mateix tenant funcionen.
+
+**Causa.** El treball peta a `startRun`, abans que existeixi la fila de run. Sense fila no hi ha
+res per tancar, cap salut per registrar i cap estat d'operacio per escriure: la passada no deixa
+rastre enlloc. `connector_sync_runs.job_id` tenia un `check` de 120 caracters i l'identificador el
+composa BullMQ, no nosaltres: per a un treball repetitiu es
+`repeat:connector:<tenant>:<instancia>:<operacio>:<timestamp>`, que amb dos UUID son 104
+caracters abans del nom de l'operacio. El limit era, de fet, un limit sobre com de llarg pot
+dir-se una operacio, i no ho deia enlloc. `pull_workflows` (119) i `pull_executions` (120) hi
+cabien; `pull_probe_state` (121), `pull_host_metrics` (122) i `pull_container_state` (125) no.
+El 23514 de PostgreSQL arriba a `mapConstraint`, que el converteix en `INVALID_INPUT`.
+
+**Com reconeixer-ho.** El motiu de la fallada es a la cua, no a la base de dades, perque la base
+no en va saber mai res:
+
+```bash
+docker exec control-hub-valkey-1 valkey-cli zrevrange bull:control-hub-connectors:failed 0 0
+```
+
+I amb l'identificador que en surt:
+
+```bash
+docker exec control-hub-valkey-1 valkey-cli hget "bull:control-hub-connectors:<id>" failedReason
+```
+
+**Solucio.** La `0040` puja el `check` a 200. Aplica-la a les tres bases: `pnpm db:migrate`,
+`pnpm db:migrate:verify` i la de test.
+
+**La regla.** Un limit de llargada sobre un valor que composa una llibreria de tercers es un limit
+sobre alguna altra cosa que ningu ha escrit. Si el capem, que sigui amb marge i amb el motiu al
+costat.

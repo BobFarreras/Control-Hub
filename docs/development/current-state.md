@@ -192,6 +192,28 @@ te acces, i les nou suites d'integracio del paquet fallen totes igual pel mateix
 escrites amb la mateixa forma que les germanes i passen el `typecheck`; qui les validi ha de ser CI
 o una sessio amb la base accessible.
 
+**Un defecte de la 7.2 que impedia al modul desar cap lectura, reparat.** El
+`check` de `connector_sync_runs.job_id` era de 120 caracters i l'identificador el composa BullMQ:
+`repeat:connector:<tenant>:<instancia>:<operacio>:<timestamp>`, 104 caracters abans del nom de
+l'operacio. Les dues de l'n8n hi cabien (119 i 120); les tres del Prometheus no (121, 122 i 125).
+Cada passada petava a `startRun`, **abans** que existis la fila de run, i per tant sense deixar
+rastre: ni run per tancar, ni salut per registrar, ni estat d'operacio. La integracio deia
+«Activa / Sense comprovar / Mai» mentre feia dies que ho intentava cada cinc minuts.
+
+Es la fallada silenciosa que la 7.3 existeix per acabar, i **el diagnostic guiat tampoc l'hauria
+atrapada**: `lastAttempt` era null, o sigui que la cadena s'aturava a `reachable` amb un «ningu ho
+ha mirat» quan la veritat era «no pot ni comencar». Un esglao que falta, apuntat per a mes
+endavant.
+
+La `0040` puja el limit a 200, la llargada que el magatzem de registres ja admet per a un
+`external_id`. Ampliar un `check` accepta tot el que ja era valid, aixi que s'aplica sobre un
+desplegament en marxa sense res per desfer. Aplicada a `control_hub` i a `control_hub_e2e`; **la
+de test (`control_hub_test`) es queda enrere fins que algu hi corri el migrador.**
+
+Verificat sobre la base de desenvolupament: a la primera passada despres de migrar, el Prometheus
+va obrir dues runs de debo i les va tancar amb `DESTINATION_NOT_ALLOWLISTED`. La integracio ara diu
+que falla i per que, en comptes de dir que ningu no l'ha mirat mai.
+
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la
 porta d'entrada amb fitxatge, temps d'avui i del mes, proxims dies i sol·licituds; Calendari mostra
