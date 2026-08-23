@@ -40,6 +40,11 @@ projecte i partida, no per model, i per tant no es reconcilia artificialment amb
 consum: el connector no incorpora tarifes ni reparteix imports. La valoracio utilitza tarifes
 versionades o una importacio manual reconciliada.
 
+Anthropic aporta consum oficial per workspace, model, tier i finestra de context. Les categories
+de cache i eines que tenen preus diferents es conserven com events separats amb SKU qualificat;
+no s'aplanen en una quantitat que no es podria valorar de manera reproduible. El report de cost
+agregat no es reparteix entre aquests events sense evidencia.
+
 ### 8.2 — Correu entrant
 
 - Salut i lectura incremental de busties per IMAP o API oficial.

@@ -557,8 +557,16 @@ de l'organitzacio amb clau administrativa, pagina dins de cada passada i project
 diaries per projecte, model, batch i tier. Rellegir una finestra solapada es idempotent pels
 identificadors deterministes. No desa prompts, respostes, payload cru, tarifes ni costos agregats
 que no es poden reconciliar amb el grup de model. Te fixture anonimitzada de l'API 2020-10-01 i
-proves de paginacio, camps absents, 429, 5xx, health i redaccio del secret. El seguent commit de la
-U5 es Anthropic.
+proves de paginacio, camps absents, 429, 5xx, health i redaccio del secret.
+
+**U5 completada amb Anthropic.** Llegeix l'Admin Usage API oficial amb clau administrativa i
+agrupa per workspace, model, tier i finestra de context. Input sense cache, cache write de 5m,
+cache write d'1h, cache read, output i web search son events separats amb SKU estable: preservar
+aquesta diferencia es el que permet tarifes reproduibles. Com OpenAI, pagina dins de la passada,
+rellegeix una finestra solapada, no desa contingut ni payload cru i no reparteix un cost agregat
+entre events que el proveidor no permet reconciliar. OpenAI i Anthropic tenen commits independents,
+fixtures anonimitzades versionades, health checks i contract tests. El seguent increment es U6: UI
+de consum, costos i pressupostos.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

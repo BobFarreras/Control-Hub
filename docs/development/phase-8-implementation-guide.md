@@ -150,6 +150,11 @@ de la passada: no es un watermark estable. El cost de `/organization/costs` no e
 aquells grups per model, de manera que no s'adjunta ni es reparteix; entra per tarifa versionada o
 import manual.
 
+Anthropic usa `GET /v1/organizations/usage_report/messages`, agrupat per workspace, model, tier i
+finestra de context. Separa input, cache write 5m, cache write 1h, cache read, output i web search
+en events amb SKU estable, perque les categories tenen tarifes diferents. La relacio amb el
+report de cost tampoc no es un-a-un; no s'inventa cap repartiment.
+
 ### U6 — UI de consum i costos
 
 Rutes proposades:
