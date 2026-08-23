@@ -98,10 +98,19 @@ que es exactament el que el contracte de connector admet: **no depenen de la mei
 7B, que te zero codi**. Hostinger no: el que en trauriem —domini caducat, certificat expirat, lloc
 que no respon— ja ho llegeix la sonda blackbox del Prometheus.
 
-**Primer l'especificacio, i te una decisio de debo a dins:** un desplegament de Vercel no es ni una
-maquina ni un contenidor. El model d'infraestructura son maquines i serveis amb una clau de match,
-i el que llegeix son **estats**; un desplegament es un **esdeveniment**, i «l'ultim build ha
-fallat» no es «aixo esta caigut». Sense aixo decidit no s'escriu codi.
+**El connector de Vercel ja esta escrit** (23 d'agost de 2026), amb la seva especificacio a
+`docs/specifications/connector-vercel.md` i el runbook a `docs/runbooks/connect-vercel.md`. Llegeix
+els projectes com a estat (`project:<id>`, cada 5 min) i els desplegaments de produccio fallits com
+a esdeveniment (`deployment:<uid>`), amb la base **fixada al codi** a `https://api.vercel.com` -- un
+camp lliure alli seria una manera d'apuntar el token del compte al host de qualsevol altre. 28
+proves verdes, `pnpm check` sencer **no executat** (la branca es compartida).
+
+**El que queda obert, i es una decisio del propietari:** un projecte de Vercel no es ni una maquina
+ni un servei, i `hostId` es obligatori a un servei. Ningu no els dibuixa encara ni cap regla d'alerta
+els jutja. El precedent bo son **les automatitzacions d'n8n**: franja propia, llegida dels registres,
+amb una taula d'enllac petita per lligar-les a un client. Les tres sortides i el que costa cadascuna
+son a la seccio "El que queda obert" de l'especificacio. Fins que no es respongui, **Supabase**
+espera: tindria exactament el mateix problema i seria decidir-lo dues vegades.
 
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i

@@ -3218,6 +3218,16 @@ const integrationDictionaries = {
     connectorAbout_generic_webhook: "Rep events signats de qualsevol servei que sapiga enviar JSON.",
     connector_prometheus: "Prometheus",
     connectorAbout_prometheus: "L'estat dels teus hosts, contenidors i sondes, llegit del teu Prometheus.",
+    connector_vercel: "Vercel",
+    connectorAbout_vercel: "Els teus projectes i els desplegaments de produccio que han fallat.",
+    field_teamId: "Equip",
+    fieldHint_teamId: "Buit per a un compte personal. Un token d'equip no llegeix res sense l'identificador.",
+    field_includePreview: "Incloure desplegaments de preview",
+    fieldHint_includePreview:
+      "Apagat, nomes mira produccio: mentre algu treballa, els seus previews peten sense parar.",
+    field_deploymentsWindowHours: "Hores de desplegaments a rellegir",
+    fieldHint_deploymentsWindowHours: "Cada passada rellegeix aquesta finestra sencera. Entre 1 i 168.",
+    fieldHint_vercel_baseUrl: "Fixa a https://api.vercel.com: el token no ha d'anar enlloc mes.",
     field_baseUrl: "Adreca de la instancia",
     fieldHint_baseUrl: "L'arrel, sense cap cami: per exemple https://n8n.exemple.com",
     fieldHint_prometheus_baseUrl: "L'arrel del Prometheus: per exemple http://prometheus.intern:9090",
@@ -3316,6 +3326,7 @@ const integrationDictionaries = {
     credentialHint_generic_webhook_ingress_signing: "El valor amb que el proveidor firma el que ens envia.",
     credentialHint_prometheus_api_token:
       "Nomes si hi ha un proxy que demana autenticacio. Buit si el Prometheus no en demana.",
+    credentialHint_vercel_api_token: "Un token de nomes lectura del teu compte de Vercel, a Account Settings, Tokens.",
     credentialSecret: "Valor",
     credentialSecretHint:
       "S'escriu i no es torna a llegir mai. Si ja n'hi ha una de guardada, aquesta obre una rotacio: totes dues valen fins que es promou la nova.",
@@ -3483,6 +3494,15 @@ const integrationDictionaries = {
     connectorAbout_generic_webhook: "Recibe eventos firmados de cualquier servicio que sepa enviar JSON.",
     connector_prometheus: "Prometheus",
     connectorAbout_prometheus: "El estado de tus hosts, contenedores y sondas, leido de tu Prometheus.",
+    connector_vercel: "Vercel",
+    connectorAbout_vercel: "Tus proyectos y los despliegues de produccion que han fallado.",
+    field_teamId: "Equipo",
+    fieldHint_teamId: "Vacio para una cuenta personal. Un token de equipo no lee nada sin el identificador.",
+    field_includePreview: "Incluir despliegues de preview",
+    fieldHint_includePreview: "Apagado, solo mira produccion: mientras alguien trabaja, sus previews fallan sin parar.",
+    field_deploymentsWindowHours: "Horas de despliegues a releer",
+    fieldHint_deploymentsWindowHours: "Cada pasada relee esta ventana entera. Entre 1 y 168.",
+    fieldHint_vercel_baseUrl: "Fija en https://api.vercel.com: el token no debe ir a ningun otro sitio.",
     field_baseUrl: "Direccion de la instancia",
     fieldHint_baseUrl: "La raiz, sin ninguna ruta: por ejemplo https://n8n.ejemplo.com",
     fieldHint_prometheus_baseUrl: "La raiz del Prometheus: por ejemplo http://prometheus.interno:9090",
@@ -3582,6 +3602,7 @@ const integrationDictionaries = {
     credentialHint_generic_webhook_ingress_signing: "El valor con el que el proveedor firma lo que nos envia.",
     credentialHint_prometheus_api_token:
       "Solo si hay un proxy que pide autenticacion. Vacio si el Prometheus no la pide.",
+    credentialHint_vercel_api_token: "Un token de solo lectura de tu cuenta de Vercel, en Account Settings, Tokens.",
     credentialSecret: "Valor",
     credentialSecretHint:
       "Se escribe y no se vuelve a leer nunca. Si ya hay una guardada, esta abre una rotacion: ambas valen hasta que se promueve la nueva.",
@@ -3750,6 +3771,16 @@ const integrationDictionaries = {
     connectorAbout_generic_webhook: "Receives signed events from any service that can post JSON.",
     connector_prometheus: "Prometheus",
     connectorAbout_prometheus: "The state of your hosts, containers and probes, read from your own Prometheus.",
+    connector_vercel: "Vercel",
+    connectorAbout_vercel: "Your projects, and the production deployments that failed.",
+    field_teamId: "Team",
+    fieldHint_teamId: "Empty for a personal account. A team token reads nothing without the identifier.",
+    field_includePreview: "Include preview deployments",
+    fieldHint_includePreview:
+      "Off, this watches production only: while somebody works, their previews fail all morning.",
+    field_deploymentsWindowHours: "Hours of deployments to re-read",
+    fieldHint_deploymentsWindowHours: "Every pass re-reads this whole window. Between 1 and 168.",
+    fieldHint_vercel_baseUrl: "Fixed at https://api.vercel.com: the token must not go anywhere else.",
     field_baseUrl: "Instance address",
     fieldHint_baseUrl: "The root, with no path: for example https://n8n.example.com",
     fieldHint_prometheus_baseUrl: "The Prometheus root: for example http://prometheus.internal:9090",
@@ -3849,6 +3880,7 @@ const integrationDictionaries = {
     credentialHint_generic_webhook_ingress_signing: "The value the provider signs what it sends us with.",
     credentialHint_prometheus_api_token:
       "Only if a proxy in front asks for authentication. Empty if the Prometheus does not.",
+    credentialHint_vercel_api_token: "A read-only token from your Vercel account, under Account Settings, Tokens.",
     credentialSecret: "Value",
     credentialSecretHint:
       "Written once and never read back. If one is already stored, this opens a rotation: both are accepted until the new one is promoted.",

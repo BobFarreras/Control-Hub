@@ -6,6 +6,19 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 
 ## Sense publicar
 
+### Vercel, llegit des del Control Hub (Fase 7.4)
+
+- **Els projectes de Vercel i els desplegaments de produccio que han fallat** es llegeixen cada
+  cinc minuts amb un token de nomes lectura. Cap ordre cap enfora: el connector no desplega, no
+  torna enrere i no pausa res.
+- **Un projecte es un estat i un desplegament es un esdeveniment**, i es desen com a tals: que
+  l'ultim build hagi petat no vol dir que el web estigui caigut, perque el que se serveix segueix
+  sent l'anterior.
+- **Del que Vercel respon se'n desa nomes el que s'ha nomenat**: ni qui va fer el push, ni el
+  missatge del commit, ni els logs del build, que es on viuen els secrets d'un projecte.
+- Com connectar-hi: `docs/runbooks/connect-vercel.md`. **Encara no hi ha pantalla** que dibuixi
+  els projectes ni alerta que salti quan un build peta: aquella decisio esta oberta.
+
 ### Posar en marxa un recollidor sense endevinar (Fase 7.3)
 
 - **Una comprovacio guiada** que diu en quin punt s'ha aturat una integracio que no llegeix res,

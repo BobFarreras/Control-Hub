@@ -18,7 +18,8 @@
   l'anell de claus dels connectors, segons `adr/0008-connector-credential-vault.md`) i
   `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n) i
   `runbooks/connect-a-vps.md` (preparar una VPS perque el Control Hub en llegeixi l'estat, amb
-  el prompt per a l'agent que l'administra).
+  el prompt per a l'agent que l'administra) i `runbooks/connect-vercel.md` (connectar un
+  compte de Vercel amb un token de nomes lectura).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -44,6 +45,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/connector-onboarding.md`: connectar una maquina sense endevinar res -- el
   diagnostic que diu que falta, el resum amb moltes maquines i el descobriment que proposa el
   que encara no s'ha declarat. **Proposta**, Fase 7.3, pendent d'aprovacio.
+- `specifications/connector-vercel.md`: el connector de Vercel -- projectes com a estat,
+  desplegaments fallits com a esdeveniment, i la base fixada al codi. **Proposta**, Fase 7.4;
+  el connector esta escrit i la superficie que l'ha de dibuixar, oberta.
 - `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
   consum i costos, correu entrant i correu sortint. Aprovada, incloses les ampliacions de model.
 - `specifications/phase-7b-actions-and-oauth.md`: contracte acotat d'OAuth, accions asincrones i
