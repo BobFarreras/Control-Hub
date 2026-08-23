@@ -462,7 +462,7 @@ adaptador PostgreSQL; permisos separats `usage:manage` i `budgets:manage`; i fla
 una base PostgreSQL 17 efimera. **U3 ja esta entregat**: el runtime projecta envelopes
 `data.usage` estrictes despres de conservar el lot del connector, valida unitats, enters `BigInt`,
 cost reportat i atribucio XOR, deduplica per font i `external_id`, i nomes avanca font i cursor quan
-tot el lot acaba. `0044_usage_reported_cost.sql` conserva el cost original com evidencia. Hi ha 41
+tot el lot acaba. `0044_usage_reported_cost.sql` conserva el cost original com evidencia. Hi ha 42
 proves focalitzades de worker i 6 casos PostgreSQL executats sobre PostgreSQL 17. El seguent
 increment es U4: valoracio, FX, pressupostos i snapshots.
 

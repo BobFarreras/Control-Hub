@@ -7,4 +7,3 @@ alter table usage_events
   add check ((reported_cost_minor is null) = (reported_currency is null)),
   add check (reported_cost_minor is null or reported_cost_minor >= 0),
   add check (reported_currency is null or reported_currency = upper(reported_currency));
-
