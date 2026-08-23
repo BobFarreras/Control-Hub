@@ -30,6 +30,17 @@ const marks: Record<string, Mark> = {
       </>
     )
   },
+  /** The torch: a flame over the ring the metrics arrive on, in Prometheus' own orange. */
+  prometheus: {
+    tint: "#e6522c",
+    art: (
+      <>
+        <circle cx="12" cy="14.5" r="6.5" />
+        <path d="M5.5 11.5h13" />
+        <path d="M12 3.2c2.6 2.2 3 4.1 1.7 5.7-1 1.2-2.6 1-2.9-.4-.2-.9.3-1.6 1-2.3" />
+      </>
+    )
+  },
   /** An arrow arriving at a door: this connector receives, it does not go and fetch. */
   "generic-webhook": {
     tint: "#6366f1",

@@ -319,7 +319,18 @@ export type ConnectorServiceDiscoveryState = {
   instanceExists: boolean;
   /** Answered first and on its own, exactly as in the guided check: see `discover`. */
   missingMigrations: readonly string[];
-  seenRecords: readonly { externalId: string; seenOn: string | null }[];
+  /**
+   * Every reading this collector wrote about something declarable, whole.
+   *
+   * Whole, and not the two fields the proposal needs, because the state of a container is decided
+   * from the record itself and the alternative was to read the records a second time through the
+   * inventory -- which selects by declared key and therefore returns nothing at all for the very
+   * services being discovered. Every one of them then had no record, and no record with a fresh
+   * pass behind it means `down`: twenty running containers drawn as twenty dead ones.
+   */
+  records: readonly ObservedRecord[];
+  /** When each operation last passed, without which no reading can be told apart from silence. */
+  freshness: readonly OperationFreshness[];
   declaredMatchKeys: readonly string[];
 };
 
@@ -598,20 +609,27 @@ export class InfrastructureService {
     if (state.missingMigrations.length > 0) throw new InfrastructureServiceError("MIGRATION_REQUIRED");
     if (!state.instanceExists) throw new InfrastructureServiceError("INSTANCE_NOT_FOUND");
 
-    const found = discoverServices({ seenRecords: state.seenRecords, declaredMatchKeys: state.declaredMatchKeys });
+    // `host` is the label of whoever saw the thing and only container readings carry one. Pulled
+    // out here rather than asked of the database twice: the records were already read, and the
+    // proposal wants two of their fields.
+    const seenRecords = state.records.map((record) => ({
+      externalId: record.externalId,
+      seenOn: typeof record.data.host === "string" ? record.data.host : null
+    }));
+
+    const found = discoverServices({ seenRecords, declaredMatchKeys: state.declaredMatchKeys });
     if (found.length === 0) return [];
 
     // The very same judgement the inventory makes, over the very same records: a container that
     // somebody declared and the same container still undeclared cannot end up drawn two different
     // ways, because there is one function deciding it and it does not know which of the two it is
-    // looking at. Reading what is stored a second time is a read; nothing leaves the process.
-    const inventory = await this.repository.readInventoryState(context);
+    // looking at.
     return found.map((service) => ({
       ...service,
       reading: currentReading({
         matchKey: service.matchKey,
-        records: inventory.records,
-        freshness: inventory.freshness,
+        records: state.records,
+        freshness: state.freshness,
         budgets: this.budgets,
         now
       })

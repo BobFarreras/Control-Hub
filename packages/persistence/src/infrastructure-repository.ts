@@ -121,7 +121,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     return withTenant(this.database, context.tenantId, async (tx) => {
       const missingMigrations = await missingInfrastructureMigrations(tx);
       if (missingMigrations.length > 0) {
-        return { instanceExists: false, missingMigrations, seenRecords: [], declaredMatchKeys: [] };
+        return { instanceExists: false, missingMigrations, records: [], freshness: [], declaredMatchKeys: [] };
       }
 
       const [instance] = await tx<{ id: string }[]>`
@@ -129,20 +129,27 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         where tenant_id = ${context.tenantId} and id = ${instanceId}`;
 
       if (!instance) {
-        return { instanceExists: false, missingMigrations: [], seenRecords: [], declaredMatchKeys: [] };
+        return { instanceExists: false, missingMigrations: [], records: [], freshness: [], declaredMatchKeys: [] };
       }
 
       // The prefixes come from the domain, which is also what turns them into kinds. Asking for a
       // set the proposal does not read -- or missing one it does -- would drop a service without
       // anything to show for it.
       //
-      // `data ->> 'host'` is the label of whoever saw the thing, and only container readings carry
-      // one. It is context for a person, never a join: see `discoverServices`.
-      const seenRecords = await tx<{ externalId: string; seenOn: string | null }[]>`
-        select external_id as "externalId", data ->> 'host' as "seenOn"
-        from connector_records
+      // The whole record and not the two columns the proposal needs: what a person opening this
+      // wants first is which of twenty containers is running, and that is decided from the record.
+      // Reading it here is the only way it can be decided at all -- the inventory selects records
+      // by declared key, so it has nothing to say about a service nobody has declared yet.
+      const records = await tx<ObservedRecord[]>`
+        select ${tx.unsafe(recordColumns)} from connector_records
         where tenant_id = ${context.tenantId} and instance_id = ${instanceId}
           and split_part(external_id, ':', 1) = any(${tx.array([...discoverableServicePrefixes])})`;
+
+      // Every instance's, not this one's: a reading is only silence if nobody at all has passed
+      // recently, which is the same rule the inventory applies.
+      const freshness = await tx<OperationFreshness[]>`
+        select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
+        from connector_operation_state where tenant_id = ${context.tenantId}`;
 
       // Every declared key of the tenant, not only this machine's: a key is unique across the
       // inventory, so one already spoken for elsewhere must not be offered here either.
@@ -152,7 +159,8 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
       return {
         instanceExists: true,
         missingMigrations: [],
-        seenRecords,
+        records,
+        freshness,
         declaredMatchKeys: declared.map((row) => row.matchKey)
       };
     });

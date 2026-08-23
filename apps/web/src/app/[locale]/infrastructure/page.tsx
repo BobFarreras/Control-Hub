@@ -57,6 +57,8 @@ type Loaded = {
   hosts: HostRow[];
   /** What each connector instance is called, so a filter can offer names instead of ids. */
   instanceNames: Record<string, string>;
+  /** Which provider each one is. The type and never the configuration: it only draws a mark. */
+  instanceTypes: Record<string, string>;
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -70,6 +72,7 @@ const empty: Loaded = {
   summary: null,
   hosts: [],
   instanceNames: {},
+  instanceTypes: {},
   automations: [],
   alerts: [],
   rules: [],
@@ -86,11 +89,20 @@ async function canOperate(): Promise<boolean> {
 }
 
 /** The configured base of each integration, which is the half of a link that is ours. */
-function basesOf(integrations: ConnectorInstance[]): Map<string, { name: string; baseUrl: string | null }> {
+function basesOf(
+  integrations: ConnectorInstance[]
+): Map<string, { name: string; connectorType: string; baseUrl: string | null }> {
   return new Map(
     integrations.map((instance) => {
       const baseUrl = instance.config.baseUrl;
-      return [instance.id, { name: instance.name, baseUrl: typeof baseUrl === "string" ? baseUrl : null }];
+      return [
+        instance.id,
+        {
+          name: instance.name,
+          connectorType: instance.connectorType,
+          baseUrl: typeof baseUrl === "string" ? baseUrl : null
+        }
+      ];
     })
   );
 }
@@ -149,6 +161,7 @@ async function load(locale: string, labels: Record<string, string>, showResolved
           }))
         })) ?? [],
       instanceNames: Object.fromEntries([...bases].map(([id, base]) => [id, base.name])),
+      instanceTypes: Object.fromEntries([...bases].map(([id, base]) => [id, base.connectorType])),
       automations: (await readJson<InfrastructureAutomationsResponse>(automationsResponse)).automations.map(
         (automation) => ({
           ...automation,
@@ -217,6 +230,7 @@ export default async function InfrastructurePage({
             observedFromAge={readingAge(data.overview?.observedFrom, now)}
             hosts={data.hosts}
             instanceNames={data.instanceNames}
+            instanceTypes={data.instanceTypes}
             automations={data.automations}
             alerts={data.alerts}
             rules={data.rules}

@@ -292,6 +292,65 @@ primera versio va fallar fent-la servir:
 - `-o ServerAliveInterval=30` — un tunel sense transit el tanca el que hi hagi al mig, en silenci,
   i les lectures s'aturen sense error enlloc.
 
+## C7 — El defecte del C6, i la pantalla que hi cabia
+
+### El defecte: vint contenidors vius dibuixats morts
+
+El C6 va donar estat a tot el que el recollidor llegeix. L'estat era fals: **tot el que no estava
+declarat sortia «No respon»**, i com que en una VPS acabada de connectar no hi ha res declarat,
+sortien «No respon» els vint contenidors, les cinc sondes i la copia de seguretat. La pantalla
+deia que la maquina era morta mentre la maquina anava.
+
+La causa es una linia sola. La lectura es demanava a `readInventoryState`, i aquella consulta
+**selecciona els registres pel conjunt de claus ja declarades**: per a un servei que ningu no ha
+declarat —que son precisament els que es descobreixen— no en torna cap. I `currentReading`, quan
+la passada s'ha fet i el registre no hi es, respon `down`, que es la resposta correcta a la
+pregunta que li estaven fent i una mentida sobre la que li volien fer.
+
+La correccio es llegir els registres alla on ja es sabia quins son: `readServiceDiscoveryState`
+ja consultava `connector_records` d'aquell recollidor per triar els prefixos descobribles, i ara
+en torna el registre sencer i la frescor de les operacions. `discoverServices` decideix l'estat
+amb aquells, i cap consulta nova s'hi afegeix —n'hi ha una de menys.
+
+**Per que la prova no ho va veure.** La prova d'aplicacio sembrava el registre al repositori fals
+per `inventoryState`, que es exactament el cami que a produccio no en tenia cap. Provava que
+`currentReading` sap decidir, no que la dada hi arriba. La prova d'ara sembra el que el repositori
+real torna, sense res declarat, que es el cas que fallava.
+
+### El buit que quedava
+
+El C5 i el C6 van treure panells buits i en van deixar la forma. Aquesta pantalla ho corregeix
+amb quatre decisions, cap d'elles decorativa:
+
+- **Els comptadors son una franja, no fitxes.** Cada xifra tenia caixa, vora i el seu propi
+  encoixinat per dir un numero. Ara son cel·les d'una mateixa franja separades per una linia: el
+  numero al davant, la paraula a sota i el desglos en petit. Ocupen el que diuen.
+- **El selector porta la marca del proveidor.** Una llista de recollidors es llegeix per quin
+  proveidor es cadascun molt abans que pel nom que algu li va posar. La marca es la nostra, en el
+  color del proveidor, mai el seu logotip ni res demanat a un servidor de fora.
+- **El filtre puja a la linia del titol.** Titol, filtres i el boto d'afegir eren tres bandes
+  apilades, cada una gairebé buida, fent una sola pregunta entre les tres.
+- **La franja de «cap alerta» ocupa el que diu.** Una banda de l'ample de la pantalla amb sis
+  paraules a dins es llegeix com un panell que no ha carregat.
+
+### Tot el que hi ha, alhora
+
+**Sense recollidor triat es dibuixen tots.** Fins ara no se'n dibuixava cap, amb l'argument que
+una llista de dos recollidors junts no diu res de cap dels dos. L'argument era bo i responia una
+altra pregunta: no s'han de barrejar en una llista, i per aixo cadascun te el seu panell sota el
+seu nom. Qui obre Infraestructura vol la salut de les maquines sencera i d'un cop, no una pantalla
+que li demana una tria abans de dir-li res.
+
+**Cada grup es plega.** Vint contenidors son el que algu ve a buscar el dia que alguna cosa va
+malament i desplaçament tots els altres dies. El plec s'obre pel que no esta be: un grup amb
+alguna cosa caiguda o sense veure surt obert, i un grup on tot respon surt tancat amb el recompte
+i el desglos al damunt. Es fa amb `<details>`, que es l'unic control que el navegador ja dona
+resolt al teclat, al lector de pantalla i a la cerca dins la pagina.
+
+**El selector de serveis de la fitxa ensenya l'estat.** La casella es marca amb el que la cosa fa
+ara mateix al costat, no amb una clau nua. I quan una maquina no te cap servei declarat, la frase
+diu on mirar en comptes de deixar la pantalla morta.
+
 ## Model de dades
 
 **Cap taula nova.** Els increments llegeixen el que ja hi ha: registres de connector, maquines,
@@ -363,6 +422,12 @@ tenants no es toca.
 22. L'estat d'una cosa sense declarar el decideix la mateixa funcio que el d'una de declarada.
 23. Obrir la vista d'un recollidor no envia res a cap proveidor.
 24. La comanda del tunel lliga el reenviament al loopback i no publica el port a la xarxa.
+25. L'estat d'una cosa sense declarar es el que en diu el registre del recollidor, no `down` per
+    no estar declarada.
+26. Sense cap recollidor triat es dibuixa el que llegeix cadascun, cada un sota el seu nom.
+27. Un grup de coses on tot respon surt plegat, i un que en te alguna de caiguda o sense veure,
+    obert. Plegar i desplegar es fa amb el teclat.
+28. Cap marca de proveidor demana res a cap servidor de fora.
 
 ## Pla de proves
 
@@ -395,3 +460,4 @@ commit. Cada un es entregable sol.
 | C4 | El selector de serveis: la migracio de la mena `backup`, la lectura, la declaracio en bloc, la pantalla i l'E2E |
 | C5 | La pantalla per recollidor: el selector, els KPI que segueixen la seleccio, els panells buits que deixen d'ocupar lloc, els filtres amb el component generalitzat i l'E2E |
 | C6 | La maquina d'un cop d'ull: l'estat de tot el que el recollidor llegeix, la vista en dues columnes i la comanda del tunel que no publica el port |
+| C7 | La correccio de l'estat de les coses sense declarar, la franja de xifres, els grups plegables i tots els recollidors alhora |

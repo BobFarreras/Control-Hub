@@ -154,16 +154,17 @@ test("declares a machine the collector can see and nobody had declared", async (
   await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
 
   /**
-   * Nothing goes out to Prometheus to draw this. The panel reads records that are already stored,
-   * and the only request it makes is to our own API -- which it now makes on its own, so the wait
-   * is armed before the collector is chosen rather than after a click.
+   * The collector is chosen once, at the top, for the whole screen. Narrowing to one is not what
+   * makes the panel appear -- every collector draws one, and the whole of the infrastructure
+   * shows the lot -- it is what leaves a single panel to assert against here.
+   *
+   * There is no request to wait for: the panel asks on its own as soon as it is mounted, so by
+   * the time the choice is made the first answers may already be in. What is waited on is the
+   * content, which is the thing the test is actually about.
    */
-  const answered = page.waitForResponse((response) => response.url().includes("/discovery"));
-
-  // The collector is chosen once, at the top, for the whole screen: the panel below is about
-  // whatever the screen is about, and it is not drawn until there is a collector to ask.
-  await selectFieldOption(page.getByLabel(t.scope), { label: collector });
-  expect((await answered).status()).toBe(200);
+  const scope = page.getByLabel(t.scope);
+  await waitForHydration(scope);
+  await selectFieldOption(scope, { label: collector });
 
   const discovery = page.getByRole("region", { name: t.discovery });
 

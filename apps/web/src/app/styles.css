@@ -4102,24 +4102,6 @@ main {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
-/* A figure with nothing under it does not need the width of one that carries a footnote. The
-   compact row is for screens where most tiles are a label and a number. */
-.metric-row.compact {
-  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
-  gap: 10px;
-}
-.metric-row.compact .metric-tile {
-  padding: 10px 12px;
-}
-.metric-row.compact .metric-tile header {
-  font-size: 12px;
-}
-.metric-row.compact .metric-value {
-  font-size: 19px;
-}
-.metric-row.compact .metric-tile small {
-  font-size: 12px;
-}
 /* A figure that is absent is a sentence, not a number, so it drops the mono face: "Cap barem
    publicat" set in a data font reads as a value that failed to load rather than as one nobody has
    configured yet. */
@@ -6137,52 +6119,120 @@ main {
    The chips are real checkboxes with the box hidden, not buttons wearing a class: the group is a
    group to a screen reader, the keyboard works without anybody writing key handlers, and the
    checked state is the input's own rather than a class somebody has to remember to toggle. */
-/* The one choice the whole infrastructure screen hangs from. It sits alone above everything so
-   that what follows is plainly a consequence of it, and it is the product's own select rather
-   than a control invented for this screen. */
-/* The choice and what it adds up to, on one line. Two full-width bands -- one holding a select
-   and one holding four tiles -- were the widest stretch of nothing on the screen. */
+/* The one choice the whole infrastructure screen hangs from, and the count of what it holds, on
+   a single line. Two full-width bands -- one holding a select and one holding four tiles -- were
+   the widest stretch of nothing on the screen. */
 .collector-band {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) 1fr;
-  gap: 12px;
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: flex-end;
 }
-.collector-band .metric-row {
-  align-content: end;
+.collector-pick {
+  flex: 0 1 240px;
+  min-width: 190px;
 }
-@media (max-width: 720px) {
-  .collector-band {
-    grid-template-columns: 1fr;
-  }
+/* The figures take whatever the select leaves and no more: they are read left to right, and a
+   grid stretching four numbers across a wide screen puts a hand's width between each of them. */
+.collector-band .figure-bar {
+  flex: 1 1 auto;
+}
+/* The collector's mark inside its own option, at the size of the words beside it. */
+.select-trigger > svg:first-child,
+.select-dropdown button > svg:first-child {
+  flex: none;
+}
+
+/* The figures of whatever is being looked at, as a strip rather than as a row of cards. Most of
+   them carry one number, and a card each gave every one of them a box, a border and its own
+   padding: five boxes spending the width of the screen to say five numbers. Divided by a rule and
+   not by a gap, so the strip reads as one thing counted several ways. */
+.figure-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.figure-cell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  justify-content: center;
+  min-width: 118px;
+  padding: 8px 16px;
+  border-left: 1px solid var(--border);
+}
+.figure-cell:first-child {
+  border-left: none;
+}
+.figure-cell strong {
+  font-size: 20px;
+  font-weight: 680;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.figure-cell > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.figure-cell small {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* A panel that would have held nothing, reduced to the line it needed. The alerts panel with no
-   alerts was a heading, a border and a sentence; this is the sentence and the way in. */
+   alerts was a heading, a border and a sentence; this is the sentence and the way in -- and it
+   takes the width of what it says rather than the width of the screen, because a full-width band
+   holding six words reads as a panel that failed to load its contents. */
 .infra-strip {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 6px 14px;
   align-items: baseline;
-  justify-content: space-between;
   margin: 0;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--surface-subtle);
   color: var(--muted);
   font-size: 14px;
 }
 
+/* Heading, filters and the button that adds one, on the line the heading already had. The three
+   of them were three stacked bands, each mostly empty, asking one question between them. */
+.project-panel-heading.fleet-heading {
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: flex-end;
+}
+.fleet-heading > h3 {
+  margin-right: auto;
+}
 /* No box around it any more: a bordered panel drawn around two narrow selects was mostly its own
    border, and the border said nothing the labels did not. */
 .fleet-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px 14px;
   align-items: flex-end;
-  margin: 0 0 12px;
+  margin: 0;
 }
+.fleet-filter .field {
+  min-width: 150px;
+}
+.fleet-filter .field > .field-label {
+  font-size: 11.5px;
+}
+
 .fleet-filter-group {
   display: flex;
   flex-wrap: wrap;
@@ -6309,27 +6359,81 @@ main {
 }
 .collector-group {
   min-width: 0;
-  padding: 10px 12px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-subtle);
 }
-.collector-group h4 {
+/* The fold is the whole row, not a triangle somebody has to aim at. The native marker goes and a
+   caret of our own comes back on the left, so the group reads the same shut as open. */
+.collector-group > summary {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  margin: 0 0 8px;
+  padding: 9px 12px;
   font-size: 13px;
   font-weight: 650;
   text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.collector-group > summary::-webkit-details-marker {
+  display: none;
+}
+.collector-group > summary::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  align-self: center;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left: 6px solid var(--muted);
+  transition: transform 120ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collector-group > summary::before {
+    transition: none;
+  }
+}
+.collector-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+.collector-group > summary:hover {
+  color: var(--brand);
+}
+.collector-group > summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.collector-group-name {
+  overflow-wrap: anywhere;
+}
+/* The count beside the name and not in the sentence under it: it is the one number that has to
+   survive the group being shut. */
+.collector-group-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.collector-group > summary > small {
+  margin-left: auto;
+  text-transform: none;
+  font-weight: 500;
+  font-size: 11.5px;
 }
 .collector-list {
   display: grid;
   gap: 6px;
   margin: 0;
-  padding: 0;
+  padding: 0 12px 11px;
   list-style: none;
 }
+
 .collector-row {
   display: flex;
   flex-wrap: wrap;

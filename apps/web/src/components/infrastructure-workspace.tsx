@@ -5,6 +5,7 @@ import {
   Check,
   ExternalLink,
   Eye,
+  Layers,
   Pencil,
   Plus,
   Power,
@@ -15,9 +16,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ConnectorMark } from "@/components/connector-mark";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
-import { MetricTile } from "@/components/metric-tile";
 import { StatusPill } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
 import type {
@@ -135,6 +136,24 @@ function tallyFootnote(t: Labels, tally: ObservedTally): string {
   ].join(" · ");
 }
 
+/**
+ * One number on the strip at the top of the screen.
+ *
+ * A strip and not a row of cards. Most of these carry a single figure, and a card each gave every
+ * one of them a box, a border and a hand's width of nothing around it -- five boxes spending the
+ * width of the screen to say five numbers. Here the number leads, the word follows it, and the
+ * breakdown sits under both in the small type it deserves.
+ */
+function BarFigure({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
+  return (
+    <div className="figure-cell">
+      <strong>{value}</strong>
+      <span>{label}</span>
+      {note && <small>{note}</small>}
+    </div>
+  );
+}
+
 function severityLabel(t: Labels, severity: AlertSeverity): string {
   return t[`severity${capitalised(severity)}`] ?? severity;
 }
@@ -162,34 +181,42 @@ function ReadingState({ reading, age, labels: t }: { reading: Reading; age: Read
 }
 
 /**
- * The machine as the collector sees it: everything it reads, with what is currently known of each.
+ * What a collector reads, drawn as the machine rather than as our database.
  *
  * The panel this replaces listed bare labels behind a button and answered "3 etiquetes vistes".
- * That is a true sentence about our database and a useless one about a server: it did not say
- * which of twenty containers is running, so the next thing anybody did was open a terminal. What
- * a person opening this screen wants is the machine at a glance, and the software already holds
- * it -- the readings are stored, they simply were not drawn.
+ * That is a true sentence about our tables and a useless one about a server: it did not say which
+ * of twenty containers is running, so the next thing anybody did was open a terminal. What a
+ * person opening this screen wants is the machine at a glance, and the software already held it
+ * -- the readings were stored, they simply were not drawn.
  *
  * **The state is the one the inventory uses**, decided by the same function over the same records,
  * whether or not somebody has declared the thing. A container drawn as running here and as down on
  * the machine's page would be the product arguing with itself.
  *
- * It reads on its own now, without waiting to be asked. Nothing leaves for Prometheus either way
+ * **Every group folds.** Twenty containers are what somebody came for on the day something is
+ * wrong and scrolling on every other day, so the fold opens on what is not right: a group holding
+ * something down or unseen is open, a group where everything answers is shut with its tally on
+ * the summary. `<details>` and not state of our own -- it is the one control a browser already
+ * gives a keyboard, a screen reader and a find-in-page.
+ *
+ * It reads on its own, without waiting to be asked. Nothing leaves for the collector either way
  * -- both endpoints read records already stored -- and the click that used to guard it was
  * guarding the wrong thing: the reason to open this screen *is* this question.
- *
- * Declaring stays a decision a person makes. What changed is that they now decide with the state
- * in front of them instead of a bare key.
  */
 function CollectorView({
   instanceId,
+  name,
+  connectorType,
   canOperate,
   labels: t,
   locale,
   onDeclare
 }: {
-  /** The collector the screen is showing. Never empty: the panel is only mounted with one. */
+  /** The collector the panel is about. Never empty: it is only mounted with one. */
   instanceId: string;
+  /** What that collector is called, so a panel among several says whose readings these are. */
+  name: string;
+  connectorType: string | undefined;
   canOperate: boolean;
   labels: Labels;
   locale: string;
@@ -211,7 +238,7 @@ function CollectorView({
         ask<ConnectorServicesResponse>(`/api/v1/infrastructure/connectors/${instanceId}/services`)
       ]);
       // The answer belongs to the collector that was asked. A late reply from the previous one
-      // would be one collector's labels drawn under another's name.
+      // would be the labels of one collector drawn under the name of another.
       if (!live) return;
       if (!seen.ok) return setFailure(errorMessage(t, seen.code));
       if (!read.ok) return setFailure(errorMessage(t, read.code));
@@ -235,20 +262,17 @@ function CollectorView({
     else groups.set(service.kind, [service]);
   }
 
-  const undeclared = (services ?? []).filter((service) => !service.declared).length;
   const loading = !failure && (machines === null || services === null);
+  const tally = tallyReadings((services ?? []).map((service) => service.reading));
 
   return (
-    <section className="project-panel" aria-label={t.discoveryTitle}>
+    <section className="project-panel collector-panel" aria-label={`${t.discoveryTitle} ${name}`}>
       <header className="project-panel-heading">
-        <h3>{t.discoveryTitle}</h3>
-        {services && (
-          <small className="muted">
-            {(t.collectorReads ?? "")
-              .replace("{seen}", String(services.length + (machines?.length ?? 0)))
-              .replace("{undeclared}", String(undeclared))}
-          </small>
-        )}
+        <h3>
+          <ConnectorMark type={connectorType ?? ""} size={18} />
+          {name}
+        </h3>
+        {services && services.length > 0 && <small className="muted">{tallyFootnote(t, tally)}</small>}
       </header>
 
       {failure ? (
@@ -258,13 +282,18 @@ function CollectorView({
         </p>
       ) : loading ? (
         <p className="crm-empty">{t.collectorLoading}</p>
+      ) : (machines?.length ?? 0) + (services?.length ?? 0) === 0 ? (
+        <p className="crm-empty">{t.collectorReadsNothing}</p>
       ) : (
         <div className="collector-groups">
           {/* The machines first: they are the thing everything else sits on, and the only group
               whose undeclared rows lead to the dialog that declares a machine. */}
           {machines!.length > 0 && (
-            <article className="collector-group">
-              <h4>{t.sectionHosts}</h4>
+            <details className="collector-group" open>
+              <summary>
+                <span className="collector-group-name">{t.sectionHosts}</span>
+                <span className="collector-group-count">{machines!.length}</span>
+              </summary>
               <ul className="collector-list">
                 {machines!.map((instance) => (
                   <li key={instance.label} className="collector-row">
@@ -286,40 +315,45 @@ function CollectorView({
                   </li>
                 ))}
               </ul>
-            </article>
+            </details>
           )}
 
-          {[...groups].map(([kind, rows]) => (
-            <article className="collector-group" key={kind}>
-              <h4>
-                {t[`kind${capitalised(kind)}`] ?? kind} <span className="muted">{rows.length}</span>
-              </h4>
-              <ul className="collector-list">
-                {rows.map((service) => {
-                  const figures = readingFigures(t, locale, service.reading, now);
-                  return (
-                    <li key={service.matchKey} className="collector-row">
-                      <StatusPill
-                        tone={observedStateTone[service.reading.state]}
-                        label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
-                      />
-                      <span className="collector-name">{service.name}</span>
-                      {figures.length > 0 && (
-                        <small className="collector-figures">
-                          {figures.map((figure) => (
-                            <span key={figure.field}>
-                              {figure.label} {figure.value}
-                            </span>
-                          ))}
-                        </small>
-                      )}
-                      {!service.declared && <span className="discovery-undeclared">{t.discoveryUndeclared}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
-            </article>
-          ))}
+          {[...groups].map(([kind, rows]) => {
+            const group = tallyReadings(rows.map((row) => row.reading));
+            return (
+              <details className="collector-group" key={kind} open={group.up < group.total}>
+                <summary>
+                  <span className="collector-group-name">{t[`kind${capitalised(kind)}`] ?? kind}</span>
+                  <span className="collector-group-count">{rows.length}</span>
+                  <small className="muted">{tallyFootnote(t, group)}</small>
+                </summary>
+                <ul className="collector-list">
+                  {rows.map((service) => {
+                    const figures = readingFigures(t, locale, service.reading, now);
+                    return (
+                      <li key={service.matchKey} className="collector-row">
+                        <StatusPill
+                          tone={observedStateTone[service.reading.state]}
+                          label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
+                        />
+                        <span className="collector-name">{service.name}</span>
+                        {figures.length > 0 && (
+                          <small className="collector-figures">
+                            {figures.map((figure) => (
+                              <span key={figure.field}>
+                                {figure.label} {figure.value}
+                              </span>
+                            ))}
+                          </small>
+                        )}
+                        {!service.declared && <span className="discovery-undeclared">{t.discoveryUndeclared}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            );
+          })}
         </div>
       )}
     </section>
@@ -337,6 +371,7 @@ export function InfrastructureWorkspace({
   observedFromAge,
   hosts,
   instanceNames,
+  instanceTypes,
   automations,
   alerts,
   rules,
@@ -355,6 +390,8 @@ export function InfrastructureWorkspace({
   hosts: HostRow[];
   /** What each connector instance is called, so the filter offers names and not identifiers. */
   instanceNames: Record<string, string>;
+  /** Which provider each one is, which is what its mark is drawn from. Never an address. */
+  instanceTypes: Record<string, string>;
   automations: AutomationRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
@@ -656,8 +693,10 @@ export function InfrastructureWorkspace({
         </p>
       )}
 
-      {/* What the screen is about. Everything under it follows this one choice, so it sits above
-          everything, and it uses the product's own selector rather than a control invented here. */}
+      {/* What the screen is about, and the count of it, on one line. Everything under it follows
+          this one choice, and it uses the product's own selector rather than a control invented
+          here -- with the collector's mark beside its name, because a list of collectors is read
+          by which provider each one is long before it is read by what somebody called it. */}
       <div className="collector-band">
         <div className="collector-pick">
           <SelectField
@@ -665,49 +704,51 @@ export function InfrastructureWorkspace({
             name="collector"
             value={collector ?? ""}
             onChange={(event) => chooseCollector(event.target.value)}
-            options={[{ value: "", label: t.collectorAll ?? "" }, ...collectors]}
+            options={[
+              { value: "", label: t.collectorAll ?? "", icon: <Layers size={16} aria-hidden="true" /> },
+              ...collectors.map((option) => ({
+                ...option,
+                icon: <ConnectorMark type={instanceTypes[option.value] ?? ""} size={16} />
+              }))
+            ]}
           />
         </div>
 
         {countable && (
-          <section className="metric-row compact" aria-label={t.title}>
-            {/* Counted over what is being shown, and drawn only where there is something to count: a
-            tile reading zero over a selection that holds no such thing is a question nobody
+          <div className="figure-bar" aria-label={t.title}>
+            {/* Counted over what is being shown, and drawn only where there is something to count:
+            a figure reading zero over a selection that holds no such thing is a question nobody
             asked, and seven of them are the empty space this screen was losing. */}
             {figures.hosts && figures.hosts.total > 0 && (
-              <MetricTile
-                label={t.overviewHosts!}
-                value={figures.hosts.total}
-                footnote={tallyFootnote(t, figures.hosts)}
-              />
+              <BarFigure label={t.overviewHosts!} value={figures.hosts.total} note={tallyFootnote(t, figures.hosts)} />
             )}
             {figures.services && figures.services.total > 0 && (
-              <MetricTile
+              <BarFigure
                 label={t.overviewServices!}
                 value={figures.services.total}
-                footnote={tallyFootnote(t, figures.services)}
+                note={tallyFootnote(t, figures.services)}
               />
             )}
             {figures.automations && figures.automations.total > 0 && (
-              <>
-                <MetricTile label={t.overviewAutomations!} value={figures.automations.total} />
-                <MetricTile label={t.overviewActive!} value={figures.automations.active} />
-                <MetricTile label={t.overviewLinked!} value={figures.automations.linked} />
-              </>
+              <BarFigure
+                label={t.overviewAutomations!}
+                value={figures.automations.total}
+                note={`${figures.automations.active} ${t.overviewActive} · ${figures.automations.linked} ${t.overviewLinked}`}
+              />
             )}
             {figures.alerts && figures.alerts.total > 0 && (
-              <MetricTile
+              <BarFigure
                 label={t.overviewAlerts!}
                 value={figures.alerts.total}
-                footnote={`${t.overviewAcknowledged} ${figures.alerts.acknowledged}`}
+                note={`${t.overviewAcknowledged} ${figures.alerts.acknowledged}`}
               />
             )}
             {/* The oldest reading behind the figures, never the newest: a summary is only as fresh
             as the stalest thing that went into it. */}
             {figures.observedFrom && (
-              <MetricTile label={t.observedFrom!} value={ageLabel(t, figures.observedFrom, t.observedNever ?? "")} />
+              <BarFigure label={t.observedFrom!} value={ageLabel(t, figures.observedFrom, t.observedNever ?? "")} />
             )}
-          </section>
+          </div>
         )}
       </div>
 
@@ -797,8 +838,70 @@ export function InfrastructureWorkspace({
 
       {(collector === null || chosen.hosts.length > 0) && (
         <section className="project-panel" aria-label={t.sectionHosts}>
-          <header className="project-panel-heading">
+          {/* Heading, filters and the button that adds one, on a single line. They were three
+              bands stacked on top of each other, each of them mostly empty, and they are one
+              question: which machines am I looking at. */}
+          <header className="project-panel-heading fleet-heading">
             <h3>{t.sectionHosts}</h3>
+            {chosen.hosts.length > 0 && (
+              <div className="fleet-filter">
+                {/* The product's own selector, the one every other list on this screen is filtered
+                  with, instead of two rows of chips invented here. Each question takes one answer
+                  and "any" is the first of them, which is what the chips were really for: an empty
+                  set of chips and a chosen "any" mean the same thing, and only one of the two can
+                  be read at a glance. There is no collector question left here -- the selector at
+                  the top of the screen already answered it, and asking twice is how a list ends up
+                  narrowed to a collector that is not the one on the heading. */}
+                <SelectField
+                  label={t.filterEnvironment!}
+                  name="filterEnvironment"
+                  value={filter.environments[0] ?? ""}
+                  onChange={(event) =>
+                    setFilter({
+                      ...filter,
+                      environments: event.target.value ? [event.target.value as HostEnvironment] : []
+                    })
+                  }
+                  options={[
+                    { value: "", label: t.filterAny ?? "" },
+                    ...environments.map((environment) => ({
+                      value: environment,
+                      label: t[`environment${capitalised(environment)}`] ?? environment
+                    }))
+                  ]}
+                />
+                <SelectField
+                  label={t.filterState!}
+                  name="filterState"
+                  value={filter.states[0] ?? ""}
+                  onChange={(event) =>
+                    setFilter({ ...filter, states: event.target.value ? [event.target.value as ObservedState] : [] })
+                  }
+                  options={[
+                    { value: "", label: t.filterAny ?? "" },
+                    ...observedStates.map((state) => ({
+                      value: state,
+                      label: t[`state${capitalised(state)}`] ?? state
+                    }))
+                  ]}
+                />
+                {narrowed && (
+                  <p className="fleet-filter-count">
+                    <span>
+                      {(t.filterShowing ?? "")
+                        .replace("{shown}", String(shown.length))
+                        .replace("{total}", String(chosen.hosts.length))}
+                    </span>
+                    <button
+                      className="link-button"
+                      onClick={() => setFilter({ environments: [], states: [], instanceIds: [] })}
+                    >
+                      {t.filterClear}
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
             {canOperate && (
               <button
                 className="primary-command"
@@ -812,65 +915,6 @@ export function InfrastructureWorkspace({
               </button>
             )}
           </header>
-          {chosen.hosts.length > 0 && (
-            <div className="fleet-filter">
-              {/* The product's own selector, the one every other list on this screen is filtered
-                with, instead of two rows of chips invented here. Each question takes one answer
-                and "any" is the first of them, which is what the chips were really for: an empty
-                set of chips and a chosen "any" mean the same thing, and only one of the two can
-                be read at a glance. There is no collector question left here -- the selector at
-                the top of the screen already answered it, and asking twice is how a list ends up
-                narrowed to a collector that is not the one on the heading. */}
-              <SelectField
-                label={t.filterEnvironment!}
-                name="filterEnvironment"
-                value={filter.environments[0] ?? ""}
-                onChange={(event) =>
-                  setFilter({
-                    ...filter,
-                    environments: event.target.value ? [event.target.value as HostEnvironment] : []
-                  })
-                }
-                options={[
-                  { value: "", label: t.filterAny ?? "" },
-                  ...environments.map((environment) => ({
-                    value: environment,
-                    label: t[`environment${capitalised(environment)}`] ?? environment
-                  }))
-                ]}
-              />
-              <SelectField
-                label={t.filterState!}
-                name="filterState"
-                value={filter.states[0] ?? ""}
-                onChange={(event) =>
-                  setFilter({ ...filter, states: event.target.value ? [event.target.value as ObservedState] : [] })
-                }
-                options={[
-                  { value: "", label: t.filterAny ?? "" },
-                  ...observedStates.map((state) => ({
-                    value: state,
-                    label: t[`state${capitalised(state)}`] ?? state
-                  }))
-                ]}
-              />
-              {narrowed && (
-                <p className="fleet-filter-count">
-                  <span>
-                    {(t.filterShowing ?? "")
-                      .replace("{shown}", String(shown.length))
-                      .replace("{total}", String(chosen.hosts.length))}
-                  </span>
-                  <button
-                    className="link-button"
-                    onClick={() => setFilter({ environments: [], states: [], instanceIds: [] })}
-                  >
-                    {t.filterClear}
-                  </button>
-                </p>
-              )}
-            </div>
-          )}
           {chosen.hosts.length === 0 ? (
             <p className="muted">{t.hostsEmpty}</p>
           ) : shown.length === 0 ? (
@@ -1010,14 +1054,18 @@ export function InfrastructureWorkspace({
         </section>
       )}
 
-      {/* Only once there is a collector to ask. With the whole of the infrastructure on screen
-          the question has no subject: two collectors read two different sets of labels, and a
-          list of both together says nothing about either. Keyed by the collector so the answer
-          on screen always belongs to the one named above it. */}
-      {collector && (
+      {/* Every collector, or the one that was chosen. Nothing was drawn here at all until a
+          collector was picked, and the reason given was that a list of two collectors says
+          nothing about either -- which was answering the wrong question. They are not merged into
+          one list: each gets its own panel under its own name, so the whole of the infrastructure
+          is on the screen at once and it is still legible whose readings each figure is. Keyed by
+          the collector so the answer on screen always belongs to the one named above it. */}
+      {(collector ? [collector] : collectors.map((option) => option.value)).map((instanceId) => (
         <CollectorView
-          key={collector}
-          instanceId={collector}
+          key={instanceId}
+          instanceId={instanceId}
+          name={instanceNames[instanceId] ?? instanceId}
+          connectorType={instanceTypes[instanceId]}
           canOperate={canOperate}
           labels={t}
           locale={locale}
@@ -1026,7 +1074,7 @@ export function InfrastructureWorkspace({
             setHostDialog({ host: null, hostname });
           }}
         />
-      )}
+      ))}
 
       {/* A section with nothing of this collector in it is not drawn at all. Somebody looking at
           the machine collector is not looking for an empty automations table, and the empty

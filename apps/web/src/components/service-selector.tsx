@@ -8,6 +8,7 @@ import { StatusPill } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
 import type { ConnectorServicesResponse, DiscoveredService } from "@/lib/api-types";
 import { ask } from "@/lib/ask";
+import { observedStateTone } from "@/lib/infrastructure";
 import { errorMessage } from "@/lib/integrations";
 
 /**
@@ -167,6 +168,13 @@ export function ServiceSelector({
                         {service.seenOn ? ` · ${fill(t.pickSeenOn, { label: service.seenOn })}` : ""}
                       </small>
                     </span>
+                    {/* What it is doing right now, so the choice is made with the state in front
+                        of the person making it rather than from a bare key. The same reading the
+                        list of machines draws, decided by the same function. */}
+                    <StatusPill
+                      tone={observedStateTone[service.reading.state]}
+                      label={t[`state${capitalised(service.reading.state)}`] ?? service.reading.state}
+                    />
                   </label>
                 ))}
             </fieldset>

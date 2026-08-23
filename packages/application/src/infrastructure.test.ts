@@ -1,5 +1,5 @@
 import { connectorRegistry } from "@control-hub/connectors";
-import type { AlertVerdict, JsonValue, TenantContext } from "@control-hub/domain";
+import type { AlertVerdict, JsonValue, ObservedRecord, TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AlertEngine,
@@ -166,7 +166,8 @@ class FakeRepository implements InfrastructureRepository {
   serviceDiscoveryState: ConnectorServiceDiscoveryState = {
     instanceExists: true,
     missingMigrations: [],
-    seenRecords: [],
+    records: [],
+    freshness: [],
     declaredMatchKeys: []
   };
   serviceDiscoveryAsked: string[] = [];
@@ -1028,14 +1029,22 @@ describe("what a collector is looking at", () => {
  * Specification: `docs/specifications/connector-onboarding.md`, "C4 -- El selector de serveis".
  */
 describe("what a collector has seen that could be declared", () => {
+  /** A container reading, `secondsAgo` old. `data.host` is who saw it, exactly as the column is. */
+  const container = (name: string, secondsAgo: number): ObservedRecord => ({
+    instanceId,
+    operation: "pull_container_state",
+    externalId: `container:${name}`,
+    data: { host: "cadvisor:8080" },
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
   const seeing = (overrides: Partial<ConnectorServiceDiscoveryState> = {}) => {
     repository.serviceDiscoveryState = {
       instanceExists: true,
       missingMigrations: [],
-      seenRecords: [
-        { externalId: "container:n8n", seenOn: "cadvisor:8080" },
-        { externalId: "container:traefik", seenOn: "cadvisor:8080" }
-      ],
+      records: [container("n8n", 60), container("traefik", 60)],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 30_000) }],
       declaredMatchKeys: ["container:n8n"],
       ...overrides
     };
@@ -1060,35 +1069,27 @@ describe("what a collector has seen that could be declared", () => {
    * beside the same container undeclared reading "up" is the screen arguing with itself.
    */
   it("says of each one what is currently known of it, declared or not", async () => {
-    seeing();
-    repository.inventoryState = {
-      hosts: [],
-      services: [],
-      records: [
-        {
-          instanceId,
-          operation: "pull_container_state",
-          externalId: "container:traefik",
-          data: { memoryBytes: 512 },
-          firstSeenAt: new Date(now.getTime() - 86_400_000),
-          lastSeenAt: new Date(now.getTime() - 60_000)
-        }
-      ],
-      freshness: [
-        {
-          instanceId,
-          operation: "pull_container_state",
-          lastSuccessAt: new Date(now.getTime() - 30_000)
-        }
-      ]
-    };
+    // Nothing is declared here, which is the case that was wrong: the reading used to be looked
+    // up in the inventory, and the inventory only ever holds records of things somebody has
+    // already declared. Every proposal therefore found no record, and no record behind a pass
+    // that did run reads as `down` -- twenty running containers drawn as twenty dead ones.
+    seeing({ declaredMatchKeys: [], records: [container("n8n", 60), container("traefik", 30_000)] });
 
-    const [declared, undeclared] = await service.discoverServices(owner, instanceId, now);
+    const [n8n, traefik] = await service.discoverServices(owner, instanceId, now);
 
-    expect(undeclared?.reading).toMatchObject({ state: "up", data: { memoryBytes: 512 } });
-    // Seen by the collector and with no record of its own: the pass happened and it was not in
-    // it, which is "down" and not "we cannot see it".
-    expect(declared?.reading.state).toBe("down");
+    expect(n8n?.reading).toMatchObject({ state: "up", data: { host: "cadvisor:8080" } });
+    // Not refreshed within the budget of its own operation, which is the one thing that does make
+    // a container down. The state is the inventory's, decided by the one function.
+    expect(traefik?.reading.state).toBe("down");
+  });
+
+  /** Silence is not death: with no pass behind them, the panel says so rather than inventing one. */
+  it("says nothing is known when the operation has not passed recently", async () => {
+    seeing({ freshness: [] });
+
+    const found = await service.discoverServices(owner, instanceId, now);
+
+    expect(found.map((service) => service.reading.state)).toEqual(["unknown", "unknown"]);
   });
 
   it("is a read, so Administrator may ask for it and a stranger may not", async () => {

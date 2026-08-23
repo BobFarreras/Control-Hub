@@ -71,12 +71,12 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te els sis increments entregats: C1, C2, C3, C4, C5 i C6.** L'entrega 7.2 es a
+**La 7.3 te els set increments entregats: C1, C2, C3, C4, C5, C6 i C7.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
 el resum i els filtres per a moltes maquines (C2), el descobriment que proposa el que encara no
-s'ha declarat (C3), el selector de serveis (C4), la pantalla que depen del recollidor triat (C5) i la maquina d'un
-cop d'ull (C6).
+s'ha declarat (C3), el selector de serveis (C4), la pantalla que depen del recollidor triat (C5), la maquina d'un
+cop d'ull (C6) i la correccio de l'estat del que no s'ha declarat (C7).
 
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i
@@ -337,6 +337,51 @@ deixar al loopback de la VPS acabaria obert a la xarxa d'aquest ordinador; `Exit
 perque sense ell un reenviament que no s'ha pogut obrir deixa la sessio connectada i sense
 reenviar res, amb el panell dient que l'adreca no respon; i `ServerAliveInterval` perque un tunel
 sense transit el tanca el que hi ha al mig, en silenci.
+
+**El C7 corregeix un defecte del C6 i acaba l'espai buit.** El C6 va donar estat a tot el que el
+recollidor llegeix i **l'estat era fals**: tot el que no estava declarat sortia «No respon», i en
+una VPS acabada de connectar no hi ha res declarat, aixi que sortien «No respon» els vint
+contenidors, les cinc sondes i la copia. La pantalla deia que la maquina era morta mentre anava.
+
+La causa: la lectura es demanava a `readInventoryState`, i aquella consulta selecciona els
+registres **pel conjunt de claus ja declarades**. Per a un servei que ningu no ha declarat —que
+son exactament els que es descobreixen— no en torna cap, i `currentReading`, amb la passada feta
+i cap registre, respon `down`. Ara `readServiceDiscoveryState` torna els registres sencers i la
+frescor de les operacions: ja consultava `connector_records` d'aquell recollidor per triar els
+prefixos, nomes en descartava els camps. Hi ha una consulta menys, no una de mes.
+
+**La prova d'aplicacio no ho veia perque sembrava la dada pel cami equivocat**: posava el registre
+a `inventoryState`, que es precisament el que a produccio era buit. Provava que `currentReading`
+sap decidir, no que la dada hi arriba. La d'ara sembra el que el repositori real torna, amb
+`declaredMatchKeys` buit, que es el cas que fallava, i n'hi ha una de nova per al cas contrari:
+sense cap passada recent, `unknown` i no `down`.
+
+**Tots els recollidors alhora.** Sense cap tria no se'n dibuixava cap; ara es dibuixen tots, cada
+un sota el seu nom i el seu panell. No es barregen en una llista —aquell argument del C5 seguia
+sent bo— pero qui obre Infraestructura vol la salut de les maquines sencera i d'un cop, no una
+pantalla que li demana una tria abans de dir-li res.
+
+**Cada grup es plega, amb `<details>`.** El plec s'obre pel que no esta be: un grup amb alguna
+cosa caiguda o sense veure surt obert; un on tot respon surt tancat amb el recompte i el desglos
+al damunt. `<details>` i no estat propi: es l'unic control que el navegador ja dona resolt al
+teclat, al lector de pantalla i a la cerca dins la pagina.
+
+**L'espai buit, els quatre punts que quedaven.** Els comptadors passen de fitxes a cel·les d'una
+franja separades per una linia, perque cada xifra tenia caixa, vora i encoixinat propi per dir un
+numero. El selector porta la marca del proveidor —la nostra, en el seu color, mai el seu logotip
+ni res demanat a un servidor de fora—, perque una llista de recollidors es llegeix per quin
+proveidor es cadascun abans que pel nom que algu li va posar. El filtre puja a la linia del titol
+i del boto: eren tres bandes apilades fent una sola pregunta. I la franja de «cap alerta» ocupa el
+que diu, perque una banda de l'ample de la pantalla amb sis paraules es llegeix com un panell que
+no ha carregat.
+
+**El selector de serveis de la fitxa ensenya l'estat** de cada cosa al costat de la casella, i la
+frase d'una maquina sense serveis declarats diu on mirar en comptes de deixar la pantalla morta.
+
+Portes d'aquest increment: `pnpm typecheck` verd als 13 paquets, `pnpm lint` verd, i les suites de
+`domain` (280), `application` (81), `i18n` (15), `api` (145) i `web` (154) passades. **No s'han
+executat `pnpm test:scripts`, `pnpm build` ni `pnpm check:e2e`** en aquest increment, ni s'ha vist
+la pantalla renderitzada a cap navegador des d'aqui. Queda dit.
 
 **`pnpm check:e2e`: 32 proves, 32 passades**, amb dos workers i base `_e2e` neta. **La porta, pero,
 la compta vermella**, i amb rao: dues proves d'altres modules —el fitxatge i les despeses— nomes
