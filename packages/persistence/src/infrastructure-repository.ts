@@ -6,6 +6,7 @@ import {
   type AppliedVerdict,
   type AutomationRecord,
   type ConnectorDiagnosisState,
+  type ConnectorDiscoveryState,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
@@ -30,6 +31,7 @@ import type {
   OperationFreshness,
   TenantContext
 } from "@control-hub/domain";
+import type postgres from "postgres";
 
 /**
  * The infrastructure module's reads and writes, all of them inside a tenant scope.
@@ -77,6 +79,41 @@ const recordColumns = `instance_id as "instanceId", operation, external_id as "e
 
 export class PostgresInfrastructureRepository implements InfrastructureRepository {
   constructor(private readonly database: DatabaseClient) {}
+
+  /**
+   * What a collector has seen and what is already declared, read in one pass.
+   *
+   * The migration probes run first for the reason `missingInfrastructureMigrations` gives, and
+   * the labels come from the query the guided check uses, so the screen cannot offer a machine
+   * the check would say is not visible.
+   *
+   * The instance is reduced to whether it exists, here rather than in the service: what the
+   * discovery answers has no field a base URL or a stored credential would fit in, and not
+   * selecting the configuration is a stronger guarantee of that than not reading it later.
+   */
+  async readDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorDiscoveryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const missingMigrations = await missingInfrastructureMigrations(tx);
+      if (missingMigrations.length > 0) {
+        return { instanceExists: false, missingMigrations, seenInstances: [], declaredMachines: [] };
+      }
+
+      const [instance] = await tx<{ id: string }[]>`
+        select id from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      if (!instance) {
+        return { instanceExists: false, missingMigrations: [], seenInstances: [], declaredMachines: [] };
+      }
+
+      const seenInstances = await seenInstanceLabels(tx, context.tenantId, instanceId);
+
+      const declaredMachines = await tx<{ hostId: string; name: string; hostname: string }[]>`
+        select id as "hostId", name, hostname from infra_hosts where tenant_id = ${context.tenantId}`;
+
+      return { instanceExists: true, missingMigrations: [], seenInstances, declaredMachines };
+    });
+  }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {
     return withTenant(this.database, context.tenantId, async (tx) => {
@@ -401,20 +438,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
    */
   async readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState> {
     return withTenant(this.database, context.tenantId, async (tx) => {
-      const probes = infrastructureSchemaProbes;
-      const missing = await tx<{ migration: string }[]>`
-        select probe.migration from unnest(
-            ${probes.map((probe) => probe.relation)}::text[],
-            ${probes.map((probe) => probe.constraintName ?? "")}::text[],
-            ${probes.map((probe) => probe.migration)}::text[]
-          ) as probe(relation, constraint_name, migration)
-        where to_regclass(probe.relation) is null
-          or (probe.constraint_name <> '' and not exists (
-            select 1 from pg_constraint c
-            where c.conrelid = to_regclass(probe.relation) and c.conname = probe.constraint_name))
-        order by probe.migration`;
-
-      const missingMigrations = missing.map((row) => row.migration);
+      const missingMigrations = await missingInfrastructureMigrations(tx);
       if (missingMigrations.length > 0) {
         return { instance: null, missingMigrations, seenInstances: [], declaredHostnames: [] };
       }
@@ -447,12 +471,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
        * out -- its `instance` is a probed URL, not a machine anybody could declare, and it is the
        * one value here that could be an address with something private in it.
        */
-      const seen = await tx<{ label: string }[]>`
-        select distinct substring(external_id from position(':' in external_id) + 1) as label
-        from connector_records
-        where tenant_id = ${context.tenantId} and instance_id = ${instanceId}
-          and (external_id like 'host:%'
-            or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))`;
+      const seen = await seenInstanceLabels(tx, context.tenantId, instanceId);
 
       const declared = await tx<{ hostname: string }[]>`
         select hostname from infra_hosts where tenant_id = ${context.tenantId}`;
@@ -465,7 +484,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
           lastAttempt: lastAttemptOf(instance)
         },
         missingMigrations: [],
-        seenInstances: seen.map((row) => row.label),
+        seenInstances: seen,
         declaredHostnames: declared.map((row) => row.hostname)
       };
     });
@@ -694,6 +713,59 @@ function lastAttemptOf(row: {
     return { ok: lastErrorCode === null, code: lastErrorCode };
   }
   return { ok: true, code: null };
+}
+
+/**
+ * The module's migrations whose objects are not in the database, in the order they are applied.
+ *
+ * Shared by the guided check and the discovery because both have to survive the same schema. It
+ * is asked before anything else in either of them: the tables the rest of those reads select from
+ * are the tables a missing migration has not created, so asking anyway raises an
+ * undefined-relation error and answers the generic sentence instead of the one that says what to
+ * run.
+ */
+async function missingInfrastructureMigrations(tx: postgres.TransactionSql): Promise<string[]> {
+  const probes = infrastructureSchemaProbes;
+  const missing = await tx<{ migration: string }[]>`
+    select probe.migration from unnest(
+        ${probes.map((probe) => probe.relation)}::text[],
+        ${probes.map((probe) => probe.constraintName ?? "")}::text[],
+        ${probes.map((probe) => probe.migration)}::text[]
+      ) as probe(relation, constraint_name, migration)
+    where to_regclass(probe.relation) is null
+      or (probe.constraint_name <> '' and not exists (
+        select 1 from pg_constraint c
+        where c.conrelid = to_regclass(probe.relation) and c.conname = probe.constraint_name))
+    order by probe.migration`;
+  return missing.map((row) => row.migration);
+}
+
+/**
+ * The `instance` labels a connector has stored a reading for, prefix removed.
+ *
+ * One query, called from both reads, because the guided check's last rung and the discovery are
+ * the same question asked twice -- one reduced to a yes or no, the other laid out as a list. Two
+ * copies of this `where` would eventually disagree, and the disagreement would read as a screen
+ * offering a machine the check says it cannot see.
+ *
+ * Two sources, and both are what Prometheus itself scrapes: a host reading is one the
+ * configuration already named, and a probe reading carrying `scrapeUp` came from the `up` series,
+ * which has one line per target. A blackbox reading has no `scrapeUp` and is left out -- its
+ * `instance` is a probed URL, not a machine anybody could declare, and it is the one value here
+ * that could be an address with something private in it.
+ */
+async function seenInstanceLabels(
+  tx: postgres.TransactionSql,
+  tenantId: string,
+  instanceId: string
+): Promise<string[]> {
+  const seen = await tx<{ label: string }[]>`
+    select distinct substring(external_id from position(':' in external_id) + 1) as label
+    from connector_records
+    where tenant_id = ${tenantId} and instance_id = ${instanceId}
+      and (external_id like 'host:%'
+        or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))`;
+  return seen.map((row) => row.label);
 }
 
 function mapConstraint(error: unknown): never {

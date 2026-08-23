@@ -71,7 +71,7 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 te el C1 i el C2 entregats, i el C3 per comencar.** L'entrega 7.2 es a
+**La 7.3 te els tres increments entregats: C1, C2 i C3.** L'entrega 7.2 es a
 `develop` (merge `f96fab2`, sense fast-forward) i la branca `claude/connector-onboarding` en surt.
 L'especificacio visada es `docs/specifications/connector-onboarding.md`: el diagnostic guiat (C1),
 el resum i els filtres per a moltes maquines (C2) i el descobriment que proposa el que encara no
@@ -156,6 +156,41 @@ La decisio que mes forma dona a la fase: **el programari diagnostica i escriu or
 cap**. Ni `ssh`, ni escriptura a `.env`, ni cap clau d'acces a maquines desada. El motiu es de
 consequencies: avui el pitjor cas d'un panell compromes es que algu sapiga quanta RAM gasta una VPS;
 amb una clau SSH al vault seria perdre-les totes.
+
+**El C3 esta complet: el descobriment.** Cap taula nova i cap migracio tampoc aqui, com deia
+l'especificacio de tots tres increments.
+
+El descobriment diu, per a un recollidor, quines etiquetes ha desat a la darrera passada i quines
+d'aquestes ja estan declarades i contra quina fitxa. Es el mateix esglao `matching` del diagnostic
+guiat, pero desplegat com a llista en comptes de reduit a un si o un no, i el calcula la mateixa
+funcio del domini (`discoverInstances`, a `connector-diagnosis.ts`) perque les dues respostes no
+puguin arribar a discrepar. A la persistencia, la consulta d'etiquetes es una sola i la comparteixen
+les dues lectures: dues copies d'aquell `where` acabarien discrepant, i la discrepancia es llegiria
+com una pantalla que ofereix una maquina que la comprovacio diu que no veu. La lectura de blackbox
+en queda fora a totes dues, perque la seva etiqueta es una adreca sondejada i no una maquina que
+ningu pugui declarar.
+
+**No dispara cap consulta cap enfora.** Llegeix registres ja desats, i per aixo obrir la pantalla no
+pot generar trafic. Tampoc s'audita: es una lectura. Declarar des d'alla si que s'audita, com
+qualsevol declaracio, perque es exactament la mateixa operacio.
+
+La pantalla es al taulell d'infraestructura i no al costat del diagnostic, i el motiu es el boto:
+declarar es `infrastructure:operate` i el formulari que ho fa es el dialeg d'aquella pantalla, ja
+escrit i ja permissionat. Posar la llista al costat de la comprovacio hauria volgut dir o be una
+segona copia d'aquell dialeg o be arrossegar un `hostname` per una navegacio, i un `hostname` a una
+query string es precisament el que les regles del modul volen evitar. El panell no es carrega sol:
+es demana, com el diagnostic, perque llegir els registres de tota la flota per pintar una pantalla
+que poca gent obre el paga tothom.
+
+Codi d'error nou: `MIGRATION_REQUIRED`, amb 503 i frase en tres idiomes. Amb l'esquema incomplet no
+hi ha `connector_instances` on mirar, i respondre "aquesta integracio no hi es" seria una resposta
+falsa sobre una taula que no existeix — el mateix ordre d'esglaons que ja feia el diagnostic.
+
+**Les tres proves d'integracio noves de PostgreSQL no s'han pogut executar aqui**: la connexio TCP
+cap a `control_hub_test` no s'estableix des d'aquesta sessio, tot i que el port respon i el rol hi
+te acces, i les nou suites d'integracio del paquet fallen totes igual pel mateix motiu. Estan
+escrites amb la mateixa forma que les germanes i passen el `typecheck`; qui les validi ha de ser CI
+o una sessio amb la base accessible.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

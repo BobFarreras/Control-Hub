@@ -1,6 +1,7 @@
 import {
   currentReading,
   diagnoseConnector,
+  discoverInstances,
   evaluateAlertRules,
   hasPermission,
   hostMatchKey,
@@ -11,7 +12,9 @@ import {
   type AlertSeverity,
   type AlertVerdict,
   type AlertRuleKind,
+  type DeclaredMachine,
   type DeclaredService,
+  type DiscoveredInstance,
   type AlertRuleTargetType,
   type JsonValue,
   type LiveAlert,
@@ -281,6 +284,26 @@ export type ConnectorDiagnosisState = {
 };
 
 /**
+ * What the discovery reads: the labels a collector has stored, and the machines already declared.
+ *
+ * Deliberately not `ConnectorDiagnosisState`, even though the two overlap. The check needs the
+ * origin and the last attempt, which the discovery has no use for and should therefore never be
+ * handed; the discovery needs each declared machine's name and id, which the check reduces to a
+ * list of hostnames because all it asks is whether one matches. Reading exactly what is answered
+ * is what keeps an address out of a state object that has no business carrying one.
+ *
+ * `instanceExists` and not the instance itself, for the same reason: whether this tenant has such
+ * a connector is the whole question, and a row would bring its configuration along with the answer.
+ */
+export type ConnectorDiscoveryState = {
+  instanceExists: boolean;
+  /** Answered first and on its own, exactly as in the guided check: see `discover`. */
+  missingMigrations: readonly string[];
+  seenInstances: readonly string[];
+  declaredMachines: readonly DeclaredMachine[];
+};
+
+/**
  * Whether this deployment's allowlist names an origin.
  *
  * Injected rather than read here, so the application layer neither touches the environment nor
@@ -325,6 +348,7 @@ export type InfrastructureRepository = {
   readInventoryState(context: TenantContext): Promise<InventoryState>;
   readEvaluationState(context: TenantContext): Promise<EvaluationState>;
   readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState>;
+  readDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorDiscoveryState>;
   applyVerdicts(
     context: TenantContext,
     verdicts: readonly AlertVerdict[],
@@ -480,6 +504,28 @@ export class InfrastructureService {
       seenInstances: state.seenInstances,
       declaredHostnames: state.declaredHostnames
     });
+  }
+
+  /**
+   * What a collector can see, said label by label, with each one's declaration when it has one.
+   *
+   * The same reading the guided check's last rung makes, laid out as a list instead of reduced to
+   * a yes or no, and computed by the same domain file so the two cannot come to differ about what
+   * counts as a match. A read, audited nowhere, and it sends nothing anywhere: the labels come
+   * from readings already stored, which is what makes opening this screen incapable of causing a
+   * request to go out.
+   *
+   * The migration rung fails first, as it does in the check. With the schema incomplete there is
+   * no `connector_instances` to look in, and "no such integration" would be a false answer about
+   * a table that is not there.
+   */
+  async discover(context: TenantContext, instanceId: string): Promise<readonly DiscoveredInstance[]> {
+    requireRead(context);
+    const state = await this.repository.readDiscoveryState(context, instanceId);
+    if (state.missingMigrations.length > 0) throw new InfrastructureServiceError("MIGRATION_REQUIRED");
+    if (!state.instanceExists) throw new InfrastructureServiceError("INSTANCE_NOT_FOUND");
+
+    return discoverInstances({ seenInstances: state.seenInstances, declaredMachines: state.declaredMachines });
   }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {

@@ -22,7 +22,9 @@ import { StatusPill } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
 import type {
   AlertSeverity,
+  ConnectorDiscoveryResponse,
   CustomerOption,
+  DiscoveredInstance,
   HostEnvironment,
   InfrastructureAlert,
   InfrastructureAlertRule,
@@ -105,6 +107,15 @@ async function call(path: string, init: RequestInit): Promise<Result> {
   if (response.ok) return { ok: true };
   const payload: unknown = await response.json().catch(() => null);
   return { ok: false, code: problemCode(payload) };
+}
+
+type Answered<T> = { ok: true; data: T } | { ok: false; code: string | null };
+
+/** The same call, for the one read on this screen whose answer is the point rather than its success. */
+async function ask<T>(path: string): Promise<Answered<T>> {
+  const response = await fetch(path);
+  const payload: unknown = await response.json().catch(() => null);
+  return response.ok ? { ok: true, data: payload as T } : { ok: false, code: problemCode(payload) };
 }
 
 /** `critical` becomes `severityCritical`: one derivation, no table to keep in step with the union. */
@@ -196,6 +207,115 @@ function FilterGroup<T extends string>({
   );
 }
 
+/**
+ * What a collector is reading, and which of it nobody has declared.
+ *
+ * It lives on this screen rather than beside the guided check because of the button: declaring is
+ * `infrastructure:operate` and the form that does it is the dialog below, already written and
+ * already permissioned. Putting the list next to the check would mean either a second copy of
+ * that dialog or carrying a hostname across a navigation, and a hostname in a query string is the
+ * kind of thing the module's own rules exist to prevent.
+ *
+ * It is asked for, never fetched on load. Nothing goes out to Prometheus either way -- the labels
+ * come from readings already stored -- but a panel that reads the whole fleet's records to draw
+ * itself every time somebody opens the screen would be a cost paid by everyone for a question few
+ * people are asking.
+ */
+function DiscoveryPanel({
+  collectors,
+  canOperate,
+  labels: t,
+  locale,
+  onDeclare
+}: {
+  collectors: { value: string; label: string }[];
+  canOperate: boolean;
+  labels: Labels;
+  locale: string;
+  /** Opens the dialog below with the label already in the field that gets typed wrongly. */
+  onDeclare: (hostname: string) => void;
+}) {
+  const { toast } = useToast();
+  const [instanceId, setInstanceId] = useState(collectors[0]?.value ?? "");
+  const [busy, setBusy] = useState(false);
+  const [seen, setSeen] = useState<DiscoveredInstance[] | null>(null);
+
+  async function look() {
+    if (!instanceId) return;
+    setBusy(true);
+    const result = await ask<ConnectorDiscoveryResponse>(`/api/v1/infrastructure/connectors/${instanceId}/discovery`);
+    setBusy(false);
+    if (!result.ok) {
+      setSeen(null);
+      return toast("error", errorMessage(t, result.code));
+    }
+    setSeen(result.data.instances);
+  }
+
+  const undeclared = seen?.filter((instance) => !instance.declaredAs).length ?? 0;
+
+  return (
+    <section className="project-panel" aria-label={t.discoveryTitle}>
+      <h3>{t.discoveryTitle}</h3>
+      <p className="field-help">{t.discoveryAbout}</p>
+
+      <div className="discovery-ask">
+        <SelectField
+          label={t.discoveryCollector ?? ""}
+          name="discoveryCollector"
+          value={instanceId}
+          onChange={(event) => {
+            setInstanceId(event.target.value);
+            // The answer belonged to the collector that was chosen when it was asked for. Leaving
+            // it on screen under a different name would be one collector's labels attributed to
+            // another, which is the exact confusion this panel exists to end.
+            setSeen(null);
+          }}
+          options={collectors}
+        />
+        <button className="secondary-button" onClick={() => void look()} disabled={busy || !instanceId} type="button">
+          <Eye size={16} aria-hidden="true" />
+          {busy ? t.discoveryRunning : t.discoveryRun}
+        </button>
+      </div>
+
+      {!seen ? (
+        <p className="crm-empty">{t.discoveryNotRun}</p>
+      ) : seen.length === 0 ? (
+        <p className="crm-empty">{t.discoveryEmpty}</p>
+      ) : (
+        <>
+          <p className="muted">
+            {(t.discoveryCount ?? "")
+              .replace("{seen}", String(seen.length))
+              .replace("{undeclared}", String(undeclared))}
+          </p>
+          <ul className="discovery-list">
+            {seen.map((instance) => (
+              <li key={instance.label} className="discovery-row" data-declared={instance.declaredAs ? "yes" : "no"}>
+                <code className="discovery-label">{instance.label}</code>
+                {instance.declaredAs ? (
+                  <Link className="link-button" href={`/${locale}/infrastructure/hosts/${instance.declaredAs.hostId}`}>
+                    {(t.discoveryDeclaredAs ?? "").replace("{name}", instance.declaredAs.name)}
+                  </Link>
+                ) : (
+                  <span className="discovery-undeclared">{t.discoveryUndeclared}</span>
+                )}
+                {!instance.declaredAs && canOperate && (
+                  <button className="secondary-button" type="button" onClick={() => onDeclare(instance.label)}>
+                    <Plus size={16} aria-hidden="true" />
+                    {t.discoveryDeclare}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 function automationStateLabel(t: Labels, automation: AutomationRow): string {
   if (automation.archived) return t.automationArchived ?? "";
   return (automation.active ? t.automationActive : t.automationInactive) ?? "";
@@ -239,8 +359,10 @@ export function InfrastructureWorkspace({
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [linking, setLinking] = useState<AutomationRow | null>(null);
-  // Null is closed; a host of null is one being declared rather than one being corrected.
-  const [hostDialog, setHostDialog] = useState<{ host: HostRow | null } | null>(null);
+  // Null is closed; a host of null is one being declared rather than one being corrected. A
+  // `hostname` is the discovery filling in the field that gets typed wrongly the first time, and
+  // it is read only when there is no host, because correcting a machine starts from its own value.
+  const [hostDialog, setHostDialog] = useState<{ host: HostRow | null; hostname?: string } | null>(null);
   const [serviceDialog, setServiceDialog] = useState<{ hostId: string; service: ServiceRow | null } | null>(null);
   const [ruleDialog, setRuleDialog] = useState(false);
   // What somebody asked to be shown. Client state and not a query string: it narrows a list
@@ -755,6 +877,19 @@ export function InfrastructureWorkspace({
         )}
       </section>
 
+      <DiscoveryPanel
+        collectors={Object.entries(instanceNames)
+          .map(([value, label]) => ({ value, label }))
+          .sort((one, other) => one.label.localeCompare(other.label))}
+        canOperate={canOperate}
+        labels={t}
+        locale={locale}
+        onDeclare={(hostname) => {
+          setFormError("");
+          setHostDialog({ host: null, hostname });
+        }}
+      />
+
       <section className="project-panel" aria-label={t.sectionAutomations}>
         <h3>{t.sectionAutomations}</h3>
         {automations.length === 0 ? (
@@ -988,7 +1123,7 @@ export function InfrastructureWorkspace({
                 required
                 maxLength={190}
                 hint={t.hostHostnameHint}
-                defaultValue={hostDialog.host?.hostname ?? ""}
+                defaultValue={hostDialog.host?.hostname ?? hostDialog.hostname ?? ""}
               />
               <SelectField
                 label={t.hostEnvironment!}

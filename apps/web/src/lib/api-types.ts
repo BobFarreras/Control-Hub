@@ -854,3 +854,17 @@ export type ConnectorDiagnosis = {
 };
 
 export type ConnectorDiagnosisResponse = { diagnosis: ConnectorDiagnosis };
+
+/**
+ * One label a collector has stored a reading for, and the machine it was declared as if it was.
+ *
+ * The label is what the collector calls it, which is exactly the field that gets typed wrongly
+ * the first time; `declaredAs` is the record it matched, so a screen can link to it instead of
+ * offering to declare something twice.
+ */
+export type DiscoveredInstance = {
+  label: string;
+  declaredAs: { hostId: string; name: string } | null;
+};
+
+export type ConnectorDiscoveryResponse = { instances: DiscoveredInstance[] };

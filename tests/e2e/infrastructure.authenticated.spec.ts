@@ -34,7 +34,15 @@ const t = {
   hosts: "Maquines",
   up: "Respon",
   down: "No respon",
-  unknown: "Sense lectura"
+  unknown: "Sense lectura",
+  discovery: "Que veu cada recollidor",
+  discoveryRun: "Mira que veu",
+  collector: "Recollidor",
+  declare: "Declarar-la",
+  undeclared: "Sense declarar",
+  hostname: "Etiqueta",
+  name: "Nom",
+  create: "Crear"
 } as const;
 
 test("shows what runs with the age of its reading, and acknowledges a live alert", async ({ page }) => {
@@ -119,4 +127,70 @@ test("says of every machine what is currently known of it, and no more", async (
   // No address of a provider reaches this screen, from the inventory any more than from anywhere
   // else: what the page holds of Prometheus is what somebody declared, never where it lives.
   expect(await page.content()).not.toContain("127.0.0.1:9090");
+});
+
+/**
+ * The path from "the collector sees something nobody declared" to a declared machine.
+ *
+ * What this proves and no unit test can: that the label the API answers with is the label that
+ * lands in the field of the dialog, through the panel, the button and the form -- which is the
+ * one field that was typed wrongly the first time, and the reason this increment exists.
+ *
+ * Declaring is one way, like acknowledging above, and a Playwright retry happens inside a run
+ * long after the seed took the leftover away. So the declaring is driven only while there is
+ * still something to declare, and the assertion that closes the test is the one that holds
+ * either way: that label belongs to a machine now.
+ *
+ * Acceptance criteria 8 and 9 of `docs/specifications/connector-onboarding.md`.
+ */
+test("declares a machine the collector can see and nobody had declared", async ({ page }) => {
+  const { collector, undeclaredHostname, host } = readFixture().infrastructure;
+  const name = `E2E VPS descobert ${Date.now()}`;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+
+  const discovery = page.getByRole("region", { name: t.discovery });
+  const look = discovery.getByRole("button", { name: t.discoveryRun });
+  await waitForHydration(look);
+  await discovery.getByLabel(t.collector).selectOption({ label: collector });
+
+  /**
+   * Nothing goes out to Prometheus to draw this. The panel reads records that are already stored,
+   * and the one request the click may make is to our own API.
+   */
+  const answered = page.waitForResponse((response) => response.url().includes("/discovery"));
+  await look.click();
+  expect((await answered).status()).toBe(200);
+
+  // Exact text, because `e2e-vps` is the beginning of `e2e-vps-nou`: the two rows this test is
+  // about would otherwise be one locator matching both.
+  const rowFor = (label: string) => discovery.getByRole("listitem").filter({ hasText: new RegExp(`^${label}`) });
+
+  // The declared one says which machine it is, and offers nothing to declare.
+  const declared = rowFor(host.hostname);
+  await expect(declared.getByRole("link", { name: new RegExp(host.name) })).toBeVisible();
+  await expect(declared.getByRole("button", { name: t.declare })).toHaveCount(0);
+
+  const undeclared = rowFor(undeclaredHostname);
+  const declare = undeclared.getByRole("button", { name: t.declare });
+  if ((await declare.count()) > 0) {
+    await expect(undeclared.getByText(t.undeclared)).toBeVisible();
+    await declare.click();
+
+    // The dialog opens already carrying the label. That is criterion 8, whole.
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel(t.hostname)).toHaveValue(undeclaredHostname);
+
+    await dialog.getByLabel(t.name).fill(name);
+    const created = page.waitForResponse(
+      (response) => response.url().includes("/infrastructure/hosts") && response.request().method() === "POST"
+    );
+    await dialog.getByRole("button", { name: t.create }).click();
+    expect((await created).status()).toBe(201);
+  }
+
+  // And it is a machine now: on the fleet, under the label the collector was already reading.
+  await expect(page.getByRole("region", { name: t.hosts }).getByText(undeclaredHostname)).toBeVisible({
+    timeout: 15_000
+  });
 });

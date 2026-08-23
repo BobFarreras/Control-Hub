@@ -223,3 +223,46 @@ export function diagnoseConnector(facts: ConnectorDiagnosisFacts): ConnectorDiag
 
   return { findings, problem: findings.find((finding) => finding.status !== "passed")?.step ?? null };
 }
+
+/** A machine somebody has declared, reduced to what the discovery needs to name it. */
+export type DeclaredMachine = { hostId: string; name: string; hostname: string };
+
+/**
+ * One `instance` label a collector has stored a reading for, and whether anybody claimed it.
+ *
+ * `declaredAs` names the machine rather than merely saying yes, because "already declared" and
+ * "already declared, as this" are different answers to somebody looking at a list of labels they
+ * half recognise.
+ */
+export type DiscoveredInstance = {
+  label: string;
+  declaredAs: { hostId: string; name: string } | null;
+};
+
+/**
+ * What the collector sees, set against what somebody declared.
+ *
+ * This is the `matching` rung turned into a list. The rung answers whether anything matched and
+ * this answers which, and both live here so that the two can never come to different conclusions
+ * about the same pair of strings: the equality is character for character, exactly as a reading
+ * is joined to a machine, because a label that is nearly right matches nothing and reads on the
+ * screen as "no readings" -- indistinguishable from a machine that died.
+ *
+ * It is keyed on what was seen and not on what was declared. A machine nobody has a reading for
+ * is a question for the inventory; this list answers the other one, which is what a collector is
+ * looking at that nobody has claimed yet.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C3 -- El descobriment".
+ */
+export function discoverInstances(facts: {
+  seenInstances: readonly string[];
+  declaredMachines: readonly DeclaredMachine[];
+}): readonly DiscoveredInstance[] {
+  // `hostname` is unique per tenant in the schema, so there is no pair to choose between here.
+  const declared = new Map(facts.declaredMachines.map((machine) => [machine.hostname, machine]));
+
+  return distinct(facts.seenInstances).map((label) => {
+    const machine = declared.get(label);
+    return { label, declaredAs: machine ? { hostId: machine.hostId, name: machine.name } : null };
+  });
+}

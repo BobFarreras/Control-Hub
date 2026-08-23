@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   connectorDiagnosisSteps,
   diagnoseConnector,
+  discoverInstances,
   type ConnectorDiagnosisFacts,
+  type DeclaredMachine,
   type ConnectorDiagnosisStep,
   type DiagnosisStatus
 } from "./connector-diagnosis.js";
@@ -252,5 +254,54 @@ describe("what a finding is allowed to carry", () => {
 
   it("leaves the evidence empty on a step that passed", () => {
     for (const finding of diagnoseConnector(facts()).findings) expect(finding.evidence).toEqual({});
+  });
+});
+
+describe("what a collector can see that nobody has declared", () => {
+  const machine = (hostId: string, name: string, hostname: string): DeclaredMachine => ({ hostId, name, hostname });
+
+  const vps = machine("host-1", "VPS principal", "vps-1");
+  const laptop = machine("host-2", "Portatil de proves", "laptop");
+
+  it("names the machine a label was already declared against", () => {
+    const found = discoverInstances({ seenInstances: ["vps-1"], declaredMachines: [vps, laptop] });
+
+    expect(found).toEqual([{ label: "vps-1", declaredAs: { hostId: "host-1", name: "VPS principal" } }]);
+  });
+
+  it("leaves a label nobody has declared open, which is the whole point of looking", () => {
+    const found = discoverInstances({ seenInstances: ["node-exporter:9100"], declaredMachines: [vps] });
+
+    expect(found).toEqual([{ label: "node-exporter:9100", declaredAs: null }]);
+  });
+
+  /**
+   * Character for character, exactly as the `matching` rung compares and exactly as a reading is
+   * joined to a machine. A label that is nearly right matches nothing, and this screen exists
+   * because "nearly right" is what somebody typed the first time.
+   */
+  it("does not call a near miss a match", () => {
+    const found = discoverInstances({ seenInstances: ["vps-1:9100"], declaredMachines: [vps] });
+
+    expect(found).toEqual([{ label: "vps-1:9100", declaredAs: null }]);
+  });
+
+  it("says nothing about a machine declared that nothing has been seen for", () => {
+    const found = discoverInstances({ seenInstances: ["vps-1"], declaredMachines: [vps, laptop] });
+
+    expect(found.map((item) => item.label)).toEqual(["vps-1"]);
+  });
+
+  it("lists each label once and in a settled order, however the readings came back", () => {
+    const found = discoverInstances({
+      seenInstances: ["web-2", "vps-1", "web-2", "api-3"],
+      declaredMachines: [vps]
+    });
+
+    expect(found.map((item) => item.label)).toEqual(["api-3", "vps-1", "web-2"]);
+  });
+
+  it("sees nothing when the collector has stored nothing", () => {
+    expect(discoverInstances({ seenInstances: [], declaredMachines: [vps] })).toEqual([]);
   });
 });

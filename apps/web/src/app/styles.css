@@ -6235,3 +6235,47 @@ main {
 .infra-services > li > header > div {
   display: grid;
 }
+
+/* What a collector can see: a row per label, the declared ones settled and the rest asking to be. */
+.discovery-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+.discovery-ask > label {
+  min-width: 220px;
+}
+.discovery-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.discovery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+/* Undeclared is the row somebody came here to act on, so it is the one that is marked. The colour
+   is never the only carrier: the row also says the words, and it is the only one with a button. */
+.discovery-row[data-declared="no"] {
+  border-left: 3px solid var(--warning);
+}
+.discovery-label {
+  flex: 1 1 220px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+.discovery-undeclared {
+  font-size: 0.85rem;
+  color: var(--muted);
+}

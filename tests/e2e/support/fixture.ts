@@ -29,6 +29,10 @@ export type Fixture = {
     rule: string;
     customer: string;
     host: { name: string; hostname: string };
+    /** The collector the discovery panel is asked about, by the name the select shows. */
+    collector: string;
+    /** A label that collector reads and nobody has declared, which is what the panel is for. */
+    undeclaredHostname: string;
     /** One service per answer a reading can give: it answers, it stopped, we cannot see it. */
     services: Record<"up" | "down" | "unknown", { name: string; matchKey: string }>;
   };

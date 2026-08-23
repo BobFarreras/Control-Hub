@@ -464,6 +464,32 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
     }
   );
 
+  /**
+   * What a collector can see, listed whole.
+   *
+   * Nothing is cut short here, unlike the evidence on a diagnosis: there the list is a hint and
+   * the answer is settled by the first handful, while here the list *is* the answer -- a machine
+   * dropped from it is a machine nobody is offered the chance to declare. The labels are the same
+   * ones that rung already sends, filtered by the same query, so the two cannot disagree.
+   */
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/discovery",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "The machines a collector is reading, declared or not",
+        params: instanceParams,
+        description:
+          "Every `instance` label this collector has stored a reading for, each one said to be declared against a machine or not declared at all. A read of what is already in our tables: opening it sends nothing to Prometheus and cannot make a request go out. The labels are the ones the guided check's last rung reports, drawn from the same query, and a probed address is left out of both. Answers 503 with `MIGRATION_REQUIRED` when the module's tables are not there, because on that database \"no such integration\" would be a false answer about a table that does not exist."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { instances: await infrastructure.discover(context, request.params.instanceId) };
+    }
+  );
+
   app.get(
     "/api/v1/infrastructure/hosts",
     {

@@ -11,6 +11,7 @@ import {
   type AppliedVerdict,
   type AutomationRecord,
   type ConnectorDiagnosisState,
+  type ConnectorDiscoveryState,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
@@ -147,6 +148,17 @@ class FakeRepository implements InfrastructureRepository {
     missingMigrations: [],
     seenInstances: [],
     declaredHostnames: []
+  };
+  discoveryState: ConnectorDiscoveryState = {
+    instanceExists: true,
+    missingMigrations: [],
+    seenInstances: [],
+    declaredMachines: []
+  };
+  discoveryAsked: string[] = [];
+  readDiscoveryState = (_context: TenantContext, asked: string) => {
+    this.discoveryAsked.push(asked);
+    return Promise.resolve(this.discoveryState);
   };
   diagnosisAsked: string[] = [];
   readDiagnosisState = (_context: TenantContext, asked: string) => {
@@ -917,5 +929,67 @@ describe("the guided check", () => {
     const diagnosis = await service.diagnose(owner, instanceId);
     expect(diagnosis.problem).toBe("matching");
     expect(diagnosis.findings.at(-1)?.evidence).toEqual({ seen: ["node-exporter:9100"], declared: ["hub-vps"] });
+  });
+});
+
+/**
+ * The discovery, as the use case assembles it.
+ *
+ * What matters here rather than in the domain is that reading is enough to ask, that a missing
+ * schema is reported as such instead of as "no such integration", and that an instance nobody
+ * has is refused -- the same three coordination questions the guided check answers, asked of the
+ * other read.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C3 -- El descobriment".
+ */
+describe("what a collector is looking at", () => {
+  const looking = (overrides: Partial<ConnectorDiscoveryState> = {}) => {
+    repository.discoveryState = {
+      instanceExists: true,
+      missingMigrations: [],
+      seenInstances: ["vps-1", "web-2"],
+      declaredMachines: [{ hostId: "host-1", name: "VPS principal", hostname: "vps-1" }],
+      ...overrides
+    };
+  };
+
+  it("says which labels are already declared and which are not", async () => {
+    looking();
+
+    expect(await service.discover(owner, instanceId)).toEqual([
+      { label: "vps-1", declaredAs: { hostId: "host-1", name: "VPS principal" } },
+      { label: "web-2", declaredAs: null }
+    ]);
+  });
+
+  it("is a read, so Administrator may ask for it and a stranger may not", async () => {
+    looking();
+
+    expect(await service.discover(administrator, instanceId)).toHaveLength(2);
+    await expect(service.discover(stranger, instanceId)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("asks about the instance it was given", async () => {
+    looking();
+    await service.discover(owner, instanceId);
+
+    expect(repository.discoveryAsked).toEqual([instanceId]);
+  });
+
+  it("refuses an instance this tenant does not have", async () => {
+    looking({ instanceExists: false });
+
+    await expect(service.discover(owner, instanceId)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  /**
+   * With the schema incomplete there is no `connector_instances` to look in, so "no such
+   * integration" would send somebody hunting for a row on a database with no table to hold it.
+   * The same reasoning the guided check makes, and the same answer: say the migration is missing.
+   */
+  it("says the schema is incomplete rather than that the integration is missing", async () => {
+    looking({ instanceExists: false, missingMigrations: ["0037_infrastructure_hosts"] });
+
+    await expect(service.discover(owner, instanceId)).rejects.toEqual(refused("MIGRATION_REQUIRED"));
   });
 });

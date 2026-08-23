@@ -717,6 +717,10 @@ export const infrastructureErrorCodes = [
   "NOTES_TOO_LONG",
   "TARGET_REQUIRED",
   "TARGET_NOT_ALLOWED",
+  // The module is deployed but not finished: its objects are not in the database yet. Its own
+  // code rather than an internal error, because it is a diagnosed state with a known remedy, and
+  // the guided check is the screen that names the migration to run.
+  "MIGRATION_REQUIRED",
   // Something named that is not there, or is not this tenant's.
   "INSTANCE_NOT_FOUND",
   "HOST_NOT_FOUND",

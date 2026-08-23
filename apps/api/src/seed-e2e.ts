@@ -355,6 +355,16 @@ try {
      * is the one this screen must never blur.
      */
     host: { name: "E2E VPS principal", hostname: "e2e-vps" },
+    /**
+     * The collector, and a label it reads that nobody has declared.
+     *
+     * The discovery is about exactly this pair: one machine whose `hostname` was typed
+     * correctly and one the collector can see and the inventory has never heard of. The second
+     * one shows on no other screen -- the inventory lists what somebody declared -- which is why
+     * the seed has to carry it and why it cannot be produced by declaring something here.
+     */
+    collector: "Prometheus E2E",
+    undeclaredHostname: "e2e-vps-nou",
     services: {
       up: { name: "E2E Base de dades", matchKey: "container:e2e-postgres" },
       down: { name: "E2E Panell antic", matchKey: "container:e2e-panell" },
@@ -449,7 +459,7 @@ try {
   await database`
     insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
     values (
-      ${prometheusInstanceId}, ${tenantId}, 'prometheus', 'Prometheus E2E', 'enabled',
+      ${prometheusInstanceId}, ${tenantId}, 'prometheus', ${infrastructureFixture.collector}, 'enabled',
       ${database.json({
         baseUrl: "http://127.0.0.1:9090",
         hostLabels: [infrastructureFixture.host.hostname],
@@ -459,6 +469,18 @@ try {
       'unknown'
     )
     on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  /**
+   * The machine the discovery test declares, taken away again.
+   *
+   * That test turns an undeclared label into a machine, and there is no way to undeclare one
+   * from the screen. Left behind, the next run would find the label already declared and would
+   * assert against a button that is correctly not there. The seed is the only thing that runs
+   * between runs, so the seed is what puts the fixture back the way the test needs it.
+   */
+  await database`
+    delete from infra_hosts
+    where tenant_id = ${tenantId} and hostname = ${infrastructureFixture.undeclaredHostname}`;
 
   const hostId = id(`${tenantId}:infra-host:e2e`);
   await database`
@@ -519,6 +541,14 @@ try {
       externalId: infrastructureFixture.services.down.matchKey,
       minutesAgo: 120,
       data: { lastSeenAt: null, startedAt: null, memoryBytes: 96_000_000, cpuCores: 0 }
+    },
+    // The machine the collector reads and nobody declared. It appears on no list but the
+    // discovery's, which is the whole point of the discovery.
+    {
+      operation: "pull_host_metrics",
+      externalId: `host:${infrastructureFixture.undeclaredHostname}`,
+      minutesAgo: 1,
+      data: { cpuBusyRatio: 0.08, memoryUsedRatio: 0.31, filesystemUsedRatio: 0.12, load1: 0.11 }
     }
   ] as const;
   for (const reading of readings)

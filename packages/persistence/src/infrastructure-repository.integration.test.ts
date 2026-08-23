@@ -1039,6 +1039,63 @@ suite("PostgresInfrastructureRepository", () => {
     });
   });
 
+  /**
+   * The discovery reads the same two things the guided check's last rung reads, through the same
+   * helpers, so what is worth proving here is only what differs: a declared machine arrives with
+   * its id and its name, because the screen has to offer a button that opens the right record, and
+   * a connector belonging to somebody else is simply not there.
+   */
+  describe("the discovery", () => {
+    const promInstance = async (tenantId: string, membershipId: string) =>
+      connectors.createInstance(context(tenantId, membershipId), {
+        connectorType: "prometheus",
+        name: `prometheus ${randomUUID()}`,
+        config: { baseUrl: "http://127.0.0.1:9090" }
+      });
+
+    it("reads the labels seen and the machines declared, each with the record it is", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const label = `vps-${randomUUID()}:9100`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${label}`, { cpuBusyRatio: 0.1 });
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: label,
+        environment: "production",
+        notes: null
+      });
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state).toMatchObject({ instanceExists: true, missingMigrations: [], seenInstances: [label] });
+      expect(state.declaredMachines).toContainEqual({ hostId: host.id, name: host.name, hostname: label });
+    });
+
+    it("says the instance is not there for one another tenant owns, and reads nothing of it", async () => {
+      const foreign = await promInstance(tenantB, membershipB);
+
+      expect(await repository.readDiscoveryState(asC(), foreign.id)).toEqual({
+        instanceExists: false,
+        missingMigrations: [],
+        seenInstances: [],
+        declaredMachines: []
+      });
+    });
+
+    it("offers this tenant's machines only, so a stranger's hostname cannot be matched against", async () => {
+      const instance = await promInstance(tenantC, membershipC);
+      const theirs = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+      const { declaredMachines } = await repository.readDiscoveryState(asC(), instance.id);
+
+      expect(declaredMachines.map((machine) => machine.hostname)).not.toContain(theirs.hostname);
+    });
+  });
+
   describe("retention", () => {
     it("removes resolved alerts past the window and leaves the live ones alone", async () => {
       const instance = await newInstance(tenantA, membershipA);
