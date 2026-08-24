@@ -55,10 +55,11 @@ No queda cap proposta de Dependabot oberta.
 `feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
 res.
 
-**Publicada la `v0.2.0`** el 16 d'agost de 2026: `main` anava cinquanta-un commits i dues fases
-enrere, i ara hi es al dia amb el tag signat (`3a03a62`). **Publicar no encen res**: `connectors`
-i `infrastructure` segueixen darrere la seva flag, apagades, i amb la flag tancada les rutes no
-es declaren. **No s'ha desplegat res enlloc**; la release es un tag, no una instal·lacio.
+**Release `v0.3.0` preparada el 24 d'agost de 2026** des de `develop`, despres de passar les vuit
+portes de CI. Inclou la 7.3, Vercel, Supabase, consum i costos variables, ingestio d'OpenAI,
+Anthropic i OpenCode, i el plugin d'OpenCode. **Publicar no encen res**: `connectors`,
+`infrastructure` i `usage_costs` segueixen darrere les seves flags. **No s'ha desplegat res
+enlloc**; una release es codi versionat, no una instal·lacio.
 
 La comparacio contra un `main` tan endarrerit va fer que dues portes miressin historial que les
 propostes cap a `develop` no havien mirat mai, i van sortir tres coses. Gitleaks va parar en un
@@ -71,18 +72,16 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La 7.3 esta acabada i verificada; el que falta es fusionar-la.** Els vuit increments son
-entregats —C1, C2, C3, C4, C5, C6, C7 i C8— i el 23 d'agost de 2026 el propietari va verificar el
-C8 a ma sobre la VPS de debo: reclamada l'etiqueta del cAdvisor, la fitxa de la maquina ensenya els
-contenidors i les sondes i es poden seleccionar. `pnpm check` sencer verd **amb les suites
-d'integracio de PostgreSQL executades de veritat**: 1.413 proves, cap saltada.
+**La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
+la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E
+autenticat, imatges de contenidor, secrets, dependencies i CodeQL. L'E2E autenticat va passar
+sencer en 4m03s. La release `v0.3.0` es el punt de publicacio d'aquest conjunt.
 
-**No es fusiona encara** perque la branca `claude/connector-onboarding` la comparteixen dues
-sessions: la Fase 8 s'hi esta implementant alhora. Cadascu hi fa commits del que es seu, fitxer a
-fitxer, i la fusio cap a `develop` espera. Falta `pnpm check:e2e`, que segueix comptant vermell per
-dues proves d'altres modules —fitxatge i despeses— que **nomes passen al reintent**, totes dues amb
-«el control no s'ha hidratat mai». Cap de les dues no toca infraestructura, i una prova que nomes
-passa al reintent no es verda: es la porta que queda per obrir.
+**El punt de continuacio funcional es la plataforma OAuth2 de la 7B**, abans de Gmail/Graph i
+dels connectors que hagin de deixar enrere tokens personals amplis. Despres ve M1, IMAP entrant
+incremental. L'OAuth de connectors fa de Control Hub un client davant el proveidor; l'OAuth 2.1
+de la Fase 10 el fara servidor de recursos per a MCP. Comparteixen primitives, no tokens ni
+audiences.
 
 **El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9.** La Fase 9 es
 empaquetat i distribucio —imatges OCI, instal·lador, Ansible, SBOM, signatura— i nomes es paga quan
@@ -625,7 +624,8 @@ loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-ope
 Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
-El punt de continuacio de la Fase 8 es M1: IMAP entrant incremental.
+El punt de continuacio aprovat es la base OAuth2 de la 7B; un cop disponible, la Fase 8 continua
+amb M1: IMAP entrant incremental.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

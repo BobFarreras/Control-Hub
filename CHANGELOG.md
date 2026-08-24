@@ -4,7 +4,9 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
-## Sense publicar
+## v0.3.0 - 2026-08-24
+
+Infraestructura operable, connectors de proveidors i control reproduible del consum variable.
 
 ### Consum i costos variables (Fase 8.1)
 

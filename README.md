@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-Versio publicada: **v0.2.0**.
+Versio publicada: **v0.3.0**.
 
 La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`. La Fase 6 aporta la plataforma de connectors —contracte, vault de credencials i webhooks signats— i la Fase 7.1 el connector n8n amb la pantalla d'infraestructura.
 
@@ -70,13 +70,13 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Connectors de Vercel i de Supabase**, per aquest ordre. Cada web de client viu a Vercel i cada base a Supabase, i tots dos son HTTP amb token de nomes lectura —el que el contracte de connector ja admet. Primer l'especificacio: un desplegament no es ni una maquina ni un contenidor, i el model d'infraestructura llegeix estats, no esdeveniments.
-2. **Encendre les flags `connectors` i `infrastructure`**, que es una decisio a part de publicar-les.
-3. **Els major de dependencies pendents**: `typescript 6`, `node 26`, `ioredis 6` i companyia, un per branca segons `BRANCHING.md`.
+1. **OAuth2 de connectors**, amb PKCE, `state`, refresh concurrent, revocacio i tokens segellats al vault.
+2. **IMAP entrant incremental**, idempotent i integrat amb el domini de suport existent.
+3. **Encendre les flags `connectors`, `infrastructure` i `usage_costs`**, una decisio operativa separada de publicar-les.
 
 La Fase 9 —empaquetat, instal·lador i distribucio— **no es el seguent pas**: nomes es paga quan una tercera empresa instal·la Control Hub. El raonament sencer es a `docs/development/current-state.md`.
 
-Fases ja lliurades: 5B (projectes i temps), 5C (registre de jornada), 6 (plataforma de connectors), 7.1 (infraestructura i connector n8n) i 7.2 (inventari, connector Prometheus i alertes d'infraestructura). La 7.3 —posar en marxa un recollidor sense endevinar— esta acabada i verificada, pendent de fusionar.
+Fases ja lliurades: 5B (projectes i temps), 5C (registre de jornada), 6 (plataforma de connectors), 7.1 (infraestructura i connector n8n), 7.2 (inventari, connector Prometheus i alertes), 7.3 (incorporacio guiada), connectors de Vercel i Supabase, i consum variable de la Fase 8.
 
 Les fases i les seves portes d'aprovacio son a [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), que mana sobre aquest resum.
 
