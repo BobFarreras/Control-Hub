@@ -37,6 +37,13 @@ export type Fixture = {
     offered: Record<"container" | "backup", { name: string; matchKey: string }>;
     /** One service per answer a reading can give: it answers, it stopped, we cannot see it. */
     services: Record<"up" | "down" | "unknown", { name: string; matchKey: string }>;
+    /** The hosting collector, by the name the select shows. */
+    vercel: string;
+    /** One project serving with a failed build behind it, and one nobody has ever deployed. */
+    projects: {
+      serving: { externalId: string; name: string; domain: string; failureRef: string };
+      never: { externalId: string; name: string };
+    };
   };
 };
 

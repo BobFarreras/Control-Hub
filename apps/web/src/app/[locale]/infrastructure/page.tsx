@@ -5,6 +5,7 @@ import {
   InfrastructureWorkspace,
   type AutomationRow,
   type HostRow,
+  type ProjectRow,
   type RuleRow
 } from "@/components/infrastructure-workspace";
 import { PageTopbar } from "@/components/page-topbar";
@@ -19,13 +20,14 @@ import type {
   InfrastructureInventoryResponse,
   InfrastructureOverview,
   InfrastructureOverviewResponse,
+  InfrastructureProjectsResponse,
   InventorySummary,
   IntegrationsResponse,
   Page as ApiPage
 } from "@/lib/api-types";
 import { featureEnabled } from "@/lib/features";
-import { readingAge, readingFigures } from "@/lib/infrastructure";
-import { automationLink } from "@/lib/infrastructure-link";
+import { dateLabel, readingAge, readingFigures } from "@/lib/infrastructure";
+import { automationLink, deployedSiteLink } from "@/lib/infrastructure-link";
 import { requireSession } from "@/lib/require-session";
 
 /**
@@ -60,6 +62,7 @@ type Loaded = {
   /** Which provider each one is. The type and never the configuration: it only draws a mark. */
   instanceTypes: Record<string, string>;
   automations: AutomationRow[];
+  projects: ProjectRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
   customers: CustomerOption[];
@@ -74,6 +77,7 @@ const empty: Loaded = {
   instanceNames: {},
   instanceTypes: {},
   automations: [],
+  projects: [],
   alerts: [],
   rules: [],
   customers: [],
@@ -113,6 +117,7 @@ async function load(locale: string, labels: Record<string, string>, showResolved
       overviewResponse,
       inventoryResponse,
       automationsResponse,
+      projectsResponse,
       alertsResponse,
       rulesResponse,
       integrationsResponse,
@@ -122,6 +127,7 @@ async function load(locale: string, labels: Record<string, string>, showResolved
       apiFetch("/api/v1/infrastructure/overview"),
       apiFetch("/api/v1/infrastructure/inventory"),
       apiFetch("/api/v1/infrastructure/automations"),
+      apiFetch("/api/v1/infrastructure/projects"),
       apiFetch(`/api/v1/infrastructure/alerts${showResolved ? "" : "?status=firing"}`),
       apiFetch("/api/v1/infrastructure/alert-rules"),
       apiFetch("/api/v1/integrations"),
@@ -170,6 +176,20 @@ async function load(locale: string, labels: Record<string, string>, showResolved
           age: readingAge(automation.observedAt, now)
         })
       ),
+      // A band that could not be read is an empty band and not a failed screen: the projects
+      // are one section of several, and losing the whole page over them would hide the machines
+      // and the alerts that did answer.
+      projects: projectsResponse.ok
+        ? (await readJson<InfrastructureProjectsResponse>(projectsResponse)).projects.map((project) => ({
+            ...project,
+            instanceName: named(project.instanceId),
+            link: deployedSiteLink(project.domain),
+            createdLabel: dateLabel(project.createdAt, locale),
+            deployedAge: readingAge(project.productionDeployedAt, now),
+            age: readingAge(project.observedAt, now),
+            failureAge: readingAge(project.lastFailureAt, now)
+          }))
+        : [],
       alerts: alertsResponse.ok ? (await readJson<InfrastructureAlertsResponse>(alertsResponse)).alerts : [],
       rules: rulesResponse.ok
         ? (await readJson<InfrastructureAlertRulesResponse>(rulesResponse)).rules.map((rule) => ({
@@ -232,6 +252,7 @@ export default async function InfrastructurePage({
             instanceNames={data.instanceNames}
             instanceTypes={data.instanceTypes}
             automations={data.automations}
+            projects={data.projects}
             alerts={data.alerts}
             rules={data.rules}
             customers={data.customers}

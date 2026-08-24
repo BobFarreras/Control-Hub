@@ -4035,6 +4035,7 @@ const infrastructureDictionaries = {
     overviewServices: "Serveis",
 
     sectionAutomations: "Automatitzacions",
+    sectionProjects: "Projectes desplegats",
     sectionAlerts: "Alertes",
     sectionRules: "Regles",
 
@@ -4050,6 +4051,16 @@ const infrastructureDictionaries = {
     open: "Obrir al proveidor",
     noLink: "Sense enllac",
     automationsEmpty: "Encara no s'ha llegit cap automatitzacio.",
+    projectDomain: "Domini",
+    projectProduction: "Produccio",
+    projectServing: "Serveix",
+    projectDown: "Caiguda",
+    projectNeverDeployed: "Mai desplegada",
+    projectCreated: "Creat",
+    projectDeployedAgo: "desplegat {age}",
+    projectLastFailure: "Ultim build fallit",
+    projectNoFailure: "Cap",
+    projectsEmpty: "Encara no s'ha llegit cap projecte desplegat.",
 
     assign: "Assignar client",
     assignTitle: "Client i nota",
@@ -4060,6 +4071,7 @@ const infrastructureDictionaries = {
     save: "Desar",
     cancel: "Cancel·lar",
     linked: "Automatitzacio actualitzada.",
+    linkedProject: "Projecte actualitzat.",
 
     ageNow: "ara mateix",
     ageMinutes: "fa {count} min",
@@ -4274,6 +4286,7 @@ const infrastructureDictionaries = {
     overviewServices: "Servicios",
 
     sectionAutomations: "Automatizaciones",
+    sectionProjects: "Proyectos desplegados",
     sectionAlerts: "Alertas",
     sectionRules: "Reglas",
 
@@ -4289,6 +4302,16 @@ const infrastructureDictionaries = {
     open: "Abrir en el proveedor",
     noLink: "Sin enlace",
     automationsEmpty: "Todavia no se ha leido ninguna automatizacion.",
+    projectDomain: "Dominio",
+    projectProduction: "Produccion",
+    projectServing: "Sirviendo",
+    projectDown: "Caida",
+    projectNeverDeployed: "Nunca desplegada",
+    projectCreated: "Creado",
+    projectDeployedAgo: "desplegado {age}",
+    projectLastFailure: "Ultimo build fallido",
+    projectNoFailure: "Ninguno",
+    projectsEmpty: "Todavia no se ha leido ningun proyecto desplegado.",
 
     assign: "Asignar cliente",
     assignTitle: "Cliente y nota",
@@ -4299,6 +4322,7 @@ const infrastructureDictionaries = {
     save: "Guardar",
     cancel: "Cancelar",
     linked: "Automatizacion actualizada.",
+    linkedProject: "Proyecto actualizado.",
 
     ageNow: "ahora mismo",
     ageMinutes: "hace {count} min",
@@ -4513,6 +4537,7 @@ const infrastructureDictionaries = {
     overviewServices: "Services",
 
     sectionAutomations: "Automations",
+    sectionProjects: "Deployed projects",
     sectionAlerts: "Alerts",
     sectionRules: "Rules",
 
@@ -4528,6 +4553,16 @@ const infrastructureDictionaries = {
     open: "Open at the provider",
     noLink: "No link",
     automationsEmpty: "No automation has been read yet.",
+    projectDomain: "Domain",
+    projectProduction: "Production",
+    projectServing: "Serving",
+    projectDown: "Down",
+    projectNeverDeployed: "Never deployed",
+    projectCreated: "Created",
+    projectDeployedAgo: "deployed {age}",
+    projectLastFailure: "Last failed build",
+    projectNoFailure: "None",
+    projectsEmpty: "No deployed project has been read yet.",
 
     assign: "Assign a client",
     assignTitle: "Client and note",
@@ -4538,6 +4573,7 @@ const infrastructureDictionaries = {
     save: "Save",
     cancel: "Cancel",
     linked: "Automation updated.",
+    linkedProject: "Project updated.",
 
     ageNow: "just now",
     ageMinutes: "{count} min ago",

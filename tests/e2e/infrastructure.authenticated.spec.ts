@@ -44,6 +44,10 @@ const t = {
   scope: "Que estas mirant",
   everything: "Tota la infraestructura",
   selector: "Serveis que el recollidor veu",
+  projects: "Projectes desplegats",
+  serving: "Serveix",
+  neverDeployed: "Mai desplegada",
+  noFailure: "Cap",
   selectorRun: "Mira que hi ha",
   services: "Serveis",
   backup: "Copia de seguretat"
@@ -286,6 +290,36 @@ test("declares services the collector sees, by ticking them", async ({ page }) =
  *
  * Acceptance criteria 16 to 20 of `docs/specifications/connector-onboarding.md`.
  */
+/**
+ * The two truths a project row holds at once.
+ *
+ * A site serving perfectly whose last build failed is the ordinary Friday afternoon, and it is
+ * the case a single column would have to lie about. The other row is the other answer that is
+ * not an outage: a project nobody has deployed, whose production is neither up nor down.
+ */
+test("says a project is serving and that its last build failed, and neither of a project never deployed", async ({
+  page
+}) => {
+  const { projects } = readFixture().infrastructure;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+
+  const band = page.getByRole("region", { name: t.projects, exact: true });
+  const serving = band.getByRole("row").filter({ hasText: projects.serving.name });
+
+  await expect(serving).toContainText(t.serving);
+  await expect(serving).toContainText(projects.serving.domain);
+  // The build that broke, named by the branch it broke on, beside a production that is up.
+  await expect(serving).toContainText(projects.serving.failureRef);
+  // When the project was made, as a date rather than as an age: the fixture is created in 2026
+  // and a row that answered "fa 234 d" would be true and useless.
+  await expect(serving).toContainText("2026");
+
+  const never = band.getByRole("row").filter({ hasText: projects.never.name });
+  await expect(never).toContainText(t.neverDeployed);
+  await expect(never).toContainText(t.noFailure);
+});
+
 test("shows only what the chosen collector accounts for", async ({ page }) => {
   const { collector, instance } = readFixture().infrastructure;
 
@@ -293,17 +327,20 @@ test("shows only what the chosen collector accounts for", async ({ page }) => {
 
   const machines = page.getByRole("region", { name: t.hosts, exact: true });
   const automations = page.getByRole("region", { name: t.automations, exact: true });
+  const projects = page.getByRole("region", { name: t.projects, exact: true });
   const scope = page.getByLabel(t.scope);
 
   // With nothing chosen the screen is the whole of it, and both collectors are on it.
   await waitForHydration(scope);
   await expect(machines).toBeVisible();
   await expect(automations).toBeVisible();
+  await expect(projects).toBeVisible();
 
   // The collector that reads machines. The automations of the other one are not narrowed to
-  // none: the table is gone.
+  // none: the table is gone, and so is the projects table of the third one.
   await selectFieldOption(scope, { label: collector });
   await expect(automations).toHaveCount(0);
+  await expect(projects).toHaveCount(0);
   await expect(machines).toBeVisible();
   await expect(page).toHaveURL(/[?&]collector=/);
 

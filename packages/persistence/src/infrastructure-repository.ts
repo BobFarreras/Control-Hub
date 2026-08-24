@@ -18,6 +18,8 @@ import {
   type InfrastructureRepository,
   type InventoryState,
   type LinkAutomationInput,
+  type LinkDeployedProjectInput,
+  type DeployedProjectRecord,
   type ServiceRecord,
   type UpdateAlertRuleInput,
   type UpdateHostInput,
@@ -76,6 +78,28 @@ const workflowOperation = "pull_workflows";
 const executionOperation = "pull_executions";
 /** Where a certificate expiry and a backup heartbeat both come from, in one `state` operation. */
 const probeOperation = "pull_probe_state";
+/** What a Vercel instance stores: the projects as state, the failed builds as events. */
+const projectOperation = "pull_projects";
+const deploymentOperation = "pull_deployments";
+
+/**
+ * A project as the row comes back, before the provider's own timestamps are read.
+ *
+ * They arrive as text and not as `timestamptz` because they are the provider's strings: casting
+ * in SQL would make one malformed value fail the whole listing, and a listing that disappears is
+ * a worse answer than a project whose date we could not read.
+ */
+type DeployedProjectRow = Omit<DeployedProjectRecord, "createdAt" | "productionDeployedAt" | "lastFailureAt"> & {
+  createdAt: string | null;
+  productionDeployedAt: string | null;
+  lastFailureAt: string | null;
+};
+
+function instantOrNull(value: string | null): Date | null {
+  if (!value) return null;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
 
 const recordColumns = `instance_id as "instanceId", operation, external_id as "externalId", data,
   first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"`;
@@ -235,6 +259,101 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     await withTenant(this.database, context.tenantId, async (tx) => {
       await tx`
         insert into infra_automation_links (id, tenant_id, instance_id, external_id, customer_id, notes)
+        values (${randomUUID()}, ${context.tenantId}, ${input.instanceId}, ${input.externalId},
+          ${input.customerId}, ${input.notes})
+        on conflict (tenant_id, instance_id, external_id) do update
+          set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
+    }).catch(mapConstraint);
+  }
+
+  /**
+   * Every Vercel project read, with the last failed build of each.
+   *
+   * Two joins and neither is decoration. The link is the annotation, so it is a `left join` on the
+   * record and not the other way round: what exists is what the provider says exists. The failure
+   * is a `left join lateral`, because "the most recent of this project's failed deployments" is a
+   * question asked once per row and answered by an ordered limit -- a group-by over the whole
+   * event table would read every failure of every project to keep one of each.
+   *
+   * The lateral does not filter by state, because there is nothing to filter: the collector asks
+   * Vercel for failures only and checks again before writing, so every deployment record it holds
+   * is a failed build. If that ever stops being true, this query is the second place to change.
+   *
+   * They are two columns and not one on purpose. A project can be serving perfectly and have had a
+   * build fail ten minutes ago; that is the ordinary Friday afternoon, and it is exactly what
+   * somebody has to see. Folding them together would force a choice about which truth to hide.
+   */
+  async listDeployedProjects(context: TenantContext): Promise<readonly DeployedProjectRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<DeployedProjectRow[]>`
+        select
+          r.instance_id as "instanceId",
+          r.external_id as "externalId",
+          coalesce(r.data ->> 'name', '') as name,
+          r.data ->> 'framework' as framework,
+          r.data ->> 'createdAt' as "createdAt",
+          r.data ->> 'productionAlias' as domain,
+          -- Guarded rather than cast: the connector writes JSON null for a project nobody has
+          -- deployed, and casting that to boolean is an error, not a null.
+          case when jsonb_typeof(r.data -> 'productionReady') = 'boolean'
+            then (r.data -> 'productionReady')::boolean end as "productionReady",
+          r.data ->> 'productionState' as "productionState",
+          r.data ->> 'productionDeployedAt' as "productionDeployedAt",
+          r.last_seen_at as "observedAt",
+          l.customer_id as "customerId",
+          l.notes,
+          failure."lastFailureAt",
+          failure."lastFailureRef"
+        from connector_records r
+        left join infra_project_links l
+          on l.tenant_id = r.tenant_id and l.instance_id = r.instance_id and l.external_id = r.external_id
+        left join lateral (
+          select d.data ->> 'createdAt' as "lastFailureAt", d.data ->> 'commitRef' as "lastFailureRef"
+          from connector_records d
+          where d.tenant_id = r.tenant_id
+            and d.instance_id = r.instance_id
+            and d.operation = ${deploymentOperation}
+            and d.data ->> 'projectId' = substring(r.external_id from position(':' in r.external_id) + 1)
+          -- The provider's own instant, which is when the build happened. Ours is when we looked,
+          -- and every pass rewrites it: ordering by that would call the oldest failure the newest
+          -- as soon as a re-read touched it.
+          order by d.data ->> 'createdAt' desc nulls last
+          limit 1
+        ) failure on true
+        where r.tenant_id = ${context.tenantId} and r.operation = ${projectOperation}
+        order by name asc, r.external_id asc`;
+
+      return rows.map((row) => ({
+        instanceId: row.instanceId,
+        externalId: row.externalId,
+        name: row.name,
+        domain: row.domain,
+        productionReady: row.productionReady,
+        productionState: row.productionState,
+        framework: row.framework,
+        createdAt: instantOrNull(row.createdAt),
+        productionDeployedAt: instantOrNull(row.productionDeployedAt),
+        lastFailureAt: instantOrNull(row.lastFailureAt),
+        lastFailureRef: row.lastFailureRef,
+        observedAt: row.observedAt,
+        customerId: row.customerId,
+        notes: row.notes
+      }));
+    });
+  }
+
+  /**
+   * Upsert, because the association and the note are one row per project.
+   *
+   * Nulling the customer is how an association is withdrawn, and the row survives it: somebody
+   * wrote those notes, and deleting them as a side effect of unlinking would be a surprise. Same
+   * shape as `linkAutomation` and the same reasons; a different table, for the reason the
+   * migration gives.
+   */
+  async linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into infra_project_links (id, tenant_id, instance_id, external_id, customer_id, notes)
         values (${randomUUID()}, ${context.tenantId}, ${input.instanceId}, ${input.externalId},
           ${input.customerId}, ${input.notes})
         on conflict (tenant_id, instance_id, external_id) do update

@@ -56,15 +56,23 @@ suite("PostgresInfrastructureRepository", () => {
     tenantId: string,
     membershipId: string,
     instanceId: string,
-    operation: "pull_workflows" | "pull_executions" | "pull_host_metrics" | "pull_container_state" | "pull_probe_state",
+    operation:
+      | "pull_workflows"
+      | "pull_executions"
+      | "pull_host_metrics"
+      | "pull_container_state"
+      | "pull_probe_state"
+      | "pull_projects"
+      | "pull_deployments",
     externalId: string,
     data: ConnectorConfig
   ) =>
     connectors.upsertRecords(context(tenantId, membershipId), {
       instanceId,
       operation,
-      // Only executions are events. Everything else is the provider's current answer, overwritten.
-      shape: operation === "pull_executions" ? "event" : "state",
+      // Executions and deployments are events: they happened, and the next one does not replace
+      // the last. Everything else is the provider's current answer, overwritten each pass.
+      shape: operation === "pull_executions" || operation === "pull_deployments" ? "event" : "state",
       records: [{ externalId, data }],
       seenAt: now
     });
@@ -132,6 +140,9 @@ suite("PostgresInfrastructureRepository", () => {
 
   const automationsOf = async (instanceId: string) =>
     (await repository.listAutomations(asA())).filter((item) => item.instanceId === instanceId);
+
+  const projectsOf = async (instanceId: string) =>
+    (await repository.listDeployedProjects(asA())).filter((item) => item.instanceId === instanceId);
 
   const alertsOf = async (ruleId: string, status?: "firing" | "resolved") =>
     (await repository.listAlerts(asA(), status ? { status } : {})).filter((alert) => alert.ruleId === ruleId);
@@ -205,6 +216,154 @@ suite("PostgresInfrastructureRepository", () => {
       expect(mine.some((item) => item.externalId === "workflow:secret")).toBe(false);
       const theirs = await repository.listAutomations(asB());
       expect(theirs.some((item) => item.externalId === "workflow:secret")).toBe(true);
+    });
+  });
+
+  describe("deployed projects", () => {
+    it("reads the project, its production, the last failed build and who it is for, at once", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-a", {
+        name: "Web publica",
+        framework: "nextjs",
+        productionReady: true,
+        productionState: "READY",
+        productionDeployedAt: "2026-08-13T09:00:00.000Z",
+        productionAlias: "client.example",
+        createdAt: "2026-01-02T00:00:00.000Z"
+      });
+      // Two failures, and the newer one is the one a row has room for.
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-old", {
+        projectId: "prj-a",
+        project: "Web publica",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-12T08:00:00.000Z",
+        commitRef: "main",
+        commitSha: "aaaa111"
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-new", {
+        projectId: "prj-a",
+        project: "Web publica",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-13T11:00:00.000Z",
+        commitRef: "fix/preus",
+        commitSha: "bbbb222"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:prj-a",
+        customerId,
+        notes: "la web publica"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({
+        externalId: "project:prj-a",
+        name: "Web publica",
+        framework: "nextjs",
+        domain: "client.example",
+        // Serving *and* the last build failed. Both true at once is why these are two fields.
+        productionReady: true,
+        productionState: "READY",
+        lastFailureRef: "fix/preus",
+        customerId,
+        notes: "la web publica"
+      });
+      expect(project?.createdAt).toEqual(new Date("2026-01-02T00:00:00.000Z"));
+      expect(project?.productionDeployedAt).toEqual(new Date("2026-08-13T09:00:00.000Z"));
+      expect(project?.lastFailureAt).toEqual(new Date("2026-08-13T11:00:00.000Z"));
+      expect(project?.observedAt).toBeInstanceOf(Date);
+    });
+
+    it("says nothing rather than false about a project nobody has deployed", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-empty", {
+        name: "Encara res",
+        framework: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        productionAlias: null,
+        createdAt: "2026-08-01T00:00:00.000Z"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({
+        name: "Encara res",
+        framework: null,
+        domain: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        lastFailureAt: null,
+        lastFailureRef: null,
+        customerId: null,
+        notes: null
+      });
+    });
+
+    it("does not hang one project's failure off another", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-quiet", {
+        name: "Tranquil",
+        productionReady: true,
+        productionState: "READY"
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-other", {
+        projectId: "prj-noisy",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-13T11:30:00.000Z",
+        commitRef: "main"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ name: "Tranquil", lastFailureAt: null, lastFailureRef: null });
+    });
+
+    it("keeps the notes when the association is withdrawn", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-b", { name: "Segona" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      const link = { instanceId: instance.id, externalId: "project:prj-b", customerId, notes: "ojo" };
+      await repository.linkDeployedProject(asA(), link);
+      await repository.linkDeployedProject(asA(), { ...link, customerId: null });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ customerId: null, notes: "ojo" });
+    });
+
+    it("shows one tenant nothing of another's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_projects", "project:prj-secret", { name: "Theirs" });
+
+      const mine = await repository.listDeployedProjects(asA());
+      expect(mine.some((item) => item.externalId === "project:prj-secret")).toBe(false);
+      const theirs = await repository.listDeployedProjects(asB());
+      expect(theirs.some((item) => item.externalId === "project:prj-secret")).toBe(true);
+    });
+
+    it("does not let an automation's link answer for a project, or the other way round", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:shared-id", { name: "Projecte" });
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "project:shared-id", { name: "Workflow" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      // Same instance, same external id, two tables. This is the reason there are two of them.
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:shared-id",
+        customerId,
+        notes: "del projecte"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ notes: "del projecte", customerId });
+      const [automation] = await automationsOf(instance.id);
+      expect(automation).toMatchObject({ notes: null, customerId: null });
     });
   });
 

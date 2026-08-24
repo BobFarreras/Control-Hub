@@ -69,6 +69,8 @@ const documentedInfrastructure = [
   ["get", "/api/v1/infrastructure/overview"],
   ["get", "/api/v1/infrastructure/automations"],
   ["put", "/api/v1/infrastructure/automations/{instanceId}/{externalId}/link"],
+  ["get", "/api/v1/infrastructure/projects"],
+  ["put", "/api/v1/infrastructure/projects/{instanceId}/{externalId}/link"],
   ["get", "/api/v1/infrastructure/inventory"],
   ["get", "/api/v1/infrastructure/connectors/{instanceId}/diagnosis"],
   ["get", "/api/v1/infrastructure/connectors/{instanceId}/discovery"],

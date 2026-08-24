@@ -12,6 +12,7 @@ import type {
 import {
   ageLabel,
   alertState,
+  dateLabel,
   alertStateTone,
   filterInventory,
   observedStateTone,
@@ -148,6 +149,32 @@ describe("an age in words", () => {
         expect(ageLabel(dictionary, readingAge(iso, now), "-"), locale).not.toContain("{count}");
       }
     }
+  });
+});
+
+/**
+ * A date is not an age, and the difference is not cosmetic: "fa 234 d" is a true sentence about a
+ * project created in January and a useless one. Anything that happened rather than was read gets
+ * the date.
+ */
+describe("a date in words", () => {
+  it("writes the day, the month and the year of something that happened", () => {
+    const label = dateLabel("2026-01-02T12:00:00.000Z", "ca");
+
+    expect(label).toContain("2026");
+    expect(label).toContain("2");
+  });
+
+  it("says nothing at all rather than something wrong when there is no date", () => {
+    expect(dateLabel(null, "ca")).toBeNull();
+    expect(dateLabel(undefined, "ca")).toBeNull();
+    expect(dateLabel("", "ca")).toBeNull();
+    // A provider's string we cannot read is not a date, and `Invalid Date` must never be drawn.
+    expect(dateLabel("ahir", "ca")).toBeNull();
+  });
+
+  it("writes it in the language being read, whichever that is", () => {
+    for (const locale of locales) expect(dateLabel("2026-01-02T12:00:00.000Z", locale), locale).toContain("2026");
   });
 });
 
@@ -414,6 +441,10 @@ describe("what one collector accounts for", () => {
       { id: "w-1", instanceId: "n8n" },
       { id: "w-2", instanceId: "prom" }
     ],
+    projects: [
+      { id: "p-1", instanceId: "vercel" },
+      { id: "p-2", instanceId: "prom" }
+    ],
     alerts: [alert({ id: "a-prom", ruleId: "r-prom" }), alert({ id: "a-n8n", ruleId: "r-n8n" })],
     rules: [
       { id: "r-prom", instanceId: "prom" },
@@ -426,6 +457,7 @@ describe("what one collector accounts for", () => {
 
     expect(all.hosts).toHaveLength(2);
     expect(all.automations).toHaveLength(2);
+    expect(all.projects).toHaveLength(2);
     expect(all.alerts).toHaveLength(2);
     expect(all.rules).toHaveLength(2);
   });
@@ -447,6 +479,16 @@ describe("what one collector accounts for", () => {
 
     expect(mine.automations.map((row) => row.id)).toEqual(["w-1"]);
     expect(mine.rules.map((row) => row.id)).toEqual(["r-n8n"]);
+  });
+
+  /**
+   * A band belongs to the collector that reads it, and to no other. Somebody looking at the n8n
+   * collector is not asking about the projects a hosting provider reads, and an empty projects
+   * table under that heading would be an answer to a question nobody asked.
+   */
+  it("keeps the projects of that collector, and shows none under another", () => {
+    expect(sliceByCollector(everything, "vercel").projects.map((row) => row.id)).toEqual(["p-1"]);
+    expect(sliceByCollector(everything, "n8n").projects).toEqual([]);
   });
 
   it("attributes an alert through the rule that raised it", () => {

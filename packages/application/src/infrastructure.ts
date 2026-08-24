@@ -73,6 +73,44 @@ export type AutomationRecord = {
   notes: string | null;
 };
 
+/**
+ * A Vercel project as a screen sees it: what is served, what last failed, and our own link.
+ *
+ * The production state and the last failure are two fields and not one, which is decision 1 of the
+ * connector carried up to here: a project can be serving perfectly and have had a build fail ten
+ * minutes ago. Both are true at once and the screen has to be able to say so.
+ */
+export type DeployedProjectRecord = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  /** What it is built with, as the provider names it: `nextjs`, `vite`. Null when it says nothing. */
+  framework: string | null;
+  /** When the project was created. Context rather than a reading: it does not go stale. */
+  createdAt: Date | null;
+  /** The domain production serves, or null for a project that has never shipped. */
+  domain: string | null;
+  /** True when production is serving, false when it is broken, null when nothing shipped yet. */
+  productionReady: boolean | null;
+  /** What the provider calls it -- `READY`, `ERROR`, `BUILDING`. Null when there is no production. */
+  productionState: string | null;
+  /**
+   * When the deployment production currently points at was created.
+   *
+   * Which, whenever `productionReady` is true, is the last build that came out well -- production
+   * only points at a deployment that finished. That is why the connector keeps no record of
+   * successful builds: the useful one is already here, and the rest would be somebody's history.
+   */
+  productionDeployedAt: Date | null;
+  /** The most recent failed build still inside the collector's window, if there is one. */
+  lastFailureAt: Date | null;
+  lastFailureRef: string | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: Date;
+  customerId: string | null;
+  notes: string | null;
+};
+
 export type AlertRuleRecord = AlertRule & { createdAt: Date; updatedAt: Date };
 
 export type AlertEventRecord = {
@@ -93,6 +131,14 @@ export type AlertEventRecord = {
 };
 
 export type LinkAutomationInput = {
+  instanceId: string;
+  externalId: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
+/** The same four fields as an automation's link, and a different table: see the migration. */
+export type LinkDeployedProjectInput = {
   instanceId: string;
   externalId: string;
   customerId: string | null;
@@ -412,6 +458,8 @@ export type AppliedVerdict = { ruleId: string; dedupKey: string; alertId: string
 export type InfrastructureRepository = {
   listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]>;
   linkAutomation(context: TenantContext, input: LinkAutomationInput): Promise<void>;
+  listDeployedProjects(context: TenantContext): Promise<readonly DeployedProjectRecord[]>;
+  linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void>;
 
   listHosts(context: TenantContext): Promise<readonly HostRecord[]>;
   findHost(context: TenantContext, hostId: string): Promise<HostRecord | null>;
@@ -703,6 +751,21 @@ export class InfrastructureService {
   async linkAutomation(context: TenantContext, input: LinkAutomationInput): Promise<void> {
     requireOperate(context);
     await this.repository.linkAutomation(context, { ...input, notes: checkNotes(input.notes) });
+  }
+
+  async listDeployedProjects(context: TenantContext): Promise<readonly DeployedProjectRecord[]> {
+    requireRead(context);
+    return await this.repository.listDeployedProjects(context);
+  }
+
+  /**
+   * Associates a Vercel project with a client, or takes the association away.
+   *
+   * A null customer is the removal: the row stays, because the notes on it are somebody's work.
+   */
+  async linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void> {
+    requireOperate(context);
+    await this.repository.linkDeployedProject(context, { ...input, notes: checkNotes(input.notes) });
   }
 
   async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {

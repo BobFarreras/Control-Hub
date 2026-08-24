@@ -55,10 +55,10 @@ Desa i mira la comprovacio de salut. Ha de dir que va.
 
 ## Que veuras avui, i que no
 
-Les lectures es desen i la integracio informa del seu estat, els seus errors i quan va llegir per
-ultima vegada. **El que encara no hi ha es una pantalla que dibuixi els projectes**, ni una regla
-d'alerta que salti quan un build peta: la decisio de si els projectes tenen franja propia —com les
-automatitzacions d'n8n— esta oberta i es a la seccio "El que queda obert" de l'especificacio.
+A **Infraestructura** hi trobaras la franja **Projectes desplegats**: una fila per projecte, amb el
+domini de produccio, si produccio serveix, l'ultim build que va fallar —amb la branca i quan— i
+quan en vam llegir. Pots assignar-hi un client, igual que a una automatitzacio.
 
-Val la pena connectar-ho igualment: des del moment que hi es, la historia s'acumula, i el dia que
-hi hagi pantalla ja hi haura que ensenyar-hi.
+**El que encara no hi ha es cap alerta.** Un build que peta es veu quan algu mira la pantalla, no
+et ve a buscar: la regla `deployment_failed` es un increment a part i encara no existeix. Si vols
+saber-ho abans, mira la pantalla el divendres a la tarda.

@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ConnectorMark } from "@/components/connector-mark";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
-import { StatusPill } from "@/components/status-pill";
+import { StatusPill, type StatusTone } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
 import type {
   AlertSeverity,
@@ -32,6 +32,7 @@ import type {
   InfrastructureAlert,
   InfrastructureAlertRule,
   InfrastructureAutomation,
+  InfrastructureDeployedProject,
   InfrastructureOverview,
   InventorySummary,
   ObservedTally,
@@ -89,6 +90,43 @@ export type AutomationRow = InfrastructureAutomation & {
 };
 
 export type RuleRow = InfrastructureAlertRule & { instanceName: string };
+
+/** One deployed project, with the collector's name and the age of the reading behind it. */
+export type ProjectRow = InfrastructureDeployedProject & {
+  instanceName: string;
+  /** Built and validated on the server out of the domain. Null renders as plain text. */
+  link: string | null;
+  /**
+   * The creation date in words, formatted on the server.
+   *
+   * A date and not an age, because a project created in January is not a stale reading; and
+   * formatted there rather than here for the reason every other figure on this screen is: the
+   * server and the browser do not necessarily agree about a time zone, and a row that renders
+   * one date and hydrates into another is the bug this whole file is arranged to avoid.
+   */
+  createdLabel: string | null;
+  /** How long ago what production serves was built. Null when nothing is deployed. */
+  deployedAge: ReadingAge | null;
+  age: ReadingAge | null;
+  /** How long ago the last build failed, or null when none did inside the window. */
+  failureAge: ReadingAge | null;
+};
+
+/**
+ * What the association dialog is open over.
+ *
+ * One dialog for two bands, because it asks the same two questions and the answers go to routes
+ * of the same shape. `kind` is the path segment, which is why it reads as one: an automation and
+ * a project are annotated in two different tables and nothing here has to know why.
+ */
+type LinkTarget = {
+  kind: "automations" | "projects";
+  instanceId: string;
+  externalId: string;
+  name: string;
+  customerId: string | null;
+  notes: string | null;
+};
 
 /** A service with what the server worked out about its reading: its age and its figures in words. */
 export type ServiceRow = ObservedService & { age: ReadingAge | null; figures: Figure[] };
@@ -400,6 +438,19 @@ function automationStateLabel(t: Labels, automation: AutomationRow): string {
   return (automation.active ? t.automationActive : t.automationInactive) ?? "";
 }
 
+/**
+ * What production is doing, in a word.
+ *
+ * Three answers and not two: `null` is a project nobody has deployed, and drawing that as an
+ * outage would send somebody looking for a site that was never there. The tone follows the word
+ * and never carries the meaning alone.
+ */
+function productionState(t: Labels, project: ProjectRow): { tone: StatusTone; label: string } {
+  if (project.productionReady === null) return { tone: "neutral", label: t.projectNeverDeployed ?? "" };
+  if (project.productionReady) return { tone: "active", label: t.projectServing ?? "" };
+  return { tone: "danger", label: t.projectDown ?? "" };
+}
+
 export function InfrastructureWorkspace({
   overview,
   summary,
@@ -408,6 +459,7 @@ export function InfrastructureWorkspace({
   instanceNames,
   instanceTypes,
   automations,
+  projects,
   alerts,
   rules,
   customers,
@@ -428,6 +480,7 @@ export function InfrastructureWorkspace({
   /** Which provider each one is, which is what its mark is drawn from. Never an address. */
   instanceTypes: Record<string, string>;
   automations: AutomationRow[];
+  projects: ProjectRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
   customers: CustomerOption[];
@@ -443,7 +496,7 @@ export function InfrastructureWorkspace({
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
-  const [linking, setLinking] = useState<AutomationRow | null>(null);
+  const [linking, setLinking] = useState<LinkTarget | null>(null);
   // Null is closed; a host of null is one being declared rather than one being corrected. A
   // `hostname` is the discovery filling in the field that gets typed wrongly the first time, and
   // it is read only when there is no host, because correcting a machine starts from its own value.
@@ -473,7 +526,7 @@ export function InfrastructureWorkspace({
    * one collector while the heading above it counts another. With nothing chosen it is the props
    * themselves, and the screen is what it always was.
    */
-  const chosen = sliceByCollector({ hosts, automations, alerts, rules }, collector);
+  const chosen = sliceByCollector({ hosts, automations, projects, alerts, rules }, collector);
 
   function chooseCollector(value: string) {
     const next = value === "" ? null : value;
@@ -691,7 +744,7 @@ export function InfrastructureWorkspace({
     setBusy(true);
     setFormError("");
     const result = await call(
-      `/api/v1/infrastructure/automations/${linking.instanceId}/${encodeURIComponent(linking.externalId)}/link`,
+      `/api/v1/infrastructure/${linking.kind}/${linking.instanceId}/${encodeURIComponent(linking.externalId)}/link`,
       {
         method: "PUT",
         headers: jsonHeaders,
@@ -702,8 +755,9 @@ export function InfrastructureWorkspace({
     );
     setBusy(false);
     if (!result.ok) return setFormError(errorMessage(t, result.code));
+    const done = linking.kind === "projects" ? t.linkedProject : t.linked;
     setLinking(null);
-    toast("success", t.linked ?? "");
+    toast("success", done ?? "");
     router.refresh();
   }
 
@@ -1216,7 +1270,7 @@ export function InfrastructureWorkspace({
                             aria-label={t.assign}
                             onClick={() => {
                               setFormError("");
-                              setLinking(automation);
+                              setLinking({ kind: "automations", ...automation });
                             }}
                           >
                             <UserPlus size={16} />
@@ -1225,6 +1279,133 @@ export function InfrastructureWorkspace({
                       )}
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* The projects a hosting provider deploys, on the same terms: absent under a collector
+          that reads none. Production and the last failed build are two columns because both can
+          be true at once -- a site serving perfectly whose Friday build broke is the ordinary
+          case, and one column would have to hide one of the two. */}
+      {(collector === null || chosen.projects.length > 0) && (
+        <section className="project-panel" aria-label={t.sectionProjects}>
+          <h3>{t.sectionProjects}</h3>
+          {chosen.projects.length === 0 ? (
+            <p className="muted">{t.projectsEmpty}</p>
+          ) : (
+            <div className="crm-table-wrap inside-panel">
+              <table className="crm-table">
+                <thead>
+                  <tr>
+                    <th>{t.name}</th>
+                    <th>{t.projectDomain}</th>
+                    <th>{t.projectProduction}</th>
+                    <th>{t.projectCreated}</th>
+                    <th>{t.projectLastFailure}</th>
+                    <th>{t.customer}</th>
+                    <th>{t.observed}</th>
+                    {canOperate && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {chosen.projects.map((project) => {
+                    const production = productionState(t, project);
+                    return (
+                      <tr key={`${project.instanceId}:${project.externalId}`}>
+                        <td>
+                          <span className="ticket-subject">{project.name}</span>
+                          {/* What it is built with belongs with what it is called, not in a column
+                              of its own: it identifies the project, it never changes, and nobody
+                              scans a fleet by framework. */}
+                          <small className="muted">
+                            {project.framework
+                              ? `${project.instanceName} · ${project.framework}`
+                              : project.instanceName}
+                          </small>
+                        </td>
+                        <td>
+                          {/* The client's own domain, and the only address on this screen that is
+                              not the provider's. The anchor was composed and checked on the
+                              server like every other link here: an alias is what a provider
+                              answered, and nothing that arrives from one becomes a destination
+                              on this side. */}
+                          {project.link ? (
+                            <a className="ticket-subject" href={project.link} target="_blank" rel="noopener noreferrer">
+                              {project.domain}
+                              <ExternalLink size={14} aria-label={t.open} />
+                            </a>
+                          ) : (
+                            <span className={project.domain ? "ticket-subject" : "muted"}>
+                              {project.domain ?? t.noLink}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <StatusPill tone={production.tone} label={production.label} />
+                          {/* When what is being served was built. While production is serving this
+                              is the last build that came out well, which is why no record of
+                              successful builds has to be kept to answer it. */}
+                          {project.productionDeployedAt && (
+                            <small className="muted">
+                              {(t.projectDeployedAgo ?? "").replace(
+                                "{age}",
+                                ageLabel(t, project.deployedAge, t.observedNever ?? "")
+                              )}
+                            </small>
+                          )}
+                        </td>
+                        <td>
+                          {/* Empty when the provider sent no date. There is no word for it that
+                              would not be inventing a fact: a project has a creation date or we
+                              did not receive one, and neither is news. */}
+                          {project.createdLabel && <time dateTime={project.createdAt!}>{project.createdLabel}</time>}
+                        </td>
+                        <td>
+                          {project.lastFailureAt ? (
+                            <>
+                              <time dateTime={project.lastFailureAt}>
+                                {ageLabel(t, project.failureAge, t.observedNever ?? "")}
+                              </time>
+                              {project.lastFailureRef && <small className="muted">{project.lastFailureRef}</small>}
+                            </>
+                          ) : (
+                            <span className="muted">{t.projectNoFailure}</span>
+                          )}
+                        </td>
+                        <td>
+                          {customers.find((customer) => customer.id === project.customerId)?.displayName ?? (
+                            <span className="muted">{t.noCustomer}</span>
+                          )}
+                        </td>
+                        <td>
+                          <time dateTime={project.observedAt}>{ageLabel(t, project.age, t.observedNever ?? "")}</time>
+                          {project.age?.stale && (
+                            <small className="muted" title={t.staleHint}>
+                              {t.stale}
+                            </small>
+                          )}
+                        </td>
+                        {canOperate && (
+                          <td className="pending-actions">
+                            <button
+                              className="icon-button"
+                              disabled={busy}
+                              aria-label={t.assign}
+                              onClick={() => {
+                                setFormError("");
+                                setLinking({ kind: "projects", ...project });
+                              }}
+                            >
+                              <UserPlus size={16} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

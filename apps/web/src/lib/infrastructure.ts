@@ -100,6 +100,22 @@ export function ageLabel(labels: Record<string, string>, age: ReadingAge | null,
 }
 
 /**
+ * A date in words, for something that happened rather than something we read.
+ *
+ * `ageLabel` answers "how long ago", which is right for a reading and wrong for a fact: a project
+ * created in January is not a stale figure, and "fa 234 d" is a worse answer than the date. No
+ * `timeZone` is pinned, so it reads in the installation's own zone -- the same choice the rest of
+ * the product makes -- and it is called on the server, once, for the reason every other label on
+ * this screen is: a browser that reformatted it could disagree with what was rendered.
+ */
+export function dateLabel(value: string | null | undefined, locale: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+/**
  * The tone of an observed state.
  *
  * `unknown` is the third answer the API gives and not a shade of `down`: it is a collector we
@@ -302,16 +318,24 @@ export function sliceByCollector<
   S extends Observed,
   H extends Declared<S>,
   A extends { instanceId: string },
+  P extends { instanceId: string },
   L extends { ruleId: string },
   R extends { id: string; instanceId: string }
 >(
-  everything: { hosts: readonly H[]; automations: readonly A[]; alerts: readonly L[]; rules: readonly R[] },
+  everything: {
+    hosts: readonly H[];
+    automations: readonly A[];
+    projects: readonly P[];
+    alerts: readonly L[];
+    rules: readonly R[];
+  },
   instanceId: string | null
-): { hosts: H[]; automations: A[]; alerts: L[]; rules: R[] } {
+): { hosts: H[]; automations: A[]; projects: P[]; alerts: L[]; rules: R[] } {
   if (instanceId === null)
     return {
       hosts: [...everything.hosts],
       automations: [...everything.automations],
+      projects: [...everything.projects],
       alerts: [...everything.alerts],
       rules: [...everything.rules]
     };
@@ -324,6 +348,7 @@ export function sliceByCollector<
   return {
     hosts: filterInventory(everything.hosts, { environments: [], states: [], instanceIds: [instanceId] }),
     automations: everything.automations.filter((row) => row.instanceId === instanceId),
+    projects: everything.projects.filter((row) => row.instanceId === instanceId),
     alerts: everything.alerts.filter((row) => instanceOfRule.get(row.ruleId) === instanceId),
     rules: everything.rules.filter((row) => row.instanceId === instanceId)
   };

@@ -2,6 +2,7 @@ import type {
   AlertEventRecord,
   AlertRuleRecord,
   AutomationRecord,
+  DeployedProjectRecord,
   HostRecord,
   ServiceRecord
 } from "@control-hub/application";
@@ -10,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   alertResponse,
   automationResponse,
+  deployedProjectResponse,
   diagnosisResponse,
   hostResponse,
   inventoryResponse,
@@ -37,6 +39,29 @@ const automation = {
   baseUrl: "https://n8n.internal.example/rest",
   apiKey: "n8n_api_9f2c8ab4"
 } as unknown as AutomationRecord;
+
+/**
+ * A project as the adapter hands it over, with the same two things on it that must not travel:
+ * the provider's own API address, and the token the collector authenticates with.
+ */
+const project = {
+  instanceId: "i-2",
+  externalId: "project:prj_9",
+  name: "Web publica",
+  framework: "nextjs",
+  createdAt: new Date("2026-01-02T00:00:00.000Z"),
+  domain: "client.example",
+  productionReady: true,
+  productionState: "READY",
+  productionDeployedAt: new Date("2026-08-13T09:00:00.000Z"),
+  lastFailureAt: new Date("2026-08-13T11:00:00.000Z"),
+  lastFailureRef: "fix/preus",
+  observedAt: new Date("2026-08-13T11:55:00.000Z"),
+  customerId: "c-1",
+  notes: "la web publica",
+  baseUrl: "https://api.vercel.com",
+  apiToken: "vercel_tok_4f8c1e"
+} as unknown as DeployedProjectRecord;
 
 const rule: AlertRuleRecord = {
   id: "r-1",
@@ -107,6 +132,73 @@ describe("what an automation response says", () => {
 
   it("carries the reading with its hour, because an old figure without its age is a lie", () => {
     expect(automationResponse(automation).observedAt).toEqual(automation.observedAt);
+  });
+});
+
+describe("what a deployed project response says", () => {
+  it("carries no provider address and no token, whatever arrived on the row", () => {
+    const response = deployedProjectResponse(project);
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain("vercel_tok_4f8c1e");
+    expect(serialized).not.toContain("api.vercel.com");
+    expect(Object.keys(response).sort()).toEqual([
+      "createdAt",
+      "customerId",
+      "domain",
+      "externalId",
+      "framework",
+      "instanceId",
+      "lastFailureAt",
+      "lastFailureRef",
+      "name",
+      "notes",
+      "observedAt",
+      "productionDeployedAt",
+      "productionReady",
+      "productionState"
+    ]);
+  });
+
+  /**
+   * The one address that does travel, and the reason it may: it is the client's own public
+   * domain, served to anybody who types it, and without it a row is a name with nothing under it.
+   */
+  it("keeps the client's own domain, which is theirs and not the provider's", () => {
+    expect(deployedProjectResponse(project).domain).toBe("client.example");
+  });
+
+  /**
+   * Decision 1 of the connector, arriving intact at the edge: serving now and the last build
+   * failed are both true, and the response has room for both.
+   */
+  it("says a project is serving and that its last build failed, at the same time", () => {
+    expect(deployedProjectResponse(project)).toMatchObject({
+      productionReady: true,
+      lastFailureRef: "fix/preus"
+    });
+  });
+
+  /**
+   * The date production last shipped is the last build that came out well, whenever production is
+   * serving: production only points at a deployment that finished. It is the reason the connector
+   * keeps no record of successful builds and the screen can still say when the last one was.
+   */
+  it("carries when production last shipped and when the project was made", () => {
+    expect(deployedProjectResponse(project)).toMatchObject({
+      framework: "nextjs",
+      createdAt: new Date("2026-01-02T00:00:00.000Z"),
+      productionDeployedAt: new Date("2026-08-13T09:00:00.000Z")
+    });
+  });
+
+  it("says nothing rather than false about a project nobody has deployed", () => {
+    const never = { ...project, productionReady: null, productionState: null, domain: null };
+    expect(deployedProjectResponse(never)).toMatchObject({ productionReady: null, domain: null });
+  });
+
+  it("carries the reading with its hour, because an old figure without its age is a lie", () => {
+    expect(deployedProjectResponse(project).observedAt).toEqual(project.observedAt);
   });
 });
 

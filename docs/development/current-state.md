@@ -105,12 +105,24 @@ a esdeveniment (`deployment:<uid>`), amb la base **fixada al codi** a `https://a
 camp lliure alli seria una manera d'apuntar el token del compte al host de qualsevol altre. 28
 proves verdes, `pnpm check` sencer **no executat** (la branca es compartida).
 
-**El que queda obert, i es una decisio del propietari:** un projecte de Vercel no es ni una maquina
-ni un servei, i `hostId` es obligatori a un servei. Ningu no els dibuixa encara ni cap regla d'alerta
-els jutja. El precedent bo son **les automatitzacions d'n8n**: franja propia, llegida dels registres,
-amb una taula d'enllac petita per lligar-les a un client. Les tres sortides i el que costa cadascuna
-son a la seccio "El que queda obert" de l'especificacio. Fins que no es respongui, **Supabase**
-espera: tindria exactament el mateix problema i seria decidir-lo dues vegades.
+**Els projectes ja es dibuixen.** El 23 d'agost de 2026 es va decidir el que quedava obert: un
+projecte de Vercel no es ni una maquina ni un servei —`hostId` es obligatori a un servei—, aixi que
+te **franja propia**, com les automatitzacions d'n8n, amb la taula d'enllac `infra_project_links`
+(migracio `0046`) per lligar-lo a un client. La fila ensenya el domini de produccio, si produccio
+serveix i **quan es va desplegar el que se serveix** —que mentre serveixi es l'ultim build bo, aixi
+que no cal desar cap registre de builds correctes per dir-ho—, quan es va crear el projecte, amb que
+esta fet, **l'ultim build fallit** —dues columnes i no una: un projecte pot estar servint i haver
+tingut un build que peta fa deu minuts— i l'edat de la lectura. La franja esta subjecta al filtre de
+recollidor com la resta.
+
+**El que segueix sense fer-se, i es diu:** cap alerta salta quan un build peta. Demana una regla
+`deployment_failed` i es un increment a part; fins llavors un build fallit es veu **quan algu mira
+la pantalla**. El webhook de Vercel tampoc hi es, pel mateix motiu: la immediatesa nomes val la pena
+quan hi ha alerta que la faci servir. **Les visites tampoc**, i es va comprovar el 24 d'agost de
+2026: l'API hi es (`GET /v1/query/web-analytics/visits/count`, mateix token), pero Web Analytics
+s'activa per projecte des del tauler de Vercel i cap dels projectes actuals el te activat —la crida
+respon 404, no zero. Es documenta a `connector-vercel.md` en comptes d'implementar-se perque avui
+la franja nomes sabria dir que no sap res.
 
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i

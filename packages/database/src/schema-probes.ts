@@ -46,5 +46,8 @@ export const infrastructureSchemaProbes: readonly SchemaProbe[] = [
   },
   // The inventory reads this table on every dashboard load, so a deployment without it has to
   // be told which file to run rather than answering an unexplained failure.
-  { migration: "0042_infrastructure_host_labels.sql", relation: "infra_host_labels", constraintName: null }
+  { migration: "0042_infrastructure_host_labels.sql", relation: "infra_host_labels", constraintName: null },
+  // The projects band reads this on every dashboard load for the same reason, and a deployment
+  // that shipped the screen without the table would answer a 500 nobody can place.
+  { migration: "0046_vercel_project_links.sql", relation: "infra_project_links", constraintName: null }
 ];

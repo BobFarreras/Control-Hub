@@ -25,8 +25,14 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
   sent l'anterior.
 - **Del que Vercel respon se'n desa nomes el que s'ha nomenat**: ni qui va fer el push, ni el
   missatge del commit, ni els logs del build, que es on viuen els secrets d'un projecte.
-- Com connectar-hi: `docs/runbooks/connect-vercel.md`. **Encara no hi ha pantalla** que dibuixi
-  els projectes ni alerta que salti quan un build peta: aquella decisio esta oberta.
+- **Els projectes es dibuixen a Infraestructura**, amb franja propia: el domini de produccio, si
+  produccio serveix i quan es va desplegar el que se serveix, quan es va crear el projecte i amb
+  que esta fet, l'ultim build que va fallar —amb la branca i quan— i quan en vam llegir. Es poden
+  associar a un client, com les automatitzacions.
+- **Produccio i l'ultim build fallit son dues columnes i no una**: un web pot estar servint
+  perfectament i haver tingut un build que peta fa deu minuts, i les dues coses son certes.
+- Com connectar-hi: `docs/runbooks/connect-vercel.md`. **Encara no salta cap alerta** quan un
+  build peta: un build fallit es veu quan algu mira la pantalla.
 
 ### Posar en marxa un recollidor sense endevinar (Fase 7.3)
 

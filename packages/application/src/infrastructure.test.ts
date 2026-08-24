@@ -18,11 +18,13 @@ import {
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
+  type DeployedProjectRecord,
   type EvaluationState,
   type HostRecord,
   type InfrastructureRepository,
   type InventoryState,
   type LinkAutomationInput,
+  type LinkDeployedProjectInput,
   type ServiceRecord,
   type UpdateAlertRuleInput,
   type UpdateHostInput,
@@ -90,6 +92,14 @@ class FakeRepository implements InfrastructureRepository {
   listAutomations = () => Promise.resolve(this.automations);
   linkAutomation = (_context: TenantContext, input: LinkAutomationInput) => {
     this.links.push(input);
+    return Promise.resolve();
+  };
+  deployedProjects: DeployedProjectRecord[] = [];
+  projectLinks: LinkDeployedProjectInput[] = [];
+
+  listDeployedProjects = () => Promise.resolve(this.deployedProjects);
+  linkDeployedProject = (_context: TenantContext, input: LinkDeployedProjectInput) => {
+    this.projectLinks.push(input);
     return Promise.resolve();
   };
   hosts: HostRecord[] = [];
@@ -292,6 +302,7 @@ const refused = (code: string): unknown => expect.objectContaining({ code });
 describe("who may do what", () => {
   it("lets Administrator read everything the module holds", async () => {
     await expect(service.listAutomations(administrator)).resolves.toEqual([]);
+    await expect(service.listDeployedProjects(administrator)).resolves.toEqual([]);
     await expect(service.listRules(administrator)).resolves.toEqual([]);
     await expect(service.listAlerts(administrator)).resolves.toEqual([]);
     await expect(service.listHosts(administrator)).resolves.toEqual([]);
@@ -302,6 +313,9 @@ describe("who may do what", () => {
     const link = { instanceId, externalId: "workflow:wf-a", customerId: "customer-1", notes: null };
 
     await expect(service.linkAutomation(administrator, link)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.linkDeployedProject(administrator, { ...link, externalId: "project:prj-a" })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
     await expect(service.createRule(administrator, newRule())).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.updateRule(administrator, "rule-1", { enabled: false })).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.deleteRule(administrator, "rule-1")).rejects.toEqual(refused("FORBIDDEN"));
@@ -319,6 +333,7 @@ describe("who may do what", () => {
     expect(
       [
         repository.links,
+        repository.projectLinks,
         repository.deleted,
         repository.patches,
         repository.declaredHosts,
@@ -332,6 +347,7 @@ describe("who may do what", () => {
 
   it("refuses somebody holding neither permission even the read", async () => {
     await expect(service.listAutomations(stranger)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.listDeployedProjects(stranger)).rejects.toEqual(refused("FORBIDDEN"));
   });
 });
 
@@ -360,6 +376,41 @@ describe("associating an automation with a client", () => {
   it("refuses notes longer than the column takes, rather than letting the insert say so", async () => {
     const long = { instanceId, externalId: "workflow:wf-a", customerId: null, notes: "x".repeat(2001) };
     await expect(service.linkAutomation(owner, long)).rejects.toEqual(refused("NOTES_TOO_LONG"));
+  });
+});
+
+describe("associating a deployed project with a client", () => {
+  it("passes the association through, trimmed, into its own table", async () => {
+    await service.linkDeployedProject(owner, {
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: "customer-1",
+      notes: "  la web publica  "
+    });
+
+    expect(repository.projectLinks[0]).toEqual({
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: "customer-1",
+      notes: "la web publica"
+    });
+    // A project is not an automation, and the two tables do not see each other's rows.
+    expect(repository.links).toEqual([]);
+  });
+
+  it("keeps the row when the association is removed, because the notes are somebody's work", async () => {
+    await service.linkDeployedProject(owner, {
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: null,
+      notes: "ep"
+    });
+    expect(repository.projectLinks[0]).toMatchObject({ customerId: null, notes: "ep" });
+  });
+
+  it("refuses notes longer than the column takes, rather than letting the insert say so", async () => {
+    const long = { instanceId, externalId: "project:prj-a", customerId: null, notes: "x".repeat(2001) };
+    await expect(service.linkDeployedProject(owner, long)).rejects.toEqual(refused("NOTES_TOO_LONG"));
   });
 });
 

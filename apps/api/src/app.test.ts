@@ -298,6 +298,8 @@ describe("feature flags", () => {
     ["GET", "/api/v1/infrastructure/connectors/:instanceId/services"],
     ["POST", "/api/v1/infrastructure/hosts/:hostId/services"],
     ["PUT", "/api/v1/infrastructure/automations/:instanceId/:externalId/link"],
+    ["GET", "/api/v1/infrastructure/projects"],
+    ["PUT", "/api/v1/infrastructure/projects/:instanceId/:externalId/link"],
     ["GET", "/api/v1/infrastructure/alert-rules"],
     ["POST", "/api/v1/infrastructure/alert-rules"],
     ["PATCH", "/api/v1/infrastructure/alert-rules/:ruleId"],

@@ -3,6 +3,7 @@ import type {
   AlertEventRecord,
   AlertRuleRecord,
   AutomationRecord,
+  DeployedProjectRecord,
   CreateAlertRuleInput,
   DeclareHostInput,
   DeclareServiceInput,
@@ -55,6 +56,32 @@ export function automationResponse(automation: AutomationRecord) {
     observedAt: automation.observedAt,
     customerId: automation.customerId,
     notes: automation.notes
+  };
+}
+
+/**
+ * A deployed project, field by field like every other response here.
+ *
+ * The production domain is in and no other address is: it is the client's own public domain, it
+ * is what makes a row mean anything to whoever reads it, and it is not the provider's. What is
+ * kept out is what a build log would carry.
+ */
+export function deployedProjectResponse(project: DeployedProjectRecord) {
+  return {
+    instanceId: project.instanceId,
+    externalId: project.externalId,
+    name: project.name,
+    framework: project.framework,
+    createdAt: project.createdAt,
+    domain: project.domain,
+    productionReady: project.productionReady,
+    productionState: project.productionState,
+    productionDeployedAt: project.productionDeployedAt,
+    lastFailureAt: project.lastFailureAt,
+    lastFailureRef: project.lastFailureRef,
+    observedAt: project.observedAt,
+    customerId: project.customerId,
+    notes: project.notes
   };
 }
 
@@ -425,6 +452,71 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
       };
       await requireAudited(context, request, "infrastructure:operate", event);
       await infrastructure.linkAutomation(context, {
+        instanceId,
+        externalId,
+        customerId: request.body.customerId ?? null,
+        notes: request.body.notes ?? null
+      });
+      await writeAudit(database, context, request, {
+        ...event,
+        outcome: "success",
+        // The client it now belongs to, never the note: a note is free text somebody typed.
+        metadata: { instanceId, customerId: request.body.customerId ?? "none" }
+      });
+      return { linked: true };
+    }
+  );
+
+  app.get(
+    "/api/v1/infrastructure/projects",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every deployed project the connectors have read",
+        description:
+          "What the hosting provider says is deployed, with the client it was associated with. The production state and the last failed build are two fields and not one on purpose: a project can be serving perfectly and have had a build fail ten minutes ago, and both are worth knowing. `productionReady` is null, never false, for a project nobody has deployed yet."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { projects: (await infrastructure.listDeployedProjects(context)).map(deployedProjectResponse) };
+    }
+  );
+
+  app.put<{
+    Params: { instanceId: string; externalId: string };
+    Body: { customerId?: string | null; notes?: string | null };
+  }>(
+    "/api/v1/infrastructure/projects/:instanceId/:externalId/link",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Associate a deployed project with a client",
+        description:
+          "Same shape as associating an automation, and a different table: a null `customerId` withdraws the association and keeps the note, and the association outlives the record, so it survives a project being paused for a fortnight.",
+        params: linkParams,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            customerId: { type: ["string", "null"], format: "uuid" },
+            notes: { type: ["string", "null"], maxLength: 2000 }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId, externalId } = request.params;
+      const event = {
+        action: "infrastructure.project_linked",
+        targetType: "infra_project",
+        targetId: externalId,
+        metadata: { instanceId }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.linkDeployedProject(context, {
         instanceId,
         externalId,
         customerId: request.body.customerId ?? null,

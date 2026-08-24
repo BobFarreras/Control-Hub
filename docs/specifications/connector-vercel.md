@@ -1,9 +1,9 @@
 # Especificacio del connector de Vercel (fase 7.4)
 
 > Estat: **proposta**. El propietari va demanar el connector el 23 d'agost de 2026 i s'ha
-> implementat el que aquest document fixa. **La superficie queda oberta i no s'ha escrit**: on es
-> dibuixa un projecte i quina regla d'alerta jutja un desplegament fallit es la seccio "El que
-> queda obert", i te una decisio que no es meva.
+> implementat el que aquest document fixa. La pregunta que quedava oberta —on es dibuixa un
+> projecte— **la va respondre el mateix dia**: franja propia, com les automatitzacions d'n8n. El
+> que segueix sense fer-se es l'alerta, i esta dit al final.
 >
 > Especificacions relacionades: `connectors.md` (el contracte), `connector-security.md`
 > (l'allowlist i el `guarded-fetch`) i `infrastructure.md` (el model de maquines i serveis).
@@ -129,7 +129,7 @@ nomes reacciona a `false`.
 | Credencials | `api_token` (capcalera `Authorization: Bearer`) |
 | Egress | `configured_base_url`, nomes `https` |
 | Operacions | `pull_projects` (`GET /v9/projects`, forma `state`, cada 5 min) i `pull_deployments` (`GET /v6/deployments?state=ERROR`, forma `event`, cada 5 min) |
-| Ingress | No. Vercel te webhooks i signen; **no s'implementa a la 7.4** i la rao es a "El que queda obert" |
+| Ingress | No. Vercel te webhooks i signen; **no s'implementa ara** i la rao es al final |
 | `externalId` | `project:<id>` i `deployment:<uid>` |
 
 **El `teamId` es opcional perque un compte personal no en te.** Un token d'equip, en canvi, no
@@ -172,31 +172,126 @@ seva forma i la seva caducitat. Es exactament el que el contracte de connector v
 7. Un `401` es `unauthorized` i un `403` es `forbidden`: la diferencia entre "el token no val" i
    "el token no arriba a aquest equip" es la que fa que algu sapiga que tocar.
 8. Amb una configuracio que no es la base literal, la instancia no es desa.
+9. La franja ensenya una fila per projecte llegit, amb l'estat de produccio i l'ultim build fallit
+   com a dues columnes separades.
+10. Un projecte sense cap build fallit a la finestra ho diu amb una paraula —«Cap»— i no amb un
+    guio ni una cel·la buida, que es llegeixen com una lectura que falta.
+11. Retirar l'associacio amb un client conserva la nota.
+12. L'enllac sobreviu a la desaparicio del registre del projecte i hi torna a quadrar quan torna.
+13. Un tenant no veu mai un projecte ni un enllac d'un altre, i la prova ho exigeix contra
+    PostgreSQL amb RLS forcada.
+14. La fila diu quan es va crear el projecte i quan es va desplegar el que se serveix, sense que
+    aixo obligui a desar cap registre de builds correctes.
 
 ## Pla de proves
 
-Unitaries, amb un `http` fals: no hi ha xarxa a la suite. Cobreixen els vuit criteris, la
-paginacio, la finestra, la projeccio camp a camp i el recorregut de totes les peticions per
+Del connector (criteris 1-8), unitaries amb un `http` fals: no hi ha xarxa a la suite. Cobreixen
+la paginacio, la finestra, la projeccio camp a camp i el recorregut de totes les peticions per
 comprovar on es i on no es el token. Es el mateix esquema que `n8n.test.ts`, que es la referencia.
 
-## El que queda obert
+De la franja (criteris 9-13), una capa cadascuna, perque cadascuna respon una cosa diferent:
 
-**On es dibuixa un projecte de Vercel.** El connector desa registres correctes; ara mateix ningu
-no els ensenya, i cap regla d'alerta els jutja. El model d'infraestructura son **maquines i
-serveis**, i un servei pertany a una maquina —`hostId` es obligatori—: un projecte de Vercel no es
-de cap maquina, i inventar-ne una que es digui "Vercel" seria posar una mentida a una taula per no
-haver de decidir.
+| Capa | Que demostra |
+|---|---|
+| `packages/persistence` (integracio, PostgreSQL) | Les dues unions, l'ultim build fallit de cada projecte, i que un tenant no veu res d'un altre amb RLS forcada |
+| `packages/application` | Qui pot llegir i qui pot associar, i que la nota sobreviu a retirar el client |
+| `apps/api` | Que la resposta no porta ni adreca del proveidor ni token, camp a camp |
+| `apps/web` | Que la franja desapareix sota un recollidor que no llegeix projectes |
+| `tests/e2e` | Que una fila diu alhora que produccio serveix i que l'ultim build va fallar |
 
-Hi ha precedent per a la sortida bona: **les automatitzacions d'n8n**. No son ni maquines ni
-serveis; es llegeixen dels registres i tenen la seva propia franja a la pantalla, amb una taula
-d'enllac petita per lligar-les a un client. Tres opcions, i la decisio es del propietari:
+## La franja de projectes (increment V2)
 
-| Opcio | Que costa | Que es perd |
+**Decidit el 23 d'agost de 2026: franja propia, com les automatitzacions d'n8n.** Un projecte de
+Vercel no es ni una maquina ni un servei —un servei porta `hostId` obligatori—, i inventar una
+maquina que es digui "Vercel" seria posar una mentida a una taula per no haver de decidir. Les
+altres dues sortides es descarten: nomes alertes deixaria el producte sense poder respondre "que
+tinc desplegat", i forcar-ho a l'inventari es la maquina inventada.
+
+### El que ensenya una fila
+
+Una fila per projecte, i respon les dues preguntes de la seccio "Problema" alhora:
+
+| Columna | D'on surt |
+|---|---|
+| Projecte | `data ->> 'name'`, i a sota el recollidor i el `framework` —el que es, no una columna a part |
+| Domini | `data ->> 'productionAlias'`, o res si no n'hi ha |
+| Produccio | `productionReady`: **serveix**, **caiguda**, o **mai desplegada** quan es `null`; a sota, quan es va desplegar el que se serveix |
+| Creat | `data ->> 'createdAt'`, com a **data** i no com a edat: un projecte fet al gener no es una lectura antiga |
+| Ultim build fallit | El registre `deployment:<uid>` mes recent d'aquell projecte, amb la branca i quan |
+| Client | L'enllac, si algu l'ha fet |
+| Llegit | `last_seen_at` de la passada, perque cap xifra observada es dibuixa sense edat |
+
+**«Quan es va desplegar el que se serveix» es l'ultim build bo, i surt de franc.** Produccio nomes
+apunta a un desplegament que va acabar, aixi que mentre la fila digui *serveix*, aquella data **es**
+la del darrer build correcte. Es el motiu pel qual la decisio 3 —desar nomes els desplegaments que
+han fallat— no deixa cap pregunta sense resposta: el build bo que interessa ja hi es, i la resta
+seria l'historial de builds de tothom.
+
+**L'estat de produccio i l'ultim build fallit son dues columnes i no una**, que es la decisio 1
+duta a la pantalla: un projecte pot estar servint perfectament i haver tingut un build fallit fa
+deu minuts, i aixo es exactament el que algu ha de veure. Ajuntar-les obligaria a triar quina de
+les dues veritats s'amaga.
+
+### Model de dades
+
+Una migracio, `0046_vercel_project_links.sql`, amb una sola taula:
+
+`infra_project_links` — `tenant_id`, `instance_id`, `external_id`, `customer_id?`, `notes?`,
+`created_at`, `updated_at`. Clau `(tenant_id, instance_id, external_id)`, FK composta cap a
+`connector_instances (tenant_id, id)` amb `on delete cascade`, FK cap a `customers` amb
+`on delete set null`, RLS `enable` + `force` i la politica d'aillament de sempre.
+
+**Per que una taula nova i no `infra_automation_links`.** Les dues tenen avui la mateixa forma
+—instancia, identificador extern, client, nota— i la temptacio es fusionar-les. No: una taula
+compartida necessitaria una columna `kind` que **cada consulta ha de recordar filtrar**, i el dia
+que algu se n'oblidi un projecte sortira a la taula d'automatitzacions. El cost de la duplicacio
+es una migracio de vint linies; el cost de l'altre cami es un defecte que no es veu.
+
+**L'enllac sobreviu al registre**, com el d'una automatitzacio i pel mateix motiu: un registre
+s'esborra quan el proveidor deixa d'anomenar-lo i es torna a crear si torna, i una associacio
+comercial no pot desapareixer perque un projecte va estar dues setmanes pausat.
+
+### API
+
+Dues rutes, calcades a les d'automatitzacions perque fan la mateixa feina:
+
+| Ruta | Permis | Que fa |
 |---|---|---|
-| **Franja propia**, com les automatitzacions | Una migracio d'enllac, un metode de repositori, un cas d'us, una ruta i una franja de pantalla | Res. Es la que diu la veritat |
-| **Nomes alertes**, sense pantalla | Una regla `deployment_failed` i prou | No es pot veure que hi ha; nomes t'assabentes quan peta |
-| **Forcar-ho a l'inventari** | Poc codi | Una maquina inventada. No |
+| `GET /api/v1/infrastructure/projects` | `infrastructure:read` | Tots els projectes llegits, amb l'estat, l'ultim build fallit i l'enllac |
+| `PUT /api/v1/infrastructure/projects/:instanceId/:externalId/link` | `infrastructure:operate` | Associa amb un client, o retira l'associacio amb `customerId: null` i conserva la nota |
 
-Si la resposta es la primera, el webhook de Vercel entra alli mateix: signa amb HMAC-SHA256 i el
-contracte d'ingress ja l'admet. Fer-lo abans que hi hagi on ensenyar-ho seria fer arribar mes
-rapid una cosa que no es dibuixa.
+La resposta **no porta cap adreca de proveidor**: viatgen `instanceId` i `externalId`, i el domini
+de produccio, que es public i es del tenant. L'auditoria desa el client, mai la nota.
+
+### La pantalla
+
+Una franja mes a la pantalla d'infraestructura, entre les automatitzacions i les alertes, i **subjecta
+al filtre de recollidor** igual que la resta (decisio de la 7.3): qui mira el recollidor de maquines
+no vol una taula de projectes buida, la vol absent.
+
+**L'enllac al domini es compon i es comprova al servidor**, com el d'una automatitzacio i pel mateix
+motiu: un alies es el que ha contestat un proveidor, i res del que arriba d'un proveidor es
+converteix en desti al navegador. Nomes un nom de maquina net —sense port, sense cami, sense
+credencials— arriba a ser una ancora, sempre `https`; la resta es dibuixa com a text.
+
+### El que segueix sense fer-se, i es diu
+
+**Cap alerta salta encara quan un build peta.** Aixo demana una regla `deployment_failed` —alterar
+el `check` de `infra_alert_rules.kind`, avaluar-la al domini i deixar-la triar al formulari— i es
+un increment a part. Fins llavors, un build fallit es veu **quan algu mira la pantalla**, que es
+mes del que hi havia i menys del que fa falta.
+
+**El webhook de Vercel tampoc.** Signa amb HMAC-SHA256 i el contracte d'ingress ja l'admet; el que
+compra es immediatesa, i la immediatesa nomes val la pena quan hi ha alerta que la faci servir.
+
+**Les visites tampoc, i no es nomes que quedi per fer.** Vercel exposa `GET
+/v1/query/web-analytics/visits/{count,aggregate}` amb el mateix token de nomes lectura que ja fem
+servir per a projectes i desplegaments —tecnicament encaixaria a la mateixa crida. Pero **Web
+Analytics es un producte a part que cada projecte ha d'activar explicitament**, i no es fa amb
+l'API: es un interruptor al tauler de Vercel per projecte, mes afegir `@vercel/analytics` (o el
+`<script>` equivalent) al codi de la web. Comprovat contra el compte real: dels projectes que ja
+veu aquest connector, cap no el te activat —`GET .../visits/count` hi respon `404 Web Analytics
+not found`, no pas zero visites. Implementar-ho avui voldria dir una franja que, per a tots els
+clients actuals, nomes sap dir que no sap res, i cap manera de distingir «encara no ha vingut
+ningu» de «ningu no ho ha activat». Quan un client faci aquest pas pel seu compte, la crida es
+trivial d'afegir: es el mateix patro que projectes i desplegaments, amb un `dataset` mes.

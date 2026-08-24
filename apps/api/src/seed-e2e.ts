@@ -382,6 +382,24 @@ try {
       up: { name: "E2E Base de dades", matchKey: "container:e2e-postgres" },
       down: { name: "E2E Panell antic", matchKey: "container:e2e-panell" },
       unknown: { name: "E2E Portal public", matchKey: "probe:e2e-portal" }
+    },
+    /**
+     * The hosting provider, and the two answers a project row has to hold at the same time.
+     *
+     * `serving` is production up right now with a build that failed after it: the ordinary Friday
+     * afternoon, and the reason the screen has two columns instead of one. `never` is a project
+     * nobody has deployed, whose production is neither up nor down -- an answer that cannot be
+     * produced by deploying anything, so it has to be seeded.
+     */
+    vercel: "Vercel E2E",
+    projects: {
+      serving: {
+        externalId: "project:e2e-web",
+        name: "E2E Web publica",
+        domain: "e2e-client.example",
+        failureRef: "fix/preus"
+      },
+      never: { externalId: "project:e2e-nova", name: "E2E Web nova" }
     }
   } as const;
 
@@ -459,6 +477,84 @@ try {
     )
     on conflict (tenant_id, instance_id, external_id) do update
       set customer_id = excluded.customer_id, updated_at = now()`;
+
+  /**
+   * The hosting provider, seeded in the state a pass would have left behind.
+   *
+   * The base is the provider's own and the only one the connector accepts, and nothing here
+   * reaches it: no pass runs during the suite, and what the screen draws is these rows. The
+   * failed deployment is a record of its own, because a build that broke is an event and the
+   * production that is still serving is a state -- two claims, and the screen says both.
+   */
+  const vercelInstanceId = id(`${tenantId}:connector:vercel-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${vercelInstanceId}, ${tenantId}, 'vercel', ${infrastructureFixture.vercel}, 'enabled',
+      ${database.json({ baseUrl: "https://api.vercel.com", includePreview: false, deploymentsWindowHours: 24 })},
+      'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const projectRecords = [
+    {
+      externalId: infrastructureFixture.projects.serving.externalId,
+      data: {
+        name: infrastructureFixture.projects.serving.name,
+        framework: "nextjs",
+        productionReady: true,
+        productionState: "READY",
+        productionDeployedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        productionAlias: infrastructureFixture.projects.serving.domain,
+        createdAt: "2026-01-02T00:00:00.000Z"
+      }
+    },
+    {
+      externalId: infrastructureFixture.projects.never.externalId,
+      data: {
+        name: infrastructureFixture.projects.never.name,
+        framework: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        productionAlias: null,
+        createdAt: "2026-08-01T00:00:00.000Z"
+      }
+    }
+  ] as const;
+  for (const project of projectRecords)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${project.externalId}`)}, ${tenantId}, ${vercelInstanceId},
+        'pull_projects', ${project.externalId}, 'state', ${database.json(project.data)},
+        now() - '2 days'::interval, now() - '2 minutes'::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  await database`
+    insert into connector_records (
+      id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+    )
+    values (
+      ${id(`${tenantId}:record:deployment:e2e-failed`)}, ${tenantId}, ${vercelInstanceId},
+      'pull_deployments', 'deployment:e2e-failed', 'event',
+      ${database.json({
+        projectId: infrastructureFixture.projects.serving.externalId.slice("project:".length),
+        project: infrastructureFixture.projects.serving.name,
+        state: "ERROR",
+        target: "production",
+        createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+        commitRef: infrastructureFixture.projects.serving.failureRef,
+        commitSha: "e2e0001"
+      })},
+      now() - '1 hour'::interval, now() - '2 minutes'::interval
+    )
+    on conflict (tenant_id, instance_id, operation, external_id) do update
+      set data = excluded.data, last_seen_at = excluded.last_seen_at`;
 
   /**
    * A Prometheus nobody has to reach either, and the inventory it is compared with.

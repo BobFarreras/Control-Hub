@@ -753,6 +753,37 @@ export type InfrastructureAutomation = {
   notes: string | null;
 };
 
+/**
+ * A project somebody else hosts, read from the provider (phase 7.4).
+ *
+ * Two fields for production and not one, which is the connector's first decision arriving here:
+ * `productionReady` is what is being served right now, `lastFailureAt` is the last build that
+ * broke, and both can be true at once. `productionReady` is null, never false, for a project
+ * nobody has deployed yet -- an outage of something that never existed is not an outage.
+ */
+export type InfrastructureDeployedProject = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  /** What it is built with, as the provider names it. Null when it says nothing. */
+  framework: string | null;
+  /** When the project was created. Context, not a reading: it never goes stale. */
+  createdAt: string | null;
+  /** The client's own public domain, the one address on this screen that is not the provider's. */
+  domain: string | null;
+  productionReady: boolean | null;
+  /** What the provider calls it: `READY`, `ERROR`, `BUILDING`. Null when nothing is deployed. */
+  productionState: string | null;
+  /** When what production serves was built, which is the last good build while it is serving. */
+  productionDeployedAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureRef: string | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
 export type InfrastructureAlert = {
   id: string;
   ruleId: string;
@@ -803,6 +834,7 @@ export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[
 
 export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
 export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
+export type InfrastructureProjectsResponse = { projects: InfrastructureDeployedProject[] };
 export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };
 
 /**
