@@ -3329,6 +3329,9 @@ const integrationDictionaries = {
     endpointSecretTitle: "Guarda-ho ara",
     endpointUrlLabel: "URL",
     endpointSecretLabel: "Secret de firma",
+    opencodeInstallTitle: "Instal·la el plugin d'OpenCode",
+    opencodeInstallHint:
+      "Executa aquesta ordre i enganxa el secret quan se't demani. El secret no es mostrarà a la terminal.",
     copy: "Copiar",
     copied: "Copiat.",
     secretAcknowledge: "Ho he guardat",
@@ -3616,6 +3619,9 @@ const integrationDictionaries = {
     endpointSecretTitle: "Guardalo ahora",
     endpointUrlLabel: "URL",
     endpointSecretLabel: "Secreto de firma",
+    opencodeInstallTitle: "Instala el plugin de OpenCode",
+    opencodeInstallHint:
+      "Ejecuta este comando y pega el secreto cuando se solicite. El secreto no se mostrará en la terminal.",
     copy: "Copiar",
     copied: "Copiado.",
     secretAcknowledge: "Ya lo he guardado",
@@ -3904,6 +3910,9 @@ const integrationDictionaries = {
     endpointSecretTitle: "Save this now",
     endpointUrlLabel: "URL",
     endpointSecretLabel: "Signing secret",
+    opencodeInstallTitle: "Install the OpenCode plugin",
+    opencodeInstallHint:
+      "Run this command and paste the secret when prompted. The secret will not be shown in the terminal.",
     copy: "Copy",
     copied: "Copied.",
     secretAcknowledge: "I have saved it",

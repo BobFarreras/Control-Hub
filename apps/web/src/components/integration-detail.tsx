@@ -90,6 +90,7 @@ export function IntegrationDetailScreen({
   const configForm = useRef<HTMLFormElement>(null);
   const instance = detail.instance;
   const live = detail.endpoints.filter((endpoint) => !endpoint.revokedAt);
+  const openCodeCommand = minted ? `npx @control-hub/opencode@0.2.0 configure --url "${minted.url}"` : "";
 
   const fail = (result: Failure) => toast("error", errorMessage(t, result.code));
   const crashed = () => {
@@ -300,6 +301,18 @@ export function IntegrationDetailScreen({
                     <Copy size={15} />
                   </button>
                 </div>
+                {instance.connectorType === "opencode" && (
+                  <>
+                    <span className="field-label">{t.opencodeInstallTitle}</span>
+                    <p className="field-help">{t.opencodeInstallHint}</p>
+                    <div>
+                      <code>{openCodeCommand}</code>
+                      <button className="icon-button" onClick={() => copy(openCodeCommand)} aria-label={t.copy}>
+                        <Copy size={15} />
+                      </button>
+                    </div>
+                  </>
+                )}
                 <button className="primary-button" onClick={acknowledge}>
                   <Check size={16} aria-hidden="true" />
                   {t.secretAcknowledge}

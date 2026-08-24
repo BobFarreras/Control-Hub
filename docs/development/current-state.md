@@ -615,13 +615,14 @@ dada o font que falta en text. U6 afegeix `GET /api/v1/usage/sources`, tenant-sc
 permisos, precisio `BigInt`, cobertura, OpenAPI i PostgreSQL. L'E2E autenticat sobre la pila
 3002/4002 comprova login amb MFA, les tres rutes i el contracte real de fonts.
 
-**U7, collector local d'OpenCode, esta implementat.** Cada dispositiu crea una instancia
+**U7, plugin global d'OpenCode, esta implementat.** Cada dispositiu crea una instancia
 `opencode`, rep un endpoint i un secret d'un sol us visual, i envia lots HMAC per HTTPS cap a la
-VPS. El collector nomes llegeix OpenCode a loopback i reconstrueix IDs, proveidor, model, tokens i
-projecte pseudonimitzat; prompts, respostes, reasoning textual, codi, paths, diffs i ordres no
-surten del dispositiu. L'API aplica anti-replay i encua la inbox; el worker revalida, deduplica i
-projecta consum abans de marcar-la processada. El runbook es `docs/runbooks/connect-opencode.md`.
-Passen lint, typecheck dels 13 paquets, 23 tasques de proves, migracions PostgreSQL, build dels 13
+VPS. Una sola ordre instal·la i vincula `@control-hub/opencode`; el plugin escolta `session.idle` i
+reconstrueix IDs, proveidor, model, tokens i projecte pseudonimitzat. Prompts, respostes, reasoning
+textual, codi, paths, diffs i ordres no surten del dispositiu. L'API aplica anti-replay i encua la
+inbox; el worker revalida, deduplica i projecta consum abans de marcar-la processada. El collector
+loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-opencode.md`.
+Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
 El punt de continuacio de la Fase 8 es M1: IMAP entrant incremental.

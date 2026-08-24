@@ -181,14 +181,14 @@ l'ultima passada completa de cada font de connector. Les valoracions incompletes
 obsoletes mostren el motiu textual i el recompte afectat. Les taules conserven paginacio i
 preferencies per usuari mitjancant `SmartDataTable`.
 
-### U7 — Collector local d'OpenCode
+### U7 — Plugin d'OpenCode
 
 **Estat:** aprovat el 24 d'agost de 2026; implementacio a
 `docs/specifications/connector-opencode.md`.
 
-Un collector d'una sola passada llegeix l'API d'OpenCode exclusivament a loopback, reconstrueix un
-payload nou amb IDs, model, proveidor, tokens i projecte pseudonimitzat, i l'envia a l'ingress
-signat existent. No serialitza mai la resposta d'OpenCode ni usa l'export de sessio.
+El plugin npm global escolta `session.idle`, reconstrueix un payload nou amb IDs, model, proveidor,
+tokens i projecte pseudonimitzat, i l'envia a l'ingress signat existent. S'instal·la i vincula amb
+una sola ordre; no demana servidor ni tasca programada. El collector loopback queda com a fallback.
 
 L'API verifica HMAC i replay, desa la inbox i encua un job idempotent. El worker torna a validar el
 payload, persisteix registres `event`, projecta `data.usage` i marca la inbox processada nomes al

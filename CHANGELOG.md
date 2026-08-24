@@ -14,7 +14,7 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
   els permisos financers, i les accions de pressupost nomes apareixen quan es poden executar.
 - Els estats parcials i obsolets expliquen quina dada o font falta en comptes de dependre nomes
   d'un color.
-- **OpenCode local** pot enviar tokens a la VPS amb un collector per dispositiu. La connexio surt
+- **OpenCode local** pot enviar tokens a la VPS amb un plugin global per dispositiu. La connexio surt
   per HTTPS i no inclou converses, codi, paths, diffs ni ordres.
 
 ### Supabase, llegit des del Control Hub (Fase 7.4)

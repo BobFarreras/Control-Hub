@@ -1,6 +1,7 @@
 # Especificacio del connector local d'OpenCode
 
-**Estat:** aprovada pel propietari el 24 d'agost de 2026. Opcio A: collector local sanititzat.
+**Estat:** aprovada pel propietari el 24 d'agost de 2026. Plugin oficial com a cami principal;
+collector local sanititzat com a fallback.
 
 ## Objectiu
 
@@ -11,7 +12,7 @@ la VPS no obre connexions cap a ordinadors, xarxes domestiques ni serveis `local
 ## Topologia
 
 ```text
-OpenCode local -> collector local -> HTTPS signat -> ingress Control Hub -> cua -> worker -> usage_events
+OpenCode -> plugin Control Hub -> HTTPS signat -> ingress Control Hub -> cua -> worker -> usage_events
 ```
 
 Cada dispositiu es una instancia `opencode` independent. Control Hub genera una adreca d'ingress i
@@ -20,8 +21,10 @@ instancia atura aquell dispositiu sense afectar els altres.
 
 ## Minimitzacio de dades
 
-El collector consulta `GET /session` i `GET /session/:id/message` de l'API local d'OpenCode. No usa
-l'export de sessio, perque inclou transcript, adjunts i diffs.
+El plugin escolta `session.idle` i consulta els missatges de la sessio amb el client SDK que
+OpenCode li entrega. No arrenca ni exposa cap servidor i no usa l'export de sessio, perque inclou
+transcript, adjunts i diffs. El collector fallback consulta `GET /session` i
+`GET /session/:id/message` nomes a loopback.
 
 L'unic payload acceptat es un lot estricte amb:
 
@@ -52,7 +55,20 @@ de conservar precisio suficient i evidencia reconciliable.
 L'API nomes autentica, valida el contracte i desa. El worker torna a validar el payload, projecta
 registres `data.usage`, els persisteix i nomes llavors marca la inbox com `processed`.
 
-## Collector
+## Plugin
+
+El paquet npm `@control-hub/opencode` es carrega globalment des d'`opencode.json`; OpenCode
+l'instal·la automaticament amb Bun. Una CLI de configuracio desa l'adreca, el secret, un ID aleatori
+de dispositiu i el salt de pseudonimitzacio en un fitxer local amb permisos restrictius. No modifica
+credencials de proveidors ni llegeix `auth.json`.
+
+En rebre `session.idle`, el plugin reconstrueix events assistant, calcula un lot determinista i
+l'envia amb timeout. Repetir el mateix idle produeix el mateix `batchId`; una sessio que encara
+canvia produeix un lot nou, pero els IDs estables dels missatges mantenen idempotencia. Una fallada
+de xarxa no falla la sessio d'OpenCode i el proxim idle reintenta. Els logs son codis estables i no
+contenen secrets, paths ni payloads.
+
+## Collector fallback
 
 El collector es un executable Node sense dependencies de runtime alienes al repositori. Rep la
 configuracio per variables d'entorn o flags, valida que OpenCode sigui loopback, pagina sessions,
@@ -74,11 +90,13 @@ amb lock local.
 5. Un tenant no pot veure ni processar inbox, font o events d'un altre.
 6. El collector no envia cap dels camps prohibits, inclosos en fixtures negatives.
 7. La integracio es configurable des de la UI en `ca`, `es` i `en`, amb endpoint i secret mostrats
-   una sola vegada.
-8. Hi ha runbook per Linux, macOS i Windows i comprovacio de health local sense exposar OpenCode.
+   una sola vegada i una ordre unica de configuracio del plugin.
+8. Hi ha runbook per Linux, macOS i Windows; l'us normal no demana servidor, cron ni Task Scheduler.
+9. Una fallada del plugin no interromp la resposta d'OpenCode i es reintenta en un idle posterior.
 
 ## Fonts oficials
 
 - `https://opencode.ai/docs/server/`: servidor local, Basic Auth i endpoints de sessions/missatges.
+- `https://opencode.ai/docs/plugins/`: paquets npm, instal·lacio automatica, context i events.
 - `https://opencode.ai/v2/docs/api/session/v2-session-export`: evidencia que l'export inclou
   transcript i fitxers i, per tant, queda fora del connector.
