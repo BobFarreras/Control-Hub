@@ -74,7 +74,14 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   aprovades a D5, la coincidencia de redirect URI amb l'excepcio de loopback de D4, la negociacio
   d'scopes i el veredicte del refresh amb deteccio de reus. Pur, sense hashing i sense I/O: la
   comparacio del verificador PKCE es fa on ja hi ha crypto, no aqui.
-- La resta de la fase continua sense implementar: no hi ha ni repositori, ni rutes, ni transport.
+- **10.1-E1 — persistencia del resource server.** Implementat: el port `McpOauthRepository` a
+  `packages/application/src/mcp-oauth.ts` i `PostgresMcpOauthRepository` a
+  `packages/persistence/src/mcp-repository.ts`, amb la resolucio del bearer, el registre d'us, el
+  llistat de grants i la revocacio. Revocar un grant apaga els seus tokens **a la mateixa
+  transaccio**. Vuit proves d'integracio contra PostgreSQL de debo, incloses les d'aillament entre
+  tenants i la de la funcio `security definer`. Cap metode accepta un token: accepten el seu hash.
+- La resta de la fase continua sense implementar: falta la meitat d'authorization server de la
+  persistencia (clients, codis, refresh i service accounts), les rutes i el transport.
 
 ## Fora d'abast de la 10.1
 

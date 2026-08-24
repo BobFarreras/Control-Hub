@@ -108,9 +108,14 @@ les tres columnes additives de `audit_log`. Els invariants es comproven sobre el
 base de dades, i la migracio s'ha aplicat i desfet contra el Postgres local per veure que passa
 sencera. L'**increment D** son les regles del flux a `packages/domain/src/mcp-oauth.ts`: vides,
 coincidencia de redirect URI, negociacio d'scopes i veredicte del refresh amb deteccio de reus,
-totes pures i sense hashing. **El punt de continuacio es el repositori de persistencia**, i tot
-seguit les rutes d'OAuth i el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit:
-que se n'ha de desar depen del transport.
+totes pures i sense hashing. L'**increment E1** es la meitat de resource server de la persistencia:
+el port `McpOauthRepository` i `PostgresMcpOauthRepository`, que resol el bearer per la funcio
+`security definer` --l'unica lectura que no pot estar dins d'un tenant, perque decidir quin es el
+tenant es precisament el que fa-- i que en revocar un grant apaga els seus tokens a la mateixa
+transaccio. Vuit proves d'integracio contra PostgreSQL de debo, amb l'aillament entre tenants
+comprovat i no nomes escrit. **El punt de continuacio es la meitat d'authorization server**: clients,
+codis, refresh i service accounts, i tot seguit les rutes i el transport `/mcp`. El `Mcp-Session-Id`
+encara no te taula a proposit: que se n'ha de desar depen del transport.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

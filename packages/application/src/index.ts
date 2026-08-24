@@ -12,6 +12,7 @@ export * from "./projects.js";
 export * from "./attendance.js";
 export * from "./usage.js";
 export * from "./mcp.js";
+export * from "./mcp-oauth.js";
 import {
   canTransitionLead,
   normalizeComparableName,
