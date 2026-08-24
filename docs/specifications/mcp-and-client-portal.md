@@ -60,7 +60,14 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   `infrastructure:read`; `usage.summary` surt de `UsageService.listSources`. Cap lectura nova, cap
   metode nou al repositori: el cataleg composa dues lectures que ja existien i en projecta el
   recompte.
-- La resta de la fase continua sense implementar: no hi ha ni transport, ni migracions, ni tokens.
+- **10.1-C — l'esquema.** Implementat: `packages/database/migrations/0049_mcp_oauth.sql` crea les sis
+  taules del model de dades amb RLS `enable` + `force` i politica d'aillament una per una, les cinc
+  funcions `security definer` que resolen client, token, refresh, service account i codi
+  d'autoritzacio abans que se sapiga el tenant, i l'ampliacio additiva de `audit_log`. La prova
+  `packages/database/src/mcp-schema.test.ts` comprova els invariants sobre el fitxer, sense base de
+  dades: cap taula sense `force`, cap credencial que no sigui un hash SHA-256, cap `drop`, i cap
+  funcio `security definer` sense `search_path` fixat.
+- La resta de la fase continua sense implementar: no hi ha ni repositori, ni rutes, ni transport.
 
 ## Fora d'abast de la 10.1
 
@@ -431,9 +438,15 @@ Els codis d'autoritzacio i els tokens caducats es purguen a les 24 hores encara 
 tancada. L'auditoria no.
 
 **Numeracio:** els numeros de migracio **no s'assignen en aquesta especificacio**. La branca es
-compartida amb la 7B i la darrera migracio del repositori es la `0047`; els numeros es prenen al
-moment d'implementar, mirant que hi ha llavors. El repositori ja ha pagat un xoc de numeracio abans
-(`current-state.md`, cas A9b) i no cal repetir-lo.
+compartida amb la 7B i els numeros es prenen al moment d'implementar, mirant que hi ha llavors. El
+repositori ja ha pagat un xoc de numeracio abans (`current-state.md`, cas A9b) i no cal repetir-lo.
+Aixi es va fer: quan es va escriure aquest esquema la 7B ja tenia la `0048`, i li va tocar la
+`0049`.
+
+**El `Mcp-Session-Id` encara no te taula.** La sessio d'MCP es lliga al grant, pero que se n'ha de
+desar --si res, mes enlla del token que ja hi ha-- depen de com el transport gestioni `initialize`.
+Inventar-ne l'esquema abans de tenir el transport seria inventar-se el requisit; la decisio va amb
+l'increment del transport.
 
 ## API proposada
 

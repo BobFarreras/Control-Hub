@@ -101,8 +101,14 @@ importar repositoris. Encara no hi ha res que li pregunti: cap ruta, cap migraci
 L'**increment B2** hi afegeix els dos resums, `infrastructure.status.summary` i `usage.summary`,
 compostos de lectures que ja existien --`readInventory`, `listAlerts` i `listSources`-- sense cap
 metode nou de repositori: el de la flota retorna recomptes i cap hostname ni cap adreca, i el d'us
-retorna salut de col·lectors i cap import. **El punt de continuacio son les migracions i la
-persistencia** de grants, tokens i sessions, i tot seguit el transport `/mcp`.
+retorna salut de col·lectors i cap import. L'**increment C** es l'esquema: la migracio `0049`
+--la `0048` ja era de la 7B-- amb les sis taules d'OAuth, RLS `force` una per una i les cinc
+funcions `security definer` que resolen client, token i codi abans que se sapiga el tenant, mes
+les tres columnes additives de `audit_log`. Els invariants es comproven sobre el fitxer SQL, sense
+base de dades, i la migracio s'ha aplicat i desfet contra el Postgres local per veure que passa
+sencera. **El punt de continuacio es el repositori de persistencia**, i tot seguit les rutes
+d'OAuth i el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit: que se n'ha de
+desar depen del transport.
 
 Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **numeros de migracio**,
 que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio
