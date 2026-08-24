@@ -22,7 +22,9 @@
  */
 
 import type { McpToolAuthority, TenantContext } from "@control-hub/domain";
+import type { AlertEventRecord, Inventory } from "./infrastructure.js";
 import type { TicketDetail, TicketListQuery, TicketPage } from "./support.js";
+import type { UsageSourceRecord } from "./usage.js";
 import type { CrmListQuery, CustomerDetail, CustomerRecord, Page } from "./index.js";
 
 /** Which module a tool reads, so the transport can ask whether it is deployed here. */
@@ -45,6 +47,15 @@ export type McpToolServices = {
     listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage>;
     ticketDetail(context: TenantContext, ticketId: string): Promise<TicketDetail>;
   };
+  readonly infrastructure: {
+    readInventory(context: TenantContext, now: Date): Promise<Inventory>;
+    listAlerts(context: TenantContext, input: { status?: "firing" | "resolved" }): Promise<readonly AlertEventRecord[]>;
+  };
+  readonly usage: {
+    listSources(context: TenantContext): Promise<readonly UsageSourceRecord[]>;
+  };
+  /** The deployment's clock. A tool that reads "now" reads this one and never an argument. */
+  readonly clock: () => Date;
 };
 
 export type McpJsonSchema = {
@@ -60,6 +71,12 @@ export type McpToolResult = { readonly data: unknown; readonly items: number };
 export type McpToolDefinition = {
   readonly authority: McpToolAuthority;
   readonly module: McpToolModule;
+  /**
+   * The feature flag that decides whether this installation deploys the module, or `null` when
+   * the module is always there. The name and not the value: whether a flag is open is read at
+   * request time by the transport, which is the layer allowed to know the deployment.
+   */
+  readonly flag: "infrastructure" | "usage_costs" | null;
   /** One line, in English, shown to an MCP client beside the name. */
   readonly summary: string;
   readonly inputSchema: McpJsonSchema;
@@ -147,6 +164,7 @@ const customersList: McpToolDefinition = {
     mutating: false
   },
   module: "crm",
+  flag: null,
   summary: "List the customers of this tenant, most recently updated first.",
   inputSchema: {
     type: "object",
@@ -190,6 +208,7 @@ const customersGet: McpToolDefinition = {
     mutating: false
   },
   module: "crm",
+  flag: null,
   summary: "Read one customer: identity, contact details and how much hangs off it.",
   inputSchema: {
     type: "object",
@@ -241,6 +260,7 @@ const ticketsList: McpToolDefinition = {
     mutating: false
   },
   module: "support",
+  flag: null,
   summary: "List support tickets with their state, priority and service level clock.",
   inputSchema: {
     type: "object",
@@ -297,6 +317,7 @@ const ticketsGet: McpToolDefinition = {
     mutating: false
   },
   module: "support",
+  flag: null,
   summary: "Read one ticket with its conversation and the state of both service level targets.",
   inputSchema: {
     type: "object",
@@ -342,6 +363,91 @@ const ticketsGet: McpToolDefinition = {
   }
 };
 
+const alertSeverities = ["critical", "high", "normal", "low"] as const;
+
+const infrastructureSummary: McpToolDefinition = {
+  authority: {
+    name: "infrastructure.status.summary",
+    version: "v1",
+    scope: "infrastructure.read",
+    permission: "infrastructure:read",
+    mutating: false
+  },
+  module: "infrastructure",
+  flag: "infrastructure",
+  summary: "Count how much of the fleet is up, down or out of sight, and how many alerts are firing.",
+  inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  limits: { maxItems: 1 },
+  async execute(services, context, input) {
+    readArguments(input, []);
+    // The clock is the deployment's, never the caller's. A `now` an agent could choose is a way
+    // to ask what the fleet looked like at a moment where nothing had gone stale yet.
+    const inventory = await services.infrastructure.readInventory(context, services.clock());
+    const alerts = await services.infrastructure.listAlerts(context, { status: "firing" });
+    const bySeverity = Object.fromEntries(
+      alertSeverities.map((severity) => [severity, alerts.filter((alert) => alert.severity === severity).length])
+    );
+    // Tallies only. Hostnames, collector addresses and the dedup keys built out of both are the
+    // shape of this installation's private network, and a count of what is down needs none of it.
+    return {
+      data: {
+        hosts: inventory.summary.hosts,
+        services: inventory.summary.services,
+        observedFrom: inventory.observedFrom,
+        alerts: { firing: alerts.length, ...bySeverity }
+      },
+      items: 1
+    };
+  }
+};
+
+const usageSummary: McpToolDefinition = {
+  authority: {
+    name: "usage.summary",
+    version: "v1",
+    scope: "usage.read",
+    permission: "usage:read",
+    mutating: false
+  },
+  module: "usage",
+  flag: "usage_costs",
+  summary: "Report how the usage collectors are doing: how many there are and when each last finished.",
+  inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  limits: { maxItems: 1 },
+  async execute(services, context, input) {
+    readArguments(input, []);
+    const sources = await services.usage.listSources(context);
+    const completions = sources
+      .map((source) => source.lastCompleteAt)
+      .filter((at): at is Date => at !== null)
+      .map((at) => at.getTime());
+    const operations = [...new Set(sources.map((source) => source.operation))].sort();
+    // Volume and health, and deliberately no money: amounts, currency, exchange rates and margin
+    // are `financials:read`, and `financials:read` has no MCP scope in 10.1. The projection is
+    // built from the fields that carry none of it rather than by removing the ones that do.
+    return {
+      data: {
+        sources: {
+          total: sources.length,
+          completed: completions.length,
+          neverCompleted: sources.length - completions.length
+        },
+        oldestCompletionAt: completions.length > 0 ? new Date(Math.min(...completions)) : null,
+        newestCompletionAt: completions.length > 0 ? new Date(Math.max(...completions)) : null,
+        byOperation: operations.map((operation) => {
+          const own = sources.filter((source) => source.operation === operation);
+          return {
+            operation,
+            sources: own.length,
+            completed: own.filter((source) => source.lastCompleteAt !== null).length
+          };
+        })
+      },
+      items: sources.length
+    };
+  }
+};
+
 /**
  * The published catalogue.
  *
@@ -349,7 +455,14 @@ const ticketsGet: McpToolDefinition = {
  * is impossible if tools can appear at runtime. Adding one is a change here and a change to the
  * specification, in the same commit.
  */
-export const mcpToolCatalogue: readonly McpToolDefinition[] = [customersList, customersGet, ticketsList, ticketsGet];
+export const mcpToolCatalogue: readonly McpToolDefinition[] = [
+  customersList,
+  customersGet,
+  ticketsList,
+  ticketsGet,
+  infrastructureSummary,
+  usageSummary
+];
 
 const byName = new Map(mcpToolCatalogue.map((tool) => [tool.authority.name, tool] as const));
 

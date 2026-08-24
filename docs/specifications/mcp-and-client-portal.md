@@ -55,9 +55,12 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   tancat i projeccio que retorna menys que la pantalla. Una prova d'arquitectura comprova que el
   modul no importa res mes que el domini i els seus germans. Encara no hi ha transport: ningu no
   crida el cataleg.
-- **10.1-B2 — pendent.** `infrastructure.status.summary` i `usage.summary` demanen una lectura
-  composta que avui no existeix com a cas d'us; s'ha de dissenyar abans de publicar-les.
-- La resta de la fase continua sense implementar.
+- **10.1-B2 — les dues tools de resum.** Implementat: `infrastructure.status.summary` surt de
+  `InfrastructureService.readInventory` mes `listAlerts`, que ja guarden totes dues
+  `infrastructure:read`; `usage.summary` surt de `UsageService.listSources`. Cap lectura nova, cap
+  metode nou al repositori: el cataleg composa dues lectures que ja existien i en projecta el
+  recompte.
+- La resta de la fase continua sense implementar: no hi ha ni transport, ni migracions, ni tokens.
 
 ## Fora d'abast de la 10.1
 
@@ -363,6 +366,10 @@ Notes que no son opcionals:
   retorna l'API REST, ni un camp mes, i queda subjecta a `docs/security/data-governance.md`.
 - `usage.summary` retorna volum i salut. **Imports, FX i marge no hi son**: aixo es `financials:read`
   i no te scope MCP a la 10.1.
+- `infrastructure.status.summary` retorna **recomptes i res mes**. Ni hostnames, ni URLs de
+  col·lectors, ni dedup keys d'alerta —que es construeixen amb els dos—: aixo es el dibuix de la
+  xarxa interna d'aquesta instal·lacio, i saber quantes maquines son caigudes no en necessita cap.
+  El detall, si algun dia cal, sera una tool a part i una decisio a part.
 - Les tools amb flag desapareixen del cataleg quan la flag es tanca. Desapareixer, no fallar.
 - Projectes i comerc tenen scope declarat pero **cap tool publicada** a la 10.1. S'afegiran quan
   el propietari les aprovi una per una, que es el que demana el pla de fase.

@@ -9,7 +9,7 @@ const context: TenantContext = {
   membershipId: "membership-a",
   userId: "user-a",
   roles: ["owner"],
-  permissions: ["customers:read", "tickets:read"],
+  permissions: ["customers:read", "tickets:read", "infrastructure:read", "usage:read"],
   mfaEnabled: true
 };
 
@@ -105,7 +105,79 @@ function fakeServices() {
           assignableMembers: [{ membershipId: "membership-b", name: "Algu altre" }]
         } as never);
       }
-    }
+    },
+    infrastructure: {
+      readInventory: (ctx, now) => {
+        calls.push({ method: "readInventory", context: ctx, input: now });
+        return Promise.resolve({
+          hosts: [
+            {
+              id: "33333333-3333-4333-8333-333333333333",
+              hostname: "vps-01.internal",
+              baseUrl: "https://10.0.0.4:9100",
+              reading: { state: "up" },
+              services: [{ id: "service-1", matchKey: "n8n", reading: { state: "down" } }],
+              labels: ["vps-01"],
+              observed: []
+            }
+          ],
+          summary: {
+            hosts: { total: 1, up: 1, down: 0, unknown: 0 },
+            services: { total: 2, up: 1, down: 1, unknown: 0 }
+          },
+          observedFrom: new Date("2026-08-24T07:00:00.000Z")
+        } as never);
+      },
+      listAlerts: (ctx, input) => {
+        calls.push({ method: "listAlerts", context: ctx, input });
+        return Promise.resolve([
+          {
+            id: "alert-1",
+            ruleName: "service_down",
+            severity: "critical" as const,
+            status: "firing" as const,
+            dedupKey: "n8n@vps-01.internal",
+            summary: { host: "vps-01.internal", url: "https://10.0.0.4:9100" },
+            startedAt: new Date("2026-08-24T06:00:00.000Z")
+          },
+          {
+            id: "alert-2",
+            ruleName: "disk_low",
+            severity: "normal" as const,
+            status: "firing" as const,
+            dedupKey: "disk@vps-01.internal",
+            summary: {},
+            startedAt: new Date("2026-08-24T06:30:00.000Z")
+          }
+        ] as never);
+      }
+    },
+    usage: {
+      listSources: (ctx) => {
+        calls.push({ method: "listSources", context: ctx, input: undefined });
+        return Promise.resolve([
+          {
+            id: "source-1",
+            instanceId: "44444444-4444-4444-8444-444444444444",
+            operation: "vercel.deployments",
+            lastCompleteAt: new Date("2026-08-24T05:00:00.000Z")
+          },
+          {
+            id: "source-2",
+            instanceId: "44444444-4444-4444-8444-444444444444",
+            operation: "vercel.deployments",
+            lastCompleteAt: new Date("2026-08-24T06:00:00.000Z")
+          },
+          {
+            id: "source-3",
+            instanceId: "55555555-5555-4555-8555-555555555555",
+            operation: "n8n.executions",
+            lastCompleteAt: null
+          }
+        ] as never);
+      }
+    },
+    clock: () => new Date("2026-08-24T08:00:00.000Z")
   };
   return { services, calls };
 }
@@ -241,5 +313,67 @@ describe("reading tickets through a tool", () => {
       ticketId: "22222222-2222-4222-8222-222222222222"
     });
     expect(result.items).toBe(1);
+  });
+});
+
+describe("summarising the fleet through a tool", () => {
+  const tool = mcpToolByName("infrastructure.status.summary")!;
+
+  it("reads the inventory at the catalogue's own clock, not at one the caller supplies", async () => {
+    const { services, calls } = fakeServices();
+    await tool.execute(services, context, {});
+    expect(calls[0]?.method).toBe("readInventory");
+    expect(calls[0]?.input).toEqual(new Date("2026-08-24T08:00:00.000Z"));
+    await expect(tool.execute(services, context, { now: "2020-01-01" })).rejects.toBeInstanceOf(McpToolInputError);
+  });
+
+  it("counts what is up and down, and names no machine and no address", async () => {
+    const { services } = fakeServices();
+    const result = await tool.execute(services, context, {});
+    const data = result.data as Record<string, unknown>;
+    expect(data.hosts).toEqual({ total: 1, up: 1, down: 0, unknown: 0 });
+    expect(data.services).toEqual({ total: 2, up: 1, down: 1, unknown: 0 });
+    expect(data.observedFrom).toEqual(new Date("2026-08-24T07:00:00.000Z"));
+    // A summary of the fleet is a count, and an internal hostname or a collector's address is
+    // neither a count nor something an agent has any use for.
+    const serialised = JSON.stringify(data);
+    expect(serialised).not.toContain("vps-01");
+    expect(serialised).not.toContain("10.0.0.4");
+  });
+
+  it("says how many alerts are firing and how bad they are, and nothing about where", async () => {
+    const { services, calls } = fakeServices();
+    const result = await tool.execute(services, context, {});
+    expect(calls[1]?.input).toEqual({ status: "firing" });
+    const data = result.data as { alerts: Record<string, unknown> };
+    expect(data.alerts).toEqual({ firing: 2, critical: 1, high: 0, normal: 1, low: 0 });
+    expect(JSON.stringify(data)).not.toContain("dedupKey");
+  });
+});
+
+describe("summarising usage through a tool", () => {
+  const tool = mcpToolByName("usage.summary")!;
+
+  it("reports collection health, never money", async () => {
+    const { services } = fakeServices();
+    const result = await tool.execute(services, context, {});
+    const data = result.data as Record<string, unknown>;
+    expect(data.sources).toEqual({ total: 3, completed: 2, neverCompleted: 1 });
+    expect(data.oldestCompletionAt).toEqual(new Date("2026-08-24T05:00:00.000Z"));
+    expect(data.newestCompletionAt).toEqual(new Date("2026-08-24T06:00:00.000Z"));
+    // Amounts, currency and margin are `financials:read`, which has no MCP scope in 10.1: the
+    // tool must not be able to leak them by accident of projection.
+    expect(JSON.stringify(data)).not.toMatch(/cost|currency|amount|minor|margin/i);
+  });
+
+  it("groups the collectors by operation so a stalled one is visible", async () => {
+    const { services } = fakeServices();
+    const result = await tool.execute(services, context, {});
+    const data = result.data as { byOperation: Record<string, unknown>[] };
+    expect(data.byOperation).toEqual([
+      { operation: "n8n.executions", sources: 1, completed: 0 },
+      { operation: "vercel.deployments", sources: 2, completed: 2 }
+    ]);
+    expect(result.items).toBe(3);
   });
 });
