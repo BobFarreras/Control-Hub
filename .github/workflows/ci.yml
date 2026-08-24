@@ -273,7 +273,7 @@ jobs:
       # so it exercises the deployment that cannot hold a secret.
       # `infrastructure` opens the module infrastructure.authenticated.spec.ts drives; with it
       # closed there is no route, no menu entry and no screen, which is the point of the flag.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

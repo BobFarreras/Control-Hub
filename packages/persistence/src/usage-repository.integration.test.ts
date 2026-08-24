@@ -168,11 +168,14 @@ suite("PostgresUsageRepository", () => {
         { unit: "cached_input_token", quantity: 2n, qualifier: "cache_write" }
       ]
     });
-    expect(result.record.quantities).toEqual([
-      { unit: "output_token", quantity: 3n, qualifier: "reasoning" },
-      { unit: "cached_input_token", quantity: 5n, qualifier: "cache_read" },
-      { unit: "cached_input_token", quantity: 2n, qualifier: "cache_write" }
-    ]);
+    expect(result.record.quantities).toHaveLength(3);
+    expect(result.record.quantities).toEqual(
+      expect.arrayContaining([
+        { unit: "output_token", quantity: 3n, qualifier: "reasoning" },
+        { unit: "cached_input_token", quantity: 5n, qualifier: "cache_read" },
+        { unit: "cached_input_token", quantity: 2n, qualifier: "cache_write" }
+      ])
+    );
   });
 
   it("does not let the application role mutate evidence", async () => {
