@@ -1,4 +1,15 @@
-import type { McpAccessTokenResolution, McpGrantRecord, McpOauthRepository } from "@control-hub/application";
+import { randomUUID } from "node:crypto";
+import type {
+  McpAccessTokenResolution,
+  McpAuthorizationCodeClaim,
+  McpClientRecord,
+  McpClientResolution,
+  McpGrantRecord,
+  McpOauthRepository,
+  McpRefreshResolution,
+  McpServiceAccountRecord,
+  McpServiceAccountResolution
+} from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { McpGrantStatus, McpScope, TenantContext } from "@control-hub/domain";
 
@@ -116,6 +127,394 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         revokedAt: row.revokedAt,
         lastUsedAt: row.lastUsedAt
       }));
+    });
+  }
+
+  async resolveClient(clientId: string): Promise<McpClientResolution | null> {
+    const [row] = await this.database<
+      Array<{
+        id: string;
+        tenantId: string;
+        kind: string;
+        secretHash: string | null;
+        redirectUris: string[];
+        maxScopes: string[];
+        status: string;
+      }>
+    >`
+      select id, tenant_id as "tenantId", kind, secret_hash as "secretHash",
+             redirect_uris as "redirectUris", max_scopes as "maxScopes", status
+      from lookup_mcp_client(${clientId})`;
+    if (!row) return null;
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      kind: row.kind as "public" | "confidential",
+      secretHash: row.secretHash,
+      redirectUris: row.redirectUris,
+      maxScopes: row.maxScopes as McpScope[],
+      status: row.status as "active" | "suspended"
+    };
+  }
+
+  async resolveRefreshToken(tokenHash: string): Promise<McpRefreshResolution | null> {
+    const [row] = await this.database<
+      Array<{
+        tokenId: string;
+        tenantId: string;
+        grantId: string;
+        familyId: string;
+        usedAt: Date | null;
+        expiresAt: Date;
+        revokedAt: Date | null;
+        grantStatus: string;
+      }>
+    >`
+      select token_id as "tokenId", tenant_id as "tenantId", grant_id as "grantId",
+             family_id as "familyId", used_at as "usedAt", expires_at as "expiresAt",
+             revoked_at as "revokedAt", grant_status as "grantStatus"
+      from lookup_mcp_refresh_token(${tokenHash})`;
+    if (!row) return null;
+    return { ...row, grantStatus: row.grantStatus as McpGrantStatus };
+  }
+
+  async resolveServiceAccount(secretHash: string): Promise<McpServiceAccountResolution | null> {
+    const [row] = await this.database<
+      Array<{
+        id: string;
+        tenantId: string;
+        scopes: string[];
+        permissions: string[];
+        expiresAt: Date;
+        disabledAt: Date | null;
+      }>
+    >`
+      select id, tenant_id as "tenantId", scopes, permissions,
+             expires_at as "expiresAt", disabled_at as "disabledAt"
+      from lookup_mcp_service_account(${secretHash})`;
+    if (!row) return null;
+    return { ...row, scopes: row.scopes as McpScope[] };
+  }
+
+  async consumeAuthorizationCode(codeHash: string, redirectUri: string): Promise<McpAuthorizationCodeClaim | null> {
+    // The claim happens inside the function: it is the update that consumes the row, so a second
+    // exchange matches nothing rather than racing this one.
+    const [row] = await this.database<
+      Array<{
+        requestId: string;
+        tenantId: string;
+        clientId: string;
+        membershipId: string;
+        scopes: string[];
+        codeChallenge: string;
+        audience: string;
+      }>
+    >`
+      select request_id as "requestId", tenant_id as "tenantId", client_id as "clientId",
+             membership_id as "membershipId", scopes, code_challenge as "codeChallenge", audience
+      from consume_mcp_authorization_code(${codeHash}, ${redirectUri})`;
+    if (!row) return null;
+    return { ...row, scopes: row.scopes as McpScope[] };
+  }
+
+  createClient(
+    context: TenantContext,
+    input: {
+      name: string;
+      kind: "public" | "confidential";
+      redirectUris: readonly string[];
+      maxScopes: readonly McpScope[];
+      secretHash: string | null;
+    }
+  ): Promise<McpClientRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      // The public identifier is a fresh UUID rather than anything derived from the name: it is
+      // shown to a client and quoted back at `/authorize`, so it must say nothing about the tenant.
+      const clientId = randomUUID();
+      const [row] = await tx<{ createdAt: Date }[]>`
+        insert into mcp_clients (
+          id, tenant_id, client_id, name, kind, secret_hash, redirect_uris, max_scopes,
+          created_by_membership_id
+        )
+        values (
+          ${id}, ${context.tenantId}, ${clientId}, ${input.name}, ${input.kind}, ${input.secretHash},
+          ${tx.array([...input.redirectUris])}, ${tx.array([...input.maxScopes])},
+          ${context.membershipId}
+        )
+        returning created_at as "createdAt"`;
+      return {
+        id,
+        clientId,
+        name: input.name,
+        kind: input.kind,
+        redirectUris: input.redirectUris,
+        maxScopes: input.maxScopes,
+        status: "active" as const,
+        createdAt: row!.createdAt
+      };
+    });
+  }
+
+  listClients(context: TenantContext): Promise<readonly McpClientRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      // `secret_hash` is not in the projection and must never be: a listing is the one place a
+      // hash would travel to a screen for no reason at all.
+      const rows = await tx<
+        Array<{
+          id: string;
+          clientId: string;
+          name: string;
+          kind: string;
+          redirectUris: string[];
+          maxScopes: string[];
+          status: string;
+          createdAt: Date;
+        }>
+      >`
+        select id, client_id as "clientId", name, kind, redirect_uris as "redirectUris",
+               max_scopes as "maxScopes", status, created_at as "createdAt"
+        from mcp_clients where tenant_id = ${context.tenantId}
+        order by created_at desc, id`;
+      return rows.map((row) => ({
+        ...row,
+        kind: row.kind as "public" | "confidential",
+        maxScopes: row.maxScopes as McpScope[],
+        status: row.status as "active" | "suspended"
+      }));
+    });
+  }
+
+  deleteClient(context: TenantContext, clientId: string): Promise<boolean> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const deleted = await tx<{ id: string }[]>`
+        delete from mcp_clients where tenant_id = ${context.tenantId} and id = ${clientId} returning id`;
+      return deleted.length > 0;
+    });
+  }
+
+  createAuthorizationRequest(
+    context: TenantContext,
+    input: {
+      clientId: string;
+      membershipId: string;
+      codeHash: string;
+      scopes: readonly McpScope[];
+      codeChallenge: string;
+      redirectUri: string;
+      audience: string;
+      expiresAt: Date;
+    }
+  ): Promise<void> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into mcp_authorization_requests (
+          id, tenant_id, client_id, membership_id, code_hash, scopes, code_challenge,
+          code_challenge_method, redirect_uri, audience, expires_at
+        )
+        values (
+          ${randomUUID()}, ${context.tenantId}, ${input.clientId}, ${input.membershipId},
+          ${input.codeHash}, ${tx.array([...input.scopes])}, ${input.codeChallenge},
+          'S256', ${input.redirectUri}, ${input.audience}, ${input.expiresAt}
+        )`;
+    });
+  }
+
+  createGrant(
+    context: TenantContext,
+    input: {
+      clientId: string;
+      actorType: "user" | "service_account";
+      actorMembershipId: string | null;
+      actorServiceAccountId: string | null;
+      scopes: readonly McpScope[];
+      expiresAt: Date;
+    }
+  ): Promise<string> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      await tx`
+        insert into mcp_grants (
+          id, tenant_id, client_id, actor_type, actor_membership_id, actor_service_account_id,
+          scopes, expires_at
+        )
+        values (
+          ${id}, ${context.tenantId}, ${input.clientId}, ${input.actorType},
+          ${input.actorMembershipId}, ${input.actorServiceAccountId},
+          ${tx.array([...input.scopes])}, ${input.expiresAt}
+        )`;
+      return id;
+    });
+  }
+
+  issueAccessToken(
+    context: TenantContext,
+    input: { grantId: string; tokenHash: string; audience: string; scopes: readonly McpScope[]; expiresAt: Date }
+  ): Promise<string> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      await tx`
+        insert into mcp_access_tokens (id, tenant_id, grant_id, token_hash, audience, scopes, expires_at)
+        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.tokenHash}, ${input.audience},
+          ${tx.array([...input.scopes])}, ${input.expiresAt})`;
+      return id;
+    });
+  }
+
+  issueRefreshToken(
+    context: TenantContext,
+    input: { grantId: string; familyId: string; tokenHash: string; expiresAt: Date }
+  ): Promise<string> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      await tx`
+        insert into mcp_refresh_tokens (id, tenant_id, grant_id, family_id, token_hash, expires_at)
+        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
+          ${input.expiresAt})`;
+      return id;
+    });
+  }
+
+  rotateRefreshToken(
+    context: TenantContext,
+    input: {
+      tokenId: string;
+      grantId: string;
+      familyId: string;
+      tokenHash: string;
+      expiresAt: Date;
+      at: Date;
+    }
+  ): Promise<string | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      // Spending the old token is the lock. `used_at is null` in the predicate means two requests
+      // racing the same refresh produce one successor and one loser, not two live lineages.
+      const spent = await tx<{ id: string }[]>`
+        update mcp_refresh_tokens set used_at = ${input.at}
+        where tenant_id = ${context.tenantId} and id = ${input.tokenId} and used_at is null
+        returning id`;
+      if (spent.length === 0) return null;
+      const id = randomUUID();
+      await tx`
+        insert into mcp_refresh_tokens (id, tenant_id, grant_id, family_id, token_hash, expires_at)
+        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
+          ${input.expiresAt})`;
+      await tx`
+        update mcp_refresh_tokens set replaced_by_id = ${id}
+        where tenant_id = ${context.tenantId} and id = ${input.tokenId}`;
+      return id;
+    });
+  }
+
+  revokeRefreshFamily(context: TenantContext, familyId: string, at: Date): Promise<number> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const revoked = await tx<{ id: string }[]>`
+        update mcp_refresh_tokens set revoked_at = ${at}
+        where tenant_id = ${context.tenantId} and family_id = ${familyId} and revoked_at is null
+        returning id`;
+      return revoked.length;
+    });
+  }
+
+  createServiceAccount(
+    context: TenantContext,
+    input: {
+      name: string;
+      ownerMembershipId: string;
+      scopes: readonly McpScope[];
+      permissions: readonly string[];
+      secretHash: string;
+      expiresAt: Date;
+    }
+  ): Promise<McpServiceAccountRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const id = randomUUID();
+      const [row] = await tx<{ createdAt: Date }[]>`
+        insert into mcp_service_accounts (
+          id, tenant_id, name, owner_membership_id, scopes, permissions, secret_hash, expires_at
+        )
+        values (
+          ${id}, ${context.tenantId}, ${input.name}, ${input.ownerMembershipId},
+          ${tx.array([...input.scopes])}, ${tx.array([...input.permissions])},
+          ${input.secretHash}, ${input.expiresAt}
+        )
+        returning created_at as "createdAt"`;
+      return {
+        id,
+        name: input.name,
+        ownerMembershipId: input.ownerMembershipId,
+        scopes: input.scopes,
+        permissions: input.permissions,
+        expiresAt: input.expiresAt,
+        disabledAt: null,
+        secretRotatedAt: null,
+        createdAt: row!.createdAt
+      };
+    });
+  }
+
+  listServiceAccounts(context: TenantContext): Promise<readonly McpServiceAccountRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<
+        Array<{
+          id: string;
+          name: string;
+          ownerMembershipId: string;
+          scopes: string[];
+          permissions: string[];
+          expiresAt: Date;
+          disabledAt: Date | null;
+          secretRotatedAt: Date | null;
+          createdAt: Date;
+        }>
+      >`
+        select id, name, owner_membership_id as "ownerMembershipId", scopes, permissions,
+               expires_at as "expiresAt", disabled_at as "disabledAt",
+               secret_rotated_at as "secretRotatedAt", created_at as "createdAt"
+        from mcp_service_accounts where tenant_id = ${context.tenantId}
+        order by created_at desc, id`;
+      return rows.map((row) => ({ ...row, scopes: row.scopes as McpScope[] }));
+    });
+  }
+
+  rotateServiceAccountSecret(
+    context: TenantContext,
+    serviceAccountId: string,
+    secretHash: string,
+    at: Date
+  ): Promise<boolean> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      // The old secret stops working the instant the new one lands. A two-key window would mean a
+      // rotation that leaves the compromised key alive, which is not a rotation.
+      const rotated = await tx<{ id: string }[]>`
+        update mcp_service_accounts
+        set secret_hash = ${secretHash}, secret_rotated_at = ${at}, updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${serviceAccountId} and disabled_at is null
+        returning id`;
+      return rotated.length > 0;
+    });
+  }
+
+  disableServiceAccount(context: TenantContext, serviceAccountId: string, at: Date): Promise<boolean> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const disabled = await tx<{ id: string }[]>`
+        update mcp_service_accounts set disabled_at = ${at}, updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${serviceAccountId} and disabled_at is null
+        returning id`;
+      if (disabled.length === 0) return false;
+      // Disabling the account has to reach the grants it holds, or an agent keeps calling with a
+      // token minted before somebody decided it should stop.
+      await tx`
+        update mcp_grants set status = 'revoked', revoked_at = ${at}
+        where tenant_id = ${context.tenantId} and actor_service_account_id = ${serviceAccountId}
+          and status = 'active'`;
+      await tx`
+        update mcp_access_tokens t set revoked_at = ${at}
+        from mcp_grants g
+        where g.tenant_id = t.tenant_id and g.id = t.grant_id
+          and t.tenant_id = ${context.tenantId}
+          and g.actor_service_account_id = ${serviceAccountId} and t.revoked_at is null`;
+      return true;
     });
   }
 

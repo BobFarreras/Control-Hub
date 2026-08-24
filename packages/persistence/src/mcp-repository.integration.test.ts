@@ -149,4 +149,170 @@ suite("PostgresMcpOauthRepository", () => {
     expect(stillLive?.grantStatus).toBe("active");
     expect(stillLive?.revokedAt).toBeNull();
   });
+
+  it("finds a client by the name it presents at /authorize, with no tenant to look in", async () => {
+    const resolved = await repository.resolveClient(`client-${clientA}`);
+    expect(resolved?.tenantId).toBe(tenantA);
+    expect(resolved?.kind).toBe("public");
+    // A public client holds no secret. A hash here would be a secret that is not one.
+    expect(resolved?.secretHash).toBeNull();
+    expect(resolved?.redirectUris).toEqual(["http://127.0.0.1/callback"]);
+    expect(resolved?.maxScopes).toEqual(["crm.read"]);
+    expect(await repository.resolveClient("client-nobody-registered")).toBeNull();
+  });
+
+  it("registers a client the owner can list, and only inside their own tenant", async () => {
+    const secretHash = hash("a-secret-nobody-sees-again");
+    const created = await repository.createClient(context(tenantA, membershipA), {
+      name: "Claude Desktop",
+      kind: "confidential",
+      redirectUris: ["http://127.0.0.1/oauth/callback"],
+      maxScopes: ["crm.read", "support.read"],
+      secretHash
+    });
+    expect(created.clientId).toMatch(/^[a-z0-9-]{12,64}$/);
+    const listedForA = await repository.listClients(context(tenantA, membershipA));
+    expect(listedForA.map((client) => client.id)).toContain(created.id);
+    // The listing carries no secret and no hash of one: the record has nowhere to put it.
+    expect(JSON.stringify(listedForA)).not.toContain(secretHash);
+    const listedForB = await repository.listClients(context(tenantB, membershipB));
+    expect(listedForB.map((client) => client.id)).not.toContain(created.id);
+    expect(await repository.deleteClient(context(tenantB, membershipB), created.id)).toBe(false);
+    expect(await repository.deleteClient(context(tenantA, membershipA), created.id)).toBe(true);
+  });
+
+  it("exchanges an authorization code exactly once", async () => {
+    const code = `code-${randomUUID()}`;
+    await repository.createAuthorizationRequest(context(tenantA, membershipA), {
+      clientId: clientA,
+      membershipId: membershipA,
+      codeHash: hash(code),
+      scopes: ["mcp:tools.list", "crm.read"],
+      codeChallenge: "y".repeat(43),
+      redirectUri: "http://127.0.0.1:51763/callback",
+      audience: "https://hub.test/mcp",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const claimed = await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1:51763/callback");
+    expect(claimed?.tenantId).toBe(tenantA);
+    expect(claimed?.membershipId).toBe(membershipA);
+    expect(claimed?.scopes).toEqual(["mcp:tools.list", "crm.read"]);
+    expect(claimed?.codeChallenge).toBe("y".repeat(43));
+    // The replay. The claim is the update, so the second exchange matches nothing at all.
+    expect(await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1:51763/callback")).toBeNull();
+  });
+
+  it("refuses a code presented against a redirect it was not issued for", async () => {
+    const code = `code-${randomUUID()}`;
+    await repository.createAuthorizationRequest(context(tenantA, membershipA), {
+      clientId: clientA,
+      membershipId: membershipA,
+      codeHash: hash(code),
+      scopes: ["crm.read"],
+      codeChallenge: "z".repeat(43),
+      redirectUri: "http://127.0.0.1:51763/callback",
+      audience: "https://hub.test/mcp",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    expect(await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1:51763/elsewhere")).toBeNull();
+    // Refused, not consumed: the honest exchange still works afterwards.
+    expect(await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1:51763/callback")).not.toBeNull();
+  });
+
+  it("refuses a code that has already expired", async () => {
+    const code = `code-${randomUUID()}`;
+    await repository.createAuthorizationRequest(context(tenantA, membershipA), {
+      clientId: clientA,
+      membershipId: membershipA,
+      codeHash: hash(code),
+      scopes: ["crm.read"],
+      codeChallenge: "w".repeat(43),
+      redirectUri: "http://127.0.0.1/cb",
+      audience: "https://hub.test/mcp",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    // The row is aged rather than born expired: `expires_at > created_at` is a table constraint, so
+    // a code that was never valid for an instant cannot exist, and the only expiry worth testing is
+    // the one that arrives with time.
+    await admin`
+      update mcp_authorization_requests
+      set created_at = now() - interval '10 minutes', expires_at = now() - interval '9 minutes'
+      where code_hash = ${hash(code)}`;
+    expect(await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1/cb")).toBeNull();
+  });
+
+  it("retires a refresh token and mints its successor in one step", async () => {
+    const family = randomUUID();
+    const first = `refresh-${randomUUID()}`;
+    const second = `refresh-${randomUUID()}`;
+    const ctx = context(tenantA, membershipA);
+    const later = () => new Date(Date.now() + 86_400_000);
+    const firstId = await repository.issueRefreshToken(ctx, {
+      grantId: grantA,
+      familyId: family,
+      tokenHash: hash(first),
+      expiresAt: later()
+    });
+    const at = new Date();
+    const secondId = await repository.rotateRefreshToken(ctx, {
+      tokenId: firstId,
+      grantId: grantA,
+      familyId: family,
+      tokenHash: hash(second),
+      expiresAt: later(),
+      at
+    });
+    expect(secondId).not.toBeNull();
+    const spent = await repository.resolveRefreshToken(hash(first));
+    expect(spent?.usedAt).not.toBeNull();
+    expect(spent?.familyId).toBe(family);
+    const fresh = await repository.resolveRefreshToken(hash(second));
+    expect(fresh?.tokenId).toBe(secondId);
+    expect(fresh?.usedAt).toBeNull();
+
+    // A second rotation of the spent token loses rather than minting a third: the race has a winner.
+    const again = await repository.rotateRefreshToken(ctx, {
+      tokenId: firstId,
+      grantId: grantA,
+      familyId: family,
+      tokenHash: hash(`refresh-${randomUUID()}`),
+      expiresAt: later(),
+      at
+    });
+    expect(again).toBeNull();
+
+    // And when reuse is detected the whole lineage goes, the spent one and the live one alike.
+    expect(await repository.revokeRefreshFamily(ctx, family, at)).toBe(2);
+    expect((await repository.resolveRefreshToken(hash(second)))?.revokedAt).not.toBeNull();
+  });
+
+  it("keeps service accounts inside their tenant, and finds one by its secret", async () => {
+    const secret = `service-${randomUUID()}`;
+    const ctx = context(tenantA, membershipA);
+    const account = await repository.createServiceAccount(ctx, {
+      name: "Nightly report agent",
+      ownerMembershipId: membershipA,
+      scopes: ["crm.read"],
+      permissions: ["customers:read"],
+      secretHash: hash(secret),
+      expiresAt: new Date(Date.now() + 86_400_000)
+    });
+    const resolved = await repository.resolveServiceAccount(hash(secret));
+    expect(resolved?.id).toBe(account.id);
+    expect(resolved?.tenantId).toBe(tenantA);
+    expect(resolved?.disabledAt).toBeNull();
+
+    expect(await repository.listServiceAccounts(context(tenantB, membershipB))).toEqual([]);
+    expect(await repository.disableServiceAccount(context(tenantB, membershipB), account.id, new Date())).toBe(false);
+
+    const rotated = `service-${randomUUID()}`;
+    expect(await repository.rotateServiceAccountSecret(ctx, account.id, hash(rotated), new Date())).toBe(true);
+    // The old secret stops working the instant the new one exists: there is no two-key window here.
+    expect(await repository.resolveServiceAccount(hash(secret))).toBeNull();
+    expect((await repository.resolveServiceAccount(hash(rotated)))?.id).toBe(account.id);
+
+    const at = new Date();
+    expect(await repository.disableServiceAccount(ctx, account.id, at)).toBe(true);
+    expect((await repository.resolveServiceAccount(hash(rotated)))?.disabledAt).toEqual(at);
+  });
 });

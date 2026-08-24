@@ -80,8 +80,20 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   llistat de grants i la revocacio. Revocar un grant apaga els seus tokens **a la mateixa
   transaccio**. Vuit proves d'integracio contra PostgreSQL de debo, incloses les d'aillament entre
   tenants i la de la funcio `security definer`. Cap metode accepta un token: accepten el seu hash.
-- La resta de la fase continua sense implementar: falta la meitat d'authorization server de la
-  persistencia (clients, codis, refresh i service accounts), les rutes i el transport.
+- **10.1-E2 — persistencia de l'authorization server.** Implementat: la resta del port i de
+  `PostgresMcpOauthRepository` — registre i llistat de clients, creacio de la peticio
+  d'autoritzacio, consum del codi, emissio i rotacio de tokens, revocacio de la familia sencera i
+  el cicle de vida dels service accounts. Tres regles hi son deliberades. El codi **es consumeix
+  amb la mateixa sentencia que el llegeix**, dins de `consume_mcp_authorization_code`, de manera
+  que un segon intercanvi no troba res en comptes de competir-hi. La rotacio del refresh **gasta
+  l'antic i emet el successor a la mateixa transaccio**, amb `used_at is null` al predicat: dues
+  peticions simultanies produeixen un successor i un perdedor, mai dues linies vives. I desactivar
+  un service account **arrossega els seus grants i els seus tokens**, perque si no un agent
+  continuaria trucant amb un token encunyat abans que algu decidis aturar-lo. Les proves
+  d'integracio del fitxer pugen a quinze, i la de la caducitat del codi envelleix la fila en
+  comptes de neixer caducada, perque `expires_at > created_at` es una restriccio de taula.
+- La resta de la fase continua sense implementar: falten les rutes d'OAuth, el transport `/mcp`,
+  l'auditoria per crida i la interficie.
 
 ## Fora d'abast de la 10.1
 
