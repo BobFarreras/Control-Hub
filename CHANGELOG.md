@@ -4,6 +4,75 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.3.0 - 2026-08-24
+
+Infraestructura operable, connectors de proveidors i control reproduible del consum variable.
+
+### Consum i costos variables (Fase 8.1)
+
+- Nova seccio **Consum i costos** amb Resum, Costos i Pressupostos, separada de les despeses
+  recurrents perque mostra consum variable, cobertura de valoracio i frescor de fonts.
+- Els perfils tecnics poden veure volum i salut sense imports; els costos i pressupostos respecten
+  els permisos financers, i les accions de pressupost nomes apareixen quan es poden executar.
+- Els estats parcials i obsolets expliquen quina dada o font falta en comptes de dependre nomes
+  d'un color.
+- **OpenCode local** pot enviar tokens a la VPS amb un plugin global per dispositiu. La connexio surt
+  per HTTPS i no inclou converses, codi, paths, diffs ni ordres.
+
+### Supabase, llegit des del Control Hub (Fase 7.4)
+
+- **Els projectes de Supabase i el seu estat** es llegeixen cada cinc minuts. Cap ordre cap
+  enfora: el connector no pausa, no restaura, no crea ni esborra res, i no toca cap dada de dins
+  d'un projecte.
+- **El token de gestio de Supabase no es de nomes lectura, i es diu sencer**: porta el mateix
+  privilegi que el compte que el va encunyar, i no hi ha manera de limitar-lo sense la plataforma
+  OAuth2 que encara no existeix. La pantalla d'incorporacio ho avisa amb aquestes paraules.
+- **Els projectes es dibuixen a Infraestructura**, en una franja propia i separada de la de
+  Vercel: regio, estat —actiu, inactiu o en transicio, mai una caiguda falsa mentre Supabase mou
+  el projecte d'un lloc a un altre— i quan es va crear. S'associen a un client amb la mateixa
+  taula que un projecte de Vercel: cap migracio nova.
+- Com connectar-hi: `docs/runbooks/connect-supabase.md`. **Encara no salta cap alerta** quan un
+  projecte es pausa: es veu quan algu mira la pantalla.
+
+### Vercel, llegit des del Control Hub (Fase 7.4)
+
+- **Els projectes de Vercel i els desplegaments de produccio que han fallat** es llegeixen cada
+  cinc minuts amb un token de nomes lectura. Cap ordre cap enfora: el connector no desplega, no
+  torna enrere i no pausa res.
+- **Un projecte es un estat i un desplegament es un esdeveniment**, i es desen com a tals: que
+  l'ultim build hagi petat no vol dir que el web estigui caigut, perque el que se serveix segueix
+  sent l'anterior.
+- **Del que Vercel respon se'n desa nomes el que s'ha nomenat**: ni qui va fer el push, ni el
+  missatge del commit, ni els logs del build, que es on viuen els secrets d'un projecte.
+- **Els projectes es dibuixen a Infraestructura**, amb franja propia: el domini de produccio, si
+  produccio serveix i quan es va desplegar el que se serveix, quan es va crear el projecte i amb
+  que esta fet, l'ultim build que va fallar —amb la branca i quan— i quan en vam llegir. Es poden
+  associar a un client, com les automatitzacions.
+- **Produccio i l'ultim build fallit son dues columnes i no una**: un web pot estar servint
+  perfectament i haver tingut un build que peta fa deu minuts, i les dues coses son certes.
+- Com connectar-hi: `docs/runbooks/connect-vercel.md`. **Encara no salta cap alerta** quan un
+  build peta: un build fallit es veu quan algu mira la pantalla.
+
+### Posar en marxa un recollidor sense endevinar (Fase 7.3)
+
+- **Una comprovacio guiada** que diu en quin punt s'ha aturat una integracio que no llegeix res,
+  esglao a esglao, en comptes de deixar la pantalla buida sense explicacio.
+- **El recollidor ensenya el que veu**: les maquines i els serveis que ja te desats, amb el que
+  encara no ha declarat ningu marcat com a tal, i es poden declarar des d'alli —d'un en un o
+  marcant-ne uns quants.
+- **La pantalla depen del recollidor que tries**: la taula del que no has triat no surt buida,
+  no surt.
+- **Fitxa d'una maquina** amb el que se'n llegeix, qui ho ha llegit i quan.
+- **Una maquina pot respondre a diverses etiquetes.** Un Prometheus agrupa per objectiu de scrape,
+  no per ordinador: una sola VPS reporta amb `node-exporter:9100`, `cadvisor:8080` i
+  `127.0.0.1:9090`. Ara es diu quines etiquetes son seves, i la seva fitxa ensenya **tot el que
+  els recollidors hi veuen, declarat o no**. Declarar passa a voler dir «vull alertes d'aixo», no
+  «vull veure-ho».
+
+- **L'API ja diu quina versio es.** `/health/live` i el document OpenAPI de `/api/docs` anunciaven
+  `0.1.0` durant tota la `v0.2.0`, perque el numero estava escrit a ma al costat d'on es registra
+  i res no el feia mentir quan la release avancava. Ara surt del manifest del paquet.
+
 ## v0.2.0 - 2026-08-16
 
 Dues fases senceres que la `v0.1.0` no tenia.

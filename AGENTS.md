@@ -116,6 +116,13 @@ validacio les detectes. `pnpm build` en verd no diu res sobre l'artefacte que s'
 - **Els checksums de migracio es calculen sobre contingut normalitzat.** Amb els bytes crus,
   un checkout Windows i un Linux discrepen sobre un fitxer identic i el desplegament s'atura
   amb "Applied migration changed" sense que res hagi canviat.
+- **Al `.dockerignore`, un patro sense barra nomes encaixa a l'arrel.** Es al reves que el
+  `.gitignore`, i es la manera com aquest fitxer pot semblar ple i no filtrar gairebe res:
+  `node_modules` excloia un directori de vint-i-vuit i `.next` no arribava al d'`apps/web`.
+  El que ha d'encaixar a qualsevol profunditat vol `**/`. Compte amb les excepcions: un
+  `!**/.env.example` torna a entrar els fitxers d'exemple dels worktrees de `.claude/`, i un
+  fitxer readmes arrossega els directoris que el contenen, i llavors l'exclusio del pare
+  queda sense efecte. Aixo va tornar a posar 1,1 GB al context per un sol fitxer d'exemple.
 - **CI construeix les imatges i aixeca l'stack.** Cap altra validacio cobreix aquest cami.
 
 ### Metode

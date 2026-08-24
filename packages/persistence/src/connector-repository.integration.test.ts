@@ -729,6 +729,15 @@ suite("PostgresConnectorRepository", () => {
       const seenByB = await repository.listPendingInbox(asB(), 100);
       expect(seenByB.map((row) => row.id)).not.toContain(recorded.id);
       expect(seenByB.map((row) => row.endpointId)).not.toContain(endpoint.id);
+      expect(await repository.getPendingInbox(asB(), recorded.id)).toBeNull();
+      expect(await repository.getPendingInbox(asA(), recorded.id)).toMatchObject({
+        id: recorded.id,
+        tenantId: tenantA,
+        instanceId: instance.id,
+        connectorType: "generic-webhook",
+        instanceStatus: "draft",
+        config: {}
+      });
     });
   });
 

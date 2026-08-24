@@ -2,6 +2,7 @@
 
 import {
   Boxes,
+  ChartNoAxesCombined,
   ChevronDown,
   Clock,
   CloudCog,
@@ -31,11 +32,16 @@ type Labels = {
   projects: string;
   support: string;
   attendance: string;
+  attendanceOverview: string;
   attendanceCalendar: string;
   attendanceRecords: string;
   attendanceTeam: string;
   infrastructure: string;
   integrations: string;
+  usage: string;
+  usageOverview: string;
+  usageCosts: string;
+  usageBudgets: string;
   settings: string;
 };
 
@@ -48,9 +54,9 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const attendanceEnabled = useFeature("attendance");
   const connectorsEnabled = useFeature("connectors");
   const infrastructureEnabled = useFeature("infrastructure");
+  const usageEnabled = useFeature("usage_costs");
   const attendanceStatus = useAttendanceStatus();
   const attendanceMonth = searchParams.get("month");
-  const monthQuery = attendanceMonth ? `&month=${attendanceMonth}` : "";
   const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
     <Link
       className={
@@ -108,18 +114,25 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
             </summary>
             <div>
               {item(
-                `/${locale}/attendance?view=calendar${monthQuery}`,
+                `/${locale}/attendance`,
+                labels.attendanceOverview,
+                undefined,
+                true,
+                pathname === `/${locale}/attendance`
+              )}
+              {item(
+                `/${locale}/attendance/calendar${searchParams.get("year") ? `?year=${searchParams.get("year")}` : ""}`,
                 labels.attendanceCalendar,
                 undefined,
                 true,
-                pathname === `/${locale}/attendance` && searchParams.get("view") !== "records"
+                pathname === `/${locale}/attendance/calendar`
               )}
               {item(
-                `/${locale}/attendance?view=records${monthQuery}`,
+                `/${locale}/attendance/records${attendanceMonth ? `?month=${attendanceMonth}` : ""}`,
                 labels.attendanceRecords,
                 undefined,
                 true,
-                pathname === `/${locale}/attendance` && searchParams.get("view") === "records"
+                pathname === `/${locale}/attendance/records`
               )}
               {attendanceStatus?.canManage &&
                 item(
@@ -134,6 +147,20 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
         )}
         {infrastructureEnabled && item(`/${locale}/infrastructure`, labels.infrastructure, CloudCog)}
         {connectorsEnabled && item(`/${locale}/integrations`, labels.integrations, Boxes)}
+        {usageEnabled && (
+          <details className="nav-group" open={pathname.startsWith(`/${locale}/usage`)}>
+            <summary>
+              <ChartNoAxesCombined size={19} />
+              <span>{labels.usage}</span>
+              <ChevronDown size={15} />
+            </summary>
+            <div>
+              {item(`/${locale}/usage`, labels.usageOverview, undefined, true, pathname === `/${locale}/usage`)}
+              {item(`/${locale}/usage/costs`, labels.usageCosts)}
+              {item(`/${locale}/usage/budgets`, labels.usageBudgets)}
+            </div>
+          </details>
+        )}
         {item(`/${locale}/security`, labels.settings, Settings)}
       </nav>
       {ready && (

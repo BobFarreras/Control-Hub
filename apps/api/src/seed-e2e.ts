@@ -344,7 +344,72 @@ try {
     fresh: { externalId: "workflow:e2e-fresh", name: "E2E Sincronitzacio nocturna" },
     stale: { externalId: "workflow:e2e-stale", name: "E2E Informe setmanal" },
     rule: "E2E Automatitzacio que falla",
-    customer: customers[0][0]
+    customer: customers[0][0],
+    /**
+     * The machine and the three answers a reading can give.
+     *
+     * `up` is a container whose reading keeps moving, `down` is one that stopped moving hours ago
+     * while the collector kept passing, and `unknown` is a probe of an operation no pass has ever
+     * reported. The third one is the reason this fixture exists at all: it can only be produced by
+     * a collector that never ran, and the difference between "it is down" and "we cannot see it"
+     * is the one this screen must never blur.
+     */
+    host: { name: "E2E VPS principal", hostname: "e2e-vps" },
+    /**
+     * The collector, and a label it reads that nobody has declared.
+     *
+     * The discovery is about exactly this pair: one machine whose `hostname` was typed
+     * correctly and one the collector can see and the inventory has never heard of. The second
+     * one shows on no other screen -- the inventory lists what somebody declared -- which is why
+     * the seed has to carry it and why it cannot be produced by declaring something here.
+     */
+    collector: "Prometheus E2E",
+    undeclaredHostname: "e2e-vps-nou",
+    /**
+     * What the collector reads and nobody has declared.
+     *
+     * The selector's reason to exist, and the one thing a seed can carry that the product cannot
+     * produce: a label read from outside that no one has claimed. A container and a backup, so
+     * the grouping by kind is exercised by more than one group. The names are the ones the domain
+     * proposes -- the identifier with the prefix taken off -- so the test can look for them
+     * without repeating that derivation here.
+     */
+    offered: {
+      container: { name: "e2e-cua", matchKey: "container:e2e-cua" },
+      backup: { name: "e2e-nocturn", matchKey: "backup:e2e-nocturn" }
+    },
+    services: {
+      up: { name: "E2E Base de dades", matchKey: "container:e2e-postgres" },
+      down: { name: "E2E Panell antic", matchKey: "container:e2e-panell" },
+      unknown: { name: "E2E Portal public", matchKey: "probe:e2e-portal" }
+    },
+    /**
+     * The hosting provider, and the two answers a project row has to hold at the same time.
+     *
+     * `serving` is production up right now with a build that failed after it: the ordinary Friday
+     * afternoon, and the reason the screen has two columns instead of one. `never` is a project
+     * nobody has deployed, whose production is neither up nor down -- an answer that cannot be
+     * produced by deploying anything, so it has to be seeded.
+     */
+    vercel: "Vercel E2E",
+    projects: {
+      serving: {
+        externalId: "project:e2e-web",
+        name: "E2E Web publica",
+        domain: "e2e-client.example",
+        failureRef: "fix/preus"
+      },
+      never: { externalId: "project:e2e-nova", name: "E2E Web nova" }
+    },
+    /**
+     * The database provider. One project healthy and serving, one mid-transition -- the state
+     * `healthy` cannot be false for, because restoring is not an outage.
+     */
+    supabase: "Supabase E2E",
+    supabaseProjects: {
+      healthy: { externalId: "project:e2eabcdefgh", name: "E2E Base de dades" },
+      restoring: { externalId: "project:e2eijklmnop", name: "E2E Base restaurant" }
+    }
   } as const;
 
   const connectorInstanceId = id(`${tenantId}:connector:n8n-e2e`);
@@ -421,6 +486,290 @@ try {
     )
     on conflict (tenant_id, instance_id, external_id) do update
       set customer_id = excluded.customer_id, updated_at = now()`;
+
+  /**
+   * The hosting provider, seeded in the state a pass would have left behind.
+   *
+   * The base is the provider's own and the only one the connector accepts, and nothing here
+   * reaches it: no pass runs during the suite, and what the screen draws is these rows. The
+   * failed deployment is a record of its own, because a build that broke is an event and the
+   * production that is still serving is a state -- two claims, and the screen says both.
+   */
+  const vercelInstanceId = id(`${tenantId}:connector:vercel-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${vercelInstanceId}, ${tenantId}, 'vercel', ${infrastructureFixture.vercel}, 'enabled',
+      ${database.json({ baseUrl: "https://api.vercel.com", includePreview: false, deploymentsWindowHours: 24 })},
+      'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const projectRecords = [
+    {
+      externalId: infrastructureFixture.projects.serving.externalId,
+      data: {
+        name: infrastructureFixture.projects.serving.name,
+        framework: "nextjs",
+        productionReady: true,
+        productionState: "READY",
+        productionDeployedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        productionAlias: infrastructureFixture.projects.serving.domain,
+        createdAt: "2026-01-02T00:00:00.000Z"
+      }
+    },
+    {
+      externalId: infrastructureFixture.projects.never.externalId,
+      data: {
+        name: infrastructureFixture.projects.never.name,
+        framework: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        productionAlias: null,
+        createdAt: "2026-08-01T00:00:00.000Z"
+      }
+    }
+  ] as const;
+  for (const project of projectRecords)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${project.externalId}`)}, ${tenantId}, ${vercelInstanceId},
+        'pull_projects', ${project.externalId}, 'state', ${database.json(project.data)},
+        now() - '2 days'::interval, now() - '2 minutes'::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  await database`
+    insert into connector_records (
+      id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+    )
+    values (
+      ${id(`${tenantId}:record:deployment:e2e-failed`)}, ${tenantId}, ${vercelInstanceId},
+      'pull_deployments', 'deployment:e2e-failed', 'event',
+      ${database.json({
+        projectId: infrastructureFixture.projects.serving.externalId.slice("project:".length),
+        project: infrastructureFixture.projects.serving.name,
+        state: "ERROR",
+        target: "production",
+        createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+        commitRef: infrastructureFixture.projects.serving.failureRef,
+        commitSha: "e2e0001"
+      })},
+      now() - '1 hour'::interval, now() - '2 minutes'::interval
+    )
+    on conflict (tenant_id, instance_id, operation, external_id) do update
+      set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  /**
+   * The database provider, seeded the same way as Vercel: the state a pass would have left, with
+   * no pass reaching the real Management API during the suite. `restoring` has no `createdAt` on
+   * purpose -- a provider field that is sometimes missing is exactly what a fixture should have at
+   * least one of, or the mapper's null-handling is untested.
+   */
+  const supabaseInstanceId = id(`${tenantId}:connector:supabase-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${supabaseInstanceId}, ${tenantId}, 'supabase', ${infrastructureFixture.supabase}, 'enabled',
+      ${database.json({ baseUrl: "https://api.supabase.com" })}, 'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const supabaseProjectRecords = [
+    {
+      externalId: infrastructureFixture.supabaseProjects.healthy.externalId,
+      data: {
+        name: infrastructureFixture.supabaseProjects.healthy.name,
+        region: "eu-west-2",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        createdAt: "2026-02-10T00:00:00.000Z"
+      }
+    },
+    {
+      externalId: infrastructureFixture.supabaseProjects.restoring.externalId,
+      data: {
+        name: infrastructureFixture.supabaseProjects.restoring.name,
+        region: "eu-west-2",
+        status: "RESTORING",
+        healthy: null,
+        createdAt: null
+      }
+    }
+  ] as const;
+  for (const project of supabaseProjectRecords)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${project.externalId}`)}, ${tenantId}, ${supabaseInstanceId},
+        'pull_supabase_projects', ${project.externalId}, 'state', ${database.json(project.data)},
+        now() - '2 days'::interval, now() - '2 minutes'::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  /**
+   * A Prometheus nobody has to reach either, and the inventory it is compared with.
+   *
+   * The base is a loopback address for the same reason the n8n one is: a fixture naming a real
+   * host would be a fixture that could reach one. No pass runs during the suite -- what is seeded
+   * is the state a pass would have left behind, which is the only way to seed a reading that
+   * stopped moving and an operation that never ran.
+   */
+  const prometheusInstanceId = id(`${tenantId}:connector:prometheus-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${prometheusInstanceId}, ${tenantId}, 'prometheus', ${infrastructureFixture.collector}, 'enabled',
+      ${database.json({
+        baseUrl: "http://127.0.0.1:9090",
+        hostLabels: [infrastructureFixture.host.hostname],
+        containerJob: "cadvisor",
+        probeJob: "blackbox"
+      })},
+      'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  /**
+   * The machine the discovery test declares, taken away again.
+   *
+   * That test turns an undeclared label into a machine, and there is no way to undeclare one
+   * from the screen. Left behind, the next run would find the label already declared and would
+   * assert against a button that is correctly not there. The seed is the only thing that runs
+   * between runs, so the seed is what puts the fixture back the way the test needs it.
+   */
+  await database`
+    delete from infra_hosts
+    where tenant_id = ${tenantId} and hostname = ${infrastructureFixture.undeclaredHostname}`;
+
+  const hostId = id(`${tenantId}:infra-host:e2e`);
+  await database`
+    insert into infra_hosts (id, tenant_id, name, hostname, environment, notes)
+    values (
+      ${hostId}, ${tenantId}, ${infrastructureFixture.host.name}, ${infrastructureFixture.host.hostname},
+      'production', 'Maquina de proves de la suite E2E.'
+    )
+    on conflict (id) do update set
+      name = excluded.name, hostname = excluded.hostname, environment = excluded.environment, updated_at = now()`;
+
+  const services = [
+    { key: "up", kind: "container", expected: "up" },
+    { key: "down", kind: "container", expected: "up" },
+    { key: "unknown", kind: "http", expected: "up" }
+  ] as const;
+  for (const service of services) {
+    const declared = infrastructureFixture.services[service.key];
+    await database`
+      insert into infra_services (id, tenant_id, host_id, name, kind, match_key, expected_state)
+      values (
+        ${id(`${tenantId}:infra-service:${service.key}`)}, ${tenantId}, ${hostId}, ${declared.name},
+        ${service.kind}, ${declared.matchKey}, ${service.expected}
+      )
+      on conflict (id) do update set
+        name = excluded.name, kind = excluded.kind, match_key = excluded.match_key, updated_at = now()`;
+  }
+
+  // The two the selector offers, taken back before every run. The suite declares them by ticking
+  // and the product has no way to undeclare a service, so without this the second run finds them
+  // already declared and there is nothing left to tick.
+  await database`
+    delete from infra_services
+    where tenant_id = ${tenantId}
+      and match_key = any(${database.array([
+        infrastructureFixture.offered.container.matchKey,
+        infrastructureFixture.offered.backup.matchKey
+      ])})`;
+
+  /**
+   * The readings, and the passes they came from.
+   *
+   * Whether a figure still counts is measured against the cadence the connector declares --
+   * `pull_host_metrics` every two minutes, `pull_container_state` every five, three passes of
+   * grace -- so the ages here are chosen on that scale and not on the forty-five minutes an
+   * automation is given. Two hours is far past every one of them.
+   */
+  const readings = [
+    {
+      operation: "pull_host_metrics",
+      externalId: `host:${infrastructureFixture.host.hostname}`,
+      minutesAgo: 1,
+      data: {
+        cpuBusyRatio: 0.21,
+        memoryUsedRatio: 0.63,
+        filesystemUsedRatio: 0.44,
+        load1: 0.58,
+        uptimeSeconds: 903_600
+      }
+    },
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.services.up.matchKey,
+      minutesAgo: 2,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 412_000_000, cpuCores: 0.03 }
+    },
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.services.down.matchKey,
+      minutesAgo: 120,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 96_000_000, cpuCores: 0 }
+    },
+    // The machine the collector reads and nobody declared. It appears on no list but the
+    // discovery's, which is the whole point of the discovery.
+    {
+      operation: "pull_host_metrics",
+      externalId: `host:${infrastructureFixture.undeclaredHostname}`,
+      minutesAgo: 1,
+      data: { cpuBusyRatio: 0.08, memoryUsedRatio: 0.31, filesystemUsedRatio: 0.12, load1: 0.11 }
+    },
+    // And the two services in the same position, for the selector. The container carries the
+    // label of the cAdvisor that saw it and the backup carries none: the screen has to say where
+    // it read one and stay quiet about the other, and only a pair proves it does both.
+    {
+      operation: "pull_container_state",
+      externalId: infrastructureFixture.offered.container.matchKey,
+      minutesAgo: 3,
+      data: { lastSeenAt: null, startedAt: null, memoryBytes: 128_000_000, cpuCores: 0.01, host: "cadvisor:8080" }
+    },
+    {
+      operation: "pull_probe_state",
+      externalId: infrastructureFixture.offered.backup.matchKey,
+      minutesAgo: 4,
+      data: { lastSuccessAt: null }
+    }
+  ] as const;
+  for (const reading of readings)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${reading.externalId}`)}, ${tenantId}, ${prometheusInstanceId},
+        ${reading.operation}, ${reading.externalId}, 'state', ${database.json(reading.data)},
+        now() - '2 days'::interval, now() - ${`${reading.minutesAgo} minutes`}::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  // Two operations passed just now and a third never did. Nothing is written for the probes on
+  // purpose: an operation with no state of its own is what makes a service read as `unknown`
+  // rather than as down, and that answer cannot be seeded any other way.
+  for (const operation of ["pull_host_metrics", "pull_container_state"])
+    await database`
+      insert into connector_operation_state (id, tenant_id, instance_id, operation, last_run_at, last_success_at)
+      values (
+        ${id(`${tenantId}:operation-state:${operation}`)}, ${tenantId}, ${prometheusInstanceId},
+        ${operation}, now(), now()
+      )
+      on conflict (tenant_id, instance_id, operation) do update
+        set last_run_at = excluded.last_run_at, last_success_at = excluded.last_success_at, updated_at = now()`;
 
   // ------------------------------------------------------------------------- hand over the keys
 

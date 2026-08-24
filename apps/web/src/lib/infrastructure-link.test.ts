@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automationLink, workflowIdOf } from "./infrastructure-link";
+import { automationLink, deployedSiteLink, workflowIdOf } from "./infrastructure-link";
 
 /**
  * Acceptance criterion 3: a malicious external URL produces no link.
@@ -100,5 +100,29 @@ describe("building the link to a workflow", () => {
   it("draws nothing for an identifier that is not a workflow", () => {
     expect(automationLink(base, "execution:42")).toBeNull();
     expect(automationLink(base, "")).toBeNull();
+  });
+});
+
+describe("the address of a deployed site", () => {
+  it("builds an https address out of the client's own domain", () => {
+    expect(deployedSiteLink("client.example")).toBe("https://client.example/");
+    expect(deployedSiteLink("  Client.Example  ")).toBe("https://client.example/");
+  });
+
+  /**
+   * The alias is what the provider answered, so it is data. Everything that could turn it into a
+   * different destination -- a second host, a path, credentials, a port, a scheme of its own --
+   * has to fail rather than be encoded, for the reason the rest of this file exists.
+   */
+  it("refuses anything that is not a bare hostname", () => {
+    expect(deployedSiteLink("client.example/../evil.example")).toBeNull();
+    expect(deployedSiteLink("user:pass@evil.example")).toBeNull();
+    expect(deployedSiteLink("client.example:8080")).toBeNull();
+    expect(deployedSiteLink("client.example?next=evil.example")).toBeNull();
+    expect(deployedSiteLink("javascript:alert(1)")).toBeNull();
+    expect(deployedSiteLink("client.example evil.example")).toBeNull();
+    expect(deployedSiteLink("localhost")).toBeNull();
+    expect(deployedSiteLink("")).toBeNull();
+    expect(deployedSiteLink(null)).toBeNull();
   });
 });

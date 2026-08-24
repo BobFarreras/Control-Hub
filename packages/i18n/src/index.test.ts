@@ -1,5 +1,5 @@
 import { connectorRegistry } from "@control-hub/connectors";
-import { connectorErrorCodes } from "@control-hub/domain";
+import { connectorDiagnosisSteps, connectorErrorCodes, infrastructureErrorCodes } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   getAttendanceDictionary,
@@ -143,6 +143,91 @@ describe("the words for every way a run can fail", () => {
       for (const code of connectorErrorCodes) {
         expect(dictionary[key(code)]!.toLowerCase(), `${key(code)} in ${locale}`).not.toContain("n8n");
       }
+    }
+  });
+});
+
+/**
+ * Every way the infrastructure module refuses says which one it was, in every language.
+ *
+ * The same guarantee the runs already had, and the same reason: increment 7.3 exists because a
+ * `404` with no code reached an operator as "the operation could not be completed" while the real
+ * answer was that a migration was missing. A code with no sentence is that failure again, so the
+ * closed list in `@control-hub/domain` is walked rather than copied, and the generic sentence is
+ * banned as a value so that a key which exists but says nothing cannot pass.
+ */
+describe("the words for every way the infrastructure module refuses", () => {
+  const key = (code: string) =>
+    [
+      "error",
+      ...code
+        .toLowerCase()
+        .split("_")
+        .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    ].join("");
+
+  it("has a sentence for every code the module can answer with, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getInfrastructureDictionary(locale) as unknown as Record<string, string>;
+      for (const code of infrastructureErrorCodes) {
+        expect(dictionary[key(code)], `${key(code)} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("never answers with the sentence that says nothing", () => {
+    for (const locale of locales) {
+      const dictionary = getInfrastructureDictionary(locale) as unknown as Record<string, string>;
+      for (const code of infrastructureErrorCodes) {
+        if (code === "INTERNAL_ERROR") continue;
+        expect(dictionary[key(code)], `${key(code)} in ${locale}`).not.toBe(dictionary.errorUnknown);
+      }
+    }
+  });
+});
+
+/**
+ * The guided check is a chain of rungs, and a rung nobody has words for is a rung the screen
+ * cannot draw. Both halves are required of every one of them: the name says which link this is,
+ * and the remedy says what to do about it -- a panel that names a broken link and then says
+ * nothing about it is the runbook problem again, one screen closer to the person.
+ */
+describe("the words the guided check is read in", () => {
+  const pascal = (step: string) =>
+    step
+      .split("_")
+      .map((part) => part[0]!.toUpperCase() + part.slice(1))
+      .join("");
+
+  it("names every rung and says how to mend it, in every locale", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const step of connectorDiagnosisSteps) {
+        expect(dictionary[`diagnosisStep${pascal(step)}`], `name of ${step} in ${locale}`).toBeTruthy();
+        expect(dictionary[`diagnosisFix${pascal(step)}`], `remedy for ${step} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("has a word for each of the four things a rung can be", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const status of ["Passed", "Failed", "Unknown", "Unchecked"]) {
+        expect(dictionary[`diagnosis${status}`], `${status} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
+  /**
+   * The rung that separates a machine nobody knocked on from a machine that is dead is the one
+   * whose words matter most, and it is the only one whose remedy is about spelling rather than
+   * about running something. Losing that distinction in translation loses the increment.
+   */
+  it("tells the tunnel command apart from the sentence about spelling", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      expect(dictionary.diagnosisFixMatching).not.toBe(dictionary.diagnosisFixReachable);
+      expect(dictionary.diagnosisTunnelRunsHere, locale).toBeTruthy();
     }
   });
 });

@@ -1,0 +1,30 @@
+{
+  "name": "@control-hub/opencode",
+  "version": "0.3.0",
+  "description": "Privacy-minimized OpenCode usage integration for Control Hub",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": "./dist/index.js",
+  "bin": {
+    "control-hub-opencode": "dist/configure.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "access": "public"
+  }
+}

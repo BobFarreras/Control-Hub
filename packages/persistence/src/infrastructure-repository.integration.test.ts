@@ -21,9 +21,14 @@ suite("PostgresInfrastructureRepository", () => {
 
   const tenantA = randomUUID();
   const tenantB = randomUUID();
+  // A tenant nothing else in this file writes to, for the assertions about what is *not* read.
+  // Those cannot share a tenant with the rest: a rule another test created would make them true
+  // or false depending on the order the tests happened to run in.
+  const tenantC = randomUUID();
   const userId = randomUUID();
   const membershipA = randomUUID();
   const membershipB = randomUUID();
+  const membershipC = randomUUID();
   const now = new Date("2026-08-13T12:00:00.000Z");
 
   const context = (tenantId: string, membershipId: string): TenantContext => ({
@@ -37,6 +42,7 @@ suite("PostgresInfrastructureRepository", () => {
 
   const asA = () => context(tenantA, membershipA);
   const asB = () => context(tenantB, membershipB);
+  const asC = () => context(tenantC, membershipC);
 
   const newInstance = async (tenantId: string, membershipId: string) =>
     connectors.createInstance(context(tenantId, membershipId), {
@@ -50,14 +56,24 @@ suite("PostgresInfrastructureRepository", () => {
     tenantId: string,
     membershipId: string,
     instanceId: string,
-    operation: "pull_workflows" | "pull_executions",
+    operation:
+      | "pull_workflows"
+      | "pull_executions"
+      | "pull_host_metrics"
+      | "pull_container_state"
+      | "pull_probe_state"
+      | "pull_projects"
+      | "pull_deployments"
+      | "pull_supabase_projects",
     externalId: string,
     data: ConnectorConfig
   ) =>
     connectors.upsertRecords(context(tenantId, membershipId), {
       instanceId,
       operation,
-      shape: operation === "pull_workflows" ? "state" : "event",
+      // Executions and deployments are events: they happened, and the next one does not replace
+      // the last. Everything else is the provider's current answer, overwritten each pass.
+      shape: operation === "pull_executions" || operation === "pull_deployments" ? "event" : "state",
       records: [{ externalId, data }],
       seenAt: now
     });
@@ -108,14 +124,16 @@ suite("PostgresInfrastructureRepository", () => {
     await admin`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
       values (${userId}, 'Infra Test', ${`${userId}@test.local`}, true, now(), now())`;
     await admin`insert into tenants (id, slug, name) values
-      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B')`;
+      (${tenantA}, ${`infra-a-${tenantA}`}, 'Infra A'), (${tenantB}, ${`infra-b-${tenantB}`}, 'Infra B'),
+      (${tenantC}, ${`infra-c-${tenantC}`}, 'Infra C')`;
     await admin`insert into memberships (id, tenant_id, user_id) values
-      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId})`;
+      (${membershipA}, ${tenantA}, ${userId}), (${membershipB}, ${tenantB}, ${userId}),
+      (${membershipC}, ${tenantC}, ${userId})`;
   });
 
   afterAll(async () => {
     // Everything under a tenant cascades from the tenant row, the infrastructure tables included.
-    await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
+    await admin`delete from tenants where id in (${tenantA}, ${tenantB}, ${tenantC})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });
     await admin.end({ timeout: 5 });
@@ -123,6 +141,12 @@ suite("PostgresInfrastructureRepository", () => {
 
   const automationsOf = async (instanceId: string) =>
     (await repository.listAutomations(asA())).filter((item) => item.instanceId === instanceId);
+
+  const projectsOf = async (instanceId: string) =>
+    (await repository.listDeployedProjects(asA())).filter((item) => item.instanceId === instanceId);
+
+  const supabaseProjectsOf = async (instanceId: string) =>
+    (await repository.listSupabaseProjects(asA())).filter((item) => item.instanceId === instanceId);
 
   const alertsOf = async (ruleId: string, status?: "firing" | "resolved") =>
     (await repository.listAlerts(asA(), status ? { status } : {})).filter((alert) => alert.ruleId === ruleId);
@@ -196,6 +220,254 @@ suite("PostgresInfrastructureRepository", () => {
       expect(mine.some((item) => item.externalId === "workflow:secret")).toBe(false);
       const theirs = await repository.listAutomations(asB());
       expect(theirs.some((item) => item.externalId === "workflow:secret")).toBe(true);
+    });
+  });
+
+  describe("deployed projects", () => {
+    it("reads the project, its production, the last failed build and who it is for, at once", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-a", {
+        name: "Web publica",
+        framework: "nextjs",
+        productionReady: true,
+        productionState: "READY",
+        productionDeployedAt: "2026-08-13T09:00:00.000Z",
+        productionAlias: "client.example",
+        createdAt: "2026-01-02T00:00:00.000Z"
+      });
+      // Two failures, and the newer one is the one a row has room for.
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-old", {
+        projectId: "prj-a",
+        project: "Web publica",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-12T08:00:00.000Z",
+        commitRef: "main",
+        commitSha: "aaaa111"
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-new", {
+        projectId: "prj-a",
+        project: "Web publica",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-13T11:00:00.000Z",
+        commitRef: "fix/preus",
+        commitSha: "bbbb222"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:prj-a",
+        customerId,
+        notes: "la web publica"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({
+        externalId: "project:prj-a",
+        name: "Web publica",
+        framework: "nextjs",
+        domain: "client.example",
+        // Serving *and* the last build failed. Both true at once is why these are two fields.
+        productionReady: true,
+        productionState: "READY",
+        lastFailureRef: "fix/preus",
+        customerId,
+        notes: "la web publica"
+      });
+      expect(project?.createdAt).toEqual(new Date("2026-01-02T00:00:00.000Z"));
+      expect(project?.productionDeployedAt).toEqual(new Date("2026-08-13T09:00:00.000Z"));
+      expect(project?.lastFailureAt).toEqual(new Date("2026-08-13T11:00:00.000Z"));
+      expect(project?.observedAt).toBeInstanceOf(Date);
+    });
+
+    it("says nothing rather than false about a project nobody has deployed", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-empty", {
+        name: "Encara res",
+        framework: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        productionAlias: null,
+        createdAt: "2026-08-01T00:00:00.000Z"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({
+        name: "Encara res",
+        framework: null,
+        domain: null,
+        productionReady: null,
+        productionState: null,
+        productionDeployedAt: null,
+        lastFailureAt: null,
+        lastFailureRef: null,
+        customerId: null,
+        notes: null
+      });
+    });
+
+    it("does not hang one project's failure off another", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-quiet", {
+        name: "Tranquil",
+        productionReady: true,
+        productionState: "READY"
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_deployments", "deployment:dpl-other", {
+        projectId: "prj-noisy",
+        state: "ERROR",
+        target: "production",
+        createdAt: "2026-08-13T11:30:00.000Z",
+        commitRef: "main"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ name: "Tranquil", lastFailureAt: null, lastFailureRef: null });
+    });
+
+    it("keeps the notes when the association is withdrawn", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:prj-b", { name: "Segona" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      const link = { instanceId: instance.id, externalId: "project:prj-b", customerId, notes: "ojo" };
+      await repository.linkDeployedProject(asA(), link);
+      await repository.linkDeployedProject(asA(), { ...link, customerId: null });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ customerId: null, notes: "ojo" });
+    });
+
+    it("shows one tenant nothing of another's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_projects", "project:prj-secret", { name: "Theirs" });
+
+      const mine = await repository.listDeployedProjects(asA());
+      expect(mine.some((item) => item.externalId === "project:prj-secret")).toBe(false);
+      const theirs = await repository.listDeployedProjects(asB());
+      expect(theirs.some((item) => item.externalId === "project:prj-secret")).toBe(true);
+    });
+
+    it("does not let an automation's link answer for a project, or the other way round", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_projects", "project:shared-id", { name: "Projecte" });
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", "project:shared-id", { name: "Workflow" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      // Same instance, same external id, two tables. This is the reason there are two of them.
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:shared-id",
+        customerId,
+        notes: "del projecte"
+      });
+
+      const [project] = await projectsOf(instance.id);
+      expect(project).toMatchObject({ notes: "del projecte", customerId });
+      const [automation] = await automationsOf(instance.id);
+      expect(automation).toMatchObject({ notes: null, customerId: null });
+    });
+  });
+
+  describe("Supabase projects", () => {
+    it("reads the project, its status and who it is for, at once", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:abcdefgh", {
+        name: "BD publica",
+        region: "eu-west-1",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        createdAt: "2026-01-02T00:00:00.000Z"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:abcdefgh",
+        customerId,
+        notes: "la bd publica"
+      });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({
+        externalId: "project:abcdefgh",
+        name: "BD publica",
+        region: "eu-west-1",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        customerId,
+        notes: "la bd publica"
+      });
+      expect(project?.createdAt).toEqual(new Date("2026-01-02T00:00:00.000Z"));
+      expect(project?.observedAt).toBeInstanceOf(Date);
+    });
+
+    it("says nothing rather than false about a project mid-transition", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:restoring", {
+        name: "En transicio",
+        region: "eu-west-1",
+        status: "RESTORING",
+        healthy: null,
+        createdAt: null
+      });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({ name: "En transicio", status: "RESTORING", healthy: null, customerId: null });
+      expect(project?.createdAt).toBeNull();
+    });
+
+    it("reuses the same link table as Vercel's projects, without crossing the two", async () => {
+      const vercelInstance = await newInstance(tenantA, membershipA);
+      const supabaseInstance = await newInstance(tenantA, membershipA);
+      // Same external id, two different instances: the composite key is what keeps them apart.
+      await putRecord(tenantA, membershipA, vercelInstance.id, "pull_projects", "project:same-id", { name: "Vercel" });
+      await putRecord(tenantA, membershipA, supabaseInstance.id, "pull_supabase_projects", "project:same-id", {
+        name: "Supabase",
+        status: "ACTIVE_HEALTHY",
+        healthy: true
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      await repository.linkDeployedProject(asA(), {
+        instanceId: supabaseInstance.id,
+        externalId: "project:same-id",
+        customerId,
+        notes: "de la bd"
+      });
+
+      const [supabaseProject] = await supabaseProjectsOf(supabaseInstance.id);
+      expect(supabaseProject).toMatchObject({ notes: "de la bd", customerId });
+      const [vercelProject] = await projectsOf(vercelInstance.id);
+      expect(vercelProject).toMatchObject({ notes: null, customerId: null });
+    });
+
+    it("keeps the notes when the association is withdrawn", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:withdrawn", {
+        name: "Segona"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      const link = { instanceId: instance.id, externalId: "project:withdrawn", customerId, notes: "ojo" };
+      await repository.linkDeployedProject(asA(), link);
+      await repository.linkDeployedProject(asA(), { ...link, customerId: null });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({ customerId: null, notes: "ojo" });
+    });
+
+    it("shows one tenant nothing of another's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_supabase_projects", "project:secret", {
+        name: "Theirs"
+      });
+
+      const mine = await repository.listSupabaseProjects(asA());
+      expect(mine.some((item) => item.externalId === "project:secret")).toBe(false);
+      const theirs = await repository.listSupabaseProjects(asB());
+      expect(theirs.some((item) => item.externalId === "project:secret")).toBe(true);
     });
   });
 
@@ -489,6 +761,751 @@ suite("PostgresInfrastructureRepository", () => {
 
       const state = await repository.readEvaluationState(asA());
       expect(state.records.some((item) => item.externalId === "execution:theirs")).toBe(false);
+    });
+
+    /** The declared inventory, and the reading of each declared thing whatever pass wrote it. */
+    const declaredService = async (matchKey: string) => {
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service };
+    };
+
+    it("carries the inventory, with the name of the machine each service sits on", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:supabase-${randomUUID()}`;
+      const { host, service } = await declaredService(matchKey);
+
+      const state = await repository.readEvaluationState(asA());
+
+      expect(state.services).toEqual(
+        expect.arrayContaining([{ name: service.name, hostName: host.name, matchKey, expectedState: "up" }])
+      );
+    });
+
+    it("leaves the inventory unread when no rule would judge it", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await repository.createRule(asC(), {
+        name: `rule ${randomUUID()}`,
+        kind: "workflow_failed",
+        instanceId: instance.id,
+        targetType: "instance",
+        targetId: null,
+        severity: "high",
+        params: {},
+        freshnessSeconds: 900,
+        opensIncident: false
+      });
+      const host = await repository.declareHost(asC(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asC(), {
+        hostId: host.id,
+        name: "Sense vigilancia",
+        kind: "container",
+        matchKey: `container:unwatched-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.readEvaluationState(asC())).services).toEqual([]);
+    });
+
+    it("never carries a service somebody deliberately ignored", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:retired-${randomUUID()}`;
+      const { service } = await declaredService(matchKey);
+      await repository.updateService(asA(), service.id, { expectedState: "ignored" });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.some((item) => item.matchKey === matchKey)).toBe(false);
+    });
+
+    it("fetches a declared service's own reading, whichever pass wrote it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const matchKey = `container:n8n-${randomUUID()}`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", matchKey, { memoryBytes: 1 });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === matchKey)).toBe(true);
+    });
+
+    it("reads the probe pass for a backup rule, which is where the heartbeat lives", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "backup_stale" });
+      const externalId = `backup:daily-${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", externalId, {
+        lastSuccessAt: now.toISOString()
+      });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.some((item) => item.externalId === externalId)).toBe(true);
+    });
+
+    /**
+     * Two reads want the same probe reading -- one because a certificate lives in it, one because
+     * a service was declared against it. A duplicate would become two verdicts sharing a dedup
+     * key, and the partial unique index would refuse the second.
+     */
+    it("returns a reading once even when two rules both want it", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      await newRule(instance.id, { kind: "certificate_expiring" });
+      const matchKey = `probe:https://${randomUUID()}.example.com`;
+      await declaredService(matchKey);
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", matchKey, { success: true });
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.records.filter((item) => item.externalId === matchKey)).toHaveLength(1);
+    });
+
+    it("reads no inventory of another tenant's", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await newRule(instance.id, { kind: "service_down" });
+      const theirs = await newInstance(tenantB, membershipB);
+      const theirHost = await repository.declareHost(asB(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await repository.declareService(asB(), {
+        hostId: theirHost.id,
+        name: "Seu",
+        kind: "container",
+        matchKey: `container:theirs-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      expect(theirs.id).toBeTruthy();
+
+      const state = await repository.readEvaluationState(asA());
+      expect(state.services.every((item) => item.hostName !== theirHost.name)).toBe(true);
+    });
+  });
+
+  describe("what the dashboard reads", () => {
+    const declaredMachine = async (tenantId: string, membershipId: string) => {
+      const at = context(tenantId, membershipId);
+      const hostname = `node-${randomUUID()}:9100`;
+      const host = await repository.declareHost(at, {
+        name: `VPS ${randomUUID()}`,
+        hostname,
+        environment: "production",
+        notes: null
+      });
+      const service = await repository.declareService(at, {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+      return { host, service, hostname };
+    };
+
+    it("gathers the inventory, the reading of every line of it, and the freshness of each pass", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const { host, service, hostname } = await declaredMachine(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${hostname}`, {
+        cpuBusyRatio: 0.2
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", service.matchKey, {
+        memoryBytes: 512
+      });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === host.id)).toBe(true);
+      expect(state.services.some((item) => item.id === service.id)).toBe(true);
+      expect(state.records.map((item) => item.externalId)).toEqual(
+        expect.arrayContaining([`host:${hostname}`, service.matchKey])
+      );
+      expect(
+        state.freshness.some((item) => item.instanceId === instance.id && item.operation === "pull_host_metrics")
+      ).toBe(true);
+    });
+
+    /**
+     * The read takes what was declared and what could be attributed to a machine, and stops there.
+     *
+     * Until C8 it took only what was declared, and a machine's page could then say it ran nothing
+     * while twenty of its containers sat in the table -- a container arrives under the cAdvisor's
+     * label and the machine is declared under the node_exporter's, so nothing joined them. The
+     * discoverable prefixes now come too, which is the same set the discovery route already reads.
+     * What stays out is what no machine can hold: a `workflow:` is an automation and has its own
+     * screen.
+     */
+    it("asks for what was declared and for what a machine could answer for, and nothing else", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      const container = `container:stranger-${randomUUID()}`;
+      const workflow = `workflow:${randomUUID()}`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", container, { memoryBytes: 1 });
+      await putRecord(tenantA, membershipA, instance.id, "pull_workflows", workflow, {});
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.records.some((item) => item.externalId === container)).toBe(true);
+      expect(state.records.some((item) => item.externalId === workflow)).toBe(false);
+    });
+
+    it("reads no host, no service and no reading of another tenant", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      const theirs = await declaredMachine(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_container_state", theirs.service.matchKey, {
+        memoryBytes: 1
+      });
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.hosts.some((item) => item.id === theirs.host.id)).toBe(false);
+      expect(state.services.some((item) => item.id === theirs.service.id)).toBe(false);
+      expect(state.records.some((item) => item.externalId === theirs.service.matchKey)).toBe(false);
+    });
+
+    /**
+     * Nothing about the machines is asserted here on purpose: `tenantC` is shared with the tests
+     * below and what it has declared by the time this runs depends on the order they ran in. What
+     * this is about is the reading and the label, and neither is there.
+     */
+    it("reads no reading and no label for a tenant that declared nothing", async () => {
+      const instance = await newInstance(tenantC, membershipC);
+      await putRecord(tenantC, membershipC, instance.id, "pull_workflows", `workflow:${randomUUID()}`, {});
+
+      const state = await repository.readInventoryState(asC());
+
+      expect(state.records).toEqual([]);
+      expect(state.labels).toEqual([]);
+    });
+  });
+
+  /**
+   * The other labels a machine answers to.
+   *
+   * Specification: `docs/specifications/connector-onboarding.md`, "C8 -- Una maquina, diverses
+   * etiquetes".
+   */
+  describe("the labels a machine answers to", () => {
+    const machine = async () =>
+      repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+    it("hands the labels back with the inventory, so a screen asks once", async () => {
+      const host = await machine();
+      const label = `cadvisor-${randomUUID()}:8080`;
+      await repository.addHostLabel(asA(), host.id, label);
+
+      const state = await repository.readInventoryState(asA());
+
+      expect(state.labels).toEqual(expect.arrayContaining([{ hostId: host.id, label }]));
+    });
+
+    /** One label, one machine: two claiming it would make one outage arrive as two alerts. */
+    it("refuses a label another machine already answers to", async () => {
+      const [one, other] = [await machine(), await machine()];
+      const label = `cadvisor-${randomUUID()}:8080`;
+      await repository.addHostLabel(asA(), one.id, label);
+
+      await expect(repository.addHostLabel(asA(), other.id, label)).rejects.toMatchObject({
+        code: "DUPLICATE_HOSTNAME"
+      });
+    });
+
+    /**
+     * The half no constraint can express: `hostname` lives in another table, so the check is a
+     * query inside the same transaction as the insert.
+     */
+    it("refuses a label that is already some machine's hostname", async () => {
+      const [one, other] = [await machine(), await machine()];
+
+      await expect(repository.addHostLabel(asA(), one.id, other.hostname)).rejects.toMatchObject({
+        code: "DUPLICATE_HOSTNAME"
+      });
+    });
+
+    it("refuses to label a machine of another tenant, even by naming its identifier", async () => {
+      const theirs = await repository.declareHost(context(tenantB, membershipB), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+      await expect(repository.addHostLabel(asA(), theirs.id, `cadvisor-${randomUUID()}:8080`)).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+    });
+
+    it("withdraws one label and leaves the others", async () => {
+      const host = await machine();
+      const [first, second] = [`cadvisor-${randomUUID()}:8080`, `prom-${randomUUID()}:9090`];
+      await repository.addHostLabel(asA(), host.id, first);
+      await repository.addHostLabel(asA(), host.id, second);
+
+      await repository.removeHostLabel(asA(), host.id, first);
+
+      const state = await repository.readInventoryState(asA());
+      const mine = state.labels.filter((entry) => entry.hostId === host.id).map((entry) => entry.label);
+      expect(mine).toEqual([second]);
+    });
+
+    /** Withdrawing a label the machine does not answer to leaves it not answering to it. */
+    it("succeeds at withdrawing a label that was never there", async () => {
+      const host = await machine();
+
+      await expect(repository.removeHostLabel(asA(), host.id, `nothing-${randomUUID()}`)).resolves.toBeUndefined();
+    });
+
+    it("says so when the machine does not exist", async () => {
+      await expect(repository.removeHostLabel(asA(), randomUUID(), "cadvisor:8080")).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+    });
+  });
+
+  describe("the inventory somebody declares", () => {
+    const declareHost = async (overrides: Record<string, unknown> = {}) =>
+      repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null,
+        ...overrides
+      });
+
+    it("keeps a host and the services hung off it, and gives back what it stored", async () => {
+      const host = await declareHost({ notes: "La de produccio" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: "Automatitzacions",
+        kind: "container",
+        matchKey: `container:n8n-${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.findHost(asA(), host.id)).toMatchObject({ name: host.name, notes: "La de produccio" });
+      expect(service).toMatchObject({ hostId: host.id, kind: "container", expectedState: "up", customerId });
+    });
+
+    it("filters services by host, so a machine's page is one read", async () => {
+      const [one, two] = [await declareHost(), await declareHost()];
+      const onService = async (hostId: string) =>
+        repository.declareService(asA(), {
+          hostId,
+          name: `Servei ${randomUUID()}`,
+          kind: "http",
+          matchKey: `probe:https://${randomUUID()}.example.com/healthz`,
+          expectedState: "up",
+          customerId: null
+        });
+      await onService(one.id);
+      await onService(two.id);
+
+      const listed = await repository.listServices(asA(), { hostId: one.id });
+      expect(listed.map((item) => item.hostId)).toEqual([one.id]);
+    });
+
+    it("tells a duplicate label from a duplicate name, which one word contains the other", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ name: host.name })).rejects.toMatchObject({ code: "DUPLICATE_HOST_NAME" });
+      await expect(declareHost({ hostname: host.hostname })).rejects.toMatchObject({ code: "DUPLICATE_HOSTNAME" });
+    });
+
+    it("refuses two services watching the same observed thing", async () => {
+      const host = await declareHost();
+      const matchKey = `container:supabase-db-${randomUUID()}`;
+      const service = {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "database" as const,
+        matchKey,
+        expectedState: "up" as const,
+        customerId: null
+      };
+      await repository.declareService(asA(), service);
+
+      // Same key, different kind: what makes them the same is what is watched, not how it was
+      // classified, so the kind is deliberately not part of the key.
+      await expect(
+        repository.declareService(asA(), { ...service, name: `Servei ${randomUUID()}`, kind: "container" })
+      ).rejects.toMatchObject({ code: "DUPLICATE_MATCH_KEY" });
+    });
+
+    it("clears a note and a client when asked to, and leaves them alone when not", async () => {
+      const host = await declareHost({ notes: "provisional" });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId
+      });
+
+      expect(await repository.updateHost(asA(), host.id, { environment: "staging" })).toMatchObject({
+        environment: "staging",
+        notes: "provisional"
+      });
+      expect(await repository.updateHost(asA(), host.id, { notes: null })).toMatchObject({ notes: null });
+      expect(await repository.updateService(asA(), service.id, { expectedState: "ignored" })).toMatchObject({
+        expectedState: "ignored",
+        customerId
+      });
+      expect(await repository.updateService(asA(), service.id, { customerId: null })).toMatchObject({
+        customerId: null
+      });
+    });
+
+    it("refuses a state and an environment nobody evaluates", async () => {
+      const host = await declareHost();
+
+      await expect(declareHost({ environment: "produccio" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      await expect(
+        repository.declareService(asA(), {
+          hostId: host.id,
+          name: `Servei ${randomUUID()}`,
+          kind: "container",
+          matchKey: `container:${randomUUID()}`,
+          expectedState: "maybe" as never,
+          customerId: null
+        })
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    });
+
+    it("says so rather than pretending, when the row asked for is not there", async () => {
+      expect(await repository.findHost(asA(), randomUUID())).toBeNull();
+      await expect(repository.updateHost(asA(), randomUUID(), { notes: null })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+      await expect(repository.deleteService(asA(), randomUUID())).rejects.toMatchObject({
+        code: "SERVICE_NOT_FOUND"
+      });
+    });
+
+    it("withdraws a service, and holds no privilege to withdraw a host", async () => {
+      const host = await declareHost();
+      const service = await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      await repository.deleteService(asA(), service.id);
+      expect(await repository.listServices(asA(), { hostId: host.id })).toEqual([]);
+
+      // Acceptance criterion 9 is a grant, not a missing route: the application role cannot
+      // delete a host even when somebody writes the statement by hand.
+      await expect(database`delete from infra_hosts where id = ${host.id}`).rejects.toMatchObject({ code: "42501" });
+    });
+
+    it("shows one tenant nothing of the other, hosts and services alike", async () => {
+      const host = await declareHost();
+      await repository.declareService(asA(), {
+        hostId: host.id,
+        name: `Servei ${randomUUID()}`,
+        kind: "container",
+        matchKey: `container:${randomUUID()}`,
+        expectedState: "up",
+        customerId: null
+      });
+
+      expect((await repository.listHosts(asB())).map((item) => item.id)).not.toContain(host.id);
+      expect(await repository.findHost(asB(), host.id)).toBeNull();
+      expect((await repository.listServices(asB(), {})).map((item) => item.hostId)).not.toContain(host.id);
+      // Reaching across with a known id is refused by the policy, not by a missing filter.
+      await expect(repository.updateHost(asB(), host.id, { notes: "meu" })).rejects.toMatchObject({
+        code: "HOST_NOT_FOUND"
+      });
+    });
+  });
+
+  describe("the guided check", () => {
+    const promInstance = async (tenantId: string, membershipId: string) =>
+      connectors.createInstance(context(tenantId, membershipId), {
+        connectorType: "prometheus",
+        name: `prometheus ${randomUUID()}`,
+        config: { baseUrl: "http://127.0.0.1:9090" }
+      });
+
+    const later = new Date(now.getTime() + 60_000);
+
+    it("finds nothing missing when every migration the module needs has run", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+
+      const state = await repository.readDiagnosisState(asA(), instance.id);
+
+      expect(state.missingMigrations).toEqual([]);
+      expect(state.instance).toMatchObject({
+        id: instance.id,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090"
+      });
+    });
+
+    it("gives back no instance for an id this tenant does not have, without saying whose it is", async () => {
+      const foreign = await promInstance(tenantB, membershipB);
+
+      expect(await repository.readDiagnosisState(asC(), foreign.id)).toMatchObject({
+        instance: null,
+        missingMigrations: []
+      });
+    });
+
+    it("reports no attempt at all on an instance nobody has run or checked", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toBeNull();
+    });
+
+    /**
+     * Why this reads two tables rather than one. A pass that succeeds writes no health at all, so
+     * reading `connector_instances` alone would report an installation that has been polling for a
+     * week as one nobody has ever asked anything of, and the check would answer "we do not know"
+     * about a connector that is plainly working.
+     */
+    it("counts a successful pass as an attempt, though it wrote down no health", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: true,
+        code: null
+      });
+    });
+
+    it("carries the code of the failure when the failure is the newer of the two", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: now,
+        succeeded: true
+      });
+      await connectors.recordHealth(asA(), instance.id, {
+        status: "failing",
+        checkedAt: later,
+        errorCode: "CONNECT_TIMEOUT"
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: false,
+        code: "CONNECT_TIMEOUT"
+      });
+    });
+
+    /** The stale `last_error_code` of a failure that has since been fixed is not evidence. */
+    it("stops carrying it once a later pass has worked", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      await connectors.recordHealth(asA(), instance.id, {
+        status: "failing",
+        checkedAt: now,
+        errorCode: "CONNECT_TIMEOUT"
+      });
+      await connectors.saveOperationState(asA(), {
+        instanceId: instance.id,
+        operation: "pull_host_metrics",
+        cursor: null,
+        ranAt: later,
+        succeeded: true
+      });
+
+      expect((await repository.readDiagnosisState(asA(), instance.id)).instance?.lastAttempt).toEqual({
+        ok: true,
+        code: null
+      });
+    });
+
+    /**
+     * The labels that travel are the ones that could name a machine: a host reading, and a probe
+     * reading of an address on a network.
+     *
+     * **The probed URL here carries `scrapeUp`, and that is the point.** This test used to seed it
+     * without one, which quietly agreed with the belief that a blackbox target has no scrape state
+     * of its own. It has: Prometheus relabels a blackbox scrape so its `up` line carries the
+     * probed URL. With the record shaped the way the connector really writes it, only the rule in
+     * the domain keeps the URL out -- and an address is the one thing acceptance criterion 5 says
+     * may never leave this process.
+     */
+    it("reads the labels of stored readings and leaves a probed address out of them", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const label = `vps-${randomUUID()}:9100`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${label}`, { cpuBusyRatio: 0.1 });
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", `probe:${label}`, { scrapeUp: true });
+      await putRecord(tenantA, membershipA, instance.id, "pull_probe_state", "probe:https://secret.example.test", {
+        scrapeUp: true,
+        success: true
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", "container:n8n", { state: "running" });
+
+      const state = await repository.readDiagnosisState(asA(), instance.id);
+
+      expect(state.seenInstances).toEqual([label]);
+    });
+
+    it("reads the readings of this instance only, so two collectors are diagnosed apart", async () => {
+      const [one, two] = [await promInstance(tenantA, membershipA), await promInstance(tenantA, membershipA)];
+      await putRecord(tenantA, membershipA, one.id, "pull_host_metrics", `host:vps-${randomUUID()}:9100`, {
+        cpuBusyRatio: 0.1
+      });
+
+      expect((await repository.readDiagnosisState(asA(), two.id)).seenInstances).toEqual([]);
+    });
+
+    it("lists what this tenant declared, and nothing another tenant did", async () => {
+      const declare = async (asTenant: () => TenantContext) =>
+        repository.declareHost(asTenant(), {
+          name: `VPS ${randomUUID()}`,
+          hostname: `node-${randomUUID()}:9100`,
+          environment: "production",
+          notes: null
+        });
+      const instance = await promInstance(tenantC, membershipC);
+      const [mine, theirs] = [await declare(asC), await declare(asA)];
+
+      const { declaredHostnames } = await repository.readDiagnosisState(asC(), instance.id);
+
+      expect(declaredHostnames).toContain(mine.hostname);
+      expect(declaredHostnames).not.toContain(theirs.hostname);
+    });
+  });
+
+  /**
+   * The discovery reads the same two things the guided check's last rung reads, through the same
+   * helpers, so what is worth proving here is only what differs: a declared machine arrives with
+   * its id and its name, because the screen has to offer a button that opens the right record, and
+   * a connector belonging to somebody else is simply not there.
+   */
+  describe("the discovery", () => {
+    const promInstance = async (tenantId: string, membershipId: string) =>
+      connectors.createInstance(context(tenantId, membershipId), {
+        connectorType: "prometheus",
+        name: `prometheus ${randomUUID()}`,
+        config: { baseUrl: "http://127.0.0.1:9090" }
+      });
+
+    it("reads the labels seen and the machines declared, each with the record it is", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const label = `vps-${randomUUID()}:9100`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_host_metrics", `host:${label}`, { cpuBusyRatio: 0.1 });
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: label,
+        environment: "production",
+        notes: null
+      });
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state).toMatchObject({ instanceExists: true, missingMigrations: [], seenInstances: [label] });
+      expect(state.declaredMachines).toContainEqual({ hostId: host.id, name: host.name, hostname: label });
+    });
+
+    /**
+     * The label a container was seen on is a machine label, and until C8 it was the one label the
+     * screen never showed. A cAdvisor appears in no `host:` reading, so the label a person had to
+     * claim was invisible: the containers were stored, the machine was declared, and there was
+     * nowhere to say the two were the same computer.
+     */
+    it("offers the label a container was seen on, which no host reading carries", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const cadvisor = `cadvisor-${randomUUID()}:8080`;
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", `container:${randomUUID()}`, {
+        host: cadvisor
+      });
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state.seenInstances).toContain(cadvisor);
+    });
+
+    it("says a claimed label is that machine's, so it is not offered for declaring twice", async () => {
+      const instance = await promInstance(tenantA, membershipA);
+      const cadvisor = `cadvisor-${randomUUID()}:8080`;
+      const host = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+      await putRecord(tenantA, membershipA, instance.id, "pull_container_state", `container:${randomUUID()}`, {
+        host: cadvisor
+      });
+      await repository.addHostLabel(asA(), host.id, cadvisor);
+
+      const state = await repository.readDiscoveryState(asA(), instance.id);
+
+      expect(state.declaredMachines).toEqual(
+        expect.arrayContaining([{ hostId: host.id, name: host.name, hostname: cadvisor }])
+      );
+    });
+
+    it("says the instance is not there for one another tenant owns, and reads nothing of it", async () => {
+      const foreign = await promInstance(tenantB, membershipB);
+
+      expect(await repository.readDiscoveryState(asC(), foreign.id)).toEqual({
+        instanceExists: false,
+        missingMigrations: [],
+        seenInstances: [],
+        declaredMachines: []
+      });
+    });
+
+    it("offers this tenant's machines only, so a stranger's hostname cannot be matched against", async () => {
+      const instance = await promInstance(tenantC, membershipC);
+      const theirs = await repository.declareHost(asA(), {
+        name: `VPS ${randomUUID()}`,
+        hostname: `node-${randomUUID()}:9100`,
+        environment: "production",
+        notes: null
+      });
+
+      const { declaredMachines } = await repository.readDiscoveryState(asC(), instance.id);
+
+      expect(declaredMachines.map((machine) => machine.hostname)).not.toContain(theirs.hostname);
     });
   });
 

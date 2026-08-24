@@ -72,7 +72,7 @@ export default async function AttendanceTeamPage({
     }
     if (absRes.ok) {
       const data = await readJson<{ absences: AttendanceAbsence[] }>(absRes);
-      pendingAbsences = data.absences;
+      pendingAbsences = data.absences.filter((absence) => absence.status === "pending");
     }
   } catch {
     // Non-critical: pending requests are a convenience, not a requirement.

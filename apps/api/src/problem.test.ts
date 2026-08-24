@@ -4,6 +4,7 @@ import {
   ConnectorStorageError,
   InfrastructureServiceError
 } from "@control-hub/application";
+import { infrastructureErrorCodes } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import { describeConnectorError, problemDetails, usesProblemDetails } from "./problem.js";
 import { ApiSecurityError } from "./security.js";
@@ -125,6 +126,19 @@ describe("the status an infrastructure failure deserves", () => {
   });
 
   /**
+   * The inventory of increment B2 rides the same mapping, which is the point of the mapping: a
+   * code added later gets its status from the class it belongs to rather than a new branch.
+   */
+  it("places the inventory's own refusals in the same classes", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("HOST_NOT_FOUND"))).toEqual(["HOST_NOT_FOUND", 404]);
+    expect(codeAndStatus(new InfrastructureServiceError("SERVICE_NOT_FOUND"))).toEqual(["SERVICE_NOT_FOUND", 404]);
+    expect(codeAndStatus(new InfrastructureServiceError("DUPLICATE_HOSTNAME"))).toEqual(["DUPLICATE_HOSTNAME", 409]);
+    expect(codeAndStatus(new InfrastructureServiceError("DUPLICATE_MATCH_KEY"))).toEqual(["DUPLICATE_MATCH_KEY", 409]);
+    expect(codeAndStatus(new InfrastructureServiceError("INVALID_HOSTNAME"))).toEqual(["INVALID_HOSTNAME", 422]);
+    expect(codeAndStatus(new InfrastructureServiceError("INVALID_MATCH_KEY"))).toEqual(["INVALID_MATCH_KEY", 422]);
+  });
+
+  /**
    * A body naming a client that is not there is 422 and not 404: the route exists and the request
    * is well formed, and answering 404 would say the alert rule surface itself is missing.
    */
@@ -143,4 +157,31 @@ describe("the status an infrastructure failure deserves", () => {
     expect(problem.title).not.toBe("Unexpected error");
     expect(problem.type).toBe("https://control-hub.example/problems/invalid-freshness");
   });
+
+  /** The guided check has exactly one refusal of its own, and it is the ordinary 404. */
+  it("answers 404 for an integration this tenant cannot see", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("INSTANCE_NOT_FOUND"))).toEqual(["INSTANCE_NOT_FOUND", 404]);
+  });
+
+  /**
+   * Acceptance criterion 11, at the boundary that names the failure.
+   *
+   * The vocabulary is closed, so this walks all of it rather than the handful somebody remembered.
+   * A code shipped later with no title of its own fails here instead of reaching a support ticket
+   * as "Unexpected error", which is the sentence this whole increment exists to stop producing.
+   */
+  it.each(infrastructureErrorCodes.filter((code) => code !== "INTERNAL_ERROR"))(
+    "gives %s a title of its own",
+    (code) => {
+      const problem = problemDetails({
+        status: 422,
+        code,
+        instance: "/api/v1/infrastructure/overview",
+        requestId: "req-1"
+      });
+
+      expect(problem.title).not.toBe("Unexpected error");
+      expect(problem.type).toBe(`https://control-hub.example/problems/${code.toLowerCase().replaceAll("_", "-")}`);
+    }
+  );
 });

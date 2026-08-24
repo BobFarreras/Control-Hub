@@ -37,6 +37,8 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 | `integrations:manage` | X |  | X |
 | `credentials:rotate` | X |  | X |
 | `usage:read` | X | X | X |
+| `usage:manage` | X |  |  |
+| `budgets:manage` | X | X |  |
 | `security:manage` | X |  | X |
 
 ## Regles
@@ -51,3 +53,6 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
   persona cal `time:manage`. La comprovacio de propietat viu al servei, no a la ruta: es una
   regla de negoci i no depen del transport que pregunti.
 - El cost per hora i el marge van sota `financials:read`. `rates:manage` nomes els publica.
+- El volum i la salut de consum van sota `usage:read`; imports, FX, pressupostos i marge exigeixen
+  `financials:read`. `usage:manage` publica o anul·la tarifes i FX, mentre `budgets:manage`
+  administra pressupostos sense concedir autoritat sobre preus.

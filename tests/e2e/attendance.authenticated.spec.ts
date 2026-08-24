@@ -11,7 +11,8 @@ test.describe.configure({ timeout: 120_000 });
 
 /** The Catalan labels the attendance screens render. */
 const t = {
-  title: "Registre de jornada",
+  overviewTitle: "Resum de jornada",
+  calendarTitle: "Calendari laboral",
   clockIn: "Fitxar entrada",
   clockOut: "Fitxar sortida",
   stateIn: "Treballant",
@@ -91,7 +92,7 @@ test.describe("working time", () => {
      * written, rather than that a button changed what it was showing. The address names the view
      * because the bare one opens the calendar, and the movements are on the records side.
      */
-    await page.goto("/ca/attendance?view=records", { waitUntil: "domcontentloaded" });
+    await page.goto("/ca/attendance/records", { waitUntil: "domcontentloaded" });
     await expect(clock(page)).toContainText(t.stateIn);
     await expect(page.getByRole("region", { name: t.history })).toContainText(t.clockIn);
   });
@@ -137,7 +138,7 @@ test.describe("working time", () => {
     await clock(page).getByRole("button", { name: t.clockIn }).click();
     expect((await saved).status()).toBe(201);
 
-    await page.goto("/ca/attendance?view=records", { waitUntil: "domcontentloaded" });
+    await page.goto("/ca/attendance/records", { waitUntil: "domcontentloaded" });
     const history = page.getByRole("region", { name: t.history });
     const correct = history.getByRole("button", { name: t.correct }).first();
     await waitForHydration(correct);
@@ -191,5 +192,27 @@ test.describe("working time", () => {
     await page.getByRole("button", { name: t.export }).click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/^jornada-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  });
+
+  test("separates the overview, annual calendar and monthly record", async ({ page }) => {
+    await page.goto("/ca/attendance", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { level: 1, name: t.overviewTitle })).toBeVisible();
+
+    await page.goto("/ca/attendance/calendar?year=2026", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { level: 1, name: t.calendarTitle })).toBeVisible();
+    await expect(page.locator(".attendance-mini-month")).toHaveCount(12);
+    await expect(page.getByRole("link", { name: "Any anterior" })).toHaveAttribute("href", /year=2025/);
+    await page.getByRole("button", { name: /^2026-10-10:/ }).click();
+    await page.getByRole("button", { name: /^2026-10-12:/ }).click();
+    await expect(page.getByText(/Rang seleccionat: 2026-10-10 — 2026-10-12/)).toBeVisible();
+
+    await page.getByRole("button", { name: "Sol·licitar vacances" }).click();
+    const request = page.getByRole("dialog", { name: "Sol·licitar vacances" });
+    await expect(request.getByLabel("Des de")).toHaveValue("2026-10-10");
+    await expect(request.getByLabel("Fins a")).toHaveValue("2026-10-12");
+    await request.getByRole("button", { name: "Cancel·lar" }).click();
+
+    await page.goto("/ca/attendance/records?month=2026-08", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("region", { name: "Registre diari" })).toBeVisible();
   });
 });

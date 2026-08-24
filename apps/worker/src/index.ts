@@ -1,4 +1,4 @@
-import { AlertEngine } from "@control-hub/application";
+import { AlertEngine, UsageService } from "@control-hub/application";
 import {
   connectorKeyRingWarning,
   isFeatureEnabled,
@@ -9,10 +9,15 @@ import { connectorRegistry } from "@control-hub/connectors";
 import { connectorQueueName, systemQueueName } from "@control-hub/contracts/jobs";
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
-import { PostgresConnectorRepository, PostgresInfrastructureRepository } from "@control-hub/persistence";
+import {
+  PostgresConnectorRepository,
+  PostgresInfrastructureRepository,
+  PostgresUsageRepository
+} from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { CircuitStore } from "./connectors/circuit-store.js";
+import { connectorIngressJobName, runConnectorIngressJob } from "./connectors/ingress-job.js";
 import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.js";
 import { purgeConnectorRecords } from "./connectors/purge.js";
 import { reconcileConnectorSchedules, schedulableInstances } from "./connectors/schedule.js";
@@ -21,6 +26,7 @@ import { sweepAlertsAcrossTenants } from "./infrastructure/alert-sweep.js";
 import { purgeResolvedAlerts } from "./infrastructure/purge.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
+import { UsageRecordIngestor } from "./usage/ingestion.js";
 
 const environment = parseWorkerEnvironment(process.env);
 const logger = createLogger("control-hub-worker", environment.LOG_LEVEL);
@@ -45,6 +51,7 @@ const ALERT_SWEEP_JOB = "infrastructure-alert-sweep";
 // Read once at boot, like every other flag decision in a composition root. Turning the phase
 // off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
 const infrastructureEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "infrastructure");
+const usageEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "usage_costs");
 
 /**
  * One more connection to Valkey, for the circuit breaker.
@@ -64,13 +71,17 @@ const alertEngine = new AlertEngine(infrastructureRepository);
 // One breaker store, shared: the runtime asks it whether to attempt a call and the reconciler
 // asks it whether to slow the schedule down. Two stores would be two opinions.
 const circuits = new CircuitStore({ client: circuitClient });
+const usageIngestor = usageEnabled
+  ? new UsageRecordIngestor(new UsageService(new PostgresUsageRepository(database)))
+  : undefined;
 
 const connectorRuntime = createConnectorRuntime({
   repository: connectorRepository,
   keyRing: environment.connectorKeyRing,
   allowlist: environment.connectorEgressAllowlist,
   circuits,
-  logger
+  logger,
+  ...(usageIngestor ? { usage: usageIngestor } : {})
 });
 
 const worker = new Worker(
@@ -113,11 +124,14 @@ const connectorQueue = new Queue(connectorQueueName, { connection });
 const connectorWorker = new Worker(
   connectorQueueName,
   async (job) => {
+    if (job.name === connectorIngressJobName) {
+      return runConnectorIngressJob(connectorRepository, connectorRegistry, usageIngestor, job);
+    }
     if (!connectorRuntime) {
       logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
       return { status: "skipped", reason: "no_key_ring" };
     }
-    return runConnectorJob(connectorRuntime, job);
+    return runConnectorJob(connectorRuntime, job, usageEnabled);
   },
   { connection, concurrency: 4 }
 );

@@ -223,7 +223,7 @@ export function AttendanceTables({
               <AttendanceMonthNavigation
                 month={range.month}
                 locale={locale}
-                href={(monthValue) => `/${locale}/attendance?view=records&month=${monthValue}`}
+                href={(monthValue) => `/${locale}/attendance/records?month=${monthValue}`}
                 previousLabel={t.monthPrevious!}
                 nextLabel={t.monthNext!}
               />

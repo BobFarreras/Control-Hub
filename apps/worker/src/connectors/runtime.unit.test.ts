@@ -148,7 +148,12 @@ let connector: {
   health: Mock<RegisteredConnector["health"]>;
 } & Partial<RegisteredConnector>;
 
-const build = (overrides: { random?: () => number } = {}) =>
+const build = (
+  overrides: {
+    random?: () => number;
+    usage?: { ingest: Mock<(context: TenantContext, input: Record<string, unknown>) => Promise<unknown>> };
+  } = {}
+) =>
   new ConnectorRuntime(
     { find: () => connector as unknown as RegisteredConnector },
     {
@@ -159,7 +164,8 @@ const build = (overrides: { random?: () => number } = {}) =>
       http: () => http,
       backoff: { baseMs: 1_000, maxMs: 60_000, maxAttempts: 3 },
       now: () => new Date("2026-08-11T10:00:00.000Z"),
-      random: overrides.random ?? (() => 0.5)
+      random: overrides.random ?? (() => 0.5),
+      ...(overrides.usage ? { usage: overrides.usage } : {})
     }
   );
 
@@ -208,6 +214,29 @@ describe("a run that works", () => {
         seenAt: new Date("2026-08-11T10:00:00.000Z")
       }
     ]);
+  });
+
+  it("projects usage before declaring the connector run successful", async () => {
+    connector.run.mockResolvedValue({
+      records: [{ externalId: "usage-1", data: { usage: { sku: "model-a" } } }],
+      cursor: "next"
+    });
+    const usage = { ingest: vi.fn().mockResolvedValue({ inserted: 1 }) };
+    await build({ usage }).run(context, request({ operation: "pull" }));
+    expect(usage.ingest).toHaveBeenCalledWith(context, {
+      instanceId,
+      operation: "pull",
+      completedAt: new Date("2026-08-11T10:00:00.000Z"),
+      records: [{ externalId: "usage-1", data: { usage: { sku: "model-a" } } }]
+    });
+    expect(repository.runs[0]?.status).toBe("succeeded");
+  });
+
+  it("fails the run and leaves the cursor behind when usage projection fails", async () => {
+    const usage = { ingest: vi.fn().mockRejectedValue(new Error("USAGE_RECORD_INVALID")) };
+    const verdict = await build({ usage }).run(context, request());
+    expect(verdict).toMatchObject({ status: "failed", errorCode: "INVALID_RESPONSE" });
+    expect(repository.state.get(`${instanceId}:pull`)?.cursor).toBeNull();
   });
 
   it("keeps the cursor, and hands it back when the next job carries none", async () => {

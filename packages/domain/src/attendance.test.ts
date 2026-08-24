@@ -325,6 +325,7 @@ describe("calendar functions", () => {
       startDate: "2026-08-20",
       endDate: "2026-08-22",
       type: "sick_leave",
+      status: "approved",
       documentUrl: null,
       notes: null,
       createdByMembershipId: "m1"
@@ -352,6 +353,7 @@ describe("calendar functions", () => {
     expect(isAbsenceDay("2026-08-20", absences, "m1")).toBe(true);
     expect(isAbsenceDay("2026-08-23", absences, "m1")).toBe(false);
     expect(isAbsenceDay("2026-08-20", absences, "m2")).toBe(false);
+    expect(isAbsenceDay("2026-08-20", [{ ...absences[0]!, status: "pending" }], "m1")).toBe(false);
   });
 
   it("detects block overlaps", () => {

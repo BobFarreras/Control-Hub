@@ -374,7 +374,14 @@ describe("accepting a delivery", () => {
 
     const outcome = await service.accept({ ...sent, headers: signedHeaders("minted-secret-1", sent.rawBody) });
 
-    expect(outcome).toEqual({ status: "accepted", eventId: "x-1", duplicate: false, stored: "pending" });
+    expect(outcome).toEqual({
+      status: "accepted",
+      eventId: "x-1",
+      tenantId,
+      instanceId,
+      duplicate: false,
+      stored: "pending"
+    });
     expect(repository.inbox).toHaveLength(1);
     // The provider's own identifier, so a redelivery is the same row even when the bytes differ.
     expect(repository.inbox[0]).toMatchObject({ providerEventId: "evt_1", endpointId, payload: sent.rawBody });

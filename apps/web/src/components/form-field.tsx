@@ -83,7 +83,14 @@ export function Field({ label, hint, error, wide, labelHidden, children }: Field
   );
 }
 
-type Option = { value: string; label: string; disabled?: boolean };
+/**
+ * `icon` is drawn beside the words and never instead of them.
+ *
+ * The native `<select>` underneath can only carry text, and it is what a form submits and what a
+ * screen reader that ignores our layer would read. So a picture here is recognition at a glance
+ * for the eye that has one, and nothing at all is lost for the eye that has not.
+ */
+type Option = { value: string; label: string; disabled?: boolean; icon?: ReactNode };
 
 export function SelectControl({
   options,
@@ -208,6 +215,7 @@ export function SelectControl({
         onClick={() => setOpen((current) => !current)}
         onKeyDown={handleKeyDown}
       >
+        {selectedOption?.icon}
         <span className={selectedOption ? "" : "is-placeholder"}>{selectedOption?.label ?? placeholder ?? ""}</span>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
@@ -222,6 +230,7 @@ export function SelectControl({
               key={option.value}
               onClick={() => choose(option.value)}
             >
+              {option.icon}
               <span>{option.label}</span>
               {option.value === selectedValue && <Check size={15} aria-hidden="true" />}
             </button>

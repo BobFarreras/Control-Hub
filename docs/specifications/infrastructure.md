@@ -262,12 +262,50 @@ webhook les fa immediates.
 
 | | |
 |---|---|
-| Config | `baseUrl` (allowlistada), `hostLabels: string[]` (fins a 50), `containerJob?`, `probeJob?` |
+| Config | `baseUrl` (allowlistada), `hostLabels: string[]` (fins a 50, cada etiqueta fins a 190 caracters), `containerJob?`, `probeJob?` |
 | Credencials | Cap per defecte; `api_token` si la instancia esta darrere autenticacio basica |
 | Egress | `operator_allowlist`, esquemes `http` i `https` — un Prometheus a la mateixa VPS no te TLS i l'operador ja l'ha hagut de nomenar |
-| Operacions | `pull_host_metrics`, `pull_container_state`, `pull_probe_state` — totes forma `state` |
+| Operacions | `pull_host_metrics` (120 s), `pull_container_state` (300 s), `pull_probe_state` (120 s) — totes forma `state` |
 | Ingress | No |
 | `externalId` | `host:<label>`, `container:<name>`, `probe:<target>`, `backup:<job>` |
+
+**La PromQL es constant, i es el que ho ordena tot.** Cap valor de la configuracio entra mai en una
+URL: les expressions son literals al codi i `hostLabels`, `containerJob` i `probeJob` **filtren el
+resultat ja parsejat**. Aixo tanca alhora la injeccio de PromQL, l'escapada de regex d'una etiqueta
+que algu ha escrit en un formulari i el "cap secret a una query string", i es una propietat que una
+prova pot exigir en comptes d'un habit que algu ha de mantenir.
+
+**De Prometheus se'n desa una projeccio, mai el cos.** Una resposta porta el joc d'etiquetes sencer
+de cada serie, i un `scrape_config` hi afegeix el que l'operador vulgui. El connector nomena els
+camps que es queden —d'un host: CPU, memoria, el pitjor sistema de fitxers, carrega i temps
+d'engegada; d'un contenidor: quan se'l va veure, quan va arrencar, memoria i CPU; d'una sonda: si
+respon, quant triga i quan li caduca el certificat— i llegeix del mapa d'etiquetes nomes les dues o
+tres que identifiquen la cosa. Una resposta amb mes de 1.000 series, o una passada amb mes de 500
+registres, **es una fallada i no una truncacio**: en una operacio `state` retornar el que hi cabia
+caducaria tota la resta.
+
+**Les cadencies surten d'aqui**, no de la configuracio del tenant: res es sondeja mes sovint del que
+l'escombrada d'alertes —cada 2 minuts— pot actuar, de manera que una cadencia mes rapida compraria
+carrega i no avis.
+
+**La credencial es opcional i es una capcalera.** Un Prometheus no autentica res tot sol; qui demana
+contrasenya es el proxy del davant, i aquell proxy tant pot voler `Basic` com `Bearer`. Un token
+pelat viatja com a `Authorization: Bearer <token>`; un valor que **ja nomena el seu esquema** viatja
+tal qual, de manera que qui hi te autenticacio basica desa `Basic <base64>` en comptes que se li
+demani que faci certa la nostra suposicio. Nomes s'atrapa la credencial absent: un vault que no
+s'obre es un altre fet, i convertir-lo en una crida sense autenticacio informaria d'un `401` de
+l'altra punta quan la resposta era que el nostre anell de claus esta trencat.
+
+**Un target sondat pot dur credencials.** L'`instance` d'una sonda de `blackbox_exporter` es el que
+l'operador hi va apuntar, i pot ser una URL amb contrasenya. L'usuari i la contrasenya **es treuen
+abans** que allo sigui un `externalId`, que va a la base i a una pantalla. La resta es respecta tal
+qual: un `instance` acostuma a ser `host:port` i reescriure'l nomes el faria deixar de quadrar.
+
+**`probe:<target>` es l'etiqueta `instance`**, que es la identitat d'un target a Prometheus, i per
+aixo `up` i `probe_success` conflueixen sols al mateix registre amb el reetiquetatge estandard del
+`blackbox_exporter`. Si dues feines comparteixen `instance`, la fusio es **determinista** —les
+lectures s'apliquen ordenades per `(job, instance, camp)`— i el registre diu quina feina l'ha acabat
+descrivint.
 
 **D'on surten els certificats i els backups**, que era la mancanca de la revisio 1:
 
@@ -275,10 +313,12 @@ webhook les fa immediates.
 |---|---|---|
 | `certificate_expiring` | `probe_ssl_earliest_cert_expiry` | `blackbox_exporter`, sondant els dominis que Traefik serveix |
 | `service_down` | `probe_success`, i `up` per als exporters | `blackbox_exporter` i el propi Prometheus |
-| `backup_stale` | `control_hub_backup_last_success_seconds` | **L'escript de backup de la VPS**, pel textfile collector de `node_exporter` |
+| `backup_stale` | `control_hub_backup_last_success_seconds{backup_job="..."}` | **L'escript de backup de la VPS**, pel textfile collector de `node_exporter` |
 
 Les dues primeres son estandard; la tercera **exigeix una linia a l'escript de backup** que
-escrigui el timestamp al fitxer del textfile collector. Es una precondicio de la 7.2, no una feina
+escrigui el timestamp al fitxer del textfile collector. L'etiqueta es **`backup_job`** i no `job`,
+perque `job` pertany a la configuracio d'escombrada i diria `node` per a tots els backups de la
+maquina; l'`externalId` que en surt es `backup:<backup_job>`. Es una precondicio de la 7.2, no una feina
 de codi, i esta al runbook. Si en la revisio decideixes no desplegar `blackbox_exporter` o no
 tocar l'escript, aquelles regles **no cauen del disseny: cauen soles**, perque una regla sense
 dades queda `starved` i es veu (decisio 7). Treure-les seria esborrar dues files de configuracio,
@@ -339,12 +379,64 @@ desassociar un workflow i esborrar una regla son actes ordinaris i auditats. `in
 **no en te**: un esdeveniment es la constancia que va passar una cosa, i l'unic que en treu cap es
 la purga de retencio.
 
-**`0037_infrastructure_hosts.sql` — modul (7.2)**
+**`0039_infrastructure_alert_kinds.sql` — modul (7.2), entregada al B3**
+
+- Amplia `check (kind in (...))` d'`infra_alert_rules` amb `service_down`, `certificate_expiring` i
+  `backup_stale`, que es el que la `0035` ja deia que faria la 7.2.
+- Hi afegeix `check (kind = 'workflow_failed' or target_type = 'instance')`: les tres regles noves
+  llegeixen tot l'inventari d'una instancia i no hi ha res que un `target_id` pugui anomenar.
+
+La `0038` la va gastar `attendance_absence_approval`, del redisseny de Jornada.
+
+**`0037_infrastructure_hosts.sql` — modul (7.2), entregada al B2**
 
 - `infra_hosts` — `name`, `hostname` (l'etiqueta amb que Prometheus l'anomena), `environment`,
-  `notes`. `unique (tenant_id, name)`.
+  `notes`. `unique (tenant_id, name)` i tambe **`unique (tenant_id, hostname)`**.
 - `infra_services` — `host_id`, `name`, `kind` (`container|http|database|automation`),
   `match_key`, `expected_state`, `customer_id` opcional.
+  `unique (tenant_id, host_id, name)` i **`unique (tenant_id, match_key)`**.
+
+**`hostname` es obligatori.** Es l'unica manera de comparar un host declarat amb una lectura, i un
+host que cap observacio pot contradir es una fila que sembla cobertura. Esta acotat a **190
+caracters**, alla on el connector acota `hostLabels`, perque `host:<label>` capigui als 200 d'un
+`external_id`. La unicitat evita que dos hosts reclamin la mateixa etiqueta i que una sola caiguda
+arribi com dues alertes de dues coses que son la mateixa.
+
+**Aquella etiqueta es `instance`, i no el nom bonic de la maquina.** El connector identifica un host
+per l'etiqueta `instance` de la serie —el target del raspat, tipicament `node-exporter:9100`— i la
+filtra contra `hostLabels`; no llegeix cap etiqueta `host`. Aixo vol dir que el `hostname` que es
+declara aqui ha de ser **exactament** el mateix valor que hi ha a `hostLabels`, i que `vpsia` no hi
+serveix si el target es diu `node-exporter:9100`. El parany que hi ha al darrere val la pena
+escriure'l: els `external_labels` d'un `prometheus.yml` **no apareixen a les consultes locals** —
+nomes s'apliquen a federacio, `remote_write` i alertes—, de manera que declarar
+`external_labels: { host: vpsia }` i esperar-lo a la lectura no falla, simplement no distingeix res.
+Per a mes d'una maquina no cal cap `relabel_config`: dos `node-exporter` son dos targets i per tant
+dos `instance` diferents. Nomes caldria si un dia arribessin series d'una altra maquina per
+`remote_write`, que es precisament el cas on els `external_labels` si que compten.
+
+**`environment` es un `check` acotat** (`production|staging|development`), pel mateix motiu que el
+`kind` d'una regla: un valor que ningu filtra no es un filtre, es una errada d'escriptura que
+parteix un entorn en dos.
+
+**`kind` diu que **es** el servei; `match_key` diu com **s'observa**.** Son dues columnes i no una
+perque el Postgres d'un Supabase autoallotjat es una base de dades i el veu cAdvisor com un
+contenidor: derivar l'observacio del `kind` deixaria `database` sense cap font de dades a la 7.2.
+`match_key` es l'`external_id` **sencer**, prefix inclos — `container:<name>`, `probe:<target>`,
+`host:<label>` — i es unic **sense el `kind` a dins**: el que fa que dos serveis siguin el mateix
+es que vigilen el mateix objecte, no com algu els ha classificat.
+
+**`expected_state` te tres valors, tots avaluables pel B3:** `up` es el cas normal; `stopped` es un
+servei que ha de quedar-se aturat i del qual volem saber si torna —un panell d'administracio
+retirat es el cas que va justificar el valor—; `ignored` es declarat pero deliberadament no
+alertat. Un quart valor que cap passada avalues tornaria a ser cobertura que no dispara mai. Amb
+`up`, l'absencia de registre nomes vol dir **caigut** si la instancia es fresca: si es mes rancia
+que `freshness_seconds` el veredicte es `starved`, perque no sabem si ha caigut el servei o qui ens
+ho havia de dir.
+
+**Un servei s'esborra; un host no.** No es una ruta que falta: es el `grant`. `infra_services` te
+`delete` i `infra_hosts` no en te, igual que `infra_alert_events`. D'un host en penja historia —els
+seus serveis i, a traves seu, cada alerta que ha disparat— i una maquina donada de baixa es una
+maquina que va existir. Retirar-la es un `environment` que algu canvia.
 
 `incidents` **no es modifica**: la `0014` ja te la forma que cal i aquesta fase li dona el primer
 escriptor.
@@ -412,6 +504,88 @@ fila a `incidents` amb la gravetat de la regla i queda lligada per `incident_id`
 segueix viva no se n'obre cap altra —ho impedeix l'index unic parcial— i en resoldre's, la
 incidencia passa a `monitoring`; tancar-la es d'una persona.
 
+### Les tres regles de la 7.2 (B3)
+
+| Regla | Que mira | `dedupKey` | Parametres |
+|---|---|---|---|
+| `service_down` | Cada servei declarat de la instancia | el seu `match_key` | cap |
+| `certificate_expiring` | Cada lectura de sonda amb data de caducitat | l'`externalId` `probe:<target>` | `withinDays`, per defecte 14 |
+| `backup_stale` | Cada bategada de backup | l'`externalId` `backup:<job>` | `maximumAgeHours`, per defecte 26 |
+
+**El `dedupKey` es l'identificador mateix, sense cap prefix afegit.** `dedup_key` esta acotat a 200
+caracters i `match_key` tambe pot arribar-hi: `service:<match_key>` desbordaria en silenci. Com que
+tots dos ja porten el seu prefix, es prenen tal qual i el desbordament es impossible per
+construccio.
+
+**Un servei es "amunt" quan la seva lectura s'ha refrescat dins el pressupost i cap booleà diu el
+contrari.** `connector_records` es estat sobreescrit: un contenidor aturat **no perd la fila**,
+deixa d'avancar-li el `last_seen_at`. L'absencia es doncs una lectura que ha deixat de refrescar-se,
+no una fila que falta. Els booleans que contradiuen son `success` i `scrapeUp` d'una sonda i
+`active` d'una automatitzacio; un host i un contenidor no en tenen cap.
+
+El mateix `freshness_seconds` s'aplica a dos nivells i encaixa: si tota l'operacio es rancia la
+regla queda `starved` i no diu res de ningu; si l'operacio es fresca pero **aquella** lectura no,
+llavors nomes ha desaparegut aquella cosa.
+
+**Una regla llegeix una instancia, i el prefix decideix quins serveis li toquen.** Un tenant amb
+Prometheus i n8n en te dues i pot declarar serveis de totes dues; sense filtre, cada regla
+dispararia pels serveis de l'altra. No cal cap columna: el prefix del `match_key` diu quina
+operacio observa la cosa (`host:`, `container:`, `probe:`, `backup:`, `workflow:`), i una instancia
+que executa aquella operacio hi te fila a `connector_operation_state`. Una operacio que no ha
+corregut mai no en te, i llavors encara no hem mirat i no en diem res.
+
+**L'absencia vol dir dues coses oposades.** Per a `service_down` l'absencia **es** l'alerta: la
+decisio 1 diu que un servei declarat que deixa d'apareixer es precisament el cas que s'ha de veure.
+Per a les altres dues no hi ha res que declari que hauria d'existir, aixi que l'absencia es
+ignorancia: sense cap lectura amb certificat, o sense cap registre `backup:`, la regla queda
+`starved` i no verda. Es el mode de fallada d'un escript de backup que no emet l'etiqueta
+`backup_job`, que altrament es veuria com un tauler verd. Per simetria, una regla `service_down`
+sense cap servei avaluable tambe queda `starved`.
+
+**Les tres son d'instancia i no de servei.** `target_type` es queda amb `instance | automation`, i
+les noves exigeixen `instance`: llegeixen tot l'inventari i parlen per servei, o sigui que no hi ha
+res que un `target_id` pugui anomenar. Ho imposa un `check` de la `0039` i no nomes el cas d'us,
+perque un `patch` no porta mai el `kind` i l'unic que sap que es una regla es la fila. Vigilar un
+sol servei seria afegir un valor al `check`, no refer res.
+
+### El que el tauler llegeix (B4)
+
+**Una sola nocio de "caigut".** El tauler i la regla `service_down` conclouen amb **el mateix nucli
+del domini**: la lectura mes recent d'aquell identificador, refrescada dins el pressupost i sense
+cap booleà que la contradigui. Dues definicions acabarien divergint, i llavors una pantalla verda i
+una alerta viva parlarien de la mateixa maquina alhora.
+
+**El que el tauler hi afegeix es una tercera resposta.** Una regla que no hi veu diu `starved`
+d'ella mateixa; una pantalla ha de dir **`unknown` de la cosa**. Dibuixar un col·lector que hem
+perdut de vista com vint maquines caient alhora seria mentir exactament quan mes falta fa que la
+pantalla sigui honesta. `down` queda per a una passada que **si** ha corregut i no ha trobat allo:
+o la lectura ha deixat d'avancar, o el `success` de la sonda diu que no.
+
+**El pressupost surt del manifest, no de la pantalla.** `everySeconds` de l'operacio per **tres
+passades** —les mateixes tres que la pantalla ja aplica a l'edat d'una automatitzacio. Un
+`pull_host_metrics` cada 2 minuts i un `pull_container_state` cada 5 no es mesuren amb la mateixa
+vara, i cap fitxer de `apps/web` conte cap llindar. Una operacio que ningu programa no te cadencia,
+i per tant no te pressupost: tot el que observaria queda `unknown`.
+
+**El tauler diu el que veu, no el que algu esperava veure.** Un servei declarat `stopped` es llegeix
+`down`, i es la pantalla qui hi posa "esperat" al costat. Ensenyar la intencio a la funcio que
+observa seria, altre cop, tornar a tenir dues nocions de caigut.
+
+**Un host es busca per l'identificador que porta la seva lectura**, `host:<hostname>`, que es tot el
+motiu pel qual `hostname` es obligatori en declarar-lo. La construccio d'aquest identificador viu al
+domini, en una funcio, i no repetida a cada capa.
+
+**Un tenant pot tenir dos col·lectors mirant la mateixa maquina.** Guanya la lectura mes recent, de
+manera que quina respon es una propietat de la dada i no de l'ordre en que les files han tornat. El
+mateix per a la frescor de la passada: val la mes recent de les instancies que executen l'operacio.
+
+**La resposta porta una llista blanca de camps per prefix.** El connector ja escriu una projeccio
+nomenada camp a camp, aixi que aquesta es la segona tanca i no la primera — pero es la que hi ha al
+costat del cable on hi ha un navegador. Un camp que un col·lector futur comenci a publicar no
+arriba a ningu pel sol fet d'existir, que es la mateixa regla que segueix la resta de la superficie.
+Un prefix que ningu ha llistat ensenya el seu estat i la seva edat i res mes, que es el costat segur
+per equivocar-se.
+
 ## Permisos i tenancy
 
 Cap permis nou i cap backfill: `infrastructure:read` i `infrastructure:operate` existeixen des de
@@ -438,6 +612,7 @@ REST sota `/api/v1`, problem details RFC 9457, com la superficie de connectors.
 | `PUT /api/v1/infrastructure/automations/:instanceId/:externalId/link` | `infrastructure:operate` | 7.1 |
 | `GET`, `POST /api/v1/infrastructure/alert-rules`, `PATCH`, `DELETE /:id` | read / operate | 7.1 |
 | `GET /api/v1/infrastructure/alerts`, `POST /:id/acknowledge`, `/resolve` | read / operate | 7.1 |
+| `GET /api/v1/infrastructure/inventory` | `infrastructure:read` | 7.2 |
 | `GET`, `POST /api/v1/infrastructure/hosts`, `GET`, `PATCH /:id` | read / operate | 7.2 |
 | `GET`, `POST /api/v1/infrastructure/services`, `PATCH`, `DELETE /:id` | read / operate | 7.2 |
 
@@ -447,6 +622,11 @@ quantes ha vist algu. Porta `observedFrom`, que es **la lectura mes antiga** de 
 al darrere i no la mes nova: un resum nomes es tan fresc com la cosa mes rancia que hi entra.
 Sense res a resumir es `null`, mai l'hora d'ara.
 
+`inventory` es l'inventari declarat **unit a les seves lectures**, que es l'unica cosa d'aquesta
+llista que no es un recompte ni una taula: les vuit rutes de hosts i serveis tornen el que algu va
+declarar i res mes, i sense aquesta el tauler tecnic seria una llista de noms que la dada no pot
+contradir mai. Porta `observedFrom` amb el mateix criteri que `overview`: la lectura mes antiga.
+
 Cap resposta porta una URL de proveidor, ni un token, ni el cos cru d'un event. Les respostes
 d'automatitzacions porten `externalId` i el que la pantalla necessita per **construir** l'enllac,
 no l'enllac. Tota xifra observada viatja amb la seva hora de lectura. OpenAPI es genera de les
@@ -455,9 +635,29 @@ Fase 6.
 
 ## La pantalla
 
-`/{locale}/infrastructure`, darrere la flag i amb sessio. Quatre parts: el resum, les alertes
-—vives per defecte, amb un enllac per incloure-hi les resoltes—, les automatitzacions i les
-regles. Qui no te `infrastructure:operate` la veu sencera i sense cap boto.
+`/{locale}/infrastructure`, darrere la flag i amb sessio. Cinc parts: el resum, les alertes —vives
+per defecte, amb un enllac per incloure-hi les resoltes—, **les maquines**, les automatitzacions i
+les regles. Qui no te `infrastructure:operate` la veu sencera i sense cap boto.
+
+**Cada maquina es una fitxa i no una fila** (7.2, B4). Porta el nom, l'etiqueta per la qual se la
+reconeix, l'entorn, l'estat amb la seva edat, les xifres que se n'han llegit, i a sota la taula
+dels seus serveis amb l'estat i l'edat de cadascun. Dues maquines no es comparen mai columna a
+columna —una sonda i un host no tenen les mateixes xifres—, i una taula ho hauria dibuixat com una
+graella mig buida. Declarar i corregir maquines i serveis, i deixar de vigilar-ne un, son dialegs
+d'aquesta mateixa pantalla; qui nomes te `infrastructure:read` no en veu cap boto.
+
+**L'estat el diu l'API i la pantalla no en te cap de propi.** Es dibuixa tal com arriba —`up`,
+`down` o `unknown`—, amb la seva paraula i la seva icona, i `unknown` porta la frase que diu que
+no es una caiguda sino un col·lector que no hem vist passar. Al costat no hi ha cap segona
+etiqueta de "dada antiga": si una lectura encara compta ja s'ha decidit contra la cadencia que el
+connector declara, i una regla mes gruixuda dibuixada al costat seria una segona opinio sobre la
+mateixa pregunta. Les automatitzacions, que no tenen estat observat, la conserven.
+
+**Les xifres es tradueixen a la pagina i contra el mateix instant que les edats.** Un percentatge,
+uns bytes, una durada i una data de caducitat es dibuixen amb les paraules del diccionari, i el
+que ja ha passat diu "caducat" en comptes de comptar cap enrere. La llista de camps que es poden
+dibuixar viu a `apps/web/src/lib/infrastructure.ts` i es tancada, com la de l'API: un camp que un
+col·lector futur comenci a publicar no arriba a cap pantalla pel sol fet d'existir.
 
 **L'enllac i l'edat es calculen al servidor, no al navegador.** La resposta d'infraestructura no
 porta cap adreca de proveidor; la base surt de la superficie d'integracions, que demana el seu
@@ -508,7 +708,10 @@ Els cinc del pla, i quatre que la fase no pot tancar sense.
 - **Integracio worker:** reconciliacio de calendaris (orfe, flag apagada, circuit obert); una
   instancia penjada que no bloqueja les altres ni l'escalacio.
 - **E2E:** amb el flag obert i sessio iniciada, en `ca`: veure les automatitzacions, obrir-ne
-  l'enllac extern, veure una alerta viva i reconeixer-la. Amb el flag tancat,
+  l'enllac extern, veure una alerta viva i reconeixer-la; i veure una maquina amb les seves xifres
+  i tres serveis que diuen tres coses diferents —un que respon, un que ha deixat d'avancar i un
+  que ningu ha mirat mai—, que es l'unica manera de provar que la diferencia entre `down` i
+  `unknown` sobreviu a l'API, a la pagina i al navegador. Amb el flag tancat,
   `/{locale}/infrastructure` respon `404`.
 
 ## Rollout, feature flag i rollback
@@ -519,7 +722,8 @@ ruta, **el worker no programa ni reconcilia cap operacio i esborra els calendari
 web no mostra l'entrada i la pantalla respon `404`. **L'entrada "Infraestructura" del menu lateral
 deixa de ser `href="#"` i passa a estar darrere el flag**, com Integracions.
 
-Les tres migracions son additives i s'apliquen amb la flag apagada sense efecte observable.
+Les migracions son additives i s'apliquen amb la flag apagada sense efecte observable. La `0039`
+nomes amplia dos `check` d'`infra_alert_rules` i no toca cap fila existent.
 Rollback es apagar la flag.
 
 Variables noves a `.env.example`: cap de propia. Els connectors depenen de
@@ -548,10 +752,39 @@ al mateix commit.
 
 | # | Increment | Fitxers que toca | Tanca |
 |---|---|---|---|
-| B1 | Connector `prometheus`, amb `pull_probe_state` | **`packages/connectors/src/built-in/prometheus.ts` i el seu test, i res mes** | Contract tests |
-| B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database` | Criteri 9 sobre les taules noves |
+| B1 | Connector `prometheus`, amb `pull_probe_state` | `packages/connectors/src/built-in/prometheus.ts` i el seu test, el registre, i **les paraules del connector a `packages/i18n`** | Contract tests |
+| | *L'i18n no es un afegit: `packages/i18n/src/index.test.ts` recorre el registre i exigeix nom, descripcio i etiqueta de cada camp en `ca`, `es` i `en`. Aquella porta no existia quan l'A4 va escriure "i res mes" per al connector d'n8n —va arribar amb la pantalla de cataleg— i sense les paraules l'increment deixaria `pnpm check` en vermell.* | | |
+| B2 | `0037`, inventari de hosts i serveis: casos d'us i API | `packages/application`, `apps/api`, `packages/database`, `packages/persistence` | Criteri 9 sobre les taules noves |
+
+*El B2 tambe toca `packages/persistence`, que la fila no nomenava. Es on viu
+`PostgresInfrastructureRepository`: sense implementacio les rutes no tenen res al darrere, i les
+proves d'RLS que el criteri 9 exigeix son precisament les d'aquell paquet.*
 | B3 | Les tres regles d'alerta d'infraestructura | `packages/domain`, `packages/application` | Veredictes, incloent-hi `starved` |
+
+*El B3 en toca quatre mes. La migracio `0039` amplia el `check` de `kind`, que el comentari de la
+`0035` ja anunciava textualment; sense ella la base refusa les files i les regles no es poden ni
+crear. `packages/persistence` perque `readEvaluationState` nomes llegia `pull_executions` i cap
+servei, i unes regles correctes als tests i mortes en produccio son el pitjor resultat possible.
+`apps/api` i `apps/web/src/lib/api-types.ts`, una linia cadascun: la llista de tipus de regla ara
+surt d'una constant del domini que la ruta escampa, de manera que no hi ha dues llistes per
+divergir.*
 | B4 | Dashboard tecnic i detall de host i servei, OpenAPI, `current-state.md` | `apps/web`, `packages/i18n`, `docs/` | Definition of Done de la fase |
+| | *Partit en dos commits: primer la lectura —el que la pantalla podra dibuixar— i despres la pantalla. El primer es on son les proves que importen.* | | |
+
+*El B4 en toca quatre mes que la seva fila, i per una rao sola: **no existia cap lectura**. Les vuit
+rutes del B2 tornen l'inventari declarat i prou, aixi que sense una ruta nova el "dashboard tecnic"
+seria una llista de noms. Entra `GET /api/v1/infrastructure/inventory`, i amb ella `packages/domain`
+—el nucli compartit amb `service_down`—, `packages/application` —els pressupostos i el cas d'us—,
+`packages/persistence` i `apps/api`. Al mateix commit s'hi afegeixen a l'OpenAPI **les vuit rutes
+del B2**, que no hi eren: la llista del test es un whitelist i ningu comprovava que fos completa, de
+manera que van passar sense que cap propietat les mires. Ara una prova falla si algu declara una
+ruta d'infraestructura i no l'apunta.*
+
+*El segon commit del B4 es la pantalla, i tanca la fase: la seccio de maquines amb el detall de
+host i de servei, els dialegs per declarar-los i corregir-los, les paraules en `ca`, `es` i `en`, i
+l'E2E de les tres respostes. La suite E2E porta ara un Prometheus de fixture amb el seu inventari,
+les seves lectures i l'estat de les seves operacions: `unknown` nomes es pot sembrar deixant una
+operacio sense cap passada, i no hi ha cap altra manera d'escriure aquella fila.*
 
 ## Com entraria una capacitat d'accio (disseny, no s'implementa a la Fase 7)
 

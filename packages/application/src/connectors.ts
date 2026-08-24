@@ -237,6 +237,14 @@ export type InboxRecord = {
   processedAt: Date | null;
 };
 
+export type PendingInboxRecord = InboxRecord & {
+  tenantId: string;
+  instanceId: string;
+  connectorType: string;
+  instanceStatus: ConnectorInstanceStatus;
+  config: ConnectorConfig;
+};
+
 export type RecordInboxInput = {
   endpointId: string;
   /** The provider's identifier, or the sha256 of the raw body when it sends none. Never empty. */
@@ -401,6 +409,7 @@ export type ConnectorRepository = {
   purgeRecords(input: PurgeRecordsInput): Promise<PurgeRecordsResult>;
 
   recordInboxEvent(context: TenantContext, input: RecordInboxInput): Promise<RecordInboxResult>;
+  getPendingInbox(context: TenantContext, eventId: string): Promise<PendingInboxRecord | null>;
   listPendingInbox(context: TenantContext, limit: number): Promise<InboxRecord[]>;
   /** Raises `attempts` and leaves the event pending: a try that failed is not a verdict yet. */
   recordInboxAttempt(context: TenantContext, eventId: string): Promise<void>;

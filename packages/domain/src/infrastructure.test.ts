@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentReading,
   evaluateAlertRules,
+  hostMatchKey,
   incidentFor,
+  observedTally,
   type AlertRule,
+  type DeclaredService,
+  type JsonValue,
   type LiveAlert,
   type ObservedRecord,
+  type ObservedState,
   type OperationFreshness
 } from "./infrastructure.js";
 
@@ -48,6 +54,7 @@ const evaluate = (input: {
   evaluateAlertRules({
     rules: input.rules ?? [rule()],
     records: input.records ?? [],
+    services: [],
     liveAlerts: input.live ?? [],
     freshness: input.freshness ?? fresh,
     now
@@ -249,5 +256,523 @@ describe("many rules at once", () => {
   it("gives the same answer twice for the same input, because a missed pass must not lose an alert", () => {
     const input = { records: [failure("1", "wf-a", 5), failure("2", "wf-b", 5)] };
     expect(evaluate(input)).toEqual(evaluate(input));
+  });
+});
+
+/**
+ * The three infrastructure rules of phase 7.2.
+ *
+ * They read the same table as the one above but ask a different question: not "did something
+ * fail" but "is the thing we declared still there". The inventory is what makes the difference --
+ * absence only means an outage when somebody said the thing should exist.
+ */
+const service = (overrides: Partial<DeclaredService> = {}): DeclaredService => ({
+  name: "Supabase database",
+  hostName: "vps-1",
+  matchKey: "container:supabase-db",
+  expectedState: "up",
+  ...overrides
+});
+
+const seen = (
+  externalId: string,
+  operation: string,
+  data: Record<string, JsonValue>,
+  secondsAgo = 30
+): ObservedRecord => ({
+  instanceId,
+  operation,
+  externalId,
+  data,
+  firstSeenAt: new Date(now.getTime() - 86_400_000),
+  lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+});
+
+/** A Prometheus instance that has run all three of its operations recently. */
+const observing: OperationFreshness[] = [
+  { instanceId, operation: "pull_host_metrics", lastSuccessAt: new Date(now.getTime() - 60_000) },
+  { instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 60_000) },
+  { instanceId, operation: "pull_probe_state", lastSuccessAt: new Date(now.getTime() - 60_000) }
+];
+
+const watch = (input: {
+  rules?: readonly AlertRule[];
+  records?: readonly ObservedRecord[];
+  services?: readonly DeclaredService[];
+  live?: readonly LiveAlert[];
+  freshness?: readonly OperationFreshness[];
+}) =>
+  evaluateAlertRules({
+    rules: input.rules ?? [rule({ kind: "service_down" })],
+    records: input.records ?? [],
+    services: input.services ?? [service()],
+    liveAlerts: input.live ?? [],
+    freshness: input.freshness ?? observing,
+    now
+  });
+
+describe("a service somebody declared", () => {
+  it("fires when its reading has stopped being refreshed, and names it by its match key", () => {
+    const verdicts = watch({ records: [seen("container:supabase-db", "pull_container_state", {}, 1_200)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "container:supabase-db",
+        severity: "high",
+        summary: {
+          service: "Supabase database",
+          host: "vps-1",
+          expected: "up",
+          lastSeenAt: "2026-08-13T11:40:00.000Z"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about one that is still being refreshed", () => {
+    expect(watch({ records: [seen("container:supabase-db", "pull_container_state", {})] })).toEqual([]);
+  });
+
+  /** Decision 1: a declared service that no observation ever mentions is exactly the case to see. */
+  it("fires for one that has never been observed at all", () => {
+    const verdicts = watch({ records: [] });
+
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toMatchObject({ status: "firing", dedupKey: "container:supabase-db" });
+    expect(verdicts[0]?.summary.lastSeenAt).toBeUndefined();
+  });
+
+  it("believes a probe that says it failed, even though the reading is current", () => {
+    const probe = service({ matchKey: "probe:https://example.test", name: "Public site" });
+    const records = [seen("probe:https://example.test", "pull_probe_state", { success: false, scrapeUp: true })];
+
+    expect(watch({ services: [probe], records })).toHaveLength(1);
+  });
+
+  it("believes Prometheus when it says it could not scrape the exporter", () => {
+    const probe = service({ matchKey: "probe:node-exporter:9100" });
+    const records = [seen("probe:node-exporter:9100", "pull_probe_state", { scrapeUp: false })];
+
+    expect(watch({ services: [probe], records })).toHaveLength(1);
+  });
+
+  it("believes an automation that says it is not active", () => {
+    const automation = service({ matchKey: "workflow:wf-a" });
+    const freshness = [
+      ...observing,
+      { instanceId, operation: "pull_workflows", lastSuccessAt: new Date(now.getTime() - 60_000) }
+    ];
+    const records = [seen("workflow:wf-a", "pull_workflows", { active: false })];
+
+    expect(watch({ services: [automation], records, freshness })).toHaveLength(1);
+    const running = [seen("workflow:wf-a", "pull_workflows", { active: true })];
+    expect(watch({ services: [automation], records: running, freshness })).toEqual([]);
+  });
+
+  it("reads a service expected to stay stopped the other way round", () => {
+    const retired = service({ matchKey: "container:old-admin", expectedState: "stopped" });
+    const back = [seen("container:old-admin", "pull_container_state", {})];
+
+    expect(watch({ services: [retired], records: back })).toMatchObject([{ status: "firing" }]);
+    expect(watch({ services: [retired], records: [] })).toEqual([]);
+  });
+
+  it("never evaluates one that was declared and deliberately ignored", () => {
+    const ignored = service({ expectedState: "ignored" });
+    expect(watch({ services: [ignored], records: [] })).toEqual([expect.objectContaining({ status: "starved" })]);
+  });
+
+  /**
+   * A tenant with Prometheus and n8n has two instances and may declare services of both. Without
+   * this, each rule would fire for the other instance's inventory.
+   */
+  it("leaves alone a service whose operation this instance does not run", () => {
+    // The container is this Prometheus instance's to judge and is missing, so it fires. The
+    // automation belongs to the n8n instance next to it: without the filter it would drag
+    // `pull_workflows` into what this rule must have read, and starve the whole rule instead.
+    const automation = service({ matchKey: "workflow:wf-a", name: "Facturacio" });
+    const freshness = [
+      ...observing,
+      { instanceId: "instance-2", operation: "pull_workflows", lastSuccessAt: new Date(now.getTime() - 60_000) }
+    ];
+
+    const verdicts = watch({ services: [service(), automation], records: [], freshness });
+
+    expect(verdicts).toEqual([expect.objectContaining({ status: "firing", dedupKey: "container:supabase-db" })]);
+  });
+
+  it("is starved rather than green when it has nothing evaluable to watch", () => {
+    expect(watch({ services: [] })).toEqual([
+      { ruleId: "rule-1", status: "starved", dedupKey: "rule:rule-1", severity: "high", summary: {} }
+    ]);
+  });
+
+  it("is starved when the operation behind its inventory has gone stale", () => {
+    const stale = observing.map((entry) =>
+      entry.operation === "pull_container_state"
+        ? { ...entry, lastSuccessAt: new Date(now.getTime() - 3_600_000) }
+        : entry
+    );
+
+    expect(watch({ records: [], freshness: stale })).toMatchObject([{ status: "starved" }]);
+  });
+
+  it("resolves when the service comes back", () => {
+    const live: LiveAlert[] = [{ ruleId: "rule-1", dedupKey: "container:supabase-db" }];
+    const records = [seen("container:supabase-db", "pull_container_state", {})];
+
+    expect(watch({ records, live })).toEqual([
+      { ruleId: "rule-1", status: "resolved", dedupKey: "container:supabase-db", severity: "high", summary: {} }
+    ]);
+  });
+});
+
+describe("a certificate about to expire", () => {
+  const expiring = (days: number) =>
+    seen("probe:https://example.test", "pull_probe_state", {
+      certificateExpiresAt: new Date(now.getTime() + days * 86_400_000).toISOString()
+    });
+
+  const certificateRule = [rule({ kind: "certificate_expiring" })];
+
+  it("fires inside the fortnight it watches by default, and names the days left", () => {
+    const verdicts = watch({ rules: certificateRule, records: [expiring(9)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "probe:https://example.test",
+        severity: "high",
+        summary: {
+          target: "https://example.test",
+          expiresAt: "2026-08-22T12:00:00.000Z",
+          daysLeft: "9"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about one with time left", () => {
+    expect(watch({ rules: certificateRule, records: [expiring(40)] })).toEqual([]);
+  });
+
+  it("watches the window it was asked about", () => {
+    const rules = [rule({ kind: "certificate_expiring", params: { withinDays: 45 } })];
+    expect(watch({ rules, records: [expiring(40)] })).toHaveLength(1);
+  });
+
+  it("fires for one that has already expired, and says so with a negative count", () => {
+    const verdicts = watch({ rules: certificateRule, records: [expiring(-3)] });
+    expect(verdicts[0]?.summary.daysLeft).toBe("-3");
+  });
+
+  /**
+   * The failure mode this rule exists to avoid is the quiet one: no blackbox job configured, no
+   * certificate in any reading, and a screen that looks fine.
+   */
+  it("is starved when no reading carries a certificate at all", () => {
+    const records = [seen("probe:https://example.test", "pull_probe_state", { success: true })];
+    expect(watch({ rules: certificateRule, records })).toMatchObject([{ status: "starved" }]);
+  });
+
+  it("ignores a date that does not parse rather than firing on it", () => {
+    const broken = [seen("probe:https://example.test", "pull_probe_state", { certificateExpiresAt: "soon" })];
+    expect(watch({ rules: certificateRule, records: broken })).toMatchObject([{ status: "starved" }]);
+  });
+});
+
+describe("a backup that stopped running", () => {
+  const ranHoursAgo = (hours: number) =>
+    seen("backup:hub-vps-daily", "pull_probe_state", {
+      lastSuccessAt: new Date(now.getTime() - hours * 3_600_000).toISOString()
+    });
+
+  const backupRule = [rule({ kind: "backup_stale" })];
+
+  it("fires past the day and two hours it allows by default", () => {
+    const verdicts = watch({ rules: backupRule, records: [ranHoursAgo(30)] });
+
+    expect(verdicts).toEqual([
+      {
+        ruleId: "rule-1",
+        status: "firing",
+        dedupKey: "backup:hub-vps-daily",
+        severity: "high",
+        summary: {
+          backupJob: "hub-vps-daily",
+          lastSuccessAt: "2026-08-12T06:00:00.000Z",
+          ageHours: "30"
+        }
+      }
+    ]);
+  });
+
+  it("says nothing about a backup that ran last night", () => {
+    expect(watch({ rules: backupRule, records: [ranHoursAgo(11)] })).toEqual([]);
+  });
+
+  it("allows the age it was asked to allow", () => {
+    const rules = [rule({ kind: "backup_stale", params: { maximumAgeHours: 8 } })];
+    expect(watch({ rules, records: [ranHoursAgo(11)] })).toHaveLength(1);
+  });
+
+  /**
+   * The whole point of the rule. A backup script that writes no `backup_job` label produces no
+   * record, and a rule that answered "green" to that would be worse than having no rule.
+   */
+  it("is starved when nothing ever wrote a backup heartbeat", () => {
+    expect(watch({ rules: backupRule, records: [] })).toEqual([
+      { ruleId: "rule-1", status: "starved", dedupKey: "rule:rule-1", severity: "high", summary: {} }
+    ]);
+  });
+
+  it("reads no backup from another instance", () => {
+    const elsewhere = { ...ranHoursAgo(30), instanceId: "instance-2" };
+    expect(watch({ rules: backupRule, records: [elsewhere] })).toMatchObject([{ status: "starved" }]);
+  });
+});
+
+/**
+ * The reading behind the technical dashboard.
+ *
+ * The same core the `service_down` rule uses, asked a different question: not "should somebody be
+ * told" but "what does this thing look like right now". The difference that matters is the third
+ * answer -- a rule that cannot see says `starved` about itself, and here that same blindness has
+ * to read as `unknown` about the thing, never as `down`.
+ */
+describe("what the dashboard sees", () => {
+  const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_state: 360 };
+
+  const passed = (operation: string, secondsAgo: number, instance = instanceId): OperationFreshness => ({
+    instanceId: instance,
+    operation,
+    lastSuccessAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const seen = (
+    operation: string,
+    externalId: string,
+    secondsAgo: number,
+    data: Record<string, JsonValue> = {},
+    instance = instanceId
+  ): ObservedRecord => ({
+    instanceId: instance,
+    operation,
+    externalId,
+    data,
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const read = (input: {
+    matchKey: string;
+    records?: readonly ObservedRecord[];
+    freshness?: readonly OperationFreshness[];
+  }) =>
+    currentReading({
+      matchKey: input.matchKey,
+      records: input.records ?? [],
+      freshness: input.freshness ?? [passed("pull_host_metrics", 60)],
+      budgets,
+      now
+    });
+
+  it("names a host's reading by the prefix the connector publishes", () => {
+    expect(hostMatchKey("node-exporter:9100")).toBe("host:node-exporter:9100");
+  });
+
+  it("is up when the reading refreshed inside its budget, and hands the projection over whole", () => {
+    const record = seen("pull_host_metrics", "host:vps", 90, { cpuBusyRatio: 0.12, load1: 0.4 });
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toEqual({
+      state: "up",
+      observedAt: new Date(now.getTime() - 90_000),
+      instanceId,
+      data: { cpuBusyRatio: 0.12, load1: 0.4 }
+    });
+  });
+
+  /**
+   * `connector_records` is overwritten state: a machine that stopped answering keeps its row and
+   * stops moving `last_seen_at`. Absence is therefore a reading that went quiet, which is exactly
+   * what the row still being there has to be read as.
+   */
+  it("is down when the pass is current and this one reading stopped moving", () => {
+    const record = seen("pull_host_metrics", "host:vps", 1200, { cpuBusyRatio: 0.12 });
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toMatchObject({
+      state: "down",
+      observedAt: new Date(now.getTime() - 1_200_000)
+    });
+  });
+
+  it("is down when the pass is current and there is no reading at all", () => {
+    expect(read({ matchKey: "host:vps" })).toEqual({ state: "down", observedAt: null, instanceId: null, data: {} });
+  });
+
+  /**
+   * The distinction the whole third state exists for. Losing sight of Prometheus is not twenty
+   * machines going down at once, and a dashboard that drew it that way would be lying at the exact
+   * moment somebody most needs it to be honest.
+   */
+  it("is unknown, not down, when the whole pass has gone stale", () => {
+    const record = seen("pull_host_metrics", "host:vps", 4000);
+    const freshness = [passed("pull_host_metrics", 4000)];
+
+    expect(read({ matchKey: "host:vps", records: [record], freshness })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is unknown when the operation that would observe it has never run", () => {
+    expect(read({ matchKey: "container:api", freshness: [] })).toMatchObject({ state: "unknown", observedAt: null });
+  });
+
+  it("is unknown when the pass never succeeded, which is not the same as long ago", () => {
+    const freshness = [{ instanceId, operation: "pull_host_metrics", lastSuccessAt: null }];
+
+    expect(read({ matchKey: "host:vps", freshness })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is unknown for a prefix nobody publishes", () => {
+    expect(read({ matchKey: "printer:hp" })).toMatchObject({ state: "unknown" });
+  });
+
+  it("is down when a fresh reading contradicts itself", () => {
+    const record = seen("pull_probe_state", "probe:https://example.test/healthz", 60, { success: false });
+
+    expect(
+      read({
+        matchKey: "probe:https://example.test/healthz",
+        records: [record],
+        freshness: [passed("pull_probe_state", 30)]
+      })
+    ).toMatchObject({ state: "down" });
+  });
+
+  /**
+   * A tenant may run two Prometheus instances, and both may scrape a machine of the same name.
+   * Picking the most recent reading makes which one answers a property of the data rather than of
+   * the order rows came back in.
+   */
+  it("reads the most recent of two instances watching the same thing", () => {
+    const older = seen("pull_host_metrics", "host:vps", 1200, { load1: 9 }, "instance-2");
+    const newer = seen("pull_host_metrics", "host:vps", 30, { load1: 0.2 });
+
+    expect(read({ matchKey: "host:vps", records: [older, newer] })).toMatchObject({
+      state: "up",
+      data: { load1: 0.2 }
+    });
+  });
+
+  it("takes the freshest pass of the instances that run the operation", () => {
+    const record = seen("pull_host_metrics", "host:vps", 90);
+    const freshness = [passed("pull_host_metrics", 9000, "instance-2"), passed("pull_host_metrics", 30)];
+
+    expect(read({ matchKey: "host:vps", records: [record], freshness })).toMatchObject({ state: "up" });
+  });
+
+  it("reads no record of another operation, whatever its identifier says", () => {
+    const record = seen("pull_container_state", "host:vps", 30);
+
+    expect(read({ matchKey: "host:vps", records: [record] })).toMatchObject({ state: "down", observedAt: null });
+  });
+
+  /**
+   * The dashboard reports the fact and the alert rules report the judgement. A service declared
+   * `stopped` reads as down here, and it is the screen that puts "expected" beside it: teaching
+   * this function about intent would give the two surfaces two different notions of down.
+   */
+  it("says what it sees, not what somebody expected to see", () => {
+    const freshness = [passed("pull_container_state", 60)];
+    const record = seen("pull_container_state", "container:old-worker", 9000);
+
+    expect(read({ matchKey: "container:old-worker", records: [record], freshness })).toMatchObject({ state: "down" });
+  });
+});
+
+describe("where a reading came from", () => {
+  const now = new Date("2026-08-13T12:00:00.000Z");
+  const budgets = { pull_host_metrics: 900 };
+
+  const read = (records: readonly ObservedRecord[], freshness: readonly OperationFreshness[]) =>
+    currentReading({ matchKey: "host:vps", records, freshness, budgets, now });
+
+  const record = (instance: string, secondsAgo: number): ObservedRecord => ({
+    instanceId: instance,
+    operation: "pull_host_metrics",
+    externalId: "host:vps",
+    data: {},
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const passing = (instance: string) => ({
+    instanceId: instance,
+    operation: "pull_host_metrics",
+    lastSuccessAt: new Date(now.getTime() - 60_000)
+  });
+
+  /**
+   * Without this, a fleet read by two collectors cannot be filtered by which one reads it, and
+   * the machine's own page cannot say where its figures came from. The connector is a property
+   * of the reading and not of the machine: the same VPS may be read by a different one tomorrow.
+   */
+  it("names the connector instance whose record was read", () => {
+    expect(read([record("instance-1", 30)], [passing("instance-1")])).toMatchObject({
+      state: "up",
+      instanceId: "instance-1"
+    });
+  });
+
+  it("names the instance of the reading it actually used, not the first one offered", () => {
+    const records = [record("instance-2", 1200), record("instance-1", 30)];
+
+    expect(read(records, [passing("instance-1"), passing("instance-2")])).toMatchObject({
+      state: "up",
+      instanceId: "instance-1"
+    });
+  });
+
+  it("has no instance to name when the pass ran and found nothing", () => {
+    expect(read([], [passing("instance-1")])).toEqual({
+      state: "down",
+      observedAt: null,
+      instanceId: null,
+      data: {}
+    });
+  });
+
+  /** A collector we have lost sight of is not a source: nothing here was read from anywhere. */
+  it("has no instance to name when nobody has looked", () => {
+    expect(read([record("instance-1", 30)], [])).toMatchObject({ state: "unknown", instanceId: null });
+  });
+});
+
+describe("counting a fleet by what it is doing", () => {
+  it("counts each state and the whole of them", () => {
+    expect(observedTally(["up", "up", "down", "unknown", "up"])).toEqual({
+      total: 5,
+      up: 3,
+      down: 1,
+      unknown: 1
+    });
+  });
+
+  it("counts nothing as zeroes rather than as an absence", () => {
+    expect(observedTally([])).toEqual({ total: 0, up: 0, down: 0, unknown: 0 });
+  });
+
+  /**
+   * The summary and the list have to agree, and they only can if every declared thing lands in
+   * exactly one of the three. A total that is not the sum of the parts is the bug this catches.
+   */
+  it("puts every thing in exactly one column", () => {
+    const states: ObservedState[] = ["up", "down", "unknown", "up", "down", "down", "unknown"];
+    const tally = observedTally(states);
+
+    expect(tally.up + tally.down + tally.unknown).toBe(tally.total);
+    expect(tally.total).toBe(states.length);
   });
 });

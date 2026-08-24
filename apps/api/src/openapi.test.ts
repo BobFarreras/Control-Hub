@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parseKeyRing } from "@control-hub/config";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
@@ -30,6 +31,7 @@ const keyRing = () =>
 
 type Operation = { tags?: string[]; summary?: string; responses?: Record<string, { content?: unknown }> };
 type Document = {
+  info?: { version?: string };
   tags?: { name: string }[];
   paths: Record<string, Record<string, Operation>>;
 };
@@ -67,6 +69,24 @@ const documentedInfrastructure = [
   ["get", "/api/v1/infrastructure/overview"],
   ["get", "/api/v1/infrastructure/automations"],
   ["put", "/api/v1/infrastructure/automations/{instanceId}/{externalId}/link"],
+  ["get", "/api/v1/infrastructure/projects"],
+  ["put", "/api/v1/infrastructure/projects/{instanceId}/{externalId}/link"],
+  ["get", "/api/v1/infrastructure/supabase-projects"],
+  ["get", "/api/v1/infrastructure/inventory"],
+  ["get", "/api/v1/infrastructure/connectors/{instanceId}/diagnosis"],
+  ["get", "/api/v1/infrastructure/connectors/{instanceId}/discovery"],
+  ["get", "/api/v1/infrastructure/connectors/{instanceId}/services"],
+  ["get", "/api/v1/infrastructure/hosts"],
+  ["post", "/api/v1/infrastructure/hosts"],
+  ["get", "/api/v1/infrastructure/hosts/{hostId}"],
+  ["patch", "/api/v1/infrastructure/hosts/{hostId}"],
+  ["post", "/api/v1/infrastructure/hosts/{hostId}/services"],
+  ["post", "/api/v1/infrastructure/hosts/{hostId}/labels"],
+  ["delete", "/api/v1/infrastructure/hosts/{hostId}/labels/{label}"],
+  ["get", "/api/v1/infrastructure/services"],
+  ["post", "/api/v1/infrastructure/services"],
+  ["patch", "/api/v1/infrastructure/services/{serviceId}"],
+  ["delete", "/api/v1/infrastructure/services/{serviceId}"],
   ["get", "/api/v1/infrastructure/alert-rules"],
   ["post", "/api/v1/infrastructure/alert-rules"],
   ["patch", "/api/v1/infrastructure/alert-rules/{ruleId}"],
@@ -78,8 +98,50 @@ const documentedInfrastructure = [
 
 const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const), connectorKeyRing: keyRing() };
 const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
+const withUsage = { ...base, featureFlags: new Set(["usage_costs"] as const) };
+const documentedUsage = [
+  ["get", "/api/v1/usage/sources"],
+  ["get", "/api/v1/usage/events"],
+  ["get", "/api/v1/usage/costs"],
+  ["get", "/api/v1/usage/rates"],
+  ["post", "/api/v1/usage/rates"],
+  ["post", "/api/v1/usage/rates/{rateId}/annul"],
+  ["get", "/api/v1/usage/exchange-rates"],
+  ["post", "/api/v1/usage/exchange-rates"],
+  ["post", "/api/v1/usage/exchange-rates/{exchangeRateId}/annul"],
+  ["post", "/api/v1/usage/events/{eventId}/valuations"],
+  ["get", "/api/v1/usage/budgets"],
+  ["post", "/api/v1/usage/budgets"],
+  ["post", "/api/v1/usage/budgets/{budgetId}/evaluate"]
+] as const;
 
 describe("openapi document", () => {
+  it("documents every enabled usage operation with the declared tag and a summary", async () => {
+    const document = await documentOf(withUsage);
+    const declared = new Set((document.tags ?? []).map((tag) => tag.name));
+    expect(declared).toContain("usage");
+    expect(
+      documentedUsage.filter(([method, path]) => {
+        const operation = document.paths[path]?.[method];
+        return !operation?.summary || !operation.tags?.includes("usage");
+      })
+    ).toEqual([]);
+  });
+  /**
+   * The document said `0.1.0` for the whole of `v0.2.0`, because the version was a literal
+   * written beside the registration and nothing made it wrong when the release moved. This reads
+   * the manifest rather than repeating a number, so the only way to break it is to break the
+   * wiring, not to forget a file.
+   */
+  it("says which version it is, and agrees with the manifest", async () => {
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+      version: string;
+    };
+    const document = await documentOf(withConnectors);
+
+    expect(document.info?.version).toBe(manifest.version);
+  });
+
   it("describes every connector route with a tag and a summary", async () => {
     const document = await documentOf(withConnectors);
 
@@ -157,6 +219,26 @@ describe("openapi document", () => {
       Object.values(document.paths[path]?.[method]?.responses ?? {}).some((response) => response.content)
     );
     expect(serialised).toEqual([]);
+  });
+
+  /**
+   * The list above is a whitelist, and a whitelist that falls behind checks nothing: the eight
+   * inventory routes of increment B2 shipped undocumented precisely because nothing noticed they
+   * were missing from it. This makes forgetting to add a route the failure, rather than a route
+   * quietly escaping every property the tests above assert.
+   */
+  it("lists every infrastructure route there is, so none escapes the checks above", async () => {
+    const document = await documentOf(withInfrastructure);
+    const listed = new Set(documentedInfrastructure.map(([method, path]) => `${method} ${path}`));
+
+    const missing = Object.entries(document.paths)
+      .filter(([path]) => path.startsWith("/api/v1/infrastructure"))
+      .flatMap(([path, operations]) =>
+        Object.keys(operations ?? {})
+          .map((method) => `${method} ${path}`)
+          .filter((entry) => !listed.has(entry))
+      );
+    expect(missing).toEqual([]);
   });
 
   it("omits the infrastructure surface while its flag is off", async () => {

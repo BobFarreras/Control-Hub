@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-Versio publicada: **v0.2.0**.
+Versio publicada: **v0.3.0**.
 
 La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`. La Fase 6 aporta la plataforma de connectors —contracte, vault de credencials i webhooks signats— i la Fase 7.1 el connector n8n amb la pantalla d'infraestructura.
 
@@ -42,6 +42,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`docs/runbooks/installation.md`](docs/runbooks/installation.md): instal·lacio, primer Owner, membres i actualitzacions.
 - [`docs/runbooks/connector-key-rotation.md`](docs/runbooks/connector-key-rotation.md): rotar l'anell de claus que segella les credencials dels connectors.
 - [`docs/runbooks/n8n-error-workflow.md`](docs/runbooks/n8n-error-workflow.md): muntar a n8n el workflow que ens empeny una execucio fallida, signada.
+- [`docs/runbooks/connect-a-vps.md`](docs/runbooks/connect-a-vps.md): preparar una VPS perque el Control Hub en llegeixi l'estat, i el prompt per a l'agent que l'administra.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.
 - [`SECURITY.md`](SECURITY.md): reporting privat i politica de seguretat.
 - [`SECURITY_ARCHITECTURE.md`](SECURITY_ARCHITECTURE.md): baseline d'aplicacio, xarxa, contenidors, dades i supply chain.
@@ -69,11 +70,13 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Fase 7.2:** inventari de hosts i serveis, connector Prometheus, regles d'alerta d'infraestructura i tauler tecnic.
-2. **Encendre les flags `connectors` i `infrastructure`**, que es una decisio a part de publicar-les.
-3. **Els major de dependencies pendents**: `typescript 6`, `node 26`, `ioredis 6` i companyia, un per branca segons `BRANCHING.md`.
+1. **OAuth2 de connectors**, amb PKCE, `state`, refresh concurrent, revocacio i tokens segellats al vault.
+2. **IMAP entrant incremental**, idempotent i integrat amb el domini de suport existent.
+3. **Encendre les flags `connectors`, `infrastructure` i `usage_costs`**, una decisio operativa separada de publicar-les.
 
-Fases ja lliurades: 5B (projectes i temps), 5C (registre de jornada), 6 (plataforma de connectors) i 7.1 (infraestructura i connector n8n).
+La Fase 9 —empaquetat, instal·lador i distribucio— **no es el seguent pas**: nomes es paga quan una tercera empresa instal·la Control Hub. El raonament sencer es a `docs/development/current-state.md`.
+
+Fases ja lliurades: 5B (projectes i temps), 5C (registre de jornada), 6 (plataforma de connectors), 7.1 (infraestructura i connector n8n), 7.2 (inventari, connector Prometheus i alertes), 7.3 (incorporacio guiada), connectors de Vercel i Supabase, i consum variable de la Fase 8.
 
 Les fases i les seves portes d'aprovacio son a [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), que mana sobre aquest resum.
 

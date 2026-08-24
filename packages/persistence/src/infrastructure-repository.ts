@@ -5,14 +5,39 @@ import {
   type AlertRuleRecord,
   type AppliedVerdict,
   type AutomationRecord,
+  type ConnectorDiagnosisState,
+  type ConnectorDiscoveryState,
+  type ConnectorServiceDiscoveryState,
   type CreateAlertRuleInput,
+  type DeclareHostInput,
+  type DeclareServiceInput,
+  type DeclareServicesInput,
   type EvaluationState,
+  type HostLabel,
+  type HostRecord,
   type InfrastructureRepository,
+  type InventoryState,
   type LinkAutomationInput,
-  type UpdateAlertRuleInput
+  type LinkDeployedProjectInput,
+  type DeployedProjectRecord,
+  type ServiceRecord,
+  type SupabaseProjectRecord,
+  type UpdateAlertRuleInput,
+  type UpdateHostInput,
+  type UpdateServiceInput
 } from "@control-hub/application";
-import { withTenant, type DatabaseClient } from "@control-hub/database";
-import type { AlertSeverity, AlertVerdict, LiveAlert, ObservedRecord, TenantContext } from "@control-hub/domain";
+import { infrastructureSchemaProbes, withTenant, type DatabaseClient } from "@control-hub/database";
+import { couldNameMachine, discoverableServicePrefixes, hostMatchKey } from "@control-hub/domain";
+import type {
+  AlertSeverity,
+  AlertVerdict,
+  DeclaredService,
+  LiveAlert,
+  ObservedRecord,
+  OperationFreshness,
+  TenantContext
+} from "@control-hub/domain";
+import type postgres from "postgres";
 
 /**
  * The infrastructure module's reads and writes, all of them inside a tenant scope.
@@ -42,12 +67,174 @@ const alertColumns = `e.id, e.rule_id as "ruleId", r.name as "ruleName", e.dedup
   e.resolved_at as "resolvedAt", e.acknowledged_at as "acknowledgedAt",
   e.acknowledged_by_membership_id as "acknowledgedByMembershipId", e.incident_id as "incidentId"`;
 
+const hostColumns = `id, name, hostname, environment, notes, created_at as "createdAt",
+  updated_at as "updatedAt"`;
+
+const serviceColumns = `id, host_id as "hostId", name, kind, match_key as "matchKey",
+  expected_state as "expectedState", customer_id as "customerId", created_at as "createdAt",
+  updated_at as "updatedAt"`;
+
 /** The operation whose records describe an automation, and the one whose age is a rule's freshness. */
 const workflowOperation = "pull_workflows";
 const executionOperation = "pull_executions";
+/** Where a certificate expiry and a backup heartbeat both come from, in one `state` operation. */
+const probeOperation = "pull_probe_state";
+/** What a Vercel instance stores: the projects as state, the failed builds as events. */
+const projectOperation = "pull_projects";
+const deploymentOperation = "pull_deployments";
+/**
+ * Named apart from `pull_projects` on purpose: `listDeployedProjects` below filters
+ * `connector_records` on the operation name alone, with no join back to the connector's type.
+ * Sharing a name would mix a Supabase project into that query with Vercel-shaped fields it does
+ * not have.
+ */
+const supabaseProjectOperation = "pull_supabase_projects";
+
+/**
+ * A project as the row comes back, before the provider's own timestamps are read.
+ *
+ * They arrive as text and not as `timestamptz` because they are the provider's strings: casting
+ * in SQL would make one malformed value fail the whole listing, and a listing that disappears is
+ * a worse answer than a project whose date we could not read.
+ */
+type DeployedProjectRow = Omit<DeployedProjectRecord, "createdAt" | "productionDeployedAt" | "lastFailureAt"> & {
+  createdAt: string | null;
+  productionDeployedAt: string | null;
+  lastFailureAt: string | null;
+};
+
+/** Same reason as `DeployedProjectRow`: the provider's own string, cast in code and not in SQL. */
+type SupabaseProjectRow = Omit<SupabaseProjectRecord, "createdAt"> & { createdAt: string | null };
+
+function instantOrNull(value: string | null): Date | null {
+  if (!value) return null;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
+const recordColumns = `instance_id as "instanceId", operation, external_id as "externalId", data,
+  first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"`;
 
 export class PostgresInfrastructureRepository implements InfrastructureRepository {
   constructor(private readonly database: DatabaseClient) {}
+
+  /**
+   * What a collector has seen and what is already declared, read in one pass.
+   *
+   * The migration probes run first for the reason `missingInfrastructureMigrations` gives, and
+   * the labels come from the query the guided check uses, so the screen cannot offer a machine
+   * the check would say is not visible.
+   *
+   * The instance is reduced to whether it exists, here rather than in the service: what the
+   * discovery answers has no field a base URL or a stored credential would fit in, and not
+   * selecting the configuration is a stronger guarantee of that than not reading it later.
+   */
+  async readDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorDiscoveryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const missingMigrations = await missingInfrastructureMigrations(tx);
+      if (missingMigrations.length > 0) {
+        return { instanceExists: false, missingMigrations, seenInstances: [], declaredMachines: [] };
+      }
+
+      const [instance] = await tx<{ id: string }[]>`
+        select id from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      if (!instance) {
+        return { instanceExists: false, missingMigrations: [], seenInstances: [], declaredMachines: [] };
+      }
+
+      const seenInstances = await seenInstanceLabels(tx, context.tenantId, instanceId);
+
+      // A machine answers to its `hostname` and to every label it has claimed, and the discovery
+      // asks only "is this label somebody's". Handing the claimed ones over as machines of their
+      // own name is what stops a label from being offered for declaring twice over.
+      const declaredMachines = await tx<{ hostId: string; name: string; hostname: string }[]>`
+        select id as "hostId", name, hostname from infra_hosts where tenant_id = ${context.tenantId}
+        union all
+        select h.id as "hostId", h.name, l.label as hostname
+        from infra_host_labels l join infra_hosts h
+          on h.tenant_id = l.tenant_id and h.id = l.host_id
+        where l.tenant_id = ${context.tenantId}`;
+
+      return { instanceExists: true, missingMigrations: [], seenInstances, declaredMachines };
+    });
+  }
+
+  async readServiceDiscoveryState(context: TenantContext, instanceId: string): Promise<ConnectorServiceDiscoveryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const missingMigrations = await missingInfrastructureMigrations(tx);
+      if (missingMigrations.length > 0) {
+        return { instanceExists: false, missingMigrations, records: [], freshness: [], declaredMatchKeys: [] };
+      }
+
+      const [instance] = await tx<{ id: string }[]>`
+        select id from connector_instances
+        where tenant_id = ${context.tenantId} and id = ${instanceId}`;
+
+      if (!instance) {
+        return { instanceExists: false, missingMigrations: [], records: [], freshness: [], declaredMatchKeys: [] };
+      }
+
+      // The prefixes come from the domain, which is also what turns them into kinds. Asking for a
+      // set the proposal does not read -- or missing one it does -- would drop a service without
+      // anything to show for it.
+      //
+      // The whole record and not the two columns the proposal needs: what a person opening this
+      // wants first is which of twenty containers is running, and that is decided from the record.
+      // Reading it here is the only way it can be decided at all -- the inventory selects records
+      // by declared key, so it has nothing to say about a service nobody has declared yet.
+      const records = await tx<ObservedRecord[]>`
+        select ${tx.unsafe(recordColumns)} from connector_records
+        where tenant_id = ${context.tenantId} and instance_id = ${instanceId}
+          and split_part(external_id, ':', 1) = any(${tx.array([...discoverableServicePrefixes])})`;
+
+      // Every instance's, not this one's: a reading is only silence if nobody at all has passed
+      // recently, which is the same rule the inventory applies.
+      const freshness = await tx<OperationFreshness[]>`
+        select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
+        from connector_operation_state where tenant_id = ${context.tenantId}`;
+
+      // Every declared key of the tenant, not only this machine's: a key is unique across the
+      // inventory, so one already spoken for elsewhere must not be offered here either.
+      const declared = await tx<{ matchKey: string }[]>`
+        select distinct match_key as "matchKey" from infra_services where tenant_id = ${context.tenantId}`;
+
+      return {
+        instanceExists: true,
+        missingMigrations: [],
+        records,
+        freshness,
+        declaredMatchKeys: declared.map((row) => row.matchKey)
+      };
+    });
+  }
+
+  /**
+   * Several services in one statement, inside the one transaction `withTenant` already opens.
+   *
+   * All or none is the point: a partial batch would leave somebody looking at a screen where some
+   * of what they ticked is declared and some is not, with no way to tell which without reading
+   * the list again.
+   */
+  async declareServices(context: TenantContext, input: DeclareServicesInput): Promise<readonly ServiceRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = input.services.map((service) => ({
+        id: randomUUID(),
+        tenant_id: context.tenantId,
+        host_id: input.hostId,
+        name: service.name,
+        kind: service.kind,
+        match_key: service.matchKey,
+        expected_state: service.expectedState,
+        customer_id: service.customerId
+      }));
+
+      return await tx<ServiceRecord[]>`
+        insert into infra_services ${tx(rows, "id", "tenant_id", "host_id", "name", "kind", "match_key", "expected_state", "customer_id")}
+        returning ${tx.unsafe(serviceColumns)}`;
+    }).catch(mapInventoryConstraint);
+  }
 
   async listAutomations(context: TenantContext): Promise<readonly AutomationRecord[]> {
     return withTenant(this.database, context.tenantId, async (tx) => {
@@ -88,6 +275,290 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         on conflict (tenant_id, instance_id, external_id) do update
           set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
     }).catch(mapConstraint);
+  }
+
+  /**
+   * Every Vercel project read, with the last failed build of each.
+   *
+   * Two joins and neither is decoration. The link is the annotation, so it is a `left join` on the
+   * record and not the other way round: what exists is what the provider says exists. The failure
+   * is a `left join lateral`, because "the most recent of this project's failed deployments" is a
+   * question asked once per row and answered by an ordered limit -- a group-by over the whole
+   * event table would read every failure of every project to keep one of each.
+   *
+   * The lateral does not filter by state, because there is nothing to filter: the collector asks
+   * Vercel for failures only and checks again before writing, so every deployment record it holds
+   * is a failed build. If that ever stops being true, this query is the second place to change.
+   *
+   * They are two columns and not one on purpose. A project can be serving perfectly and have had a
+   * build fail ten minutes ago; that is the ordinary Friday afternoon, and it is exactly what
+   * somebody has to see. Folding them together would force a choice about which truth to hide.
+   */
+  async listDeployedProjects(context: TenantContext): Promise<readonly DeployedProjectRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<DeployedProjectRow[]>`
+        select
+          r.instance_id as "instanceId",
+          r.external_id as "externalId",
+          coalesce(r.data ->> 'name', '') as name,
+          r.data ->> 'framework' as framework,
+          r.data ->> 'createdAt' as "createdAt",
+          r.data ->> 'productionAlias' as domain,
+          -- Guarded rather than cast: the connector writes JSON null for a project nobody has
+          -- deployed, and casting that to boolean is an error, not a null.
+          case when jsonb_typeof(r.data -> 'productionReady') = 'boolean'
+            then (r.data -> 'productionReady')::boolean end as "productionReady",
+          r.data ->> 'productionState' as "productionState",
+          r.data ->> 'productionDeployedAt' as "productionDeployedAt",
+          r.last_seen_at as "observedAt",
+          l.customer_id as "customerId",
+          l.notes,
+          failure."lastFailureAt",
+          failure."lastFailureRef"
+        from connector_records r
+        left join infra_project_links l
+          on l.tenant_id = r.tenant_id and l.instance_id = r.instance_id and l.external_id = r.external_id
+        left join lateral (
+          select d.data ->> 'createdAt' as "lastFailureAt", d.data ->> 'commitRef' as "lastFailureRef"
+          from connector_records d
+          where d.tenant_id = r.tenant_id
+            and d.instance_id = r.instance_id
+            and d.operation = ${deploymentOperation}
+            and d.data ->> 'projectId' = substring(r.external_id from position(':' in r.external_id) + 1)
+          -- The provider's own instant, which is when the build happened. Ours is when we looked,
+          -- and every pass rewrites it: ordering by that would call the oldest failure the newest
+          -- as soon as a re-read touched it.
+          order by d.data ->> 'createdAt' desc nulls last
+          limit 1
+        ) failure on true
+        where r.tenant_id = ${context.tenantId} and r.operation = ${projectOperation}
+        order by name asc, r.external_id asc`;
+
+      return rows.map((row) => ({
+        instanceId: row.instanceId,
+        externalId: row.externalId,
+        name: row.name,
+        domain: row.domain,
+        productionReady: row.productionReady,
+        productionState: row.productionState,
+        framework: row.framework,
+        createdAt: instantOrNull(row.createdAt),
+        productionDeployedAt: instantOrNull(row.productionDeployedAt),
+        lastFailureAt: instantOrNull(row.lastFailureAt),
+        lastFailureRef: row.lastFailureRef,
+        observedAt: row.observedAt,
+        customerId: row.customerId,
+        notes: row.notes
+      }));
+    });
+  }
+
+  /**
+   * Upsert, because the association and the note are one row per project.
+   *
+   * Nulling the customer is how an association is withdrawn, and the row survives it: somebody
+   * wrote those notes, and deleting them as a side effect of unlinking would be a surprise. Same
+   * shape as `linkAutomation` and the same reasons; a different table, for the reason the
+   * migration gives.
+   */
+  async linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      await tx`
+        insert into infra_project_links (id, tenant_id, instance_id, external_id, customer_id, notes)
+        values (${randomUUID()}, ${context.tenantId}, ${input.instanceId}, ${input.externalId},
+          ${input.customerId}, ${input.notes})
+        on conflict (tenant_id, instance_id, external_id) do update
+          set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
+    }).catch(mapConstraint);
+  }
+
+  /**
+   * Reads `infra_project_links` too, the same table Vercel's projects use: the link does not know
+   * or care which provider a project came from, only its `(instance_id, external_id)`.
+   */
+  async listSupabaseProjects(context: TenantContext): Promise<readonly SupabaseProjectRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<SupabaseProjectRow[]>`
+        select
+          r.instance_id as "instanceId",
+          r.external_id as "externalId",
+          coalesce(r.data ->> 'name', '') as name,
+          r.data ->> 'region' as region,
+          r.data ->> 'status' as status,
+          case when jsonb_typeof(r.data -> 'healthy') = 'boolean'
+            then (r.data -> 'healthy')::boolean end as "healthy",
+          r.data ->> 'createdAt' as "createdAt",
+          r.last_seen_at as "observedAt",
+          l.customer_id as "customerId",
+          l.notes
+        from connector_records r
+        left join infra_project_links l
+          on l.tenant_id = r.tenant_id and l.instance_id = r.instance_id and l.external_id = r.external_id
+        where r.tenant_id = ${context.tenantId} and r.operation = ${supabaseProjectOperation}
+        order by name asc, r.external_id asc`;
+
+      return rows.map((row) => ({
+        instanceId: row.instanceId,
+        externalId: row.externalId,
+        name: row.name,
+        region: row.region,
+        healthy: row.healthy,
+        status: row.status,
+        createdAt: instantOrNull(row.createdAt),
+        observedAt: row.observedAt,
+        customerId: row.customerId,
+        notes: row.notes
+      }));
+    });
+  }
+
+  async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+    });
+  }
+
+  async findHost(context: TenantContext, hostId: string): Promise<HostRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      return host ?? null;
+    });
+  }
+
+  async declareHost(context: TenantContext, input: DeclareHostInput): Promise<HostRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<HostRecord[]>`
+        insert into infra_hosts (id, tenant_id, name, hostname, environment, notes)
+        values (${randomUUID()}, ${context.tenantId}, ${input.name}, ${input.hostname},
+          ${input.environment}, ${input.notes})
+        returning ${tx.unsafe(hostColumns)}`;
+      return host!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  /**
+   * The same `coalesce` shape as a rule patch, with one exception that matters.
+   *
+   * `notes` and `customerId` may be set to null on purpose -- clearing a note, unlinking a client
+   * -- so for those the absence of the field, not its nullness, is what leaves the column alone.
+   * Coalescing them would make the two indistinguishable and the clearing impossible.
+   */
+  async updateHost(context: TenantContext, hostId: string, patch: UpdateHostInput): Promise<HostRecord> {
+    const host = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<HostRecord[]>`
+        update infra_hosts set
+          name = coalesce(${patch.name ?? null}, name),
+          hostname = coalesce(${patch.hostname ?? null}, hostname),
+          environment = coalesce(${patch.environment ?? null}, environment),
+          notes = case when ${patch.notes === undefined}::boolean then notes else ${patch.notes ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${hostId}
+        returning ${tx.unsafe(hostColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+    return host;
+  }
+
+  async listServices(context: TenantContext, input: { hostId?: string }): Promise<readonly ServiceRecord[]> {
+    const hostId = input.hostId ?? null;
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      return tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} and (${hostId}::uuid is null or host_id = ${hostId})
+        order by name`;
+    });
+  }
+
+  async declareService(context: TenantContext, input: DeclareServiceInput): Promise<ServiceRecord> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [service] = await tx<ServiceRecord[]>`
+        insert into infra_services (id, tenant_id, host_id, name, kind, match_key, expected_state, customer_id)
+        values (${randomUUID()}, ${context.tenantId}, ${input.hostId}, ${input.name}, ${input.kind},
+          ${input.matchKey}, ${input.expectedState}, ${input.customerId})
+        returning ${tx.unsafe(serviceColumns)}`;
+      return service!;
+    }).catch(mapInventoryConstraint);
+  }
+
+  async updateService(context: TenantContext, serviceId: string, patch: UpdateServiceInput): Promise<ServiceRecord> {
+    const service = await withTenant(this.database, context.tenantId, async (tx) => {
+      const [updated] = await tx<ServiceRecord[]>`
+        update infra_services set
+          name = coalesce(${patch.name ?? null}, name),
+          kind = coalesce(${patch.kind ?? null}, kind),
+          match_key = coalesce(${patch.matchKey ?? null}, match_key),
+          expected_state = coalesce(${patch.expectedState ?? null}, expected_state),
+          customer_id = case when ${patch.customerId === undefined}::boolean then customer_id
+            else ${patch.customerId ?? null} end,
+          updated_at = now()
+        where tenant_id = ${context.tenantId} and id = ${serviceId}
+        returning ${tx.unsafe(serviceColumns)}`;
+      return updated ?? null;
+    }).catch(mapInventoryConstraint);
+
+    if (!service) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
+    return service;
+  }
+
+  async deleteService(context: TenantContext, serviceId: string): Promise<void> {
+    const deleted = await withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx`delete from infra_services
+        where tenant_id = ${context.tenantId} and id = ${serviceId} returning id`;
+      return rows.length;
+    });
+    if (deleted === 0) throw new InfrastructureServiceError("SERVICE_NOT_FOUND");
+  }
+
+  /**
+   * Another label this machine answers to.
+   *
+   * Both halves of the uniqueness are decided inside one transaction. One is the primary key
+   * `(tenant_id, label)`; the other is a query, because a label must also not be some other
+   * machine's `hostname` and no PostgreSQL constraint spans two tables. Deciding that half in the
+   * service would leave a window in which two machines claim the same label at once, and a label
+   * claimed twice makes one outage arrive as two alerts about the same computer.
+   *
+   * The machine is looked up first so that a wrong id answers `HOST_NOT_FOUND` rather than a
+   * foreign key violation nobody can read.
+   */
+  async addHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+
+      const [taken] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and hostname = ${label}`;
+      if (taken) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+
+      await tx`insert into infra_host_labels (tenant_id, host_id, label)
+        values (${context.tenantId}, ${hostId}, ${label})`.catch(mapInventoryConstraint);
+    });
+  }
+
+  /**
+   * Withdrawing a label, which loses nothing: the readings it matched stay where they are.
+   *
+   * A label that is not there is not an error. The caller asked for a machine that does not answer
+   * to it and that is the state afterwards either way, so two people withdrawing the same label at
+   * once both succeed. An unknown machine still fails: that is a mistaken request, not a request
+   * whose work was already done.
+   */
+  async removeHostLabel(context: TenantContext, hostId: string, label: string): Promise<void> {
+    await withTenant(this.database, context.tenantId, async (tx) => {
+      const [host] = await tx<{ id: string }[]>`
+        select id from infra_hosts where tenant_id = ${context.tenantId} and id = ${hostId}`;
+      if (!host) throw new InfrastructureServiceError("HOST_NOT_FOUND");
+
+      await tx`delete from infra_host_labels
+        where tenant_id = ${context.tenantId} and host_id = ${hostId} and label = ${label}`;
+    });
   }
 
   async listRules(context: TenantContext): Promise<readonly AlertRuleRecord[]> {
@@ -214,22 +685,183 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     );
   }
 
+  /**
+   * Everything the technical dashboard draws, read in one transaction.
+   *
+   * The inventory is read first because it is what says which readings matter: the dashboard asks
+   * for the identifiers it declared and for nothing else, so a tenant watching four containers
+   * does not pay for every container its collectors can see. No instance filter, unlike the
+   * evaluation read -- a rule reads one instance, but a machine is a machine whichever collector
+   * happened to see it.
+   */
+  async readInventoryState(context: TenantContext): Promise<InventoryState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const hosts = await tx<HostRecord[]>`
+        select ${tx.unsafe(hostColumns)} from infra_hosts
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const services = await tx<ServiceRecord[]>`
+        select ${tx.unsafe(serviceColumns)} from infra_services
+        where tenant_id = ${context.tenantId} order by name`;
+
+      const wanted = [
+        ...new Set([...hosts.map((host) => hostMatchKey(host.hostname)), ...services.map((s) => s.matchKey)])
+      ];
+
+      // The declared keys, and everything discoverable. Since C8 a machine draws the containers
+      // seen on a label it claims even when nobody has declared them, and a container can only be
+      // drawn from its own record -- selecting by declared key alone is what used to leave the
+      // whole discovery with no reading and every container reading `down`.
+      const prefixes = tx.array([...discoverableServicePrefixes]);
+      const records = await tx<ObservedRecord[]>`
+        select ${tx.unsafe(recordColumns)} from connector_records
+        where tenant_id = ${context.tenantId}
+          and (${wanted.length === 0 ? tx`false` : tx`external_id in ${tx(wanted)}`}
+               or split_part(external_id, ':', 1) = any(${prefixes}))`;
+
+      const freshness = await tx<OperationFreshness[]>`
+        select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
+        from connector_operation_state where tenant_id = ${context.tenantId}`;
+
+      const labels = await tx<HostLabel[]>`
+        select host_id as "hostId", label from infra_host_labels
+        where tenant_id = ${context.tenantId} order by label`;
+
+      return { hosts, services, records, freshness, labels };
+    });
+  }
+
+  /**
+   * Everything the guided check reads, and the one read here that has to survive a schema that is
+   * not all there.
+   *
+   * The order is not an optimisation. If a migration is missing, the tables the rest of this
+   * method selects from are the tables that are missing, so asking anyway would raise an
+   * undefined-relation error and answer the generic sentence -- which is precisely the failure
+   * the check exists to replace. So the probes run first and everything else is skipped.
+   *
+   * `lastAttempt` merges two facts that both mean "a call went out and this is what came back":
+   * `connector_instances` holds the last health check and the last failed run of any kind, and
+   * `connector_operation_state` holds the last pass that succeeded. Reading only the first would
+   * report an installation that has been polling happily for a week as one nobody has looked at,
+   * because a successful pass writes no health at all.
+   */
+  async readDiagnosisState(context: TenantContext, instanceId: string): Promise<ConnectorDiagnosisState> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const missingMigrations = await missingInfrastructureMigrations(tx);
+      if (missingMigrations.length > 0) {
+        return { instance: null, missingMigrations, seenInstances: [], declaredHostnames: [] };
+      }
+
+      const [instance] = await tx<
+        {
+          id: string;
+          connectorType: string;
+          baseUrl: string | null;
+          healthCheckedAt: Date | null;
+          lastErrorCode: string | null;
+          lastSuccessAt: Date | null;
+        }[]
+      >`
+        select i.id, i.connector_type as "connectorType", i.config ->> 'baseUrl' as "baseUrl",
+          i.health_checked_at as "healthCheckedAt", i.last_error_code as "lastErrorCode",
+          (select max(s.last_success_at) from connector_operation_state s
+            where s.tenant_id = i.tenant_id and s.instance_id = i.id) as "lastSuccessAt"
+        from connector_instances i
+        where i.tenant_id = ${context.tenantId} and i.id = ${instanceId}`;
+
+      if (!instance) return { instance: null, missingMigrations: [], seenInstances: [], declaredHostnames: [] };
+
+      // Every `instance` label this connector has a reading under. Which readings those are, and
+      // why a blackbox target is not one of them, is written where the query is.
+      const seen = await seenInstanceLabels(tx, context.tenantId, instanceId);
+
+      // Claimed labels count as declared here too: the rung asks whether what the collector
+      // sees has been claimed by anybody, and a label claimed as a second name for a machine
+      // has been.
+      const declared = await tx<{ hostname: string }[]>`
+        select hostname from infra_hosts where tenant_id = ${context.tenantId}
+        union all
+        select label as hostname from infra_host_labels where tenant_id = ${context.tenantId}`;
+
+      return {
+        instance: {
+          id: instance.id,
+          connectorType: instance.connectorType,
+          baseUrl: instance.baseUrl,
+          lastAttempt: lastAttemptOf(instance)
+        },
+        missingMigrations: [],
+        seenInstances: seen,
+        declaredHostnames: declared.map((row) => row.hostname)
+      };
+    });
+  }
+
   async readEvaluationState(context: TenantContext): Promise<EvaluationState> {
     return withTenant(this.database, context.tenantId, async (tx) => {
       const rules = await tx<AlertRuleRecord[]>`
         select ${tx.unsafe(ruleColumns)} from infra_alert_rules where tenant_id = ${context.tenantId}`;
 
-      // Only the operation the rules read, and only for instances a rule points at. A tenant with
-      // one rule does not pay for reading every record of every instance it has installed.
+      // Only what the rules present actually read, and only for instances a rule points at. A
+      // tenant with one rule does not pay for reading every record of every instance it has
+      // installed, and a tenant with no rule of a kind reads nothing on its behalf.
+      const kinds = new Set(rules.map((rule) => rule.kind));
       const instanceIds = [...new Set(rules.map((rule) => rule.instanceId))];
-      const records = instanceIds.length
-        ? await tx<ObservedRecord[]>`
-            select instance_id as "instanceId", operation, external_id as "externalId", data,
-              first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt"
-            from connector_records
-            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
-              and instance_id in ${tx(instanceIds)}`
+
+      // The inventory is read before the records, because it is what says which records matter.
+      // `ignored` is filtered here as well as in the domain: the partial index of `0037` is on
+      // exactly this predicate, so the filter costs nothing and the rows never leave the database.
+      const services = kinds.has("service_down")
+        ? await tx<DeclaredService[]>`
+            select service.name, host.name as "hostName", service.match_key as "matchKey",
+              service.expected_state as "expectedState"
+            from infra_services service
+            join infra_hosts host on host.tenant_id = service.tenant_id and host.id = service.host_id
+            where service.tenant_id = ${context.tenantId} and service.expected_state <> 'ignored'`
         : [];
+
+      const columns = tx.unsafe(recordColumns);
+      const reads: Promise<ObservedRecord[]>[] = [];
+
+      if (instanceIds.length > 0) {
+        if (kinds.has("workflow_failed")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${executionOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // Certificates and backups both live in the probe pass, and neither is named by anything
+        // we declared: what exists is whatever the exporters published, so the whole pass is read.
+        if (kinds.has("certificate_expiring") || kinds.has("backup_stale")) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and operation = ${probeOperation}
+              and instance_id in ${tx(instanceIds)}`);
+        }
+
+        // The opposite case: here the inventory names exactly which readings are wanted, so the
+        // query asks for those and not for every container and workflow the providers know of.
+        const matchKeys = [...new Set(services.map((service) => service.matchKey))];
+        if (matchKeys.length > 0) {
+          reads.push(tx<ObservedRecord[]>`
+            select ${columns} from connector_records
+            where tenant_id = ${context.tenantId} and instance_id in ${tx(instanceIds)}
+              and external_id in ${tx(matchKeys)}`);
+        }
+      }
+
+      // The reads overlap on purpose -- a probe reading can be both a certificate and a declared
+      // service -- and a duplicate would become two verdicts sharing one dedup key, which the
+      // partial unique index would then refuse. Identity is the record's own key.
+      const records = [
+        ...new Map(
+          (await Promise.all(reads))
+            .flat()
+            .map((record) => [`${record.instanceId}\u0000${record.operation}\u0000${record.externalId}`, record])
+        ).values()
+      ];
 
       const freshness = await tx<{ instanceId: string; operation: string; lastSuccessAt: Date | null }[]>`
         select instance_id as "instanceId", operation, last_success_at as "lastSuccessAt"
@@ -239,7 +871,7 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         select rule_id as "ruleId", dedup_key as "dedupKey" from infra_alert_events
         where tenant_id = ${context.tenantId} and status = 'firing'`;
 
-      return { rules, records, liveAlerts, freshness };
+      return { rules, records, services, liveAlerts, freshness };
     });
   }
 
@@ -348,6 +980,135 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
     if (!alert) throw new InfrastructureServiceError("ALERT_NOT_FOUND");
     return alert;
   }
+}
+
+/**
+ * The inventory's own collisions, told apart before the generic mapper sees them.
+ *
+ * `hostname` is tested before `name` deliberately: one word contains the other, and the wrong
+ * order would report a duplicate host name to somebody who reused a Prometheus label. A message
+ * that names the wrong field costs an afternoon.
+ */
+function mapInventoryConstraint(error: unknown): never {
+  const databaseError = error as DatabaseError;
+  const constraint = databaseError.constraint_name ?? "";
+  if (databaseError.code === "23505") {
+    // The extra labels table before the `hostname` test: its own name contains neither word,
+    // and a label already claimed is the same answer whichever of the two tables holds it.
+    if (constraint.includes("infra_host_labels")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+    if (constraint.includes("hostname")) throw new InfrastructureServiceError("DUPLICATE_HOSTNAME");
+    if (constraint.includes("match_key")) throw new InfrastructureServiceError("DUPLICATE_MATCH_KEY");
+    if (constraint.includes("infra_services")) throw new InfrastructureServiceError("DUPLICATE_SERVICE_NAME");
+    if (constraint.includes("name")) throw new InfrastructureServiceError("DUPLICATE_HOST_NAME");
+  }
+  return mapConstraint(error);
+}
+
+/**
+ * The last time a call went out and something came back, out of the two places that record it.
+ *
+ * A pass that succeeds writes no health at all: `recordHealth` is called by the health check and
+ * by runs that failed, so an instance polling correctly for a week still has a null
+ * `health_checked_at`. Reading that column alone would report a working installation as one
+ * nobody has ever asked anything of, and the guided check would answer "we do not know" about a
+ * connector that is plainly fine.
+ */
+function lastAttemptOf(row: {
+  healthCheckedAt: Date | null;
+  lastErrorCode: string | null;
+  lastSuccessAt: Date | null;
+}): { ok: boolean; code: string | null } | null {
+  const { healthCheckedAt, lastErrorCode, lastSuccessAt } = row;
+  if (!healthCheckedAt && !lastSuccessAt) return null;
+  if (healthCheckedAt && (!lastSuccessAt || healthCheckedAt > lastSuccessAt)) {
+    return { ok: lastErrorCode === null, code: lastErrorCode };
+  }
+  return { ok: true, code: null };
+}
+
+/**
+ * The module's migrations whose objects are not in the database, in the order they are applied.
+ *
+ * Shared by the guided check and the discovery because both have to survive the same schema. It
+ * is asked before anything else in either of them: the tables the rest of those reads select from
+ * are the tables a missing migration has not created, so asking anyway raises an
+ * undefined-relation error and answers the generic sentence instead of the one that says what to
+ * run.
+ */
+async function missingInfrastructureMigrations(tx: postgres.TransactionSql): Promise<string[]> {
+  const probes = infrastructureSchemaProbes;
+  const missing = await tx<{ migration: string }[]>`
+    select probe.migration from unnest(
+        ${probes.map((probe) => probe.relation)}::text[],
+        ${probes.map((probe) => probe.constraintName ?? "")}::text[],
+        ${probes.map((probe) => probe.migration)}::text[]
+      ) as probe(relation, constraint_name, migration)
+    where to_regclass(probe.relation) is null
+      or (probe.constraint_name <> '' and not exists (
+        select 1 from pg_constraint c
+        where c.conrelid = to_regclass(probe.relation) and c.conname = probe.constraint_name))
+    order by probe.migration`;
+  return missing.map((row) => row.migration);
+}
+
+/**
+ * The `instance` labels a connector has stored a reading for, prefix removed.
+ *
+ * One query, called from both reads, because the guided check's last rung and the discovery are
+ * the same question asked twice -- one reduced to a yes or no, the other laid out as a list. Two
+ * copies of this `where` would eventually disagree, and the disagreement would read as a screen
+ * offering a machine the check says it cannot see.
+ *
+ * Two sources, and both are what Prometheus itself scrapes: a host reading is one the
+ * configuration already named, and a probe reading carrying `scrapeUp` came from the `up` series,
+ * which has one line per target.
+ *
+ * `scrapeUp` was once believed to keep blackbox targets out, and it does not: Prometheus relabels
+ * a blackbox scrape so its `up` line carries the probed URL as the `instance`. The rule that does
+ * the separating is `couldNameMachine`, in the domain and tested there, and it is applied here --
+ * on the one query both reads share -- so the guided check and the discovery cannot come to
+ * different conclusions about the same label. A URL is still read and still offered: as a service,
+ * in the selector, which is the screen that can actually make something of it.
+ */
+/**
+ * Every `instance` label this collector has a reading under, whatever kind of reading it was.
+ *
+ * Three sources, and they are three different things Prometheus scrapes:
+ *
+ * - a `host:` reading, whose label is the target the configuration already named for machine
+ *   figures -- normally a `node-exporter:9100`;
+ * - a `probe:` reading carrying `scrapeUp`, which came from the `up` series and has one line per
+ *   target, so its label is a target too. A blackbox reading has no `scrapeUp` and stays out: its
+ *   `instance` is a probed URL rather than a machine, and it is the one value here that could be
+ *   an address with something private in it;
+ * - the label a container was seen on, which is stored in the record's `host` and is the cAdvisor
+ *   that reported it -- never the container's own name, which is what the `external_id` holds.
+ *
+ * The third came with C8 and is the reason it works at all. A cAdvisor's label appears in no
+ * `host:` reading, so before this the one label a person needed to claim was the one label the
+ * screen never showed: the containers were stored, the machine was declared, and there was
+ * nowhere to say they were the same computer.
+ *
+ * `couldNameMachine` is applied to all three alike, so a probed URL that reached here through any
+ * of them still does not get offered as a machine.
+ */
+async function seenInstanceLabels(
+  tx: postgres.TransactionSql,
+  tenantId: string,
+  instanceId: string
+): Promise<string[]> {
+  const seen = await tx<{ label: string }[]>`
+    select distinct substring(external_id from position(':' in external_id) + 1) as label
+    from connector_records
+    where tenant_id = ${tenantId} and instance_id = ${instanceId}
+      and (external_id like 'host:%'
+        or (external_id like 'probe:%' and data ->> 'scrapeUp' is not null))
+    union
+    select distinct data ->> 'host' as label
+    from connector_records
+    where tenant_id = ${tenantId} and instance_id = ${instanceId}
+      and external_id like 'container:%' and data ->> 'host' is not null`;
+  return seen.map((row) => row.label).filter(couldNameMachine);
 }
 
 function mapConstraint(error: unknown): never {

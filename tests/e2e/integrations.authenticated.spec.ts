@@ -35,6 +35,9 @@ const t = {
   newIntegration: "Nova integracio",
   pickConnector: "Amb que et vols connectar?",
   webhookCard: "Webhook generic",
+  openCodeCard: "OpenCode local",
+  openCodeAbout:
+    "Ara nomes li poses nom. Despres generarem l'adreca i el secret que necessita el collector local; mai envia converses ni codi.",
   integrationName: "Nom de la integracio",
   baseUrl: "Adreca de la instancia",
   advancedOptions: "Opcions avancades",
@@ -98,7 +101,14 @@ test("draws the form a connector asks for, refuses a value on its own field, and
    * `generic-webhook` here is the untranslated fallback, and the whole catalogue is suspect.
    */
   await expect(dialog.getByRole("button", { name: t.webhookCard })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: t.openCodeCard })).toBeVisible();
   await expect(dialog.getByText("generic-webhook")).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: t.openCodeCard }).click();
+  await expect(dialog.getByText(t.openCodeAbout)).toBeVisible();
+  await expect(dialog.getByLabel(t.integrationName, { exact: true })).toBeVisible();
+  await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
+  await dialog.locator("footer .secondary-button").click();
 
   // Not `exact`: a card's accessible name is its whole text, mark plus name plus the line under it.
   await dialog.getByRole("button", { name: "n8n" }).click();

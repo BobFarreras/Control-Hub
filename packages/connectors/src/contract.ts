@@ -211,6 +211,8 @@ export type IngressResult = {
   accepted: boolean;
   /** Metadata worth keeping beside the event. Never the whole payload. */
   summary: Readonly<Record<string, string>>;
+  /** Sanitized records a worker may project after the signed delivery has been queued. */
+  records?: readonly ConnectorRecord[];
 };
 
 /** May be synchronous: reading an event a provider already sent needs no I/O of its own. */

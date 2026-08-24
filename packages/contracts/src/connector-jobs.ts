@@ -24,6 +24,12 @@ export const connectorQueueName = "control-hub-connectors";
 
 /** Every connector run travels under one job name; the payload says which operation it is. */
 export const connectorJobName = "connector-run";
+export const connectorIngressJobName = "connector-ingress";
+
+export type ConnectorIngressJobPayload = {
+  tenantId: string;
+  eventId: string;
+};
 
 /**
  * The operation reserved for asking a provider whether it is still there.

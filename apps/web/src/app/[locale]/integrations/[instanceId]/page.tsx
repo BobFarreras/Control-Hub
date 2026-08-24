@@ -111,6 +111,7 @@ export default async function IntegrationPage({ params }: { params: Promise<{ lo
             entry={catalogue.find((candidate) => candidate.type === instance.connectorType)}
             canManage={granted.manage}
             canRotate={granted.rotate}
+            infrastructureEnabled={featureEnabled("infrastructure")}
             labels={labels}
             locale={locale}
           />

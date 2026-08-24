@@ -10,6 +10,7 @@ export * from "./company-subscriptions.js";
 export * from "./support.js";
 export * from "./projects.js";
 export * from "./attendance.js";
+export * from "./usage.js";
 import {
   canTransitionLead,
   normalizeComparableName,

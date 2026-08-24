@@ -23,3 +23,5 @@ export async function withTenant<T>(
   });
   return result as T;
 }
+
+export * from "./schema-probes.js";

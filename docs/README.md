@@ -16,7 +16,13 @@
 - `runbooks/`: operacio i resposta. `runbooks/installation.md` (instal·lacio i actualitzacions),
   `runbooks/disaster-recovery.md` (recuperacio) i `runbooks/connector-key-rotation.md` (rotar
   l'anell de claus dels connectors, segons `adr/0008-connector-credential-vault.md`) i
-  `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n).
+  `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n) i
+  `runbooks/connect-a-vps.md` (preparar una VPS perque el Control Hub en llegeixi l'estat, amb
+  el prompt per a l'agent que l'administra) i `runbooks/connect-vercel.md` (connectar un
+  compte de Vercel amb un token de nomes lectura) i `runbooks/connect-supabase.md` (connectar un
+  compte de Supabase amb un Personal Access Token, i el risc que porta) i
+  `runbooks/connect-opencode.md` (instal.lar el plugin sanititzat i enviar consum a la
+  VPS).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -39,6 +45,23 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/infrastructure.md`: estat de la VPS i de les automatitzacions d'n8n, amb
   registres estirats, alertes i incidencies. Aprovada, Fase 7, partida en 7.1 (plataforma, n8n
   i pantalla) i 7.2 (Prometheus, inventari i alertes), darrere la flag `infrastructure`.
+- `specifications/connector-onboarding.md`: connectar una maquina sense endevinar res -- el
+  diagnostic que diu que falta, el resum amb moltes maquines i el descobriment que proposa el
+  que encara no s'ha declarat. **Proposta**, Fase 7.3, pendent d'aprovacio.
+- `specifications/connector-vercel.md`: el connector de Vercel -- projectes com a estat,
+  desplegaments fallits com a esdeveniment, i la base fixada al codi. **Proposta**, Fase 7.4;
+  el connector esta escrit i la superficie que l'ha de dibuixar, oberta.
+- `specifications/connector-supabase.md`: el connector de Supabase -- projectes com a estat,
+  privilegi total del PAT acceptat i dit a l'onboarding, i cap migracio nova perque reutilitza la
+  taula d'enllaç de Vercel. Aprovada, ampliacio de la Fase 7.4.
+- `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
+  consum i costos, correu entrant i correu sortint. Aprovada, incloses les ampliacions de model.
+- `specifications/connector-opencode.md`: plugin sanititzat d'OpenCode, collector fallback, ingress signat i
+  projeccio de tokens sense prompts, codi ni paths. Aprovada, ampliacio de la Fase 8.1.
+- `specifications/phase-7b-actions-and-oauth.md`: contracte acotat d'OAuth, accions asincrones i
+  transport IMAP que necessita la Fase 8. Aprovat.
+- `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
+  implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

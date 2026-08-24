@@ -28,6 +28,29 @@ export type Fixture = {
     stale: { externalId: string; name: string };
     rule: string;
     customer: string;
+    host: { name: string; hostname: string };
+    /** The collector the discovery panel is asked about, by the name the select shows. */
+    collector: string;
+    /** A label that collector reads and nobody has declared, which is what the panel is for. */
+    undeclaredHostname: string;
+    /** Two labels that collector reads and nobody has declared, which is what the selector is for. */
+    offered: Record<"container" | "backup", { name: string; matchKey: string }>;
+    /** One service per answer a reading can give: it answers, it stopped, we cannot see it. */
+    services: Record<"up" | "down" | "unknown", { name: string; matchKey: string }>;
+    /** The hosting collector, by the name the select shows. */
+    vercel: string;
+    /** One project serving with a failed build behind it, and one nobody has ever deployed. */
+    projects: {
+      serving: { externalId: string; name: string; domain: string; failureRef: string };
+      never: { externalId: string; name: string };
+    };
+    /** The database collector, by the name the select shows. */
+    supabase: string;
+    /** One project healthy and serving, and one mid-transition. */
+    supabaseProjects: {
+      healthy: { externalId: string; name: string };
+      restoring: { externalId: string; name: string };
+    };
   };
 };
 

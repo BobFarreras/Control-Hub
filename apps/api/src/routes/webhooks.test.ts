@@ -28,9 +28,28 @@ describe("what an inbound delivery is answered with", () => {
   });
 
   it("accepts with 202 and no body, whether the event is new or one we already hold", () => {
-    const stored: IngressOutcome = { status: "accepted", eventId: "x-1", duplicate: false, stored: "pending" };
-    const repeated: IngressOutcome = { status: "accepted", eventId: "x-1", duplicate: true, stored: "pending" };
-    const filtered: IngressOutcome = { status: "accepted", eventId: "x-2", duplicate: false, stored: "discarded" };
+    const source = { tenantId: "tenant-1", instanceId: "instance-1" };
+    const stored: IngressOutcome = {
+      status: "accepted",
+      eventId: "x-1",
+      ...source,
+      duplicate: false,
+      stored: "pending"
+    };
+    const repeated: IngressOutcome = {
+      status: "accepted",
+      eventId: "x-1",
+      ...source,
+      duplicate: true,
+      stored: "pending"
+    };
+    const filtered: IngressOutcome = {
+      status: "accepted",
+      eventId: "x-2",
+      ...source,
+      duplicate: false,
+      stored: "discarded"
+    };
 
     for (const outcome of [stored, repeated, filtered]) {
       expect(ingressAnswer(outcome)).toEqual({ status: 202, code: null });

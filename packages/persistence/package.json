@@ -1,6 +1,6 @@
 {
   "name": "@control-hub/persistence",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
@@ -18,7 +18,7 @@
     "postgres": "^3.4.7"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.0"
   }
 }

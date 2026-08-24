@@ -208,6 +208,26 @@ describe("feature flags", () => {
     ["POST", "/api/v1/rates/cost"],
     ["POST", "/api/v1/rates/billing"]
   ] as const;
+  const usageRoutes = [
+    ["GET", "/api/v1/usage/sources"],
+    ["GET", "/api/v1/usage/events"],
+    ["GET", "/api/v1/usage/costs"],
+    ["GET", "/api/v1/usage/rates"],
+    ["POST", "/api/v1/usage/rates"],
+    ["GET", "/api/v1/usage/exchange-rates"],
+    ["POST", "/api/v1/usage/exchange-rates"],
+    ["GET", "/api/v1/usage/budgets"],
+    ["POST", "/api/v1/usage/budgets"]
+  ] as const;
+
+  it("declares the usage cost surface only under its own flag", async () => {
+    const off = buildApp({ ...authenticated, featureFlags: new Set() });
+    const on = buildApp({ ...authenticated, featureFlags: new Set(["usage_costs"] as const) });
+    apps.push(off, on);
+    await Promise.all([off.ready(), on.ready()]);
+    expect(usageRoutes.filter(([method, url]) => off.hasRoute({ method, url }))).toEqual([]);
+    expect(usageRoutes.filter(([method, url]) => !on.hasRoute({ method, url }))).toEqual([]);
+  });
 
   it("does not declare the projects surface while the flag is off", async () => {
     const app = buildApp({ ...authenticated, featureFlags: new Set() });
@@ -273,7 +293,14 @@ describe("feature flags", () => {
   const infrastructureRoutes = [
     ["GET", "/api/v1/infrastructure/overview"],
     ["GET", "/api/v1/infrastructure/automations"],
+    ["GET", "/api/v1/infrastructure/connectors/:instanceId/diagnosis"],
+    ["GET", "/api/v1/infrastructure/connectors/:instanceId/discovery"],
+    ["GET", "/api/v1/infrastructure/connectors/:instanceId/services"],
+    ["POST", "/api/v1/infrastructure/hosts/:hostId/services"],
     ["PUT", "/api/v1/infrastructure/automations/:instanceId/:externalId/link"],
+    ["GET", "/api/v1/infrastructure/projects"],
+    ["PUT", "/api/v1/infrastructure/projects/:instanceId/:externalId/link"],
+    ["GET", "/api/v1/infrastructure/supabase-projects"],
     ["GET", "/api/v1/infrastructure/alert-rules"],
     ["POST", "/api/v1/infrastructure/alert-rules"],
     ["PATCH", "/api/v1/infrastructure/alert-rules/:ruleId"],

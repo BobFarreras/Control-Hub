@@ -94,6 +94,11 @@ boto pel seu `aria-label`. Dues coses a vigilar:
   metadades i el desplegable d'estat es diuen tots dos "Estat"; cal buscar dins de
   `aside.ticket-meta` i no a tota la pagina.
 
+- **Trobar-lo no es prou: tampoc s'hi pot fer `selectOption`.** El localitzador arriba al boto, i
+  `selectOption` hi respon `Element is not a <select> element`. Fes servir l'ajudant
+  `selectFieldOption` de `tests/e2e/support/fixture.ts`, que reconeix les dues formes: si es un
+  `<select>` natiu el fa servir, i si no, obre el boto i clica l'opcio pel seu text.
+
 Ho va destapar la migracio de tots els `<select>` natius a `SelectControl`, que va canviar els
 components sense tocar cap prova: `pnpm check` passava sencer i la suite E2E queia en dos tests
 de suport. Es l'unica porta que ho veu.
@@ -451,6 +456,35 @@ mai que la base ha quedat enrere. Val la pena comprovar de tant en tant que el r
 docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub_test -c "select count(*) from schema_migrations;"
 ```
 
+### Una tanda verda que no ha provat res del que creus
+
+**Simptoma.** `pnpm test` acaba verd i el recompte diu «passades» i «saltades» sense mes. Les
+proves que toquen l'esquema, l'RLS i l'aillament entre tenants son a les saltades, i alli hi poden
+estar mesos sense que ningu ho noti: una suite saltada no es vermella.
+
+**Causa.** Les suites d'integracio se salten soles quan no hi ha `TEST_DATABASE_URL`. Es
+deliberat —no tothom te la base aixecada— i te el cost que la porta sembla mes verda del que es.
+
+**Que fer.** Exportar les dues variables i tornar-hi. A PowerShell, en una sola linia:
+
+```text
+$env:TEST_DATABASE_URL="postgres://control_hub_app:local_only@127.0.0.1:55434/control_hub_test"; $env:TEST_DATABASE_ADMIN_URL="postgres://control_hub_admin:local_admin_only@127.0.0.1:55434/control_hub_test"; pnpm test
+```
+
+Amb les dues posades no s'ha de saltar res: **1.413 proves, cap saltada**, el 23 d'agost de 2026.
+Si en surten de saltades, les variables no han arribat a `vitest`.
+
+**Abans, la base ha d'estar al dia**, i normalment no ho esta: ni el migrador de desenvolupament
+ni el de verificacio la toquen. Es migra apuntant el migrador a la base de test:
+
+```text
+MIGRATION_DATABASE_URL="postgres://control_hub_admin:local_admin_only@127.0.0.1:55434/control_hub_test" pnpm --filter @control-hub/database migrate
+```
+
+El 23 d'agost de 2026 estava a la `0039` amb sis migracions per aplicar. La comprovacio rapida de
+si ha quedat enrere es la de l'apartat anterior: comparar el recompte de `schema_migrations` amb el
+nombre de fitxers de `packages/database/migrations`.
+
 ### Correr el suite autenticat contra la pila de verificacio
 
 No es cap error, pero costa de reconstruir cada vegada. Amb `pnpm dev:verify` aixecat a 3002:
@@ -553,3 +587,92 @@ docker exec control-hub-postgres-1 psql -U control_hub_admin -d control_hub -tAc
 **La regla.** Quan una migracio nova nomes canvia permisos, afegir-la al repositori no la fa
 efectiva enlloc. Despres d'escriure-la, migra les tres bases o assumeix que la de desenvolupament
 et mentira a la primera prova manual.
+### Una maquina declarada diu «no respon» i no en dira mai res mes
+
+**Simptoma.** Una maquina acabada de declarar surt amb «No respon / Cap lectura» i no canvia mai,
+mentre el recollidor passa cada dos minuts i les altres maquines si que ensenyen xifres.
+
+**Causa.** El que es va declarar no es una maquina. Les xifres d'una maquina venen de
+`pull_host_metrics`, que desa un registre `host:<etiqueta>`; si l'etiqueta declarada no es la d'un
+`node_exporter`, no hi haura mai cap registre que hi casi. El cas real va ser una URL sondejada amb
+blackbox (`https://.../storage/v1/version`) declarada com a maquina des del panell de descobriment.
+
+**Com reconeixer-ho.** Mira si el recollidor te cap lectura de maquina amb aquella etiqueta:
+
+```bash
+docker exec control-hub-postgres-1 psql "$DATABASE_URL" -c "select external_id from connector_records where external_id like 'host:%'"
+```
+
+Si l'etiqueta declarada no hi es, la fitxa no s'encendra per molt que s'esperi.
+
+**Solucio.** Allo no era una maquina, era un **servei**: declara'l al selector de serveis de la
+maquina que el serveix, amb la clau sencera (`probe:https://...`). La fitxa sobrera **no es pot
+esborrar des del producte** —no hi ha ruta per fer-ho, a proposit— aixi que de moment cal treure la
+fila d'`infra_hosts` a ma.
+
+**La regla.** Una pantalla que ofereix per declarar coses que despres no poden encendre's es pitjor
+que una que no ofereix res: fabrica fitxes mortes que despres ningu pot retirar. Si una llista
+proposa, ha de proposar nomes el que el magatzem pot arribar a casar.
+
+### Una variable del `.env` no te el valor que hi has escrit
+
+**Simptoma.** Cada passada d'un connector mor amb `DESTINATION_NOT_ALLOWLISTED` contra una adreca
+que es a `CONNECTOR_INTERNAL_ALLOWLIST`. La linia hi es, escrita be, i el reinici no canvia res.
+
+**Causa.** La variable estava escrita **dues vegades** al `.env`, en linies diferents. El
+`--env-file` de Node es queda l'ultima aparicio i descarta les anteriors sense dir-ho, aixi que el
+valor viu era el de la segona linia i el que algu llegia al fitxer era el de la primera. Cap avis,
+cap error: nomes una variable que no diu el que sembla.
+
+**Com reconeixer-ho.** Pregunta-ho al mateix parser que ho llegeix, no al fitxer:
+
+```bash
+node --env-file=.env -e "console.log(process.env.CONNECTOR_INTERNAL_ALLOWLIST)"
+```
+
+Si el que surt no es tot el que hi ha escrit, la clau esta duplicada. `grep -n` per la clau ho
+confirma en una linia.
+
+**Solucio.** Una sola linia amb tots els origens separats per comes. L'allotja tambe la seccio 7
+de `docs/runbooks/connect-a-vps.md`, que es on s'hi afegeixen maquines noves.
+
+**La regla.** Un valor d'entorn no es comprova mirant el fitxer: es comprova preguntant-l'hi al
+proces. I **la llista es llegeix un sol cop en arrencar el worker**, aixi que afegir-hi un origen
+sense reiniciar tampoc no fa res.
+
+### Un connector diu «mai comprovat, mai executat» mentre el worker el consulta cada cinc minuts
+
+**Simptoma.** La integracio surt `Activa` i alhora `Sense comprovar / Mai`. No hi ha cap fila a
+`connector_sync_runs` ni a `connector_operation_state` per a aquell connector, cap lectura a
+`connector_records`, i les pantalles que en depenen diuen «Cap lectura». El worker esta amunt i
+altres connectors del mateix tenant funcionen.
+
+**Causa.** El treball peta a `startRun`, abans que existeixi la fila de run. Sense fila no hi ha
+res per tancar, cap salut per registrar i cap estat d'operacio per escriure: la passada no deixa
+rastre enlloc. `connector_sync_runs.job_id` tenia un `check` de 120 caracters i l'identificador el
+composa BullMQ, no nosaltres: per a un treball repetitiu es
+`repeat:connector:<tenant>:<instancia>:<operacio>:<timestamp>`, que amb dos UUID son 104
+caracters abans del nom de l'operacio. El limit era, de fet, un limit sobre com de llarg pot
+dir-se una operacio, i no ho deia enlloc. `pull_workflows` (119) i `pull_executions` (120) hi
+cabien; `pull_probe_state` (121), `pull_host_metrics` (122) i `pull_container_state` (125) no.
+El 23514 de PostgreSQL arriba a `mapConstraint`, que el converteix en `INVALID_INPUT`.
+
+**Com reconeixer-ho.** El motiu de la fallada es a la cua, no a la base de dades, perque la base
+no en va saber mai res:
+
+```bash
+docker exec control-hub-valkey-1 valkey-cli zrevrange bull:control-hub-connectors:failed 0 0
+```
+
+I amb l'identificador que en surt:
+
+```bash
+docker exec control-hub-valkey-1 valkey-cli hget "bull:control-hub-connectors:<id>" failedReason
+```
+
+**Solucio.** La `0040` puja el `check` a 200. Aplica-la a les tres bases: `pnpm db:migrate`,
+`pnpm db:migrate:verify` i la de test.
+
+**La regla.** Un limit de llargada sobre un valor que composa una llibreria de tercers es un limit
+sobre alguna altra cosa que ningu ha escrit. Si el capem, que sigui amb marge i amb el motiu al
+costat.

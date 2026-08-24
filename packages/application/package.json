@@ -1,6 +1,6 @@
 {
   "name": "@control-hub/application",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
@@ -14,7 +14,7 @@
     "@control-hub/domain": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.0"
   }
 }
