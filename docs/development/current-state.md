@@ -83,6 +83,25 @@ incremental. L'OAuth de connectors fa de Control Hub un client davant el proveid
 de la Fase 10 el fara servidor de recursos per a MCP. Comparteixen primitives, no tokens ni
 audiences.
 
+**La Fase 10 te especificacio aprovada en part i el primer increment implementat** (24 d'agost de
+2026). `docs/specifications/mcp-and-client-portal.md` defineix Control Hub com a resource server
+OAuth 2.1: emissor propi, tokens opacs de referencia revocables a l'instant, audience lligada a
+`APP_ORIGIN` + `/mcp`, scopes de lectura que s'interseccionen amb els permisos, registre manual de
+clients, service accounts i auditoria per tool call. El propietari va aprovar D1, D2, D3 i D6; D4
+(redirects loopback), D5 (vida del token), D7 (bearer o DPoP) i D8 (portal) segueixen obertes i
+bloquegen exactament la part que en depen.
+
+De la 10.1 nomes hi ha l'**increment A**: la flag `mcp` registrada i apagada, i les regles
+d'autoritat a `packages/domain/src/mcp.ts` amb 23 proves. Decideix qui pot cridar que --issuer,
+audience, expiracio, revocacio, tenant, scope i permis, en aquest ordre-- i encara no hi ha res que
+li pregunti: cap ruta, cap migracio, cap token. **El punt de continuacio es l'increment B**, el
+cataleg de tools a `packages/application`, que lliga cada tool a un cas d'us existent i porta la
+prova d'arquitectura que li prohibeix importar repositoris.
+
+Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **numeros de migracio**,
+que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio
+additiva de `TenantContext` amb un `actor`, perque un service account no te `userId`.
+
 **El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9.** La Fase 9 es
 empaquetat i distribucio —imatges OCI, instal·lador, Ansible, SBOM, signatura— i nomes es paga quan
 una tercera empresa instal·la Control Hub, que avui no es el cas; a mes, els builds de Docker estan

@@ -54,6 +54,21 @@ export const featureFlags = {
     description: "Support mailbox import and confirmed replies through connector actions (Phase 8).",
     owner: "owner",
     retireOn: "2028-06-30"
+  },
+  /**
+   * Off by default, and it gates a whole authorisation surface rather than a screen: with it
+   * closed neither `/mcp` nor the OAuth routes are declared, no token is minted and no tool
+   * catalogue is published. An authorisation server that answers before the resource it protects
+   * exists is a door, not a partial feature -- the same reasoning as `connectors`.
+   *
+   * Purging expired authorisation codes and tokens does not consult it: rows written while it was
+   * open must still expire once it is closed. See
+   * `docs/specifications/mcp-and-client-portal.md`.
+   */
+  mcp: {
+    description: "MCP server, OAuth 2.1 resource server, read-only tool catalogue (Phase 10).",
+    owner: "owner",
+    retireOn: "2028-12-31"
   }
 } as const;
 

@@ -5,8 +5,11 @@ compartida `feature/oauth-and-agent-platform`.
 
 El propietari va aprovar el mateix dia les decisions **D1, D2, D3 i D6** tal com es recomanen aqui:
 emissor propi, tokens opacs de referencia, registre manual de clients i la primera llista de sis
-tools de lectura. **D4, D5, D7 i D8 continuen obertes**, i la resta de l'especificacio continua sent
-una proposta: no s'implementa res fins que el conjunt estigui revisat i aprovat.
+tools de lectura. Amb aixo aprovat, va autoritzar comencar la **10.1**.
+
+**D4, D5, D7 i D8 continuen obertes**, i cadascuna bloqueja la part que en depen: D4 i D5 el flux
+d'autoritzacio (redirects acceptats i vida del token), D7 la proteccio de possessio, D8 el portal.
+La resta de la fase s'implementa; el que penja d'una decisio oberta, no.
 
 ## Problema
 
@@ -40,6 +43,13 @@ La fase es parteix en dos increments que no comparteixen dependencia:
 - **10.2 Portal de client** — proposta oberta. Comparteix el resource server pero no el model
   d'identitat, i te decisions materials sense resoldre (seccio "Portal de client"). **No
   s'implementa amb la 10.1.**
+
+### Estat d'implementacio
+
+- **10.1-A — nucli d'autoritat.** Implementat: la flag `mcp` registrada i apagada, i les regles
+  d'autoritat a `packages/domain/src/mcp.ts` amb proves. Cap ruta, cap migracio i cap token: aquest
+  increment nomes decideix, i encara no hi ha res que li pregunti.
+- La resta de la fase continua sense implementar.
 
 ## Fora d'abast de la 10.1
 
@@ -188,15 +198,24 @@ rastre a l'auditoria.
 Els scopes son **capacitats de lectura per domini**, no permisos duplicats. Deny by default: un
 token sense scopes no pot fer res.
 
-```text
-mcp:tools.list
-crm.read
-support.read
-projects.read
-commerce.read
-infrastructure.read
-usage.read
-```
+| Scope | Permisos que l'han de sostenir |
+| --- | --- |
+| `mcp:tools.list` | cap: llistar el que pots cridar no revela res que no puguis fer |
+| `crm.read` | `customers:read` |
+| `support.read` | `tickets:read` |
+| `projects.read` | `projects:read` |
+| `commerce.read` | `products:manage` |
+| `infrastructure.read` | `infrastructure:read` |
+| `usage.read` | `usage:read` |
+
+Un scope nomes s'ofereix al consentiment si l'actor ja te els permisos que el sostenen, i un service
+account no en pot rebre cap que el seu propietari no tingui.
+
+`commerce.read` esta lligat a `products:manage` perque **avui el cataleg no te cap permis de nomes
+lectura**. Aixo no es un detall d'implementacio: es precisament el motiu pel qual la 10.1 no publica
+cap tool de comerc. Publicar-ne una obligaria a concedir un permis de gestio per llegir un preu, i
+el que caldria abans es un `products:read` al cataleg de permisos, que es un canvi de la matriu de
+`permissions.md` i no d'aquesta fase.
 
 Regla de composicio, i es la que garanteix el criteri de paritat:
 
@@ -214,8 +233,10 @@ token deixa de poder llegir tickets el mateix instant, sense reemetre res. Al re
 permis no obre una tool si el token no porta l'scope. La interseccio es sempre la mes restrictiva, i
 la comprovacio de permis segueix vivint al cas d'us, no al transport.
 
-Els scopes d'escriptura (`*.write`) queden **declarats pero no emissibles** a la 10.1: el cataleg no
-publica cap tool que els consumeixi i l'authorization server refusa una peticio que els demani.
+Els scopes d'escriptura (`*.write`) **no es declaren** a la 10.1. Un scope que ningu pot demanar es
+una cosa menys que pot sortir malament; declarar-los per refusar-los despres nomes afegeix una porta
+que algu hauria de recordar tancar. Quan hi hagi tools d'escriptura aprovades, entraran amb el seu
+scope i amb la confirmacio vinculada al contingut que la 7B ja va definir.
 
 ## Tenant resolution
 
@@ -437,12 +458,32 @@ MCP pugui descobrir com autoritzar-se.
 - `MCP_REDIRECT_URI_MISMATCH`, `MCP_PKCE_REQUIRED`, `MCP_GRANT_TYPE_UNSUPPORTED` (400).
 - `MCP_AUTHORIZATION_CODE_INVALID` (400) — desconegut, caducat o ja consumit.
 - `MCP_REFRESH_REUSE_DETECTED` (401) — la familia queda revocada.
-- `TOOL_NOT_PUBLISHED` (404) — la tool no existeix per a aquest token.
+- `TOOL_NOT_PUBLISHED` (404) — la tool no existeix en aquesta instal.lacio.
 - `TOOL_INPUT_INVALID` (400), `TOOL_LIMIT_EXCEEDED` (422), `RATE_LIMITED` (429).
 - `PERMISSION_DENIED` (403) — la mateixa que dona REST, amb el mateix codi.
 
 Cap error revela si un recurs existeix en un altre tenant, ni quines tools hi ha per a altri, ni res
 del proveidor.
+
+### Ordre de la decisio
+
+L'ordre en que es refusa una crida forma part del contracte, i no es lliure:
+
+1. **Tenant** anomenat en un argument que no coincideix amb el del token -> `MCP_TENANT_MISMATCH`.
+   Es compara, no s'obeeix, i no pot ampliar res.
+2. **Existencia** -> `TOOL_NOT_PUBLISHED`. Tres casos hi cauen i son indistingibles entre ells: un
+   nom desconegut, una tool amb la flag del seu modul tancada i una tool que escriu mentre no hi ha
+   escriptures publicades. Sondejar el cataleg no informa de res.
+3. **Scope** -> `MCP_SCOPE_INSUFFICIENT`, abans de mirar els permisos. El token es la credencial
+   presentada, aixi que la seva autoritat es decideix primer, i la resposta es accionable: qui no te
+   un scope el pot demanar.
+4. **Permis** -> `PERMISSION_DENIED`, exactament el que respondria REST i amb el mateix codi. Aixo
+   es el criteri de paritat, i per aixo un permis absent **no** es dissimula darrere un 404: una
+   ruta REST tampoc ho fa.
+
+`tools/list` mostra les tools que superen les quatre comprovacions. Una tool a la qual nomes falta
+l'scope no surt a la llista pero respon `403` si s'invoca pel nom: es la unica manera que el client
+sapiga que existeix quelcom que pot demanar.
 
 ## Threat model
 
@@ -498,8 +539,10 @@ decisio oberta perque el dia que hi hagi tools d'escriptura el calcul canvia.
    immediatament seguent, sense esperar cap expiracio.
 5. **Tenant incorrecte:** argument que anomena un altre tenant -> `403 MCP_TENANT_MISMATCH`, i cap
    fila d'un altre tenant a la resposta ni a la consulta.
-6. **Tool no publicada:** invocar per nom una tool inexistent, una amb la flag tancada i una que el
-   token no pot veure -> `404 TOOL_NOT_PUBLISHED` en els tres casos, indistingibles entre ells.
+6. **Tool no publicada:** invocar per nom una tool inexistent, una amb la flag del seu modul tancada
+   i una que escriu mentre no hi ha escriptures publicades -> `404 TOOL_NOT_PUBLISHED` en els tres
+   casos, indistingibles entre ells. Un permis absent, en canvi, respon `403 PERMISSION_DENIED`,
+   igual que la ruta REST equivalent.
 7. **Replay:** codi d'autoritzacio reutilitzat -> error; refresh token reutilitzat -> familia revocada
    i alerta; sessio MCP represa amb un altre grant -> error.
 8. **Confusio de tokens:** un access token de proveidor (7B) presentat a `/mcp` i un token MCP
