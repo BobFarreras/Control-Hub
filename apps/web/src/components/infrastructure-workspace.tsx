@@ -1483,9 +1483,7 @@ export function InfrastructureWorkspace({
                           {project.status && <small className="muted">{project.status}</small>}
                         </td>
                         <td>
-                          {project.createdLabel && (
-                            <time dateTime={project.createdAt!}>{project.createdLabel}</time>
-                          )}
+                          {project.createdLabel && <time dateTime={project.createdAt!}>{project.createdLabel}</time>}
                         </td>
                         <td>
                           {customers.find((customer) => customer.id === project.customerId)?.displayName ?? (

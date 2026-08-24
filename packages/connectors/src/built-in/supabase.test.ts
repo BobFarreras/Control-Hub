@@ -156,7 +156,16 @@ describe("pulling projects", () => {
   });
 
   it("reads a project mid-transition as neither healthy nor unhealthy", () => {
-    const transitional = ["COMING_UP", "GOING_DOWN", "RESTORING", "UPGRADING", "PAUSING", "RESTARTING", "RESIZING", "UNKNOWN"];
+    const transitional = [
+      "COMING_UP",
+      "GOING_DOWN",
+      "RESTORING",
+      "UPGRADING",
+      "PAUSING",
+      "RESTARTING",
+      "RESIZING",
+      "UNKNOWN"
+    ];
     return Promise.all(
       transitional.map(async (status) => {
         const { context } = contextWith({}, [{ body: [project("prj", { status })] }]);

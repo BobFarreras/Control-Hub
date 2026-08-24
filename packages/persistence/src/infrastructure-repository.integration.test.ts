@@ -460,7 +460,9 @@ suite("PostgresInfrastructureRepository", () => {
 
     it("shows one tenant nothing of another's", async () => {
       const instance = await newInstance(tenantB, membershipB);
-      await putRecord(tenantB, membershipB, instance.id, "pull_supabase_projects", "project:secret", { name: "Theirs" });
+      await putRecord(tenantB, membershipB, instance.id, "pull_supabase_projects", "project:secret", {
+        name: "Theirs"
+      });
 
       const mine = await repository.listSupabaseProjects(asA());
       expect(mine.some((item) => item.externalId === "project:secret")).toBe(false);
