@@ -60,6 +60,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   projeccio de tokens sense prompts, codi ni paths. Aprovada, ampliacio de la Fase 8.1.
 - `specifications/phase-7b-actions-and-oauth.md`: contracte acotat d'OAuth, accions asincrones i
   transport IMAP que necessita la Fase 8. Aprovat.
+- `specifications/mcp-and-client-portal.md`: proposta de la Fase 10 -- Control Hub com a resource
+  server OAuth 2.1, cataleg de tools MCP nomes de lectura, service accounts i auditoria per tool
+  call. Separada dels grants OAuth de connectors de la Fase 7B.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
