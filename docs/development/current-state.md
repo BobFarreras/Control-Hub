@@ -91,12 +91,16 @@ clients, service accounts i auditoria per tool call. El propietari va aprovar D1
 (redirects loopback), D5 (vida del token), D7 (bearer o DPoP) i D8 (portal) segueixen obertes i
 bloquegen exactament la part que en depen.
 
-De la 10.1 nomes hi ha l'**increment A**: la flag `mcp` registrada i apagada, i les regles
-d'autoritat a `packages/domain/src/mcp.ts` amb 23 proves. Decideix qui pot cridar que --issuer,
-audience, expiracio, revocacio, tenant, scope i permis, en aquest ordre-- i encara no hi ha res que
-li pregunti: cap ruta, cap migracio, cap token. **El punt de continuacio es l'increment B**, el
-cataleg de tools a `packages/application`, que lliga cada tool a un cas d'us existent i porta la
-prova d'arquitectura que li prohibeix importar repositoris.
+De la 10.1 hi ha dos increments. L'**increment A** son les regles d'autoritat a
+`packages/domain/src/mcp.ts` amb 23 proves, que decideixen qui pot cridar que --issuer, audience,
+expiracio, revocacio, tenant, scope i permis, en aquest ordre-- i la flag `mcp` registrada i
+apagada. L'**increment B1** es el cataleg de `packages/application/src/mcp.ts`: quatre tools de
+lectura de CRM i suport, cadascuna lligada a un cas d'us que ja existeix, amb esquema d'entrada
+tancat, projeccio que retorna menys que la pantalla i una prova d'arquitectura que li prohibeix
+importar repositoris. Encara no hi ha res que li pregunti: cap ruta, cap migracio, cap token.
+**El punt de continuacio es l'increment B2**: `infrastructure.status.summary` i `usage.summary`
+demanen una lectura composta que avui no existeix com a cas d'us i s'ha de dissenyar abans de
+publicar-les; despres venen les migracions i la persistencia de grants i tokens.
 
 Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **numeros de migracio**,
 que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio

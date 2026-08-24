@@ -49,6 +49,14 @@ La fase es parteix en dos increments que no comparteixen dependencia:
 - **10.1-A — nucli d'autoritat.** Implementat: la flag `mcp` registrada i apagada, i les regles
   d'autoritat a `packages/domain/src/mcp.ts` amb proves. Cap ruta, cap migracio i cap token: aquest
   increment nomes decideix, i encara no hi ha res que li pregunti.
+- **10.1-B1 — cataleg de tools.** Implementat: `packages/application/src/mcp.ts` publica quatre
+  tools de lectura (`crm.customers.list`, `crm.customers.get`, `support.tickets.list`,
+  `support.tickets.get`), cadascuna lligada a un cas d'us que ja existeix, amb esquema d'entrada
+  tancat i projeccio que retorna menys que la pantalla. Una prova d'arquitectura comprova que el
+  modul no importa res mes que el domini i els seus germans. Encara no hi ha transport: ningu no
+  crida el cataleg.
+- **10.1-B2 — pendent.** `infrastructure.status.summary` i `usage.summary` demanen una lectura
+  composta que avui no existeix com a cas d'us; s'ha de dissenyar abans de publicar-les.
 - La resta de la fase continua sense implementar.
 
 ## Fora d'abast de la 10.1

@@ -11,6 +11,7 @@ export * from "./support.js";
 export * from "./projects.js";
 export * from "./attendance.js";
 export * from "./usage.js";
+export * from "./mcp.js";
 import {
   canTransitionLead,
   normalizeComparableName,
