@@ -13,6 +13,7 @@ import type {
   ObservedService,
   DeclareServicesInput,
   ServiceRecord,
+  SupabaseProjectRecord,
   UpdateAlertRuleInput,
   UpdateHostInput,
   UpdateServiceInput
@@ -79,6 +80,22 @@ export function deployedProjectResponse(project: DeployedProjectRecord) {
     productionDeployedAt: project.productionDeployedAt,
     lastFailureAt: project.lastFailureAt,
     lastFailureRef: project.lastFailureRef,
+    observedAt: project.observedAt,
+    customerId: project.customerId,
+    notes: project.notes
+  };
+}
+
+/** A Supabase project, field by field. No connection host, no organisation id: see the specification. */
+export function supabaseProjectResponse(project: SupabaseProjectRecord) {
+  return {
+    instanceId: project.instanceId,
+    externalId: project.externalId,
+    name: project.name,
+    region: project.region,
+    status: project.status,
+    healthy: project.healthy,
+    createdAt: project.createdAt,
     observedAt: project.observedAt,
     customerId: project.customerId,
     notes: project.notes
@@ -529,6 +546,23 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
         metadata: { instanceId, customerId: request.body.customerId ?? "none" }
       });
       return { linked: true };
+    }
+  );
+
+  app.get(
+    "/api/v1/infrastructure/supabase-projects",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every Supabase project the connectors have read",
+        description:
+          "What Supabase says exists and its status, with the client it was associated with. `healthy` is null, never false, for a project mid-transition -- restoring, upgrading, resizing -- because none of those are an outage. Associating one with a client uses the same route as a Vercel project, since the link does not know which provider a project came from."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { projects: (await infrastructure.listSupabaseProjects(context)).map(supabaseProjectResponse) };
     }
   );
 

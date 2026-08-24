@@ -17,6 +17,21 @@ per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 - **OpenCode local** pot enviar tokens a la VPS amb un collector per dispositiu. La connexio surt
   per HTTPS i no inclou converses, codi, paths, diffs ni ordres.
 
+### Supabase, llegit des del Control Hub (Fase 7.4)
+
+- **Els projectes de Supabase i el seu estat** es llegeixen cada cinc minuts. Cap ordre cap
+  enfora: el connector no pausa, no restaura, no crea ni esborra res, i no toca cap dada de dins
+  d'un projecte.
+- **El token de gestio de Supabase no es de nomes lectura, i es diu sencer**: porta el mateix
+  privilegi que el compte que el va encunyar, i no hi ha manera de limitar-lo sense la plataforma
+  OAuth2 que encara no existeix. La pantalla d'incorporacio ho avisa amb aquestes paraules.
+- **Els projectes es dibuixen a Infraestructura**, en una franja propia i separada de la de
+  Vercel: regio, estat —actiu, inactiu o en transicio, mai una caiguda falsa mentre Supabase mou
+  el projecte d'un lloc a un altre— i quan es va crear. S'associen a un client amb la mateixa
+  taula que un projecte de Vercel: cap migracio nova.
+- Com connectar-hi: `docs/runbooks/connect-supabase.md`. **Encara no salta cap alerta** quan un
+  projecte es pausa: es veu quan algu mira la pantalla.
+
 ### Vercel, llegit des del Control Hub (Fase 7.4)
 
 - **Els projectes de Vercel i els desplegaments de produccio que han fallat** es llegeixen cada

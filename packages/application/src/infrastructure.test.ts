@@ -26,6 +26,7 @@ import {
   type LinkAutomationInput,
   type LinkDeployedProjectInput,
   type ServiceRecord,
+  type SupabaseProjectRecord,
   type UpdateAlertRuleInput,
   type UpdateHostInput,
   type UpdateServiceInput
@@ -102,6 +103,8 @@ class FakeRepository implements InfrastructureRepository {
     this.projectLinks.push(input);
     return Promise.resolve();
   };
+  supabaseProjects: SupabaseProjectRecord[] = [];
+  listSupabaseProjects = () => Promise.resolve(this.supabaseProjects);
   hosts: HostRecord[] = [];
   services: ServiceRecord[] = [];
   declaredHosts: DeclareHostInput[] = [];
@@ -303,6 +306,7 @@ describe("who may do what", () => {
   it("lets Administrator read everything the module holds", async () => {
     await expect(service.listAutomations(administrator)).resolves.toEqual([]);
     await expect(service.listDeployedProjects(administrator)).resolves.toEqual([]);
+    await expect(service.listSupabaseProjects(administrator)).resolves.toEqual([]);
     await expect(service.listRules(administrator)).resolves.toEqual([]);
     await expect(service.listAlerts(administrator)).resolves.toEqual([]);
     await expect(service.listHosts(administrator)).resolves.toEqual([]);
@@ -348,6 +352,7 @@ describe("who may do what", () => {
   it("refuses somebody holding neither permission even the read", async () => {
     await expect(service.listAutomations(stranger)).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.listDeployedProjects(stranger)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.listSupabaseProjects(stranger)).rejects.toEqual(refused("FORBIDDEN"));
   });
 });
 

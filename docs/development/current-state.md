@@ -124,6 +124,23 @@ s'activa per projecte des del tauler de Vercel i cap dels projectes actuals el t
 respon 404, no zero. Es documenta a `connector-vercel.md` en comptes d'implementar-se perque avui
 la franja nomes sabria dir que no sap res.
 
+**El connector de Supabase ja esta escrit i dibuixat** (24 d'agost de 2026), amb la seva
+especificacio a `docs/specifications/connector-supabase.md` i el runbook a
+`docs/runbooks/connect-supabase.md`. Llegeix els projectes com a estat
+(`pull_supabase_projects`, `project:<ref>`, cada 5 min), amb la base **fixada al codi** a
+`https://api.supabase.com`, com Vercel. **Decisio deliberada, amb el risc dit sencer:** un
+Personal Access Token de Supabase no te cap abast de nomes lectura -- porta el mateix privilegi
+que el compte que el va encunyar, i l'unica manera de tenir-ne un de limitat de veritat es OAuth2,
+que demana la plataforma de la Fase 7B i no es construeix nomes per aixo. El propietari ho va
+acceptar amb el risc explicit, i `credentialHint_supabase_api_token` ho diu a l'onboarding amb
+aquestes paraules, no amb un eufemisme. **Cap migracio nova**: els projectes reutilitzen
+`infra_project_links` (la mateixa taula de Vercel) perque associar un projecte allotjat a un
+client es el mateix concepte sigui quin sigui el proveidor, i l'`instance_id` ja el diferencia
+sense cap columna `kind`. La franja **Projectes Supabase** es separada de la de Vercel -- columnes
+diferents, sense domini ni framework -- amb regio, estat (`healthy`: actiu, inactiu o en transicio
+quan es `null`, mai una caiguda falsa mentre Supabase mou el projecte d'un lloc a un altre) i quan
+es va crear.
+
 **La primera VPS real ja es llegeix.** El 23 d'agost de 2026 la VPS de Contabo
 (`node-exporter:9100`) va passar de no tenir cap lectura a ensenyar CPU, memoria, disc, carrega i
 temps encesa, mes 20 contenidors, 5 sondes i la copia de seguretat diaria. **La VPS no va caldre

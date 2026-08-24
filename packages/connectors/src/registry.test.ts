@@ -45,6 +45,7 @@ describe("what this installation ships", () => {
       "openai",
       "opencode",
       "prometheus",
+      "supabase",
       "vercel"
     ]);
   });

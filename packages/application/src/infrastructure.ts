@@ -111,6 +111,30 @@ export type DeployedProjectRecord = {
   notes: string | null;
 };
 
+/**
+ * A Supabase project as a screen sees it: whether it is up, and our own link.
+ *
+ * There is no failure-event pair the way a Vercel deployment is: a paused project has not "had an
+ * incident" at an instant worth remembering, it is paused now and will stop being so the next time
+ * this is read. One state, one meaning.
+ */
+export type SupabaseProjectRecord = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  region: string | null;
+  /** True when the project is up, false when it is not, null while it is mid-transition. */
+  healthy: boolean | null;
+  /** What the provider calls it -- `ACTIVE_HEALTHY`, `INACTIVE`, `RESTORING`. */
+  status: string | null;
+  /** When the project was created. Context rather than a reading: it does not go stale. */
+  createdAt: Date | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: Date;
+  customerId: string | null;
+  notes: string | null;
+};
+
 export type AlertRuleRecord = AlertRule & { createdAt: Date; updatedAt: Date };
 
 export type AlertEventRecord = {
@@ -460,6 +484,8 @@ export type InfrastructureRepository = {
   linkAutomation(context: TenantContext, input: LinkAutomationInput): Promise<void>;
   listDeployedProjects(context: TenantContext): Promise<readonly DeployedProjectRecord[]>;
   linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void>;
+  /** Reads a different connector's records into the same shape; the link table and its input are shared. */
+  listSupabaseProjects(context: TenantContext): Promise<readonly SupabaseProjectRecord[]>;
 
   listHosts(context: TenantContext): Promise<readonly HostRecord[]>;
   findHost(context: TenantContext, hostId: string): Promise<HostRecord | null>;
@@ -766,6 +792,16 @@ export class InfrastructureService {
   async linkDeployedProject(context: TenantContext, input: LinkDeployedProjectInput): Promise<void> {
     requireOperate(context);
     await this.repository.linkDeployedProject(context, { ...input, notes: checkNotes(input.notes) });
+  }
+
+  /**
+   * Reads Supabase projects. Associating one with a client is `linkDeployedProject`: the same
+   * link table and the same input, because the association does not care which provider the
+   * project came from.
+   */
+  async listSupabaseProjects(context: TenantContext): Promise<readonly SupabaseProjectRecord[]> {
+    requireRead(context);
+    return await this.repository.listSupabaseProjects(context);
   }
 
   async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {

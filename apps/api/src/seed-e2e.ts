@@ -400,6 +400,15 @@ try {
         failureRef: "fix/preus"
       },
       never: { externalId: "project:e2e-nova", name: "E2E Web nova" }
+    },
+    /**
+     * The database provider. One project healthy and serving, one mid-transition -- the state
+     * `healthy` cannot be false for, because restoring is not an outage.
+     */
+    supabase: "Supabase E2E",
+    supabaseProjects: {
+      healthy: { externalId: "project:e2eabcdefgh", name: "E2E Base de dades" },
+      restoring: { externalId: "project:e2eijklmnop", name: "E2E Base restaurant" }
     }
   } as const;
 
@@ -555,6 +564,56 @@ try {
     )
     on conflict (tenant_id, instance_id, operation, external_id) do update
       set data = excluded.data, last_seen_at = excluded.last_seen_at`;
+
+  /**
+   * The database provider, seeded the same way as Vercel: the state a pass would have left, with
+   * no pass reaching the real Management API during the suite. `restoring` has no `createdAt` on
+   * purpose -- a provider field that is sometimes missing is exactly what a fixture should have at
+   * least one of, or the mapper's null-handling is untested.
+   */
+  const supabaseInstanceId = id(`${tenantId}:connector:supabase-e2e`);
+  await database`
+    insert into connector_instances (id, tenant_id, connector_type, name, status, config, health_status)
+    values (
+      ${supabaseInstanceId}, ${tenantId}, 'supabase', ${infrastructureFixture.supabase}, 'enabled',
+      ${database.json({ baseUrl: "https://api.supabase.com" })}, 'unknown'
+    )
+    on conflict (id) do update set status = excluded.status, config = excluded.config, updated_at = now()`;
+
+  const supabaseProjectRecords = [
+    {
+      externalId: infrastructureFixture.supabaseProjects.healthy.externalId,
+      data: {
+        name: infrastructureFixture.supabaseProjects.healthy.name,
+        region: "eu-west-2",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        createdAt: "2026-02-10T00:00:00.000Z"
+      }
+    },
+    {
+      externalId: infrastructureFixture.supabaseProjects.restoring.externalId,
+      data: {
+        name: infrastructureFixture.supabaseProjects.restoring.name,
+        region: "eu-west-2",
+        status: "RESTORING",
+        healthy: null,
+        createdAt: null
+      }
+    }
+  ] as const;
+  for (const project of supabaseProjectRecords)
+    await database`
+      insert into connector_records (
+        id, tenant_id, instance_id, operation, external_id, shape, data, first_seen_at, last_seen_at
+      )
+      values (
+        ${id(`${tenantId}:record:${project.externalId}`)}, ${tenantId}, ${supabaseInstanceId},
+        'pull_supabase_projects', ${project.externalId}, 'state', ${database.json(project.data)},
+        now() - '2 days'::interval, now() - '2 minutes'::interval
+      )
+      on conflict (tenant_id, instance_id, operation, external_id) do update
+        set data = excluded.data, last_seen_at = excluded.last_seen_at`;
 
   /**
    * A Prometheus nobody has to reach either, and the inventory it is compared with.

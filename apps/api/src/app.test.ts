@@ -300,6 +300,7 @@ describe("feature flags", () => {
     ["PUT", "/api/v1/infrastructure/automations/:instanceId/:externalId/link"],
     ["GET", "/api/v1/infrastructure/projects"],
     ["PUT", "/api/v1/infrastructure/projects/:instanceId/:externalId/link"],
+    ["GET", "/api/v1/infrastructure/supabase-projects"],
     ["GET", "/api/v1/infrastructure/alert-rules"],
     ["POST", "/api/v1/infrastructure/alert-rules"],
     ["PATCH", "/api/v1/infrastructure/alert-rules/:ruleId"],

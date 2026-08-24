@@ -19,7 +19,9 @@
   `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n) i
   `runbooks/connect-a-vps.md` (preparar una VPS perque el Control Hub en llegeixi l'estat, amb
   el prompt per a l'agent que l'administra) i `runbooks/connect-vercel.md` (connectar un
-  compte de Vercel amb un token de nomes lectura) i `runbooks/connect-opencode.md` (instal.lar el
+  compte de Vercel amb un token de nomes lectura) i `runbooks/connect-supabase.md` (connectar un
+  compte de Supabase amb un Personal Access Token, i el risc que porta) i
+  `runbooks/connect-opencode.md` (instal.lar el
   collector local sanititzat i enviar consum a la VPS).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
@@ -49,6 +51,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/connector-vercel.md`: el connector de Vercel -- projectes com a estat,
   desplegaments fallits com a esdeveniment, i la base fixada al codi. **Proposta**, Fase 7.4;
   el connector esta escrit i la superficie que l'ha de dibuixar, oberta.
+- `specifications/connector-supabase.md`: el connector de Supabase -- projectes com a estat,
+  privilegi total del PAT acceptat i dit a l'onboarding, i cap migracio nova perque reutilitza la
+  taula d'enllaç de Vercel. Aprovada, ampliacio de la Fase 7.4.
 - `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
   consum i costos, correu entrant i correu sortint. Aprovada, incloses les ampliacions de model.
 - `specifications/connector-opencode.md`: collector local sanititzat d'OpenCode, ingress signat i

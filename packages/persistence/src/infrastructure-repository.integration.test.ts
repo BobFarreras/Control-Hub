@@ -63,7 +63,8 @@ suite("PostgresInfrastructureRepository", () => {
       | "pull_container_state"
       | "pull_probe_state"
       | "pull_projects"
-      | "pull_deployments",
+      | "pull_deployments"
+      | "pull_supabase_projects",
     externalId: string,
     data: ConnectorConfig
   ) =>
@@ -143,6 +144,9 @@ suite("PostgresInfrastructureRepository", () => {
 
   const projectsOf = async (instanceId: string) =>
     (await repository.listDeployedProjects(asA())).filter((item) => item.instanceId === instanceId);
+
+  const supabaseProjectsOf = async (instanceId: string) =>
+    (await repository.listSupabaseProjects(asA())).filter((item) => item.instanceId === instanceId);
 
   const alertsOf = async (ruleId: string, status?: "firing" | "resolved") =>
     (await repository.listAlerts(asA(), status ? { status } : {})).filter((alert) => alert.ruleId === ruleId);
@@ -364,6 +368,104 @@ suite("PostgresInfrastructureRepository", () => {
       expect(project).toMatchObject({ notes: "del projecte", customerId });
       const [automation] = await automationsOf(instance.id);
       expect(automation).toMatchObject({ notes: null, customerId: null });
+    });
+  });
+
+  describe("Supabase projects", () => {
+    it("reads the project, its status and who it is for, at once", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:abcdefgh", {
+        name: "BD publica",
+        region: "eu-west-1",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        createdAt: "2026-01-02T00:00:00.000Z"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+      await repository.linkDeployedProject(asA(), {
+        instanceId: instance.id,
+        externalId: "project:abcdefgh",
+        customerId,
+        notes: "la bd publica"
+      });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({
+        externalId: "project:abcdefgh",
+        name: "BD publica",
+        region: "eu-west-1",
+        status: "ACTIVE_HEALTHY",
+        healthy: true,
+        customerId,
+        notes: "la bd publica"
+      });
+      expect(project?.createdAt).toEqual(new Date("2026-01-02T00:00:00.000Z"));
+      expect(project?.observedAt).toBeInstanceOf(Date);
+    });
+
+    it("says nothing rather than false about a project mid-transition", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:restoring", {
+        name: "En transicio",
+        region: "eu-west-1",
+        status: "RESTORING",
+        healthy: null,
+        createdAt: null
+      });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({ name: "En transicio", status: "RESTORING", healthy: null, customerId: null });
+      expect(project?.createdAt).toBeNull();
+    });
+
+    it("reuses the same link table as Vercel's projects, without crossing the two", async () => {
+      const vercelInstance = await newInstance(tenantA, membershipA);
+      const supabaseInstance = await newInstance(tenantA, membershipA);
+      // Same external id, two different instances: the composite key is what keeps them apart.
+      await putRecord(tenantA, membershipA, vercelInstance.id, "pull_projects", "project:same-id", { name: "Vercel" });
+      await putRecord(tenantA, membershipA, supabaseInstance.id, "pull_supabase_projects", "project:same-id", {
+        name: "Supabase",
+        status: "ACTIVE_HEALTHY",
+        healthy: true
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      await repository.linkDeployedProject(asA(), {
+        instanceId: supabaseInstance.id,
+        externalId: "project:same-id",
+        customerId,
+        notes: "de la bd"
+      });
+
+      const [supabaseProject] = await supabaseProjectsOf(supabaseInstance.id);
+      expect(supabaseProject).toMatchObject({ notes: "de la bd", customerId });
+      const [vercelProject] = await projectsOf(vercelInstance.id);
+      expect(vercelProject).toMatchObject({ notes: null, customerId: null });
+    });
+
+    it("keeps the notes when the association is withdrawn", async () => {
+      const instance = await newInstance(tenantA, membershipA);
+      await putRecord(tenantA, membershipA, instance.id, "pull_supabase_projects", "project:withdrawn", {
+        name: "Segona"
+      });
+      const customerId = await newCustomer(tenantA, `Client ${randomUUID()}`);
+
+      const link = { instanceId: instance.id, externalId: "project:withdrawn", customerId, notes: "ojo" };
+      await repository.linkDeployedProject(asA(), link);
+      await repository.linkDeployedProject(asA(), { ...link, customerId: null });
+
+      const [project] = await supabaseProjectsOf(instance.id);
+      expect(project).toMatchObject({ customerId: null, notes: "ojo" });
+    });
+
+    it("shows one tenant nothing of another's", async () => {
+      const instance = await newInstance(tenantB, membershipB);
+      await putRecord(tenantB, membershipB, instance.id, "pull_supabase_projects", "project:secret", { name: "Theirs" });
+
+      const mine = await repository.listSupabaseProjects(asA());
+      expect(mine.some((item) => item.externalId === "project:secret")).toBe(false);
+      const theirs = await repository.listSupabaseProjects(asB());
+      expect(theirs.some((item) => item.externalId === "project:secret")).toBe(true);
     });
   });
 

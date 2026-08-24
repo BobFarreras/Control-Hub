@@ -4,7 +4,8 @@ import type {
   AutomationRecord,
   DeployedProjectRecord,
   HostRecord,
-  ServiceRecord
+  ServiceRecord,
+  SupabaseProjectRecord
 } from "@control-hub/application";
 import { alertRuleKinds, type ConnectorDiagnosis, type DiagnosisFinding } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
@@ -18,7 +19,8 @@ import {
   overviewOf,
   readingResponse,
   ruleResponse,
-  serviceResponse
+  serviceResponse,
+  supabaseProjectResponse
 } from "./infrastructure.js";
 
 /**
@@ -62,6 +64,27 @@ const project = {
   baseUrl: "https://api.vercel.com",
   apiToken: "vercel_tok_4f8c1e"
 } as unknown as DeployedProjectRecord;
+
+/**
+ * A Supabase project as the adapter hands it over, with the same two things on it that must not
+ * travel: the Management API's own address, and the token the collector authenticates with. The
+ * record type has no field for either -- unlike the Vercel project, which does -- but the row is
+ * cast on regardless, so this test still proves the mapper reads field by field and not by spread.
+ */
+const supabaseProject = {
+  instanceId: "i-3",
+  externalId: "project:abcdefgh",
+  name: "app-produccio",
+  region: "eu-west-2",
+  status: "ACTIVE_HEALTHY",
+  healthy: true,
+  createdAt: new Date("2026-02-10T00:00:00.000Z"),
+  observedAt: new Date("2026-08-13T11:55:00.000Z"),
+  customerId: "c-1",
+  notes: "la base de dades de produccio",
+  baseUrl: "https://api.supabase.com",
+  apiToken: "sbp_9f2c8ab4"
+} as unknown as SupabaseProjectRecord;
 
 const rule: AlertRuleRecord = {
   id: "r-1",
@@ -199,6 +222,45 @@ describe("what a deployed project response says", () => {
 
   it("carries the reading with its hour, because an old figure without its age is a lie", () => {
     expect(deployedProjectResponse(project).observedAt).toEqual(project.observedAt);
+  });
+});
+
+describe("what a Supabase project response says", () => {
+  it("carries no provider address and no token, whatever arrived on the row", () => {
+    const response = supabaseProjectResponse(supabaseProject);
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain("sbp_9f2c8ab4");
+    expect(serialized).not.toContain("api.supabase.com");
+    expect(Object.keys(response).sort()).toEqual([
+      "createdAt",
+      "customerId",
+      "externalId",
+      "healthy",
+      "instanceId",
+      "name",
+      "notes",
+      "observedAt",
+      "region",
+      "status"
+    ]);
+  });
+
+  it("carries the region and the provider's own status alongside the boolean read off it", () => {
+    expect(supabaseProjectResponse(supabaseProject)).toMatchObject({
+      region: "eu-west-2",
+      status: "ACTIVE_HEALTHY",
+      healthy: true
+    });
+  });
+
+  it("says nothing rather than false about a project mid-transition", () => {
+    const restoring = { ...supabaseProject, healthy: null, status: "RESTORING" };
+    expect(supabaseProjectResponse(restoring)).toMatchObject({ healthy: null, status: "RESTORING" });
+  });
+
+  it("carries the reading with its hour, because an old figure without its age is a lie", () => {
+    expect(supabaseProjectResponse(supabaseProject).observedAt).toEqual(supabaseProject.observedAt);
   });
 });
 

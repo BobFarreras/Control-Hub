@@ -48,6 +48,9 @@ const t = {
   serving: "Serveix",
   neverDeployed: "Mai desplegada",
   noFailure: "Cap",
+  supabaseProjects: "Projectes Supabase",
+  supabaseHealthy: "Activa",
+  supabaseTransitioning: "En transicio",
   selectorRun: "Mira que hi ha",
   services: "Serveis",
   backup: "Copia de seguretat"
@@ -320,6 +323,25 @@ test("says a project is serving and that its last build failed, and neither of a
   await expect(never).toContainText(t.noFailure);
 });
 
+/**
+ * A database provider's project, in a band of its own next to the hosting one: no domain, no
+ * failed build, and a third answer -- mid-transition -- that a serving/down pair cannot hold.
+ */
+test("says a Supabase project is healthy, and that another is mid-transition", async ({ page }) => {
+  const { supabaseProjects } = readFixture().infrastructure;
+
+  await page.goto("/ca/infrastructure", { waitUntil: "domcontentloaded" });
+
+  const band = page.getByRole("region", { name: t.supabaseProjects, exact: true });
+  const healthy = band.getByRole("row").filter({ hasText: supabaseProjects.healthy.name });
+  await expect(healthy).toContainText(t.supabaseHealthy);
+  await expect(healthy).toContainText("eu-west-2");
+  await expect(healthy).toContainText("2026");
+
+  const restoring = band.getByRole("row").filter({ hasText: supabaseProjects.restoring.name });
+  await expect(restoring).toContainText(t.supabaseTransitioning);
+});
+
 test("shows only what the chosen collector accounts for", async ({ page }) => {
   const { collector, instance } = readFixture().infrastructure;
 
@@ -328,19 +350,22 @@ test("shows only what the chosen collector accounts for", async ({ page }) => {
   const machines = page.getByRole("region", { name: t.hosts, exact: true });
   const automations = page.getByRole("region", { name: t.automations, exact: true });
   const projects = page.getByRole("region", { name: t.projects, exact: true });
+  const supabaseProjects = page.getByRole("region", { name: t.supabaseProjects, exact: true });
   const scope = page.getByLabel(t.scope);
 
-  // With nothing chosen the screen is the whole of it, and both collectors are on it.
+  // With nothing chosen the screen is the whole of it, and every collector is on it.
   await waitForHydration(scope);
   await expect(machines).toBeVisible();
   await expect(automations).toBeVisible();
   await expect(projects).toBeVisible();
+  await expect(supabaseProjects).toBeVisible();
 
   // The collector that reads machines. The automations of the other one are not narrowed to
-  // none: the table is gone, and so is the projects table of the third one.
+  // none: the table is gone, and so are the projects tables of the other two.
   await selectFieldOption(scope, { label: collector });
   await expect(automations).toHaveCount(0);
   await expect(projects).toHaveCount(0);
+  await expect(supabaseProjects).toHaveCount(0);
   await expect(machines).toBeVisible();
   await expect(page).toHaveURL(/[?&]collector=/);
 

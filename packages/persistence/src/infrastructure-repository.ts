@@ -21,6 +21,7 @@ import {
   type LinkDeployedProjectInput,
   type DeployedProjectRecord,
   type ServiceRecord,
+  type SupabaseProjectRecord,
   type UpdateAlertRuleInput,
   type UpdateHostInput,
   type UpdateServiceInput
@@ -81,6 +82,13 @@ const probeOperation = "pull_probe_state";
 /** What a Vercel instance stores: the projects as state, the failed builds as events. */
 const projectOperation = "pull_projects";
 const deploymentOperation = "pull_deployments";
+/**
+ * Named apart from `pull_projects` on purpose: `listDeployedProjects` below filters
+ * `connector_records` on the operation name alone, with no join back to the connector's type.
+ * Sharing a name would mix a Supabase project into that query with Vercel-shaped fields it does
+ * not have.
+ */
+const supabaseProjectOperation = "pull_supabase_projects";
 
 /**
  * A project as the row comes back, before the provider's own timestamps are read.
@@ -94,6 +102,9 @@ type DeployedProjectRow = Omit<DeployedProjectRecord, "createdAt" | "productionD
   productionDeployedAt: string | null;
   lastFailureAt: string | null;
 };
+
+/** Same reason as `DeployedProjectRow`: the provider's own string, cast in code and not in SQL. */
+type SupabaseProjectRow = Omit<SupabaseProjectRecord, "createdAt"> & { createdAt: string | null };
 
 function instantOrNull(value: string | null): Date | null {
   if (!value) return null;
@@ -359,6 +370,46 @@ export class PostgresInfrastructureRepository implements InfrastructureRepositor
         on conflict (tenant_id, instance_id, external_id) do update
           set customer_id = excluded.customer_id, notes = excluded.notes, updated_at = now()`;
     }).catch(mapConstraint);
+  }
+
+  /**
+   * Reads `infra_project_links` too, the same table Vercel's projects use: the link does not know
+   * or care which provider a project came from, only its `(instance_id, external_id)`.
+   */
+  async listSupabaseProjects(context: TenantContext): Promise<readonly SupabaseProjectRecord[]> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const rows = await tx<SupabaseProjectRow[]>`
+        select
+          r.instance_id as "instanceId",
+          r.external_id as "externalId",
+          coalesce(r.data ->> 'name', '') as name,
+          r.data ->> 'region' as region,
+          r.data ->> 'status' as status,
+          case when jsonb_typeof(r.data -> 'healthy') = 'boolean'
+            then (r.data -> 'healthy')::boolean end as "healthy",
+          r.data ->> 'createdAt' as "createdAt",
+          r.last_seen_at as "observedAt",
+          l.customer_id as "customerId",
+          l.notes
+        from connector_records r
+        left join infra_project_links l
+          on l.tenant_id = r.tenant_id and l.instance_id = r.instance_id and l.external_id = r.external_id
+        where r.tenant_id = ${context.tenantId} and r.operation = ${supabaseProjectOperation}
+        order by name asc, r.external_id asc`;
+
+      return rows.map((row) => ({
+        instanceId: row.instanceId,
+        externalId: row.externalId,
+        name: row.name,
+        region: row.region,
+        healthy: row.healthy,
+        status: row.status,
+        createdAt: instantOrNull(row.createdAt),
+        observedAt: row.observedAt,
+        customerId: row.customerId,
+        notes: row.notes
+      }));
+    });
   }
 
   async listHosts(context: TenantContext): Promise<readonly HostRecord[]> {

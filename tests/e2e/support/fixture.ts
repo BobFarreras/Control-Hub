@@ -44,6 +44,13 @@ export type Fixture = {
       serving: { externalId: string; name: string; domain: string; failureRef: string };
       never: { externalId: string; name: string };
     };
+    /** The database collector, by the name the select shows. */
+    supabase: string;
+    /** One project healthy and serving, and one mid-transition. */
+    supabaseProjects: {
+      healthy: { externalId: string; name: string };
+      restoring: { externalId: string; name: string };
+    };
   };
 };
 

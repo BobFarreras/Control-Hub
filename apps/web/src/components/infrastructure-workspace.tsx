@@ -34,6 +34,7 @@ import type {
   InfrastructureAutomation,
   InfrastructureDeployedProject,
   InfrastructureOverview,
+  InfrastructureSupabaseProject,
   InventorySummary,
   ObservedTally,
   ObservedHost,
@@ -112,12 +113,22 @@ export type ProjectRow = InfrastructureDeployedProject & {
   failureAge: ReadingAge | null;
 };
 
+/** One Supabase project, with the collector's name and the age of the reading behind it. */
+export type SupabaseProjectRow = InfrastructureSupabaseProject & {
+  instanceName: string;
+  /** The creation date in words, formatted on the server. Same reason as `ProjectRow.createdLabel`. */
+  createdLabel: string | null;
+  age: ReadingAge | null;
+};
+
 /**
  * What the association dialog is open over.
  *
  * One dialog for two bands, because it asks the same two questions and the answers go to routes
  * of the same shape. `kind` is the path segment, which is why it reads as one: an automation and
- * a project are annotated in two different tables and nothing here has to know why.
+ * a project are annotated in two different tables and nothing here has to know why. A Supabase
+ * project is a `"projects"` target too, and for the same reason: the link does not know which
+ * provider a project came from, so there is no third path segment to route it to.
  */
 type LinkTarget = {
   kind: "automations" | "projects";
@@ -451,6 +462,17 @@ function productionState(t: Labels, project: ProjectRow): { tone: StatusTone; la
   return { tone: "danger", label: t.projectDown ?? "" };
 }
 
+/**
+ * What a Supabase project is doing, in a word. `null` is a project mid-transition -- restoring,
+ * upgrading, resizing -- and drawing that as an outage would be reporting one that is not
+ * happening, the same reason `productionReady` above has a neutral answer of its own.
+ */
+function supabaseState(t: Labels, project: SupabaseProjectRow): { tone: StatusTone; label: string } {
+  if (project.healthy === null) return { tone: "neutral", label: t.supabaseProjectTransitioning ?? "" };
+  if (project.healthy) return { tone: "active", label: t.supabaseProjectHealthy ?? "" };
+  return { tone: "danger", label: t.supabaseProjectDown ?? "" };
+}
+
 export function InfrastructureWorkspace({
   overview,
   summary,
@@ -460,6 +482,7 @@ export function InfrastructureWorkspace({
   instanceTypes,
   automations,
   projects,
+  supabaseProjects,
   alerts,
   rules,
   customers,
@@ -481,6 +504,7 @@ export function InfrastructureWorkspace({
   instanceTypes: Record<string, string>;
   automations: AutomationRow[];
   projects: ProjectRow[];
+  supabaseProjects: SupabaseProjectRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
   customers: CustomerOption[];
@@ -527,6 +551,12 @@ export function InfrastructureWorkspace({
    * themselves, and the screen is what it always was.
    */
   const chosen = sliceByCollector({ hosts, automations, projects, alerts, rules }, collector);
+  // A one-line filter and not another call through `sliceByCollector`: a Supabase project is not
+  // one of the five lists that generic already knows how to slice at once, and adding a sixth
+  // type parameter for the same single line it already writes for `projects` would not save
+  // anything.
+  const chosenSupabaseProjects =
+    collector === null ? supabaseProjects : supabaseProjects.filter((row) => row.instanceId === collector);
 
   function chooseCollector(value: string) {
     const next = value === "" ? null : value;
@@ -1373,6 +1403,88 @@ export function InfrastructureWorkspace({
                             </>
                           ) : (
                             <span className="muted">{t.projectNoFailure}</span>
+                          )}
+                        </td>
+                        <td>
+                          {customers.find((customer) => customer.id === project.customerId)?.displayName ?? (
+                            <span className="muted">{t.noCustomer}</span>
+                          )}
+                        </td>
+                        <td>
+                          <time dateTime={project.observedAt}>{ageLabel(t, project.age, t.observedNever ?? "")}</time>
+                          {project.age?.stale && (
+                            <small className="muted" title={t.staleHint}>
+                              {t.stale}
+                            </small>
+                          )}
+                        </td>
+                        {canOperate && (
+                          <td className="pending-actions">
+                            <button
+                              className="icon-button"
+                              disabled={busy}
+                              aria-label={t.assign}
+                              onClick={() => {
+                                setFormError("");
+                                setLinking({ kind: "projects", ...project });
+                              }}
+                            >
+                              <UserPlus size={16} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* The projects a database provider hosts, in a band of its own: the columns are not the
+          Vercel ones -- there is no domain and no build to fail -- so a shared table would either
+          leave cells empty or grow columns that mean nothing for one provider or the other. */}
+      {(collector === null || chosenSupabaseProjects.length > 0) && (
+        <section className="project-panel" aria-label={t.sectionSupabaseProjects}>
+          <h3>{t.sectionSupabaseProjects}</h3>
+          {chosenSupabaseProjects.length === 0 ? (
+            <p className="muted">{t.supabaseProjectsEmpty}</p>
+          ) : (
+            <div className="crm-table-wrap inside-panel">
+              <table className="crm-table">
+                <thead>
+                  <tr>
+                    <th>{t.name}</th>
+                    <th>{t.supabaseProjectRegion}</th>
+                    <th>{t.supabaseProjectStatus}</th>
+                    <th>{t.projectCreated}</th>
+                    <th>{t.customer}</th>
+                    <th>{t.observed}</th>
+                    {canOperate && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {chosenSupabaseProjects.map((project) => {
+                    const state = supabaseState(t, project);
+                    return (
+                      <tr key={`${project.instanceId}:${project.externalId}`}>
+                        <td>
+                          <span className="ticket-subject">{project.name}</span>
+                          <small className="muted">{project.instanceName}</small>
+                        </td>
+                        <td>{project.region ?? <span className="muted">{t.noLink}</span>}</td>
+                        <td>
+                          <StatusPill tone={state.tone} label={state.label} />
+                          {/* The provider's own word underneath the one we mapped it to: `healthy`
+                              collapses a dozen states into three, and the raw one is still worth
+                              having when three is not enough to tell what is actually happening. */}
+                          {project.status && <small className="muted">{project.status}</small>}
+                        </td>
+                        <td>
+                          {project.createdLabel && (
+                            <time dateTime={project.createdAt!}>{project.createdLabel}</time>
                           )}
                         </td>
                         <td>

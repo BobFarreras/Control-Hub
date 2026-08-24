@@ -784,6 +784,30 @@ export type InfrastructureDeployedProject = {
   notes: string | null;
 };
 
+/**
+ * A Supabase project as the API hands it over. No connection host, no organisation id: what the
+ * connector reads is kept off this screen the same way a Vercel project's API token is.
+ *
+ * `healthy` is null, never false, for a project mid-transition -- restoring, upgrading, resizing
+ * -- because none of those are an outage.
+ */
+export type InfrastructureSupabaseProject = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  /** Where the provider hosts it, as it names the region. Null when it says nothing. */
+  region: string | null;
+  /** What the provider calls it: `ACTIVE_HEALTHY`, `INACTIVE`, `RESTORING`. */
+  status: string | null;
+  healthy: boolean | null;
+  /** When the project was created. Context, not a reading: it never goes stale. */
+  createdAt: string | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
 export type InfrastructureAlert = {
   id: string;
   ruleId: string;
@@ -835,6 +859,7 @@ export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[
 export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
 export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
 export type InfrastructureProjectsResponse = { projects: InfrastructureDeployedProject[] };
+export type InfrastructureSupabaseProjectsResponse = { projects: InfrastructureSupabaseProject[] };
 export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };
 
 /**

@@ -4,6 +4,7 @@ import { n8n } from "./built-in/n8n.js";
 import { openAi } from "./built-in/openai.js";
 import { openCode } from "./built-in/opencode.js";
 import { prometheus } from "./built-in/prometheus.js";
+import { supabase } from "./built-in/supabase.js";
 import { vercel } from "./built-in/vercel.js";
 import { createConnectorRegistry } from "./registry.js";
 
@@ -15,6 +16,7 @@ export { n8n, n8nApiVersion, type N8nConfig } from "./built-in/n8n.js";
 export { openAi, openAiUsageApiVersion, type OpenAiConfig } from "./built-in/openai.js";
 export { openCode, type OpenCodeCollectorPayload, type OpenCodeConfig } from "./built-in/opencode.js";
 export { prometheus, prometheusApiVersion, type PrometheusConfig } from "./built-in/prometheus.js";
+export { supabase, supabaseApiVersion, type SupabaseConfig } from "./built-in/supabase.js";
 export { vercel, vercelApiVersion, type VercelConfig } from "./built-in/vercel.js";
 
 /**
@@ -28,5 +30,6 @@ export const connectorRegistry = createConnectorRegistry([
   openAi,
   openCode,
   prometheus,
+  supabase,
   vercel
 ]);

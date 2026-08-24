@@ -6,7 +6,8 @@ import {
   type AutomationRow,
   type HostRow,
   type ProjectRow,
-  type RuleRow
+  type RuleRow,
+  type SupabaseProjectRow
 } from "@/components/infrastructure-workspace";
 import { PageTopbar } from "@/components/page-topbar";
 import { apiFetch, readJson } from "@/lib/api";
@@ -21,6 +22,7 @@ import type {
   InfrastructureOverview,
   InfrastructureOverviewResponse,
   InfrastructureProjectsResponse,
+  InfrastructureSupabaseProjectsResponse,
   InventorySummary,
   IntegrationsResponse,
   Page as ApiPage
@@ -63,6 +65,7 @@ type Loaded = {
   instanceTypes: Record<string, string>;
   automations: AutomationRow[];
   projects: ProjectRow[];
+  supabaseProjects: SupabaseProjectRow[];
   alerts: InfrastructureAlert[];
   rules: RuleRow[];
   customers: CustomerOption[];
@@ -78,6 +81,7 @@ const empty: Loaded = {
   instanceTypes: {},
   automations: [],
   projects: [],
+  supabaseProjects: [],
   alerts: [],
   rules: [],
   customers: [],
@@ -118,6 +122,7 @@ async function load(locale: string, labels: Record<string, string>, showResolved
       inventoryResponse,
       automationsResponse,
       projectsResponse,
+      supabaseProjectsResponse,
       alertsResponse,
       rulesResponse,
       integrationsResponse,
@@ -128,6 +133,7 @@ async function load(locale: string, labels: Record<string, string>, showResolved
       apiFetch("/api/v1/infrastructure/inventory"),
       apiFetch("/api/v1/infrastructure/automations"),
       apiFetch("/api/v1/infrastructure/projects"),
+      apiFetch("/api/v1/infrastructure/supabase-projects"),
       apiFetch(`/api/v1/infrastructure/alerts${showResolved ? "" : "?status=firing"}`),
       apiFetch("/api/v1/infrastructure/alert-rules"),
       apiFetch("/api/v1/integrations"),
@@ -189,6 +195,16 @@ async function load(locale: string, labels: Record<string, string>, showResolved
             age: readingAge(project.observedAt, now),
             failureAge: readingAge(project.lastFailureAt, now)
           }))
+        : [],
+      supabaseProjects: supabaseProjectsResponse.ok
+        ? (await readJson<InfrastructureSupabaseProjectsResponse>(supabaseProjectsResponse)).projects.map(
+            (project) => ({
+              ...project,
+              instanceName: named(project.instanceId),
+              createdLabel: dateLabel(project.createdAt, locale),
+              age: readingAge(project.observedAt, now)
+            })
+          )
         : [],
       alerts: alertsResponse.ok ? (await readJson<InfrastructureAlertsResponse>(alertsResponse)).alerts : [],
       rules: rulesResponse.ok
@@ -253,6 +269,7 @@ export default async function InfrastructurePage({
             instanceTypes={data.instanceTypes}
             automations={data.automations}
             projects={data.projects}
+            supabaseProjects={data.supabaseProjects}
             alerts={data.alerts}
             rules={data.rules}
             customers={data.customers}
