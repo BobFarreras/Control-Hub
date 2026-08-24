@@ -23,7 +23,11 @@ const baseSchema = z.object({
   CONNECTOR_KEY_RING: z.string().optional(),
   // Comma-separated origins a connector may reach besides the public internet, for services this
   // installation runs itself. Administrative: no tenant can add one. Parsed by ./egress-allowlist.ts.
-  CONNECTOR_INTERNAL_ALLOWLIST: z.string().optional()
+  CONNECTOR_INTERNAL_ALLOWLIST: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(8).optional(),
+  MICROSOFT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  MICROSOFT_OAUTH_CLIENT_SECRET: z.string().min(8).optional()
 });
 
 export const apiEnvironmentSchema = baseSchema.extend({
@@ -55,9 +59,18 @@ type ConnectorEnvironment = {
   connectorEgressAllowlist: readonly AllowedDestination[];
 };
 
-export type ApiEnvironment = Omit<z.infer<typeof apiEnvironmentSchema>, "CONNECTOR_KEY_RING"> & ConnectorEnvironment;
-export type WorkerEnvironment = Omit<z.infer<typeof workerEnvironmentSchema>, "CONNECTOR_KEY_RING"> &
-  ConnectorEnvironment;
+type OAuthRawKeys =
+  | "GOOGLE_OAUTH_CLIENT_ID"
+  | "GOOGLE_OAUTH_CLIENT_SECRET"
+  | "MICROSOFT_OAUTH_CLIENT_ID"
+  | "MICROSOFT_OAUTH_CLIENT_SECRET";
+export type OAuthProvider = "google" | "microsoft";
+export type OAuthClientIds = Readonly<Partial<Record<OAuthProvider, string>>>;
+export type OAuthClients = Readonly<Partial<Record<OAuthProvider, { clientId: string; clientSecret: string }>>>;
+export type ApiEnvironment = Omit<z.infer<typeof apiEnvironmentSchema>, "CONNECTOR_KEY_RING" | OAuthRawKeys> &
+  ConnectorEnvironment & { oauthClientIds: OAuthClientIds };
+export type WorkerEnvironment = Omit<z.infer<typeof workerEnvironmentSchema>, "CONNECTOR_KEY_RING" | OAuthRawKeys> &
+  ConnectorEnvironment & { oauthClients: OAuthClients };
 
 function resolveConnectorKeyRing(source: { CONNECTOR_KEY_RING?: string | undefined }): KeyRing | null {
   const raw = source.CONNECTOR_KEY_RING?.trim();
@@ -79,20 +92,52 @@ export function connectorKeyRingWarning(environment: {
 }
 
 export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
-  const { CONNECTOR_KEY_RING, ...environment } = apiEnvironmentSchema.parse(source);
+  const {
+    CONNECTOR_KEY_RING,
+    GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET: _googleSecret,
+    MICROSOFT_OAUTH_CLIENT_ID,
+    MICROSOFT_OAUTH_CLIENT_SECRET: _microsoftSecret,
+    ...environment
+  } = apiEnvironmentSchema.parse(source);
   return {
     ...environment,
     connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
-    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST)
+    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
+    oauthClientIds: {
+      ...(GOOGLE_OAUTH_CLIENT_ID ? { google: GOOGLE_OAUTH_CLIENT_ID } : {}),
+      ...(MICROSOFT_OAUTH_CLIENT_ID ? { microsoft: MICROSOFT_OAUTH_CLIENT_ID } : {})
+    }
   };
 }
 
 export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnvironment {
-  const { CONNECTOR_KEY_RING, ...environment } = workerEnvironmentSchema.parse(source);
+  const {
+    CONNECTOR_KEY_RING,
+    GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET,
+    MICROSOFT_OAUTH_CLIENT_ID,
+    MICROSOFT_OAUTH_CLIENT_SECRET,
+    ...environment
+  } = workerEnvironmentSchema.parse(source);
+  if (Boolean(GOOGLE_OAUTH_CLIENT_ID) !== Boolean(GOOGLE_OAUTH_CLIENT_SECRET)) {
+    throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
+  }
+  if (Boolean(MICROSOFT_OAUTH_CLIENT_ID) !== Boolean(MICROSOFT_OAUTH_CLIENT_SECRET)) {
+    throw new Error("MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET must be configured together");
+  }
   return {
     ...environment,
     connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
-    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST)
+    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
+    oauthClients: {
+      ...(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET
+        ? { google: { clientId: GOOGLE_OAUTH_CLIENT_ID, clientSecret: GOOGLE_OAUTH_CLIENT_SECRET } }
+        : {}),
+      ...(MICROSOFT_OAUTH_CLIENT_ID && MICROSOFT_OAUTH_CLIENT_SECRET
+        ? { microsoft: { clientId: MICROSOFT_OAUTH_CLIENT_ID, clientSecret: MICROSOFT_OAUTH_CLIENT_SECRET } }
+        : {})
+    }
   };
 }
 

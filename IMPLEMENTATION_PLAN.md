@@ -666,6 +666,33 @@ Una tercera empresa pot instal·lar, operar, actualitzar i recuperar Control Hub
 
 MCP i portal reutilitzen les mateixes regles del core i no obren vies alternatives d'autoritzacio.
 
+## Fase 11 - Plataforma d'agents
+
+**Estat: proposta per a revisio del propietari.**
+
+**Especificacio:** `docs/specifications/agent-platform.md`.
+
+**Objectiu:** convertir Control Hub en el control plane d'agents empresarials versionats,
+multi-tenant, governats per politiques, aprovacio humana, auditoria i pressupostos.
+
+La primera entrega construeix registre, versions immutables, runs asincrons, grants de tools,
+limits i auditoria sobre el stack TypeScript existent. Reutilitza la Fase 10 com a frontera MCP i
+la Fase 8.1 per costos; no introdueix un segon backend ni runtimes de tercers al nucli.
+
+### Entregables inicials
+
+- Registre d'agents i versions immutables.
+- Runtime nadiu darrere ports de model, politiques, tools, consum i auditoria.
+- Runs amb limits de passos, temps, tokens i cost.
+- Permisos `allow | approval_required | deny` per tool.
+- Historial de runs i cua d'aprovacions a la UI.
+
+### Criteri de sortida
+
+Un agent publicat pot executar un cas d'us acotat sense travessar tenants ni permisos, cada tool
+call queda governada i auditada, i qualsevol efecte extern sensible requereix aprovacio vinculada
+al contingut.
+
 ## Plantilla de revisio de fase
 
 En acabar cada fase s'ha de presentar:

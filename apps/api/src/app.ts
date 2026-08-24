@@ -7,6 +7,7 @@ import {
   CompanySubscriptionService,
   ConnectorCredentialService,
   ConnectorIngressService,
+  ConnectorOAuthService,
   ConnectorService,
   CustomerServicesError,
   CustomerServicesService,
@@ -41,6 +42,7 @@ import {
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
   PostgresConnectorRepository,
+  PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
   IdentityInvariantError,
@@ -125,6 +127,7 @@ type BuildAppOptions = {
    * which is why it arrives from the environment and has no route that can write it.
    */
   connectorEgressAllowlist?: readonly AllowedDestination[];
+  oauthClientIds?: Readonly<Partial<Record<"google" | "microsoft", string>>>;
 };
 
 /**
@@ -451,11 +454,23 @@ export function buildApp(options: BuildAppOptions) {
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
     const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;
+    const oauth =
+      vault && isFeatureEnabled(featureFlags, "connector_oauth")
+        ? new ConnectorOAuthService(
+            repository,
+            new PostgresConnectorOAuthRepository(database),
+            connectorRegistry,
+            vault,
+            options.oauthClientIds ?? {}
+          )
+        : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),
       credentials: vault ? new ConnectorCredentialService(repository, vault) : null,
-      ingress
+      ingress,
+      oauth,
+      appOrigin: options.appOrigin
     });
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate

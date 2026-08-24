@@ -4,6 +4,7 @@ import {
   apiEnvironmentSchema,
   connectorKeyRingWarning,
   parseApiEnvironment,
+  parseWorkerEnvironment,
   workerEnvironmentSchema
 } from "./index.js";
 
@@ -63,6 +64,30 @@ describe("parseApiEnvironment", () => {
         BETTER_AUTH_SECRET: "development-only-secret-with-32-chars"
       }).API_PORT
     ).toBe(4000);
+  });
+
+  it("exposes provider identifiers to the API but never provider secrets", () => {
+    const secret = "provider-secret-value";
+    const environment = parseApiEnvironment({
+      ...base,
+      GOOGLE_OAUTH_CLIENT_ID: "google-client",
+      GOOGLE_OAUTH_CLIENT_SECRET: secret
+    });
+    expect(environment.oauthClientIds.google).toBe("google-client");
+    expect(JSON.stringify(environment)).not.toContain(secret);
+  });
+
+  it("requires complete provider credential pairs in the worker", () => {
+    expect(() => parseWorkerEnvironment({ ...base, GOOGLE_OAUTH_CLIENT_ID: "google-client" })).toThrow(
+      "GOOGLE_OAUTH_CLIENT_ID"
+    );
+    expect(
+      parseWorkerEnvironment({
+        ...base,
+        MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client",
+        MICROSOFT_OAUTH_CLIENT_SECRET: "microsoft-secret"
+      }).oauthClients.microsoft?.clientId
+    ).toBe("microsoft-client");
   });
 
   it("rejects a non-postgres database URL", () => {

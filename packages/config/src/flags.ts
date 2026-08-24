@@ -55,6 +55,11 @@ export const featureFlags = {
     owner: "owner",
     retireOn: "2028-06-30"
   },
+  connector_oauth: {
+    description: "Delegated OAuth authorization, refresh and revocation for connectors (Phase 7B).",
+    owner: "owner",
+    retireOn: "2028-06-30"
+  },
   /**
    * Off by default, and it gates a whole authorisation surface rather than a screen: with it
    * closed neither `/mcp` nor the OAuth routes are declared, no token is minted and no tool

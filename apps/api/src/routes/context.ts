@@ -4,6 +4,7 @@ import type {
   CompanySubscriptionService,
   ConnectorCredentialService,
   ConnectorIngressService,
+  ConnectorOAuthService,
   ConnectorService,
   CustomerServicesService,
   CrmService,
@@ -52,6 +53,8 @@ export type IntegrationsContext = RouteContext & {
   credentials: ConnectorCredentialService | null;
   /** Null for the same reason: minting an endpoint means sealing the secret that signs for it. */
   ingress: ConnectorIngressService | null;
+  oauth: ConnectorOAuthService | null;
+  appOrigin: string | undefined;
 };
 
 /**

@@ -197,16 +197,32 @@ aplicar tarifes reproduibles.
 
 ### M1 — IMAP entrant
 
+**Estat:** implementat el 24 d'agost de 2026 darrere la flag `mail`.
+
 Implementar lectura incremental, no enviament. El cursor es monotonic i l'import a suport es
 idempotent per identificador de bustia i missatge. No carregar recursos remots ni adjunts.
 
 Validar limits de mida, encoding, capçaleres, fils malformats i correus duplicats. El contingut
 importat entra pel cas d'us de suport existent amb `externalReference`.
 
+El connector `imap` nomes declara `imaps://` i port 993. El worker conserva DNS, socket, TLS,
+credencials i parser MIME: fixa la connexio a l'adreca resolta, manté SNI i validacio de certificat,
+refusa xarxes privades tret d'allowlist exacta i talla capçaleres, cos, literals i temps de resposta.
+No desa MIME cru, HTML remot ni adjunts. El projector valida el registre reduit i l'insereix de
+forma idempotent a `support_inbound_messages`; els missatges queden `pending` fins a la
+classificacio de l'M4, tal com va decidir el propietari. El cursor nomes avança després que aquesta
+projeccio hagi acabat, de manera que una fallada no perd correus.
+
 ### M2 — Gmail i Graph entrants
 
-No començar fins tenir OAuth de la 7B. Provar PKCE, `state`, refresh concurrent, revocacio,
-expiracio i que cap refresh token surti del vault, job, log o API.
+**Estat:** implementat el 24 d'agost de 2026 darrere les flags `connector_oauth` i `mail`.
+
+OAuth es configura per instal·lacio amb clients web de Google i Microsoft. L'API genera `state`
+opac i PKCE S256, desa codi i verifier xifrats i nomes encua l'identificador de l'intent; el worker
+fa l'intercanvi i la renovacio just-in-time. Gmail usa history incremental amb fallback acotat quan
+el cursor caduca, i Graph conserva el `deltaLink` validant origen i ruta. Els dos projecten el
+mateix registre reduit de l'M1, sense adjunts ni HTML remot. La UI crea la instancia sense demanar
+tokens manuals i inicia el consentiment des de la fitxa.
 
 ### M3 — Correu sortint
 

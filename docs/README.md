@@ -22,7 +22,7 @@
   compte de Vercel amb un token de nomes lectura) i `runbooks/connect-supabase.md` (connectar un
   compte de Supabase amb un Personal Access Token, i el risc que porta) i
   `runbooks/connect-opencode.md` (instal.lar el plugin sanititzat i enviar consum a la
-  VPS).
+  VPS) i `runbooks/connect-mail.md` (configurar IMAP, Google o Microsoft per al correu entrant).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -63,6 +63,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/mcp-and-client-portal.md`: proposta de la Fase 10 -- Control Hub com a resource
   server OAuth 2.1, cataleg de tools MCP nomes de lectura, service accounts i auditoria per tool
   call. Separada dels grants OAuth de connectors de la Fase 7B.
+- `specifications/agent-platform.md`: proposta de la Fase 11 per governar agents versionats,
+  runs, tools, aprovacions, costos i auditoria sobre la Fase 10.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.

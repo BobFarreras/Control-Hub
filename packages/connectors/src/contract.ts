@@ -71,6 +71,66 @@ export type LoggerPort = {
 
 export type ClockPort = { now(): Date };
 
+export type MailFolder = {
+  id: string;
+  name: string;
+};
+
+export type MailCursor = {
+  folderId: string;
+  /** Opaque and monotonic within the selected folder. */
+  cursor: string | null;
+  limit: number;
+};
+
+export type MailMessageRef = {
+  folderId: string;
+  messageId: string;
+};
+
+export type MailReadLimits = {
+  maxHeaderBytes: number;
+  maxBodyBytes: number;
+};
+
+export type MailChange = {
+  messageId: string;
+  receivedAt: Date;
+};
+
+export type MailChangePage = {
+  changes: readonly MailChange[];
+  cursor: string;
+};
+
+export type MailAddress = {
+  address: string;
+  name: string | null;
+};
+
+export type MailMessage = {
+  id: string;
+  threadId: string | null;
+  messageIdHeader: string | null;
+  subject: string | null;
+  from: MailAddress | null;
+  to: readonly MailAddress[];
+  receivedAt: Date;
+  text: string | null;
+};
+
+/**
+ * High-level mailbox access owned by the worker adapter.
+ *
+ * Deliberately absent are sockets, arbitrary destinations and raw MIME streams. The adapter owns
+ * DNS, TLS, authentication, byte limits and timeouts; a connector only asks mailbox questions.
+ */
+export type MailboxPort = {
+  listFolders(): Promise<readonly MailFolder[]>;
+  changes(input: MailCursor): Promise<MailChangePage>;
+  message(input: MailMessageRef, limits: MailReadLimits): Promise<MailMessage>;
+};
+
 /**
  * What a handler is given. Note what is absent: no database, no global `fetch`, no `process.env`
  * and no tenant identifier — a connector has nothing to do per tenant, and handing it one would
@@ -84,6 +144,8 @@ export type ConnectorContext<Config> = {
   secrets: SecretsPort;
   logger: LoggerPort;
   clock: ClockPort;
+  /** Present only for a connector whose manifest declares a mailbox policy. */
+  mailbox?: MailboxPort;
 };
 
 /** Where a connector is allowed to connect. Never an address somebody typed into a form. */
@@ -95,6 +157,19 @@ export type EgressPolicy = {
    * an internal service on the same host is reached without a tenant being able to name it.
    */
   destination: "configured_base_url" | "operator_allowlist";
+};
+
+export type MailboxPolicy = {
+  ports: readonly (993 | 143)[];
+  tls: "direct" | "starttls";
+};
+
+export type OAuthDeclaration = {
+  provider: "google" | "microsoft";
+  authorizationUrl: string;
+  tokenUrl: string;
+  revocationUrl: string;
+  scopes: readonly string[];
 };
 
 /**
@@ -141,6 +216,10 @@ export type CapabilityManifest = {
   egress: EgressPolicy | null;
   operations: Readonly<Record<string, OperationDeclaration>>;
   ingress: boolean;
+  /** Absence means this connector must never receive mailbox access. */
+  mailbox?: MailboxPolicy;
+  /** Fixed provider metadata used by the platform OAuth flow; never tenant configuration. */
+  oauth?: OAuthDeclaration;
 };
 
 /**
@@ -400,7 +479,7 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   const typedContext = (context: ConnectorContext<unknown>): ConnectorContext<Config> => {
     const result = definition.configSchema.safeParse(context.config);
     if (!result.success) throw new ConnectorError("INVALID_CONFIG");
-    return {
+    const typed: ConnectorContext<Config> = {
       instanceId: context.instanceId,
       config: result.data,
       http: context.http,
@@ -408,6 +487,11 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
       logger: context.logger,
       clock: context.clock
     };
+    if (definition.capabilities.mailbox) {
+      if (!context.mailbox) throw new ConnectorError("MAILBOX_PORT_REQUIRED");
+      typed.mailbox = context.mailbox;
+    }
+    return typed;
   };
 
   return {

@@ -1,4 +1,4 @@
-import type { ConnectorRepository, ConnectorSecretReader } from "@control-hub/application";
+import type { ConnectorRepository } from "@control-hub/application";
 import type { HttpPort, RegisteredConnector } from "@control-hub/connectors";
 import type { TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -152,20 +152,22 @@ const build = (
   overrides: {
     random?: () => number;
     usage?: { ingest: Mock<(context: TenantContext, input: Record<string, unknown>) => Promise<unknown>> };
+    mail?: { ingest: Mock<(context: TenantContext, input: Record<string, unknown>) => Promise<unknown>> };
   } = {}
 ) =>
   new ConnectorRuntime(
     { find: () => connector as unknown as RegisteredConnector },
     {
       repository: repository as unknown as ConnectorRepository,
-      secrets: secrets as unknown as ConnectorSecretReader,
+      secrets: secrets,
       circuits,
       logger,
       http: () => http,
       backoff: { baseMs: 1_000, maxMs: 60_000, maxAttempts: 3 },
       now: () => new Date("2026-08-11T10:00:00.000Z"),
       random: overrides.random ?? (() => 0.5),
-      ...(overrides.usage ? { usage: overrides.usage } : {})
+      ...(overrides.usage ? { usage: overrides.usage } : {}),
+      ...(overrides.mail ? { mail: overrides.mail } : {})
     }
   );
 
@@ -235,6 +237,33 @@ describe("a run that works", () => {
   it("fails the run and leaves the cursor behind when usage projection fails", async () => {
     const usage = { ingest: vi.fn().mockRejectedValue(new Error("USAGE_RECORD_INVALID")) };
     const verdict = await build({ usage }).run(context, request());
+    expect(verdict).toMatchObject({ status: "failed", errorCode: "INVALID_RESPONSE" });
+    expect(repository.state.get(`${instanceId}:pull`)?.cursor).toBeNull();
+  });
+
+  it("projects mailbox records before declaring the connector run successful", async () => {
+    connector = {
+      ...connector,
+      type: "imap",
+      capabilities: { egress: null, operations: { pull_messages: { shape: "event" } }, ingress: false },
+      run: vi
+        .fn<RegisteredConnector["run"]>()
+        .mockResolvedValue({ records: [{ externalId: "INBOX:1", data: {} }], cursor: "next" })
+    };
+    const mail = { ingest: vi.fn().mockResolvedValue({ inserted: 1 }) };
+    await build({ mail }).run(context, request({ operation: "pull_messages" }));
+    expect(mail.ingest).toHaveBeenCalledWith(context, {
+      instanceId,
+      connectorType: "imap",
+      operation: "pull_messages",
+      records: [{ externalId: "INBOX:1", data: {} }]
+    });
+    expect(repository.runs[0]?.status).toBe("succeeded");
+  });
+
+  it("does not advance the cursor when mailbox projection fails", async () => {
+    const mail = { ingest: vi.fn().mockRejectedValue(new Error("INVALID_MAILBOX_RECORD")) };
+    const verdict = await build({ mail }).run(context, request());
     expect(verdict).toMatchObject({ status: "failed", errorCode: "INVALID_RESPONSE" });
     expect(repository.state.get(`${instanceId}:pull`)?.cursor).toBeNull();
   });

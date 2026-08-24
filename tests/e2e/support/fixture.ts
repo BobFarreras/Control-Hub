@@ -139,13 +139,16 @@ type SelectChoice = string | { label: string } | { index: number };
 
 /** Drives both the themed SelectField and any native select left in older screens. */
 export async function selectFieldOption(control: Locator, choice: SelectChoice): Promise<void> {
-  await waitForHydration(control);
-  if ((await control.evaluate((node) => node.tagName)) === "SELECT") {
-    await control.selectOption(typeof choice === "string" ? choice : choice);
+  // A wrapping label names both the visible trigger and the aria-hidden native form proxy.
+  // `getByLabel()` therefore legitimately resolves both; drive only the interactive surface.
+  const interactive = control.locator("xpath=self::*[not(@aria-hidden='true')]");
+  await waitForHydration(interactive);
+  if ((await interactive.evaluate((node) => node.tagName)) === "SELECT") {
+    await interactive.selectOption(typeof choice === "string" ? choice : choice);
     return;
   }
 
-  const shell = control.locator("..");
+  const shell = interactive.locator("..");
   const native = shell.locator("select");
   const resolveLabel = () =>
     native.locator("option").evaluateAll((options, requested) => {
@@ -161,13 +164,14 @@ export async function selectFieldOption(control: Locator, choice: SelectChoice):
   const label = await resolveLabel();
   if (!label) throw new Error(`No option matches ${JSON.stringify(choice)}`);
 
-  await control.click();
+  await interactive.click();
   await shell.getByRole("option", { name: label, exact: true }).click();
 }
 
 /** Returns the form value carrier behind a themed SelectField. */
 export function selectFieldValue(control: Locator): Locator {
-  return control.locator("xpath=self::select | ../select");
+  const interactive = control.locator("xpath=self::*[not(@aria-hidden='true')]");
+  return interactive.locator("xpath=self::select | ../select");
 }
 
 /**

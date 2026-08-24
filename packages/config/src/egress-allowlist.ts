@@ -16,12 +16,12 @@ export class EgressAllowlistError extends Error {
 }
 
 export type AllowedDestination = {
-  scheme: "http:" | "https:";
+  scheme: "http:" | "https:" | "imaps:";
   hostname: string;
   port: number;
 };
 
-const defaultPorts: Record<string, number> = { "http:": 80, "https:": 443 };
+const defaultPorts: Record<string, number> = { "http:": 80, "https:": 443, "imaps:": 993 };
 
 /**
  * Reads a comma-separated list of origins.
@@ -44,9 +44,13 @@ export function parseEgressAllowlist(raw: string | undefined): readonly AllowedD
     } catch {
       throw new EgressAllowlistError("EGRESS_ENTRY_NOT_AN_ORIGIN");
     }
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new EgressAllowlistError("EGRESS_SCHEME_REFUSED");
+    if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "imaps:") {
+      throw new EgressAllowlistError("EGRESS_SCHEME_REFUSED");
+    }
     if (url.username || url.password) throw new EgressAllowlistError("EGRESS_ENTRY_HAS_CREDENTIALS");
-    if (url.pathname !== "/" || url.search || url.hash) throw new EgressAllowlistError("EGRESS_ENTRY_HAS_PATH");
+    if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) {
+      throw new EgressAllowlistError("EGRESS_ENTRY_HAS_PATH");
+    }
     if (!url.hostname) throw new EgressAllowlistError("EGRESS_ENTRY_NOT_AN_ORIGIN");
 
     return {

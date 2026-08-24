@@ -1,5 +1,6 @@
 import {
   ConnectorCredentialError,
+  ConnectorOAuthError,
   ConnectorServiceError,
   ConnectorStorageError,
   InfrastructureServiceError
@@ -74,6 +75,9 @@ const titles: Record<string, string> = {
   SECRET_TOO_SHORT: "Secret too short",
   SECRET_TOO_LONG: "Secret too long",
   ALREADY_EXPIRED: "Expiry is in the past",
+  OAUTH_NOT_DECLARED: "This connector does not use OAuth",
+  OAUTH_PROVIDER_NOT_CONFIGURED: "OAuth provider is not configured",
+  OAUTH_STATE_INVALID: "OAuth state is invalid or expired",
   RULE_NOT_FOUND: "No such alert rule",
   ALERT_NOT_FOUND: "No such alert",
   DUPLICATE_RULE_NAME: "An alert rule already uses that name",
@@ -148,6 +152,8 @@ export function describeConnectorError(
 
   if (error instanceof ConnectorCredentialError) return { status: credentialStatus(error.code), code: error.code };
 
+  if (error instanceof ConnectorOAuthError) return { status: oauthStatus(error.code), code: error.code };
+
   if (error instanceof ConnectorStorageError) return { status: storageStatus(error.code), code: error.code };
 
   if (error instanceof InfrastructureServiceError)
@@ -174,6 +180,14 @@ function credentialStatus(code: string): number {
   if (code === "FORBIDDEN" || code === "MFA_REQUIRED") return 403;
   if (code === "INSTANCE_NOT_FOUND") return 404;
   if (code === "ROTATION_ALREADY_OPEN" || code === "NO_ROTATION_IN_PROGRESS") return 409;
+  return 422;
+}
+
+function oauthStatus(code: string): number {
+  if (code === "FORBIDDEN" || code === "MFA_REQUIRED") return 403;
+  if (code === "INSTANCE_NOT_FOUND") return 404;
+  if (code === "OAUTH_PROVIDER_NOT_CONFIGURED") return 503;
+  if (code === "OAUTH_STATE_INVALID") return 400;
   return 422;
 }
 

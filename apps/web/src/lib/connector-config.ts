@@ -118,6 +118,7 @@ export function configFromForm(fields: readonly ConnectorConfigField[], read: Fo
 export function connectCredentialKind(
   entry: Pick<ConnectorCatalogueEntry, "credentialKinds" | "capabilities"> | undefined
 ): string | null {
+  if (entry?.capabilities.oauth) return null;
   if (!entry || !entry.capabilities.egress) return null;
   return entry.credentialKinds[0] ?? null;
 }

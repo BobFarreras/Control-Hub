@@ -8,7 +8,8 @@ import {
   minimumCadenceSeconds,
   type ConnectorContext,
   type ConnectorDefinition,
-  type HttpResponse
+  type HttpResponse,
+  type MailboxPort
 } from "./contract.js";
 
 const respond = (status: number, body = ""): HttpResponse => ({ status, headers: {}, body });
@@ -149,6 +150,65 @@ describe("the capability manifest limits what runs", () => {
     expect(echo.ingressSignature).toBeNull();
   });
 });
+
+describe("mailbox capability isolation", () => {
+  const mailbox: MailboxPort = {
+    listFolders: () => Promise.resolve([{ id: "inbox", name: "INBOX" }]),
+    changes: () => Promise.resolve({ changes: [], cursor: "1" }),
+    message: () => Promise.reject(new Error("not needed"))
+  };
+
+  it("does not expose a mailbox port to a connector that did not declare it", async () => {
+    let received: MailboxPort | undefined;
+    const connector = defineConnector({
+      ...baseDefinition("without-mailbox"),
+      capabilities: { egress: null, operations: { pull: { shape: "event" } }, ingress: false },
+      operations: {
+        pull: (context) => {
+          received = context.mailbox;
+          return Promise.resolve({ records: [], cursor: null });
+        }
+      }
+    });
+
+    await connector.run("pull", { ...contextWith({}), mailbox }, { cursor: null });
+    expect(received).toBeUndefined();
+  });
+
+  it("requires and exposes the typed port when the manifest declares mailbox access", async () => {
+    const connector = defineConnector({
+      ...baseDefinition("with-mailbox"),
+      capabilities: {
+        egress: null,
+        operations: { pull: { shape: "event" } },
+        ingress: false,
+        mailbox: { ports: [993], tls: "direct" }
+      },
+      operations: {
+        pull: async (context) => ({
+          records: (await context.mailbox!.listFolders()).map((folder) => ({ externalId: folder.id, data: {} })),
+          cursor: null
+        })
+      }
+    });
+
+    await expect(connector.run("pull", contextWith({}), { cursor: null })).rejects.toThrow("MAILBOX_PORT_REQUIRED");
+    await expect(connector.run("pull", { ...contextWith({}), mailbox }, { cursor: null })).resolves.toMatchObject({
+      records: [{ externalId: "inbox" }]
+    });
+  });
+});
+
+function baseDefinition(type: string): Omit<ConnectorDefinition<EmptyConfig>, "capabilities" | "operations"> {
+  return {
+    type,
+    contractVersion: connectorContractVersion,
+    configSchema: emptySchema,
+    configFields: [],
+    credentialKinds: [],
+    health: () => Promise.resolve({ status: "ok" as const })
+  };
+}
 
 describe("configuration", () => {
   it("rejects a key nobody allowlisted instead of quietly dropping it", () => {

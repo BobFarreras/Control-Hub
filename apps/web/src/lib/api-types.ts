@@ -673,6 +673,7 @@ export type ConnectorCatalogueEntry = {
     egress: { schemes: string[]; destination: string } | null;
     operations: string[];
     ingress: boolean;
+    oauth: { provider: "google" | "microsoft" } | null;
   };
 };
 
@@ -714,6 +715,16 @@ export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page:
 /** The only response that carries an address and a secret, and only the once. */
 export type CreatedConnectorEndpointResponse = { endpoint: ConnectorEndpoint; path: string; secret: string };
 
+export type ConnectorOAuthGrant = {
+  provider: "google" | "microsoft";
+  scopes: string[];
+  status: "active" | "reauthorization_required" | "revoked";
+  accessExpiresAt: string | null;
+  lastRefreshedAt: string | null;
+};
+export type ConnectorOAuthGrantResponse = { grant: ConnectorOAuthGrant | null };
+export type ConnectorOAuthAuthorizationResponse = { authorizationUrl: string; expiresAt: string };
+
 /** Everything the screen shows about one integration, loaded together by the page that selects it. */
 export type IntegrationDetail = {
   instance: ConnectorInstance;
@@ -730,6 +741,7 @@ export type IntegrationDetail = {
    * on an installation that cannot seal one is offering an operation that always fails.
    */
   vaultAvailable: boolean;
+  oauthGrant: ConnectorOAuthGrant | null;
 };
 
 /**

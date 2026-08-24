@@ -112,10 +112,15 @@ totes pures i sense hashing. L'**increment E1** es la meitat de resource server 
 el port `McpOauthRepository` i `PostgresMcpOauthRepository`, que resol el bearer per la funcio
 `security definer` --l'unica lectura que no pot estar dins d'un tenant, perque decidir quin es el
 tenant es precisament el que fa-- i que en revocar un grant apaga els seus tokens a la mateixa
-transaccio. Vuit proves d'integracio contra PostgreSQL de debo, amb l'aillament entre tenants
-comprovat i no nomes escrit. **El punt de continuacio es la meitat d'authorization server**: clients,
-codis, refresh i service accounts, i tot seguit les rutes i el transport `/mcp`. El `Mcp-Session-Id`
-encara no te taula a proposit: que se n'ha de desar depen del transport.
+transaccio. L'**increment E2** hi ha afegit la meitat d'authorization server: clients, peticio
+d'autoritzacio, consum del codi, emissio i rotacio de tokens i service accounts. El codi es
+consumeix amb la mateixa sentencia que el llegeix, i la rotacio del refresh gasta l'antic i emet el
+successor a la mateixa transaccio amb `used_at is null` al predicat, de manera que dues peticions
+simultanies donen un successor i un perdedor, mai dues linies vives. Desactivar un service account
+arrossega els seus grants i els seus tokens. Quinze proves d'integracio contra PostgreSQL de debo,
+amb l'aillament entre tenants comprovat i no nomes escrit. **El punt de continuacio son les rutes
+d'OAuth** i tot seguit el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit: que
+se n'ha de desar depen del transport.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual
@@ -669,8 +674,14 @@ loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-ope
 Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
-El punt de continuacio aprovat es la base OAuth2 de la 7B; un cop disponible, la Fase 8 continua
-amb M1: IMAP entrant incremental.
+**M1 i M2 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
+correu entrant incremental a `support_inbound_messages`, de forma idempotent i amb remitents
+desconeguts en estat `pending`. Gmail i Graph usen OAuth delegat de nomes lectura: `state` d'un sol
+us, PKCE S256, tokens xifrats amb context de proposit, jobs sense secrets i renovacio concurrent
+protegida per lease i compare-and-swap. Els clients OAuth es configuren per instal·lacio segons
+`docs/runbooks/connect-mail.md`; la fitxa inicia el consentiment i mostra nomes metadades. El
+seguent increment de correu es M3, enviament amb accions confirmades; la safata de classificacio
+visual continua sent M4.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

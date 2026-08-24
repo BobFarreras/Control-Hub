@@ -113,7 +113,8 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
     capabilities: {
       egress: entry.capabilities.egress,
       operations: Object.keys(entry.capabilities.operations),
-      ingress: entry.capabilities.ingress
+      ingress: entry.capabilities.ingress,
+      oauth: entry.capabilities.oauth ? { provider: entry.capabilities.oauth.provider } : null
     }
   };
 }
@@ -165,7 +166,9 @@ export function registerIntegrationRoutes({
   auth,
   connectors,
   credentials,
-  ingress
+  ingress,
+  oauth,
+  appOrigin
 }: IntegrationsContext) {
   /**
    * A permission refused is a thing that happened, and the audit log is where it is recorded.
@@ -209,6 +212,75 @@ export function registerIntegrationRoutes({
       };
     }
   );
+
+  if (oauth && appOrigin) {
+    app.post<{ Params: { instanceId: string }; Body: { locale: "ca" | "es" | "en" } }>(
+      "/api/v1/integrations/:instanceId/oauth/authorizations",
+      {
+        schema: {
+          params: instanceParams,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["locale"],
+            properties: { locale: { type: "string", enum: ["ca", "es", "en"] } }
+          },
+          tags: ["integrations"],
+          summary: "Start delegated OAuth authorization"
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        const result = await oauth.begin(context, request.params.instanceId, appOrigin, request.body.locale);
+        await writeAudit(database, context, request, {
+          action: "connector_oauth.started",
+          targetType: "connector_instance",
+          targetId: request.params.instanceId,
+          outcome: "success"
+        });
+        return result;
+      }
+    );
+    app.get<{ Params: { instanceId: string } }>(
+      "/api/v1/integrations/:instanceId/oauth/grant",
+      { schema: { params: instanceParams, tags: ["integrations"], summary: "Read OAuth grant metadata" } },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        return { grant: await oauth.getGrant(context, request.params.instanceId) };
+      }
+    );
+    app.get<{ Params: { connectorType: string }; Querystring: { state: string; code?: string; error?: string } }>(
+      "/api/v1/integrations/oauth/callback/:connectorType",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          hide: true,
+          params: {
+            type: "object",
+            additionalProperties: false,
+            required: ["connectorType"],
+            properties: { connectorType: { type: "string", minLength: 1, maxLength: 64 } }
+          },
+          querystring: {
+            type: "object",
+            additionalProperties: false,
+            required: ["state"],
+            properties: {
+              state: { type: "string", pattern: "^[A-Za-z0-9_-]{43}$" },
+              code: { type: "string", minLength: 1, maxLength: 8192 },
+              error: { type: "string", minLength: 1, maxLength: 120 }
+            }
+          }
+        }
+      },
+      async (request, reply) => {
+        const result = await oauth.callback({ connectorType: request.params.connectorType, ...request.query });
+        return reply
+          .header("referrer-policy", "no-referrer")
+          .redirect(new URL(result.redirectPath, appOrigin).toString(), 303);
+      }
+    );
+  }
 
   app.get(
     "/api/v1/integrations",
