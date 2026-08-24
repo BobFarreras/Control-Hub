@@ -30,6 +30,7 @@ despesa en temps real.
 - Atribucio a les entitats de negoci existents.
 - Pressupostos, alertes i conciliacio.
 - Connectors de lectura d'Anthropic i OpenAI quan l'API del compte proporcioni dades suficients.
+- Collector local d'OpenCode amb ingress signat i payload sanititzat.
 - Importacio manual auditada quan el proveidor no proporcioni una API de costos adequada.
 
 La 8.1 utilitza les operacions de lectura i el magatzem de registres de connectors ja entregats.
@@ -44,6 +45,11 @@ Anthropic aporta consum oficial per workspace, model, tier i finestra de context
 de cache i eines que tenen preus diferents es conserven com events separats amb SKU qualificat;
 no s'aplanen en una quantitat que no es podria valorar de manera reproduible. El report de cost
 agregat no es reparteix entre aquests events sense evidencia.
+
+OpenCode aporta consum que viu als dispositius, no en una API administrativa central. Un collector
+local inicia HTTPS cap a Control Hub i envia nomes metadades de consum; no s'exposa el servidor
+OpenCode ni s'importa l'export de sessio, que conte converses i fitxers. El contracte complet es a
+`connector-opencode.md`.
 
 ### 8.2 — Correu entrant
 

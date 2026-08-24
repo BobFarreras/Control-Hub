@@ -60,6 +60,7 @@ import { Queue } from "bullmq";
 import Redis from "ioredis";
 import type { ControlHubAuth } from "./auth.js";
 import { createConnectorHealthCheckQueue } from "./connector-health-queue.js";
+import { createConnectorIngressQueue } from "./connector-ingress-queue.js";
 import type { MailSender } from "./email.js";
 import { describeConnectorError, problemContentType, problemDetails, usesProblemDetails } from "./problem.js";
 import { rateLimitKey } from "./rate-limit.js";
@@ -459,7 +460,7 @@ export function buildApp(options: BuildAppOptions) {
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate
     // would be worse than no route at all.
-    if (ingress) registerWebhookRoutes({ app, ingress });
+    if (ingress) registerWebhookRoutes({ app, ingress, queue: createConnectorIngressQueue(connectorQueue) });
   }
 
   /**

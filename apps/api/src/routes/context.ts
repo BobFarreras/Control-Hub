@@ -14,6 +14,7 @@ import type {
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
 import type { ControlHubAuth } from "../auth.js";
+import type { ConnectorIngressQueue } from "../connector-ingress-queue.js";
 import type { MailSender } from "../email.js";
 import type { ControlHubApp } from "../server-instance.js";
 
@@ -60,7 +61,7 @@ export type IntegrationsContext = RouteContext & {
  * for it to run of its own, and giving it one would be the first step towards a public route
  * that reads something it was not meant to.
  */
-export type WebhookContext = { app: ControlHubApp; ingress: ConnectorIngressService };
+export type WebhookContext = { app: ControlHubApp; ingress: ConnectorIngressService; queue: ConnectorIngressQueue };
 
 /** The public routes run before any session exists, so they take no auth instance. */
 export type PublicContext = {

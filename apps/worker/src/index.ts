@@ -17,6 +17,7 @@ import {
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { CircuitStore } from "./connectors/circuit-store.js";
+import { connectorIngressJobName, runConnectorIngressJob } from "./connectors/ingress-job.js";
 import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.js";
 import { purgeConnectorRecords } from "./connectors/purge.js";
 import { reconcileConnectorSchedules, schedulableInstances } from "./connectors/schedule.js";
@@ -123,6 +124,9 @@ const connectorQueue = new Queue(connectorQueueName, { connection });
 const connectorWorker = new Worker(
   connectorQueueName,
   async (job) => {
+    if (job.name === connectorIngressJobName) {
+      return runConnectorIngressJob(connectorRepository, connectorRegistry, usageIngestor, job);
+    }
     if (!connectorRuntime) {
       logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
       return { status: "skipped", reason: "no_key_ring" };

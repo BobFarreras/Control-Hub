@@ -596,8 +596,18 @@ volum i frescor amb `usage:read`; imports i pressupostos nomes es consulten amb 
 i les accions nomes apareixen amb `budgets:manage`. Els estats parcials i obsolets expliquen la
 dada o font que falta en text. U6 afegeix `GET /api/v1/usage/sources`, tenant-scoped, i proves de
 permisos, precisio `BigInt`, cobertura, OpenAPI i PostgreSQL. L'E2E autenticat sobre la pila
-3002/4002 comprova login amb MFA, les tres rutes i el contracte real de fonts. El punt de
-continuacio de la Fase 8 es M1: IMAP entrant incremental.
+3002/4002 comprova login amb MFA, les tres rutes i el contracte real de fonts.
+
+**U7, collector local d'OpenCode, esta implementat.** Cada dispositiu crea una instancia
+`opencode`, rep un endpoint i un secret d'un sol us visual, i envia lots HMAC per HTTPS cap a la
+VPS. El collector nomes llegeix OpenCode a loopback i reconstrueix IDs, proveidor, model, tokens i
+projecte pseudonimitzat; prompts, respostes, reasoning textual, codi, paths, diffs i ordres no
+surten del dispositiu. L'API aplica anti-replay i encua la inbox; el worker revalida, deduplica i
+projecta consum abans de marcar-la processada. El runbook es `docs/runbooks/connect-opencode.md`.
+Passen lint, typecheck dels 13 paquets, 23 tasques de proves, migracions PostgreSQL, build dels 13
+paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
+U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
+El punt de continuacio de la Fase 8 es M1: IMAP entrant incremental.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

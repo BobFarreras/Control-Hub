@@ -13,7 +13,16 @@ const units = [
   "byte",
   "provider_unit"
 ] as const satisfies readonly UsageUnit[];
-const qualifiers = ["total", "input", "output", "cached", "uncached"] as const;
+const qualifiers = [
+  "total",
+  "input",
+  "output",
+  "cached",
+  "uncached",
+  "reasoning",
+  "cache_read",
+  "cache_write"
+] as const;
 const integer = z.union([z.int().nonnegative(), z.string().regex(/^\d+$/)]).transform((value) => BigInt(value));
 const usageSchema = z.strictObject({
   occurredAt: z.iso.datetime({ offset: true }),

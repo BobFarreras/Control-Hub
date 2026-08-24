@@ -43,6 +43,7 @@ describe("what this installation ships", () => {
       "generic-webhook",
       "n8n",
       "openai",
+      "opencode",
       "prometheus",
       "vercel"
     ]);

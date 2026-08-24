@@ -19,7 +19,8 @@
   `runbooks/n8n-error-workflow.md` (muntar l'error workflow signat a una instancia d'n8n) i
   `runbooks/connect-a-vps.md` (preparar una VPS perque el Control Hub en llegeixi l'estat, amb
   el prompt per a l'agent que l'administra) i `runbooks/connect-vercel.md` (connectar un
-  compte de Vercel amb un token de nomes lectura).
+  compte de Vercel amb un token de nomes lectura) i `runbooks/connect-opencode.md` (instal.lar el
+  collector local sanititzat i enviar consum a la VPS).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -50,6 +51,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   el connector esta escrit i la superficie que l'ha de dibuixar, oberta.
 - `specifications/communications-usage-costs.md`: especificacio proposada de la Fase 8, partida en
   consum i costos, correu entrant i correu sortint. Aprovada, incloses les ampliacions de model.
+- `specifications/connector-opencode.md`: collector local sanititzat d'OpenCode, ingress signat i
+  projeccio de tokens sense prompts, codi ni paths. Aprovada, ampliacio de la Fase 8.1.
 - `specifications/phase-7b-actions-and-oauth.md`: contracte acotat d'OAuth, accions asincrones i
   transport IMAP que necessita la Fase 8. Aprovat.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per

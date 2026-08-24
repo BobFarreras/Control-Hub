@@ -71,7 +71,7 @@ function singleValueHeaders(request: FastifyRequest): Record<string, string> {
   return headers;
 }
 
-export function registerWebhookRoutes({ app, ingress }: WebhookContext) {
+export function registerWebhookRoutes({ app, ingress, queue }: WebhookContext) {
   /**
    * The answer, written once.
    *
@@ -153,6 +153,10 @@ export function registerWebhookRoutes({ app, ingress }: WebhookContext) {
           headers: singleValueHeaders(request),
           receivedAt: new Date()
         });
+
+        if (outcome.status === "accepted" && outcome.stored === "pending") {
+          await queue.enqueue({ tenantId: outcome.tenantId, eventId: outcome.eventId });
+        }
 
         // The reason stays with us, and only in a log. `debug` and not `warn`: a probe is
         // ordinary traffic on a public address, and a line per attempt at `warn` is how an alert

@@ -3,6 +3,9 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "control-hub-opencode": "dist/opencode-collector/index.js"
+  },
   "//": "Neither the API nor the worker owns this package, because both read it: the API to validate a configuration and to know how a provider signs, the worker to execute. It depends on the domain and on zod, and on nothing else of ours.",
   "exports": "./src/index.ts",
   "scripts": {

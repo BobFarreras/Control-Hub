@@ -3224,6 +3224,9 @@ const integrationDictionaries = {
     connectorAbout_n8n: "Els teus workflows i les seves execucions, llegits de la teva instancia.",
     connector_openai: "OpenAI",
     connectorAbout_openai: "Consum diari oficial per projecte i model, sense copiar prompts ni respostes.",
+    connector_opencode: "OpenCode local",
+    connectorAbout_opencode:
+      "Ara nomes li poses nom. Despres generarem l'adreca i el secret que necessita el collector local; mai envia converses ni codi.",
     connector_anthropic: "Anthropic",
     connectorAbout_anthropic: "Consum diari oficial per workspace, model i tipus de cache.",
     connector_generic_webhook: "Webhook generic",
@@ -3309,6 +3312,8 @@ const integrationDictionaries = {
       "Serveix per saber d'una execucio fallida a l'instant. Sense aixo no en perds cap —el sondeig les llegeix cada 5 minuts—, nomes les veus mes tard. Cal muntar l'error workflow a la instancia.",
     endpointsAbout_generic_webhook:
       "Es l'unica manera que aquest connector rep res: no va a buscar dades, espera que li arribin aqui signades.",
+    endpointsAbout_opencode:
+      "Adreca exclusiva per al collector d'aquest dispositiu. El secret nomes es mostra una vegada.",
     endpointSecretWarning:
       "L'adreca i el secret nomes es veuran un cop, just despres de generar-los. No hi ha cap manera de tornar a mostrar-los: si es perden, cal revocar l'adreca i generar-ne una de nova.",
     generateEndpoint: "Generar adreca i secret",
@@ -3336,6 +3341,7 @@ const integrationDictionaries = {
     credentialHint_anthropic_admin_api_key: "Clau administrativa de nomes lectura de l'organitzacio Anthropic.",
     credentialHint_n8n_ingress_signing: "El mateix valor que poses a CONTROL_HUB_SIGNING_SECRET a n8n.",
     credentialHint_generic_webhook_ingress_signing: "El valor amb que el proveidor firma el que ens envia.",
+    credentialHint_opencode_ingress_signing: "El secret que firma cada lot sanititzat del collector.",
     credentialHint_prometheus_api_token:
       "Nomes si hi ha un proxy que demana autenticacio. Buit si el Prometheus no en demana.",
     credentialHint_vercel_api_token: "Un token de nomes lectura del teu compte de Vercel, a Account Settings, Tokens.",
@@ -3500,6 +3506,9 @@ const integrationDictionaries = {
     connectorAbout_n8n: "Tus workflows y sus ejecuciones, leidos de tu instancia.",
     connector_openai: "OpenAI",
     connectorAbout_openai: "Consumo diario oficial por proyecto y modelo, sin copiar prompts ni respuestas.",
+    connector_opencode: "OpenCode local",
+    connectorAbout_opencode:
+      "Ahora solo le pones nombre. Despues generaremos la direccion y el secreto que necesita el collector local; nunca envia conversaciones ni codigo.",
     connector_anthropic: "Anthropic",
     connectorAbout_anthropic: "Consumo diario oficial por workspace, modelo y tipo de cache.",
     connector_generic_webhook: "Webhook generico",
@@ -3585,6 +3594,8 @@ const integrationDictionaries = {
       "Sirve para enterarte de una ejecucion fallida al instante. Sin esto no pierdes ninguna —el sondeo las lee cada 5 minutos—, solo las ves mas tarde. Hay que montar el error workflow en la instancia.",
     endpointsAbout_generic_webhook:
       "Es la unica forma en que este conector recibe algo: no va a buscar datos, espera a que le lleguen aqui firmados.",
+    endpointsAbout_opencode:
+      "Direccion exclusiva para el collector de este dispositivo. El secreto solo se muestra una vez.",
     endpointSecretWarning:
       "La direccion y el secreto solo se veran una vez, justo despues de generarlos. No hay forma de volver a mostrarlos: si se pierden, hay que revocar la direccion y generar una nueva.",
     generateEndpoint: "Generar direccion y secreto",
@@ -3612,6 +3623,7 @@ const integrationDictionaries = {
     credentialHint_anthropic_admin_api_key: "Clave administrativa de solo lectura de la organizacion Anthropic.",
     credentialHint_n8n_ingress_signing: "El mismo valor que pones en CONTROL_HUB_SIGNING_SECRET en n8n.",
     credentialHint_generic_webhook_ingress_signing: "El valor con el que el proveedor firma lo que nos envia.",
+    credentialHint_opencode_ingress_signing: "El secreto que firma cada lote sanitizado del collector.",
     credentialHint_prometheus_api_token:
       "Solo si hay un proxy que pide autenticacion. Vacio si el Prometheus no la pide.",
     credentialHint_vercel_api_token: "Un token de solo lectura de tu cuenta de Vercel, en Account Settings, Tokens.",
@@ -3777,6 +3789,9 @@ const integrationDictionaries = {
     connectorAbout_n8n: "Your workflows and their executions, read from your own instance.",
     connector_openai: "OpenAI",
     connectorAbout_openai: "Official daily usage by project and model, without copying prompts or responses.",
+    connector_opencode: "Local OpenCode",
+    connectorAbout_opencode:
+      "For now, just name it. Next we generate the address and secret the local collector needs; it never sends conversations or code.",
     connector_anthropic: "Anthropic",
     connectorAbout_anthropic: "Official daily usage by workspace, model and cache category.",
     connector_generic_webhook: "Generic webhook",
@@ -3863,6 +3878,7 @@ const integrationDictionaries = {
       "This is how you hear about a failed run the moment it fails. Without it you lose nothing — the poll reads them every 5 minutes — you just hear later. It needs the error workflow set up on the instance.",
     endpointsAbout_generic_webhook:
       "This is the only way this connector receives anything: it does not go and fetch, it waits for signed events to arrive here.",
+    endpointsAbout_opencode: "A dedicated address for this device's collector. The secret is shown only once.",
     endpointSecretWarning:
       "The address and the secret are shown once, right after they are generated. There is no way to show them again: if they are lost, the address has to be revoked and a new one generated.",
     generateEndpoint: "Generate address and secret",
@@ -3890,6 +3906,7 @@ const integrationDictionaries = {
     credentialHint_anthropic_admin_api_key: "Read-only administrative key for the Anthropic organization.",
     credentialHint_n8n_ingress_signing: "The same value you set as CONTROL_HUB_SIGNING_SECRET in n8n.",
     credentialHint_generic_webhook_ingress_signing: "The value the provider signs what it sends us with.",
+    credentialHint_opencode_ingress_signing: "The secret that signs every sanitized collector batch.",
     credentialHint_prometheus_api_token:
       "Only if a proxy in front asks for authentication. Empty if the Prometheus does not.",
     credentialHint_vercel_api_token: "A read-only token from your Vercel account, under Account Settings, Tokens.",
