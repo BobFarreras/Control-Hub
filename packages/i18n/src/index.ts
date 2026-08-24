@@ -4186,7 +4186,7 @@ const infrastructureDictionaries = {
     discoveryClaim: "Es d'una maquina que ja tinc",
     claimTitle: "De quina maquina es aquesta etiqueta?",
     claimAbout:
-      "Un Prometheus agrupa per objectiu de scrape, no per ordinador: una sola VPS reporta amb node-exporter:9100, cadvisor:8080 i 127.0.0.1:9090. Digues de quina maquina es aquesta etiqueta i tot el que s'hi llegeixi sera d'ella.",
+      "Un Prometheus agrupa per objectiu de scrape, no per ordinador: una sola VPS pot reportar amb etiquetes diferents per la maquina, els contenidors i el mateix Prometheus. Digues de quina maquina es aquesta etiqueta i tot el que s'hi llegeixi sera d'ella.",
     claimHost: "Maquina",
     claimSubmit: "Assignar-la",
     labelClaimed: "Etiqueta assignada a la maquina.",
@@ -4444,7 +4444,7 @@ const infrastructureDictionaries = {
     discoveryClaim: "Es de una maquina que ya tengo",
     claimTitle: "?De que maquina es esta etiqueta?",
     claimAbout:
-      "Un Prometheus agrupa por objetivo de scrape, no por ordenador: una sola VPS reporta con node-exporter:9100, cadvisor:8080 y 127.0.0.1:9090. Di de que maquina es esta etiqueta y todo lo que se lea en ella sera suyo.",
+      "Un Prometheus agrupa por objetivo de scrape, no por ordenador: una sola VPS puede reportar con etiquetas distintas para la maquina, los contenedores y el propio Prometheus. Di de que maquina es esta etiqueta y todo lo que se lea en ella sera suyo.",
     claimHost: "Maquina",
     claimSubmit: "Asignarla",
     labelClaimed: "Etiqueta asignada a la maquina.",
@@ -4702,7 +4702,7 @@ const infrastructureDictionaries = {
     discoveryClaim: "It belongs to a machine I already have",
     claimTitle: "Which machine is this label?",
     claimAbout:
-      "A Prometheus aggregates by scrape target, not by computer: one VPS reports under node-exporter:9100, cadvisor:8080 and 127.0.0.1:9090. Say which machine this label is and everything read under it belongs to that machine.",
+      "Prometheus aggregates by scrape target, not by computer: one VPS can report under different labels for the machine, its containers and Prometheus itself. Say which machine this label is and everything read under it belongs to that machine.",
     claimHost: "Machine",
     claimSubmit: "Assign it",
     labelClaimed: "Label assigned to the machine.",
