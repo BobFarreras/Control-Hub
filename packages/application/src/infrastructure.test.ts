@@ -1,24 +1,32 @@
 import { connectorRegistry } from "@control-hub/connectors";
-import type { AlertVerdict, JsonValue, TenantContext } from "@control-hub/domain";
+import type { AlertVerdict, JsonValue, ObservedRecord, TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AlertEngine,
   InfrastructureService,
+  mostServicesPerDeclaration,
   InfrastructureServiceError,
   observationBudgets,
   type AlertEventRecord,
   type AlertRuleRecord,
   type AppliedVerdict,
   type AutomationRecord,
+  type ConnectorDiagnosisState,
+  type ConnectorDiscoveryState,
+  type ConnectorServiceDiscoveryState,
+  type DeclareServicesInput,
   type CreateAlertRuleInput,
   type DeclareHostInput,
   type DeclareServiceInput,
+  type DeployedProjectRecord,
   type EvaluationState,
   type HostRecord,
   type InfrastructureRepository,
   type InventoryState,
   type LinkAutomationInput,
+  type LinkDeployedProjectInput,
   type ServiceRecord,
+  type SupabaseProjectRecord,
   type UpdateAlertRuleInput,
   type UpdateHostInput,
   type UpdateServiceInput
@@ -87,6 +95,16 @@ class FakeRepository implements InfrastructureRepository {
     this.links.push(input);
     return Promise.resolve();
   };
+  deployedProjects: DeployedProjectRecord[] = [];
+  projectLinks: LinkDeployedProjectInput[] = [];
+
+  listDeployedProjects = () => Promise.resolve(this.deployedProjects);
+  linkDeployedProject = (_context: TenantContext, input: LinkDeployedProjectInput) => {
+    this.projectLinks.push(input);
+    return Promise.resolve();
+  };
+  supabaseProjects: SupabaseProjectRecord[] = [];
+  listSupabaseProjects = () => Promise.resolve(this.supabaseProjects);
   hosts: HostRecord[] = [];
   services: ServiceRecord[] = [];
   declaredHosts: DeclareHostInput[] = [];
@@ -138,9 +156,66 @@ class FakeRepository implements InfrastructureRepository {
     Promise.resolve({ ...alertEvent(alertId), acknowledgedAt: now, acknowledgedByMembershipId: membershipId });
   resolveAlert = (_context: TenantContext, alertId: string, at: Date) =>
     Promise.resolve({ ...alertEvent(alertId), status: "resolved" as const, resolvedAt: at });
-  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [] };
+  inventoryState: InventoryState = { hosts: [], services: [], records: [], freshness: [], labels: [] };
   readInventoryState = () => Promise.resolve(this.inventoryState);
+  addHostLabel = (_context: TenantContext, hostId: string, label: string) => {
+    if (this.inventoryState.labels.some((entry) => entry.label === label)) {
+      return Promise.reject(new InfrastructureServiceError("DUPLICATE_HOSTNAME"));
+    }
+    this.inventoryState = { ...this.inventoryState, labels: [...this.inventoryState.labels, { hostId, label }] };
+    return Promise.resolve();
+  };
+  removeHostLabel = (_context: TenantContext, hostId: string, label: string) => {
+    this.inventoryState = {
+      ...this.inventoryState,
+      labels: this.inventoryState.labels.filter((entry) => entry.hostId !== hostId || entry.label !== label)
+    };
+    return Promise.resolve();
+  };
   readEvaluationState = () => Promise.resolve(this.state);
+  diagnosisState: ConnectorDiagnosisState = {
+    instance: { id: instanceId, connectorType: "prometheus", baseUrl: "http://127.0.0.1:9090", lastAttempt: null },
+    missingMigrations: [],
+    seenInstances: [],
+    declaredHostnames: []
+  };
+  discoveryState: ConnectorDiscoveryState = {
+    instanceExists: true,
+    missingMigrations: [],
+    seenInstances: [],
+    declaredMachines: []
+  };
+  discoveryAsked: string[] = [];
+  readDiscoveryState = (_context: TenantContext, asked: string) => {
+    this.discoveryAsked.push(asked);
+    return Promise.resolve(this.discoveryState);
+  };
+  serviceDiscoveryState: ConnectorServiceDiscoveryState = {
+    instanceExists: true,
+    missingMigrations: [],
+    records: [],
+    freshness: [],
+    declaredMatchKeys: []
+  };
+  serviceDiscoveryAsked: string[] = [];
+  readServiceDiscoveryState = (_context: TenantContext, asked: string) => {
+    this.serviceDiscoveryAsked.push(asked);
+    return Promise.resolve(this.serviceDiscoveryState);
+  };
+  declaredBatches: DeclareServicesInput[] = [];
+  declareServices = (_context: TenantContext, input: DeclareServicesInput) => {
+    this.declaredBatches.push(input);
+    return Promise.resolve(
+      input.services.map((service, index) =>
+        serviceRecord({ id: `service-${index + 1}`, hostId: input.hostId, ...service })
+      )
+    );
+  };
+  diagnosisAsked: string[] = [];
+  readDiagnosisState = (_context: TenantContext, asked: string) => {
+    this.diagnosisAsked.push(asked);
+    return Promise.resolve(this.diagnosisState);
+  };
   /** Retention has no tenant and no session, so nothing in this suite exercises it. */
   purgeAlertEvents = () => Promise.resolve(0);
   applyVerdicts = (_context: TenantContext, verdicts: readonly AlertVerdict[]) => {
@@ -217,9 +292,12 @@ const budgets = { pull_host_metrics: 360, pull_container_state: 900, pull_probe_
 
 let repository: FakeRepository;
 let service: InfrastructureService;
+/** The deployment's allowlist, already reduced to the question the service is allowed to ask. */
+let allowlisted: Set<string>;
 beforeEach(() => {
   repository = new FakeRepository();
-  service = new InfrastructureService(repository, budgets);
+  allowlisted = new Set(["http://127.0.0.1:9090"]);
+  service = new InfrastructureService(repository, budgets, (baseUrl) => allowlisted.has(baseUrl));
 });
 
 const refused = (code: string): unknown => expect.objectContaining({ code });
@@ -227,6 +305,8 @@ const refused = (code: string): unknown => expect.objectContaining({ code });
 describe("who may do what", () => {
   it("lets Administrator read everything the module holds", async () => {
     await expect(service.listAutomations(administrator)).resolves.toEqual([]);
+    await expect(service.listDeployedProjects(administrator)).resolves.toEqual([]);
+    await expect(service.listSupabaseProjects(administrator)).resolves.toEqual([]);
     await expect(service.listRules(administrator)).resolves.toEqual([]);
     await expect(service.listAlerts(administrator)).resolves.toEqual([]);
     await expect(service.listHosts(administrator)).resolves.toEqual([]);
@@ -237,6 +317,9 @@ describe("who may do what", () => {
     const link = { instanceId, externalId: "workflow:wf-a", customerId: "customer-1", notes: null };
 
     await expect(service.linkAutomation(administrator, link)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.linkDeployedProject(administrator, { ...link, externalId: "project:prj-a" })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
     await expect(service.createRule(administrator, newRule())).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.updateRule(administrator, "rule-1", { enabled: false })).rejects.toEqual(refused("FORBIDDEN"));
     await expect(service.deleteRule(administrator, "rule-1")).rejects.toEqual(refused("FORBIDDEN"));
@@ -254,6 +337,7 @@ describe("who may do what", () => {
     expect(
       [
         repository.links,
+        repository.projectLinks,
         repository.deleted,
         repository.patches,
         repository.declaredHosts,
@@ -267,6 +351,8 @@ describe("who may do what", () => {
 
   it("refuses somebody holding neither permission even the read", async () => {
     await expect(service.listAutomations(stranger)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.listDeployedProjects(stranger)).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.listSupabaseProjects(stranger)).rejects.toEqual(refused("FORBIDDEN"));
   });
 });
 
@@ -295,6 +381,41 @@ describe("associating an automation with a client", () => {
   it("refuses notes longer than the column takes, rather than letting the insert say so", async () => {
     const long = { instanceId, externalId: "workflow:wf-a", customerId: null, notes: "x".repeat(2001) };
     await expect(service.linkAutomation(owner, long)).rejects.toEqual(refused("NOTES_TOO_LONG"));
+  });
+});
+
+describe("associating a deployed project with a client", () => {
+  it("passes the association through, trimmed, into its own table", async () => {
+    await service.linkDeployedProject(owner, {
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: "customer-1",
+      notes: "  la web publica  "
+    });
+
+    expect(repository.projectLinks[0]).toEqual({
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: "customer-1",
+      notes: "la web publica"
+    });
+    // A project is not an automation, and the two tables do not see each other's rows.
+    expect(repository.links).toEqual([]);
+  });
+
+  it("keeps the row when the association is removed, because the notes are somebody's work", async () => {
+    await service.linkDeployedProject(owner, {
+      instanceId,
+      externalId: "project:prj-a",
+      customerId: null,
+      notes: "ep"
+    });
+    expect(repository.projectLinks[0]).toMatchObject({ customerId: null, notes: "ep" });
+  });
+
+  it("refuses notes longer than the column takes, rather than letting the insert say so", async () => {
+    const long = { instanceId, externalId: "project:prj-a", customerId: null, notes: "x".repeat(2001) };
+    await expect(service.linkDeployedProject(owner, long)).rejects.toEqual(refused("NOTES_TOO_LONG"));
   });
 });
 
@@ -684,7 +805,8 @@ describe("the inventory a dashboard reads", () => {
         seen("pull_host_metrics", "host:node-exporter:9100", 60, { cpuBusyRatio: 0.2 }),
         seen("pull_container_state", "container:n8n", 120, { memoryBytes: 512 })
       ],
-      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)]
+      freshness: [passed("pull_host_metrics", 30), passed("pull_container_state", 60)],
+      labels: []
     };
   });
 
@@ -734,9 +856,500 @@ describe("the inventory a dashboard reads", () => {
     expect((await service.readInventory(owner, now)).hosts[0]!.services).toEqual([]);
   });
 
+  /**
+   * The figure at the top of the screen and the rows below it are one claim counted twice. It is
+   * counted here, from the same readings the rows are drawn from, so that a screen cannot arrive
+   * at a different number of machines being down than the machines it is listing.
+   */
+  it("counts the machines and the services by the state each of them is in", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.summary).toEqual({
+      hosts: { total: 1, up: 1, down: 0, unknown: 0 },
+      services: { total: 1, up: 1, down: 0, unknown: 0 }
+    });
+  });
+
+  it("counts a collector nobody has heard from as unknown and never as down", async () => {
+    repository.inventoryState = { ...repository.inventoryState, records: [], freshness: [] };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.summary.hosts).toEqual({ total: 1, up: 0, down: 0, unknown: 1 });
+    expect(inventory.summary.services).toEqual({ total: 1, up: 0, down: 0, unknown: 1 });
+  });
+
+  it("counts an empty inventory as zeroes rather than leaving the summary out", async () => {
+    repository.inventoryState = { ...repository.inventoryState, hosts: [], services: [] };
+
+    expect((await service.readInventory(owner, now)).summary).toEqual({
+      hosts: { total: 0, up: 0, down: 0, unknown: 0 },
+      services: { total: 0, up: 0, down: 0, unknown: 0 }
+    });
+  });
+
+  /** Which collector read a line is what the fleet is filtered by, so it has to survive the trip. */
+  it("carries the connector instance each reading came from", async () => {
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.reading.instanceId).toBe(instanceId);
+    expect(inventory.hosts[0]!.services[0]!.reading.instanceId).toBe(instanceId);
+  });
+
   it("lets Administrator read it and refuses somebody with no infrastructure permission", async () => {
     const asAdministrator = await service.readInventory(administrator, now);
     expect(asAdministrator.hosts.map((item) => item.id)).toEqual(["host-1"]);
     await expect(service.readInventory(stranger, now)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  /**
+   * The defect C8 exists for: a machine declared with one scrape target, its containers arriving
+   * with another, and a page saying the machine runs nothing while twenty containers are stored.
+   */
+  it("shows nothing seen on a label the machine has not claimed", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "cadvisor:8080" })]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed).toEqual([]);
+  });
+
+  it("hangs what a claimed label saw under the machine that claimed it", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "cadvisor:8080" })],
+      labels: [{ hostId: "host-1", label: "cadvisor:8080" }]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.labels).toEqual(["cadvisor:8080"]);
+    expect(inventory.hosts[0]!.observed.map((item) => item.matchKey)).toEqual(["container:traefik"]);
+    expect(inventory.hosts[0]!.observed[0]!.declared).toBe(false);
+    expect(inventory.hosts[0]!.observed[0]!.reading.state).toBe("up");
+  });
+
+  /** Declaring is "I want alerts about this"; the machine's page shows it either way, marked. */
+  it("marks as declared what somebody already declared, and still shows it", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      records: [seen("pull_container_state", "container:n8n", 120, { host: "cadvisor:8080" })],
+      labels: [{ hostId: "host-1", label: "cadvisor:8080" }]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed.map((item) => [item.matchKey, item.declared])).toEqual([
+      ["container:n8n", true]
+    ]);
+  });
+
+  it("takes the machine's own hostname as a label, without anybody declaring it twice", async () => {
+    repository.inventoryState = {
+      ...repository.inventoryState,
+      services: [],
+      records: [seen("pull_container_state", "container:traefik", 60, { host: "node-exporter:9100" })]
+    };
+
+    const inventory = await service.readInventory(owner, now);
+
+    expect(inventory.hosts[0]!.observed.map((item) => item.matchKey)).toEqual(["container:traefik"]);
+  });
+});
+
+/**
+ * Claiming and withdrawing a label.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C8 -- Una maquina, diverses
+ * etiquetes".
+ */
+describe("the other labels a machine answers to", () => {
+  it("needs the permission that changes the inventory, not the one that reads it", async () => {
+    await expect(service.addHostLabel(administrator, "host-1", "cadvisor:8080")).rejects.toEqual(refused("FORBIDDEN"));
+    await expect(service.removeHostLabel(administrator, "host-1", "cadvisor:8080")).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+    await expect(service.addHostLabel(stranger, "host-1", "cadvisor:8080")).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  /** The same rule that guards `hostname`: a label that cannot be an `external_id` is refused. */
+  it("checks a label exactly as it checks a hostname", async () => {
+    await expect(service.addHostLabel(owner, "host-1", "  ")).rejects.toEqual(refused("INVALID_HOSTNAME"));
+    await expect(service.addHostLabel(owner, "host-1", "a".repeat(200))).rejects.toEqual(refused("INVALID_HOSTNAME"));
+  });
+
+  it("stores the label trimmed, so a stray space cannot make a second one of the same thing", async () => {
+    await service.addHostLabel(owner, "host-1", "  cadvisor:8080  ");
+
+    expect(repository.inventoryState.labels).toEqual([{ hostId: "host-1", label: "cadvisor:8080" }]);
+  });
+
+  it("withdraws one and leaves the rest", async () => {
+    await service.addHostLabel(owner, "host-1", "cadvisor:8080");
+    await service.addHostLabel(owner, "host-1", "127.0.0.1:9090");
+    await service.removeHostLabel(owner, "host-1", "cadvisor:8080");
+
+    expect(repository.inventoryState.labels.map((entry) => entry.label)).toEqual(["127.0.0.1:9090"]);
+  });
+});
+
+/**
+ * The guided check, as the use case assembles it.
+ *
+ * What is worth proving here rather than in the domain is the coordination: that reading is
+ * enough to ask, that the address is compared against the deployment's allowlist and then goes no
+ * further, and that the chain really does stop at the first rung that does not hold when the
+ * facts come from a repository instead of from a literal.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C1 -- La comprovacio guiada".
+ */
+describe("the guided check", () => {
+  const seeing = (overrides: Partial<ConnectorDiagnosisState> = {}) => {
+    repository.diagnosisState = {
+      instance: { id: instanceId, connectorType: "prometheus", baseUrl: "http://127.0.0.1:9090", lastAttempt: null },
+      missingMigrations: [],
+      seenInstances: ["node-exporter:9100"],
+      declaredHostnames: ["node-exporter:9100"],
+      ...overrides
+    };
+  };
+
+  const statuses = async (context = administrator) =>
+    Object.fromEntries((await service.diagnose(context, instanceId)).findings.map((f) => [f.step, f.status]));
+
+  it("is a read, so Administrator may ask for it", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090",
+        lastAttempt: { ok: true, code: null }
+      }
+    });
+
+    await expect(service.diagnose(administrator, instanceId)).resolves.toMatchObject({ problem: null });
+    expect(repository.diagnosisAsked).toEqual([instanceId]);
+  });
+
+  it("refuses somebody with no infrastructure permission at all", async () => {
+    seeing();
+    await expect(service.diagnose(stranger, instanceId)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("says so when this tenant has no such integration", async () => {
+    seeing({ instance: null });
+    await expect(service.diagnose(owner, instanceId)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  /**
+   * The failure this whole increment is named after. With the tables absent there is nowhere for
+   * the instance to be, and answering "no such integration" would send somebody looking for a row
+   * on a database that has no table to hold it.
+   */
+  it("answers the migration rung rather than 404 when the schema is not there at all", async () => {
+    seeing({ instance: null, missingMigrations: ["0037_infrastructure_hosts.sql"] });
+    await expect(service.diagnose(owner, instanceId)).resolves.toMatchObject({ problem: "migrations" });
+  });
+
+  /** Acceptance criterion 1: what would have saved the afternoon. */
+  it("names the migration that is missing before it judges anything else", async () => {
+    seeing({ missingMigrations: ["0037_infrastructure_hosts.sql"] });
+    const diagnosis = await service.diagnose(owner, instanceId);
+
+    expect(diagnosis.problem).toBe("migrations");
+    expect(diagnosis.findings[0]?.evidence).toEqual({ migrations: ["0037_infrastructure_hosts.sql"] });
+  });
+
+  /** Acceptance criterion 2, with the comparison made where the address is. */
+  it("fails the origin rung when this deployment's allowlist does not name it", async () => {
+    seeing();
+    allowlisted.clear();
+    await expect(statuses(owner)).resolves.toMatchObject({ allowlist: "failed" });
+  });
+
+  it("treats an instance with no base configured as an origin nothing can reach", async () => {
+    seeing({
+      instance: { id: instanceId, connectorType: "generic-webhook", baseUrl: null, lastAttempt: null }
+    });
+    await expect(statuses(owner)).resolves.toMatchObject({ allowlist: "failed" });
+  });
+
+  /**
+   * Acceptance criterion 5, at the boundary that holds the address. The service is the last place
+   * that sees a `baseUrl`; what it hands back has no field one could travel in, whatever the
+   * repository put on the row.
+   */
+  it("hands back nothing that carries the address it just compared", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://prometheus.internal.example:9090",
+        lastAttempt: null
+      }
+    });
+    allowlisted.add("http://prometheus.internal.example:9090");
+
+    expect(JSON.stringify(await service.diagnose(owner, instanceId))).not.toContain("prometheus.internal.example");
+  });
+
+  it("says it does not know about the far end until a health check has run", async () => {
+    seeing();
+    await expect(statuses(owner)).resolves.toMatchObject({ reachable: "unknown", answers_prometheus: "unchecked" });
+  });
+
+  /** Acceptance criterion 4: the answer that separates a dead machine from a typo. */
+  it("puts what it sees beside what was declared when none of them meet", async () => {
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "prometheus",
+        baseUrl: "http://127.0.0.1:9090",
+        lastAttempt: { ok: true, code: null }
+      },
+      seenInstances: ["node-exporter:9100"],
+      declaredHostnames: ["hub-vps"]
+    });
+
+    const diagnosis = await service.diagnose(owner, instanceId);
+    expect(diagnosis.problem).toBe("matching");
+    expect(diagnosis.findings.at(-1)?.evidence).toEqual({ seen: ["node-exporter:9100"], declared: ["hub-vps"] });
+  });
+});
+
+/**
+ * The discovery, as the use case assembles it.
+ *
+ * What matters here rather than in the domain is that reading is enough to ask, that a missing
+ * schema is reported as such instead of as "no such integration", and that an instance nobody
+ * has is refused -- the same three coordination questions the guided check answers, asked of the
+ * other read.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C3 -- El descobriment".
+ */
+describe("what a collector is looking at", () => {
+  const looking = (overrides: Partial<ConnectorDiscoveryState> = {}) => {
+    repository.discoveryState = {
+      instanceExists: true,
+      missingMigrations: [],
+      seenInstances: ["vps-1", "web-2"],
+      declaredMachines: [{ hostId: "host-1", name: "VPS principal", hostname: "vps-1" }],
+      ...overrides
+    };
+  };
+
+  it("says which labels are already declared and which are not", async () => {
+    looking();
+
+    expect(await service.discover(owner, instanceId)).toEqual([
+      { label: "vps-1", declaredAs: { hostId: "host-1", name: "VPS principal" } },
+      { label: "web-2", declaredAs: null }
+    ]);
+  });
+
+  it("is a read, so Administrator may ask for it and a stranger may not", async () => {
+    looking();
+
+    expect(await service.discover(administrator, instanceId)).toHaveLength(2);
+    await expect(service.discover(stranger, instanceId)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("asks about the instance it was given", async () => {
+    looking();
+    await service.discover(owner, instanceId);
+
+    expect(repository.discoveryAsked).toEqual([instanceId]);
+  });
+
+  it("refuses an instance this tenant does not have", async () => {
+    looking({ instanceExists: false });
+
+    await expect(service.discover(owner, instanceId)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  /**
+   * With the schema incomplete there is no `connector_instances` to look in, so "no such
+   * integration" would send somebody hunting for a row on a database with no table to hold it.
+   * The same reasoning the guided check makes, and the same answer: say the migration is missing.
+   */
+  it("says the schema is incomplete rather than that the integration is missing", async () => {
+    looking({ instanceExists: false, missingMigrations: ["0037_infrastructure_hosts"] });
+
+    await expect(service.discover(owner, instanceId)).rejects.toEqual(refused("MIGRATION_REQUIRED"));
+  });
+});
+
+/**
+ * The service selector, as the use case assembles it.
+ *
+ * The domain already decides what is proposed and what is withheld; what is asked here is the
+ * coordination around it -- the same three refusals as the machine discovery -- and the one thing
+ * the batch adds, which is that a batch cannot be a way past the checks a single declaration
+ * makes.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, "C4 -- El selector de serveis".
+ */
+describe("what a collector has seen that could be declared", () => {
+  /** A container reading, `secondsAgo` old. `data.host` is who saw it, exactly as the column is. */
+  const container = (name: string, secondsAgo: number): ObservedRecord => ({
+    instanceId,
+    operation: "pull_container_state",
+    externalId: `container:${name}`,
+    data: { host: "cadvisor:8080" },
+    firstSeenAt: new Date(now.getTime() - 86_400_000),
+    lastSeenAt: new Date(now.getTime() - secondsAgo * 1000)
+  });
+
+  const seeing = (overrides: Partial<ConnectorServiceDiscoveryState> = {}) => {
+    repository.serviceDiscoveryState = {
+      instanceExists: true,
+      missingMigrations: [],
+      records: [container("n8n", 60), container("traefik", 60)],
+      freshness: [{ instanceId, operation: "pull_container_state", lastSuccessAt: new Date(now.getTime() - 30_000) }],
+      declaredMatchKeys: ["container:n8n"],
+      ...overrides
+    };
+  };
+
+  it("proposes what nobody claimed and marks what somebody did", async () => {
+    seeing();
+
+    expect(await service.discoverServices(owner, instanceId, now)).toEqual([
+      expect.objectContaining({ matchKey: "container:n8n", kind: "container", name: "n8n", declared: true }),
+      expect.objectContaining({ matchKey: "container:traefik", name: "traefik", declared: false })
+    ]);
+  });
+
+  /**
+   * The state of a container nobody has declared, decided by the same function that decides the
+   * state of one somebody has.
+   *
+   * This is the whole point of the panel: a list of twenty containers that does not say which of
+   * them is running is a list that sends somebody to a terminal anyway. And it has to be the one
+   * judgement, not a second one written for this screen -- a declared container reading "down"
+   * beside the same container undeclared reading "up" is the screen arguing with itself.
+   */
+  it("says of each one what is currently known of it, declared or not", async () => {
+    // Nothing is declared here, which is the case that was wrong: the reading used to be looked
+    // up in the inventory, and the inventory only ever holds records of things somebody has
+    // already declared. Every proposal therefore found no record, and no record behind a pass
+    // that did run reads as `down` -- twenty running containers drawn as twenty dead ones.
+    seeing({ declaredMatchKeys: [], records: [container("n8n", 60), container("traefik", 30_000)] });
+
+    const [n8n, traefik] = await service.discoverServices(owner, instanceId, now);
+
+    expect(n8n?.reading).toMatchObject({ state: "up", data: { host: "cadvisor:8080" } });
+    // Not refreshed within the budget of its own operation, which is the one thing that does make
+    // a container down. The state is the inventory's, decided by the one function.
+    expect(traefik?.reading.state).toBe("down");
+  });
+
+  /** Silence is not death: with no pass behind them, the panel says so rather than inventing one. */
+  it("says nothing is known when the operation has not passed recently", async () => {
+    seeing({ freshness: [] });
+
+    const found = await service.discoverServices(owner, instanceId, now);
+
+    expect(found.map((service) => service.reading.state)).toEqual(["unknown", "unknown"]);
+  });
+
+  it("is a read, so Administrator may ask for it and a stranger may not", async () => {
+    seeing();
+
+    expect(await service.discoverServices(administrator, instanceId, now)).toHaveLength(2);
+    await expect(service.discoverServices(stranger, instanceId, now)).rejects.toEqual(refused("FORBIDDEN"));
+  });
+
+  it("asks about the instance it was given", async () => {
+    seeing();
+    await service.discoverServices(owner, instanceId, now);
+
+    expect(repository.serviceDiscoveryAsked).toEqual([instanceId]);
+  });
+
+  it("refuses an instance this tenant does not have", async () => {
+    seeing({ instanceExists: false });
+
+    await expect(service.discoverServices(owner, instanceId, now)).rejects.toEqual(refused("INSTANCE_NOT_FOUND"));
+  });
+
+  it("says the schema is incomplete rather than that the integration is missing", async () => {
+    seeing({ instanceExists: false, missingMigrations: ["0037_infrastructure_hosts"] });
+
+    await expect(service.discoverServices(owner, instanceId, now)).rejects.toEqual(refused("MIGRATION_REQUIRED"));
+  });
+});
+
+describe("declaring several services at once", () => {
+  const ticked = (count: number) =>
+    Array.from({ length: count }, (_unused, index) => ({
+      name: `servei-${index}`,
+      kind: "container" as const,
+      matchKey: `container:c${index}`,
+      expectedState: "up" as const,
+      customerId: null
+    }));
+
+  it("hands the repository one batch, so it is one transaction and not several", async () => {
+    const declared = await service.declareServices(owner, { hostId: "host-1", services: ticked(3) });
+
+    expect(repository.declaredBatches).toHaveLength(1);
+    expect(declared).toHaveLength(3);
+  });
+
+  /** Writing is writing, however many rows it is. */
+  it("needs the permission a single declaration needs", async () => {
+    await expect(service.declareServices(administrator, { hostId: "host-1", services: ticked(1) })).rejects.toEqual(
+      refused("FORBIDDEN")
+    );
+  });
+
+  it("refuses an empty batch rather than answering with an empty list", async () => {
+    await expect(service.declareServices(owner, { hostId: "host-1", services: [] })).rejects.toEqual(
+      refused("INVALID_INPUT")
+    );
+  });
+
+  it("refuses a batch bigger than one request has any business writing", async () => {
+    await expect(
+      service.declareServices(owner, { hostId: "host-1", services: ticked(mostServicesPerDeclaration + 1) })
+    ).rejects.toEqual(refused("INVALID_INPUT"));
+  });
+
+  /**
+   * The batch must not become the way to store a name or a key the single-service path refuses,
+   * which is why the checks run here and not in the repository.
+   */
+  it("checks every name and key, exactly as declaring one does", async () => {
+    await expect(
+      service.declareServices(owner, {
+        hostId: "host-1",
+        services: [{ ...ticked(1)[0]!, name: "ab" }]
+      })
+    ).rejects.toEqual(refused("INVALID_NAME"));
+
+    await expect(
+      service.declareServices(owner, {
+        hostId: "host-1",
+        services: [{ ...ticked(1)[0]!, matchKey: "" }]
+      })
+    ).rejects.toEqual(refused("INVALID_MATCH_KEY"));
+  });
+
+  it("trims what it stores, so a ticked box cannot smuggle padding in", async () => {
+    await service.declareServices(owner, {
+      hostId: "host-1",
+      services: [{ ...ticked(1)[0]!, name: "  n8n  ", matchKey: "  container:n8n  " }]
+    });
+
+    expect(repository.declaredBatches.at(-1)!.services[0]).toMatchObject({
+      name: "n8n",
+      matchKey: "container:n8n"
+    });
   });
 });

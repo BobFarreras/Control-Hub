@@ -1,7 +1,9 @@
+import { mostServicesPerDeclaration } from "@control-hub/application";
 import type {
   AlertEventRecord,
   AlertRuleRecord,
   AutomationRecord,
+  DeployedProjectRecord,
   CreateAlertRuleInput,
   DeclareHostInput,
   DeclareServiceInput,
@@ -9,14 +11,19 @@ import type {
   Inventory,
   ObservedHost,
   ObservedService,
+  DeclareServicesInput,
   ServiceRecord,
+  SupabaseProjectRecord,
   UpdateAlertRuleInput,
   UpdateHostInput,
   UpdateServiceInput
 } from "@control-hub/application";
 import {
   alertRuleKinds,
+  serviceKinds,
   type AlertSeverity,
+  type ConnectorDiagnosis,
+  type ConnectorDiagnosisStep,
   type CurrentReading,
   type JsonValue,
   type TenantContext
@@ -50,6 +57,48 @@ export function automationResponse(automation: AutomationRecord) {
     observedAt: automation.observedAt,
     customerId: automation.customerId,
     notes: automation.notes
+  };
+}
+
+/**
+ * A deployed project, field by field like every other response here.
+ *
+ * The production domain is in and no other address is: it is the client's own public domain, it
+ * is what makes a row mean anything to whoever reads it, and it is not the provider's. What is
+ * kept out is what a build log would carry.
+ */
+export function deployedProjectResponse(project: DeployedProjectRecord) {
+  return {
+    instanceId: project.instanceId,
+    externalId: project.externalId,
+    name: project.name,
+    framework: project.framework,
+    createdAt: project.createdAt,
+    domain: project.domain,
+    productionReady: project.productionReady,
+    productionState: project.productionState,
+    productionDeployedAt: project.productionDeployedAt,
+    lastFailureAt: project.lastFailureAt,
+    lastFailureRef: project.lastFailureRef,
+    observedAt: project.observedAt,
+    customerId: project.customerId,
+    notes: project.notes
+  };
+}
+
+/** A Supabase project, field by field. No connection host, no organisation id: see the specification. */
+export function supabaseProjectResponse(project: SupabaseProjectRecord) {
+  return {
+    instanceId: project.instanceId,
+    externalId: project.externalId,
+    name: project.name,
+    region: project.region,
+    status: project.status,
+    healthy: project.healthy,
+    createdAt: project.createdAt,
+    observedAt: project.observedAt,
+    customerId: project.customerId,
+    notes: project.notes
   };
 }
 
@@ -183,7 +232,10 @@ export function readingResponse(matchKey: string, reading: CurrentReading) {
     const value = reading.data[field];
     if (value !== undefined) data[field] = value;
   }
-  return { state: reading.state, observedAt: reading.observedAt, data };
+  // The connector instance is ours and not the provider's: an identifier of a row in our own
+  // `connector_instances`, which every automation and every alert rule on this surface already
+  // carries. It says which collector read this line, never where that collector reaches.
+  return { state: reading.state, observedAt: reading.observedAt, instanceId: reading.instanceId, data };
 }
 
 export function observedServiceResponse(service: ObservedService) {
@@ -195,13 +247,79 @@ export function observedHostResponse(host: ObservedHost) {
   return {
     ...hostResponse(host),
     reading: readingResponse(`host:${host.hostname}`, host.reading),
-    services: host.services.map(observedServiceResponse)
+    services: host.services.map(observedServiceResponse),
+    labels: host.labels,
+    // What the collectors saw on one of this machine's labels, declared or not. The same
+    // allow-list as every other reading: nothing reaches a screen by a collector having
+    // started to publish it.
+    observed: host.observed.map((service) => ({
+      ...service,
+      reading: readingResponse(service.matchKey, service.reading)
+    }))
   };
 }
 
+/**
+ * `summary` travels through untouched. Counting it again here would give the route and the use
+ * case two ways of arriving at how many machines are down, and one of them would eventually be
+ * the one somebody reads.
+ */
 export function inventoryResponse(inventory: Inventory) {
-  return { hosts: inventory.hosts.map(observedHostResponse), observedFrom: inventory.observedFrom };
+  return {
+    hosts: inventory.hosts.map(observedHostResponse),
+    summary: inventory.summary,
+    observedFrom: inventory.observedFrom
+  };
 }
+
+/**
+ * What a finding may say to a client, named per rung rather than handed over whole.
+ *
+ * The domain builds a diagnosis with no field an address could occupy, so this is the second
+ * fence and not the first — but it is the one on the side of the wire a browser is on, and it is
+ * the reason a key a later rung starts attaching reaches nobody by the mere fact of existing. A
+ * rung listed with no keys says only its status and its code, which is the safe way round.
+ */
+const evidenceKeys: Readonly<Record<ConnectorDiagnosisStep, readonly string[]>> = {
+  migrations: ["migrations"],
+  allowlist: [],
+  reachable: [],
+  answers_prometheus: [],
+  scraping: [],
+  matching: ["seen", "declared"]
+};
+
+/**
+ * How many names travel, and why the count travels with them.
+ *
+ * A collector scraping four hundred targets would otherwise turn one question into a data dump,
+ * and the answer somebody needs is settled by the first handful. The total goes too so the screen
+ * can say how many it is not showing: a list cut short and drawn as if it were the whole thing is
+ * the same class of lie as a stale figure drawn without its age.
+ */
+const evidenceLimit = 20;
+
+export function diagnosisResponse(diagnosis: ConnectorDiagnosis) {
+  return {
+    problem: diagnosis.problem,
+    findings: diagnosis.findings.map((finding) => {
+      const evidence: Record<string, { values: readonly string[]; total: number }> = {};
+      for (const key of evidenceKeys[finding.step]) {
+        const values = finding.evidence[key];
+        if (values && values.length > 0)
+          evidence[key] = { values: values.slice(0, evidenceLimit), total: values.length };
+      }
+      return { step: finding.step, status: finding.status, code: finding.code, evidence };
+    })
+  };
+}
+
+const instanceParams = {
+  type: "object",
+  additionalProperties: false,
+  required: ["instanceId"],
+  properties: { instanceId: { type: "string", format: "uuid" } }
+} as const;
 
 const hostParams = {
   type: "object",
@@ -228,7 +346,7 @@ const hostFields = {
 /** `hostId` is absent from the patch on purpose: a service that moved machine is a new service. */
 const serviceFields = {
   name: { type: "string", minLength: 3, maxLength: 120 },
-  kind: { type: "string", enum: ["container", "http", "database", "automation"] },
+  kind: { type: "string", enum: [...serviceKinds] },
   matchKey: { type: "string", minLength: 1, maxLength: 200 },
   expectedState: { type: "string", enum: ["up", "stopped", "ignored"] },
   customerId: { type: ["string", "null"], format: "uuid" }
@@ -367,19 +485,179 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
   );
 
   app.get(
+    "/api/v1/infrastructure/projects",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every deployed project the connectors have read",
+        description:
+          "What the hosting provider says is deployed, with the client it was associated with. The production state and the last failed build are two fields and not one on purpose: a project can be serving perfectly and have had a build fail ten minutes ago, and both are worth knowing. `productionReady` is null, never false, for a project nobody has deployed yet."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { projects: (await infrastructure.listDeployedProjects(context)).map(deployedProjectResponse) };
+    }
+  );
+
+  app.put<{
+    Params: { instanceId: string; externalId: string };
+    Body: { customerId?: string | null; notes?: string | null };
+  }>(
+    "/api/v1/infrastructure/projects/:instanceId/:externalId/link",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Associate a deployed project with a client",
+        description:
+          "Same shape as associating an automation, and a different table: a null `customerId` withdraws the association and keeps the note, and the association outlives the record, so it survives a project being paused for a fortnight.",
+        params: linkParams,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            customerId: { type: ["string", "null"], format: "uuid" },
+            notes: { type: ["string", "null"], maxLength: 2000 }
+          }
+        }
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { instanceId, externalId } = request.params;
+      const event = {
+        action: "infrastructure.project_linked",
+        targetType: "infra_project",
+        targetId: externalId,
+        metadata: { instanceId }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.linkDeployedProject(context, {
+        instanceId,
+        externalId,
+        customerId: request.body.customerId ?? null,
+        notes: request.body.notes ?? null
+      });
+      await writeAudit(database, context, request, {
+        ...event,
+        outcome: "success",
+        // The client it now belongs to, never the note: a note is free text somebody typed.
+        metadata: { instanceId, customerId: request.body.customerId ?? "none" }
+      });
+      return { linked: true };
+    }
+  );
+
+  app.get(
+    "/api/v1/infrastructure/supabase-projects",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Every Supabase project the connectors have read",
+        description:
+          "What Supabase says exists and its status, with the client it was associated with. `healthy` is null, never false, for a project mid-transition -- restoring, upgrading, resizing -- because none of those are an outage. Associating one with a client uses the same route as a Vercel project, since the link does not know which provider a project came from."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { projects: (await infrastructure.listSupabaseProjects(context)).map(supabaseProjectResponse) };
+    }
+  );
+
+  app.get(
     "/api/v1/infrastructure/inventory",
     {
       schema: {
         tags: ["infrastructure"],
         summary: "Every machine and service, with what is currently known of it",
         description:
-          "The declared inventory joined to its readings, judged exactly as the `service_down` rule judges one, so a dashboard and an alert cannot disagree about what down means. `state` has three values and the third is the point: `unknown` is a collector we have lost sight of, and it is never drawn as an outage. `observedFrom` is the oldest reading behind the answer, because a dashboard is only as fresh as the stalest thing on it."
+          "The declared inventory joined to its readings, judged exactly as the `service_down` rule judges one, so a dashboard and an alert cannot disagree about what down means. `state` has three values and the third is the point: `unknown` is a collector we have lost sight of, and it is never drawn as an outage. `summary` counts the machines and the services by that same state, counted from these very readings so the figure at the top of a screen cannot drift from the list under it. Each reading names the connector instance it was read from — ours, never the provider's — which is what lets a fleet be filtered by which collector sees it. `observedFrom` is the oldest reading behind the answer, because a dashboard is only as fresh as the stalest thing on it."
       }
     },
     async (request) => {
       const context = await resolveTenantContext(auth, database, request);
       requirePermission(context, "infrastructure:read");
       return { inventory: inventoryResponse(await infrastructure.readInventory(context, new Date())) };
+    }
+  );
+
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/diagnosis",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Why a collector is telling us nothing",
+        params: instanceParams,
+        description:
+          "The chain of things that have to hold before a reading can appear, answered one rung at a time and stopped at the first that does not. A rung the chain never reached is `unchecked` and one nobody has gathered evidence for is `unknown` — neither is a failure, and reporting them as one is what turns a tunnel nobody has knocked on into a tunnel somebody reports as shut. The answer carries migration file names and `instance` labels and nothing else: no base address, no credential and no provider hostname, because the sentence that needs the address is composed on the screen out of what the person just typed."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { diagnosis: diagnosisResponse(await infrastructure.diagnose(context, request.params.instanceId)) };
+    }
+  );
+
+  /**
+   * What a collector can see, listed whole.
+   *
+   * Nothing is cut short here, unlike the evidence on a diagnosis: there the list is a hint and
+   * the answer is settled by the first handful, while here the list *is* the answer -- a machine
+   * dropped from it is a machine nobody is offered the chance to declare. The labels are the same
+   * ones that rung already sends, filtered by the same query, so the two cannot disagree.
+   */
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/discovery",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "The machines a collector is reading, declared or not",
+        params: instanceParams,
+        description:
+          "Every `instance` label this collector has stored a reading for, each one said to be declared against a machine or not declared at all. A read of what is already in our tables: opening it sends nothing to Prometheus and cannot make a request go out. The labels are the ones the guided check's last rung reports, drawn from the same query, and a probed address is left out of both. Answers 503 with `MIGRATION_REQUIRED` when the module's tables are not there, because on that database \"no such integration\" would be a false answer about a table that does not exist."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      return { instances: await infrastructure.discover(context, request.params.instanceId) };
+    }
+  );
+
+  /**
+   * The C4, and the same read as the discovery one level down.
+   *
+   * Nothing is cut short here either: the list *is* the answer, and a service dropped from it is
+   * a service nobody is offered the chance to declare. What it deliberately does not do is decide
+   * which machine a container belongs to -- `seenOn` carries the collector's label through and a
+   * person decides -- because nothing in a reading joins a cAdvisor label to a node_exporter one.
+   */
+  app.get<{ Params: { instanceId: string } }>(
+    "/api/v1/infrastructure/connectors/:instanceId/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "The services a collector is reading, declared or not",
+        params: instanceParams,
+        description:
+          "Everything this collector has stored a reading for that could be declared as a service -- the `container:`, `probe:` and `backup:` prefixes -- each with the kind and name proposed for it, the label of whoever saw it, and whether somebody has already declared it. A read of what is in our tables: opening it sends nothing to Prometheus. `host:` is left out because a machine is what the discovery answers, and `workflow:` because it is not infrastructure. Answers 503 with `MIGRATION_REQUIRED` when the module's tables are not there."
+      }
+    },
+    async (request) => {
+      const context = await resolveTenantContext(auth, database, request);
+      requirePermission(context, "infrastructure:read");
+      const services = await infrastructure.discoverServices(context, request.params.instanceId, new Date());
+      // The reading leaves through the same allow-list every other reading does: a collector that
+      // starts publishing an address or a token reaches no screen by the mere fact of existing.
+      return {
+        services: services.map((service) => ({
+          ...service,
+          reading: readingResponse(service.matchKey, service.reading)
+        }))
+      };
     }
   );
 
@@ -463,6 +741,91 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
     }
   );
 
+  /**
+   * Claiming another label for a machine, which is C8.
+   *
+   * A Prometheus aggregates by `instance`, and `instance` is the scrape target that reported a
+   * figure rather than the computer it came from: one VPS is a `node-exporter:9100`, a
+   * `cadvisor:8080` and a `127.0.0.1:9090`. The machine says which of them are itself, and
+   * everything seen on any of them is then its own. Declared and not guessed, for the same reason
+   * a service is declared -- the hub does not invent a correspondence the reading does not carry.
+   *
+   * `infrastructure:operate` and audited, because it changes what an alert is about: a label
+   * claimed by the wrong machine sends the wrong person out of bed.
+   */
+  app.post<{ Params: { hostId: string }; Body: { label: string } }>(
+    "/api/v1/infrastructure/hosts/:hostId/labels",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Another label this machine answers to",
+        params: hostParams,
+        description:
+          "Adds a collector label to a machine, beside its `hostname`. Everything read under that label is then this machine's -- which is how the containers a cAdvisor reports reach the machine a node_exporter reports. A label belongs to one machine and no more: one already taken, by this table or by another machine's `hostname`, answers `DUPLICATE_HOSTNAME`, because two machines claiming one label would turn a single outage into two alerts about the same computer.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label"],
+          properties: { label: hostFields.hostname }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { hostId } = request.params;
+      const event = {
+        action: "infrastructure.host_label_added",
+        targetType: "infra_host",
+        targetId: hostId,
+        metadata: { label: request.body.label }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.addHostLabel(context, hostId, request.body.label);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return reply.code(204).send();
+    }
+  );
+
+  /**
+   * Withdrawing a label, which loses nothing: the readings it matched stay where they are, and
+   * what it was joining to this machine simply stops being joined to it.
+   *
+   * The label travels in the path, so it is URL-encoded by whoever calls -- a collector label
+   * holds a colon and often a slash. A label this machine does not answer to is not an error: the
+   * machine does not answer to it afterwards either way, which is what was asked for.
+   */
+  app.delete<{ Params: { hostId: string; label: string } }>(
+    "/api/v1/infrastructure/hosts/:hostId/labels/:label",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Withdraw a label from a machine",
+        description:
+          "The machine stops answering to that label. Nothing stored is lost: the readings it matched stay where they are and stop being attributed here. Withdrawing a label the machine does not have succeeds -- the state asked for is the state afterwards. An unknown machine still answers `HOST_NOT_FOUND`.",
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["hostId", "label"],
+          properties: { hostId: { type: "string", format: "uuid" }, label: { type: "string", minLength: 1 } }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const { hostId, label } = request.params;
+      const event = {
+        action: "infrastructure.host_label_removed",
+        targetType: "infra_host",
+        targetId: hostId,
+        metadata: { label }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+      await infrastructure.removeHostLabel(context, hostId, label);
+      await writeAudit(database, context, request, { ...event, outcome: "success" });
+      return reply.code(204).send();
+    }
+  );
+
   app.get<{ Querystring: { hostId?: string } }>(
     "/api/v1/infrastructure/services",
     {
@@ -518,6 +881,75 @@ export function registerInfrastructureRoutes({ app, database, auth, infrastructu
       });
       await writeAudit(database, context, request, { ...event, targetId: service.id, outcome: "success" });
       return reply.code(201).send({ service: serviceResponse(service) });
+    }
+  );
+
+  /**
+   * Several services on one machine, or none of them.
+   *
+   * The write the selector needs. It is one transaction on purpose: half a batch stored would
+   * leave somebody looking at a screen where some of what they ticked is declared and some is
+   * not, with nothing to say which. Each service still gets its own audit row, so a service
+   * declared by ticking a box is indistinguishable in the trail from one declared by hand --
+   * which is what it is.
+   */
+  app.post<{ Params: { hostId: string }; Body: { services: DeclareServicesInput["services"] } }>(
+    "/api/v1/infrastructure/hosts/:hostId/services",
+    {
+      schema: {
+        tags: ["infrastructure"],
+        summary: "Declare several services on a machine at once",
+        params: hostParams,
+        description:
+          "Declares every service in the body, or none: they go in one transaction, so a key already taken refuses the whole batch rather than leaving part of it stored. The same rules as declaring one at a time -- two services may not share a `matchKey`, and `expectedState` defaults to `up`.",
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["services"],
+          properties: {
+            services: {
+              type: "array",
+              minItems: 1,
+              maxItems: mostServicesPerDeclaration,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["name", "kind", "matchKey"],
+                properties: serviceFields
+              }
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const context = await resolveTenantContext(auth, database, request);
+      const event = {
+        action: "infrastructure.service_declared",
+        targetType: "infra_service",
+        metadata: { hostId: request.params.hostId, count: String(request.body.services.length) }
+      };
+      await requireAudited(context, request, "infrastructure:operate", event);
+
+      const declared = await infrastructure.declareServices(context, {
+        hostId: request.params.hostId,
+        services: request.body.services.map((service) => ({
+          ...service,
+          expectedState: service.expectedState ?? "up",
+          customerId: service.customerId ?? null
+        }))
+      });
+
+      for (const service of declared) {
+        await writeAudit(database, context, request, {
+          ...event,
+          targetId: service.id,
+          metadata: { hostId: request.params.hostId, kind: service.kind, matchKey: service.matchKey },
+          outcome: "success"
+        });
+      }
+
+      return reply.code(201).send({ services: declared.map(serviceResponse) });
     }
   );
 

@@ -20,3 +20,4 @@ export * from "./invitation-repository.js";
 export * from "./projects-repository.js";
 export * from "./support-repository.js";
 export * from "./table-preference-repository.js";
+export * from "./usage-repository.js";

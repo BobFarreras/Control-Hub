@@ -20,6 +20,7 @@
   --warning-subtle: color-mix(in srgb, var(--warning) 12%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 12%, var(--surface));
+  --info-subtle: color-mix(in srgb, var(--info) 12%, var(--surface));
   --shadow: 0 10px 30px rgb(44 40 36 / 7%);
   --pipeline-new: #7a7067;
   --pipeline-contacted: #5a7a6b;
@@ -48,6 +49,7 @@
   --warning-subtle: color-mix(in srgb, var(--warning) 18%, var(--surface));
   --danger-subtle: color-mix(in srgb, var(--danger) 18%, var(--surface));
   --brand-subtle: color-mix(in srgb, var(--brand) 18%, var(--surface));
+  --info-subtle: color-mix(in srgb, var(--info) 18%, var(--surface));
   --shadow: none;
   --pipeline-new: #9a9590;
   --pipeline-contacted: #8a9eaf;
@@ -3135,6 +3137,72 @@ main {
 .smart-table-row:hover {
   background: var(--surface-subtle);
 }
+
+.usage-stack {
+  display: grid;
+  gap: 16px;
+}
+.usage-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.usage-summary article {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.segmented-control a {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 7px 12px;
+  text-decoration: none;
+}
+.segmented-control a:hover,
+.segmented-control a:focus-visible,
+.segmented-control a.active {
+  background: var(--info-subtle);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.smart-table .status-pill + small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.usage-sources ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 12px 18px 18px;
+}
+.usage-sources li {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-top: 8px;
+}
+.usage-sources li span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+@media (max-width: 900px) {
+  .usage-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .usage-summary {
+    grid-template-columns: 1fr;
+  }
+}
 @keyframes smart-row-enter {
   from {
     opacity: 0;
@@ -3259,10 +3327,10 @@ main {
    the state is readable without separating red from green. */
 .ticket-reference {
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 .ticket-subject {
-  color: var(--text-strong);
+  color: var(--text);
   font-weight: 500;
   text-decoration: none;
 }
@@ -3280,11 +3348,11 @@ main {
   white-space: nowrap;
 }
 .sla-breached {
-  color: var(--danger-strong, #b42318);
+  color: var(--danger);
   font-weight: 600;
 }
 .sla-unknown {
-  color: var(--text-muted);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -3309,23 +3377,23 @@ main {
   opacity: 0.85;
 }
 .sla-badge:focus-visible {
-  outline: 2px solid var(--focus-ring, #4f46e5);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 .sla-on-time {
-  background: var(--success-bg, rgba(22, 163, 74, 0.1));
-  color: var(--success-strong, #15803d);
-  border-color: var(--success-border, rgba(22, 163, 74, 0.25));
+  background: var(--success-subtle);
+  color: var(--success);
+  border-color: var(--success);
 }
 .sla-near {
-  background: var(--warning-bg, rgba(234, 179, 8, 0.1));
-  color: var(--warning-strong, #a16207);
-  border-color: var(--warning-border, rgba(234, 179, 8, 0.25));
+  background: var(--warning-subtle);
+  color: var(--warning);
+  border-color: var(--warning);
 }
 .sla-paused {
-  background: var(--info-bg, rgba(59, 130, 246, 0.1));
-  color: var(--info-strong, #1d4ed8);
-  border-color: var(--info-border, rgba(59, 130, 246, 0.25));
+  background: var(--info-subtle);
+  color: var(--info);
+  border-color: var(--info);
 }
 
 /* SLA detail dialog */
@@ -3350,7 +3418,7 @@ main {
 }
 .sla-detail-section dt {
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 .sla-detail-section dd {
   margin: 0;
@@ -3388,7 +3456,7 @@ main {
   flex-wrap: wrap;
   gap: 0.5rem 1.25rem;
   font-size: 0.875rem;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 .ticket-identity-field {
   display: inline-flex;
@@ -3400,7 +3468,7 @@ main {
   color: var(--text);
 }
 .ticket-identity-description {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.5;
   margin-top: 0.25rem;
@@ -3413,7 +3481,7 @@ main {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: var(--accent-strong, #4f46e5);
+  color: var(--accent);
   text-decoration: none;
   font-size: 0.85rem;
   font-weight: 500;
@@ -3437,9 +3505,9 @@ main {
   flex-direction: column;
   gap: 0.85rem;
   padding: 1rem;
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: var(--surface-subtle, rgba(128, 128, 128, 0.04));
+  background: var(--surface-subtle);
 }
 .ticket-meta-field {
   display: flex;
@@ -3452,7 +3520,7 @@ main {
   gap: 0.35rem;
   font-size: 0.78rem;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -3463,7 +3531,7 @@ main {
 .ticket-meta-input {
   width: 100%;
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border);
   border-radius: 0.35rem;
   background: var(--surface, #fff);
   font: inherit;
@@ -3472,7 +3540,7 @@ main {
 }
 .ticket-meta-select:focus,
 .ticket-meta-input:focus {
-  outline: 2px solid var(--focus-ring, #4f46e5);
+  outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
 
@@ -3487,9 +3555,9 @@ main {
   white-space: nowrap;
 }
 .ticket-priority-badge.priority-urgent {
-  background: var(--danger-bg, rgba(220, 38, 38, 0.1));
-  color: var(--danger-strong, #b91c1c);
-  border: 1px solid var(--danger-border, rgba(220, 38, 38, 0.25));
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border: 1px solid var(--danger);
 }
 .ticket-priority-badge.priority-high {
   background: rgba(234, 88, 12, 0.1);
@@ -3497,14 +3565,14 @@ main {
   border: 1px solid rgba(234, 88, 12, 0.25);
 }
 .ticket-priority-badge.priority-normal {
-  background: var(--info-bg, rgba(59, 130, 246, 0.1));
-  color: var(--info-strong, #1d4ed8);
-  border: 1px solid var(--info-border, rgba(59, 130, 246, 0.25));
+  background: var(--info-subtle);
+  color: var(--info);
+  border: 1px solid var(--info);
 }
 .ticket-priority-badge.priority-low {
-  background: var(--surface-muted, rgba(128, 128, 128, 0.08));
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
+  background: var(--surface-subtle);
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 /* SLA indicators in the sidebar */
@@ -3519,14 +3587,14 @@ main {
   white-space: nowrap;
 }
 .ticket-sla-breached {
-  color: var(--danger-strong, #b42318);
+  color: var(--danger);
   font-weight: 600;
 }
 .ticket-sla-ok {
-  color: var(--success-strong, #15803d);
+  color: var(--success);
 }
 .ticket-sla-unknown {
-  color: var(--text-muted);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -3542,17 +3610,17 @@ main {
   gap: 0.85rem;
 }
 .ticket-message {
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border: 1px solid var(--border);
   border-radius: 0.6rem;
   padding: 0.85rem 1rem;
 }
 .ticket-message.internal {
   border-left-width: 4px;
-  border-left-color: var(--warning-strong, #b54708);
-  background: var(--surface-muted, rgba(128, 128, 128, 0.06));
+  border-left-color: var(--warning);
+  background: var(--surface-subtle);
 }
 .ticket-message-description {
-  background: var(--surface-subtle, rgba(128, 128, 128, 0.03));
+  background: var(--surface-subtle);
 }
 .ticket-message header {
   display: flex;
@@ -3564,7 +3632,7 @@ main {
 }
 .ticket-message header time {
   margin-left: auto;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 .visibility {
   display: inline-flex;
@@ -3575,11 +3643,11 @@ main {
   letter-spacing: 0.03em;
 }
 .visibility.internal {
-  color: var(--warning-strong, #b54708);
+  color: var(--warning);
   font-weight: 600;
 }
 .visibility.customer {
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 /* Reply form */
@@ -3588,9 +3656,9 @@ main {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: var(--surface-subtle, rgba(128, 128, 128, 0.03));
+  background: var(--surface-subtle);
 }
 .ticket-reply-label {
   display: flex;
@@ -3994,11 +4062,11 @@ main {
   align-items: center;
   gap: 0.85rem;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 .boundary-page h1 {
   margin: 0;
-  color: var(--text-strong);
+  color: var(--text);
   font-size: 1.25rem;
 }
 .boundary-page p {
@@ -5063,7 +5131,7 @@ main {
 }
 
 .attendance-month-arrow:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
 
@@ -5174,7 +5242,7 @@ main {
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  background: var(--bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 12px;
@@ -5238,7 +5306,7 @@ main {
   padding: 9px 6px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface);
   min-height: 84px;
   transition: background-color 0.15s ease;
 }
@@ -5281,8 +5349,8 @@ main {
 }
 
 .calendar-cell.holiday {
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-  border-color: var(--primary);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  border-color: var(--brand);
 }
 
 .calendar-day-number {
@@ -5304,7 +5372,7 @@ main {
 .calendar-hours {
   font-size: 0.82rem;
   font-weight: 650;
-  color: var(--fg);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5327,7 +5395,7 @@ main {
 }
 
 .calendar-popover {
-  background: var(--bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -5389,7 +5457,7 @@ main {
 }
 
 .pending-actions .icon-button:hover {
-  color: var(--fg);
+  color: var(--text);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5897,8 +5965,11 @@ main {
 /* The machines of the infrastructure screen. A card each, because a machine is a heading with
    figures under it rather than a row: the figures of two hosts are never compared column by
    column, and forcing them into a table would leave every cell of a probe empty. */
+/* Two machines abreast as soon as the window has room, because one card per row across a wide
+   screen spends half its width on nothing and pushes the second machine below the fold. */
 .infra-hosts {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 12px;
   margin: 0;
   padding: 0;
@@ -5910,12 +5981,17 @@ main {
   border-radius: 8px;
   background: var(--surface-subtle);
 }
+/* The state belongs beside the name, not at the far end of the row. Spread apart, the two halves
+   of one sentence were separated by a hand's width of nothing, and the row read as two columns
+   that happened to share a line. The commands keep the right edge, where they are found. */
 .infra-host > header {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
   align-items: center;
-  justify-content: space-between;
+}
+.infra-host > header > .pending-actions {
+  margin-left: auto;
 }
 .infra-host > header > div {
   display: grid;
@@ -5952,6 +6028,14 @@ main {
 }
 .infra-host .crm-table-wrap {
   margin-top: 12px;
+}
+/* The other labels a machine answers to, on one line beside its own. */
+.infra-host-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
 }
 
 @media (max-width: 1199px) {
@@ -6012,4 +6096,572 @@ main {
   .attendance-mini-month:last-child {
     border-bottom: 0;
   }
+}
+
+/* The guided check.
+
+   The chain is drawn as a chain: a rail down the left that every rung hangs off, so the order is
+   read as an order rather than as a list of six unrelated verdicts. Only the rung that broke
+   opens, and it is the only one that carries a remedy -- six remedies at once would be the
+   runbook this screen exists to replace. What sits above the break is muted rather than red,
+   because a rung the chain never reached has not failed. */
+.diagnosis-verdict {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  color: var(--success);
+  background: var(--success-subtle);
+}
+.diagnosis-chain {
+  margin: 16px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--border);
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.diagnosis-rung {
+  display: grid;
+  gap: 8px;
+}
+.diagnosis-rung[data-status="unchecked"],
+.diagnosis-rung[data-status="unknown"] {
+  color: var(--muted);
+}
+.diagnosis-rung-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.diagnosis-rung-name {
+  font-weight: 600;
+}
+.diagnosis-remedy {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-subtle);
+}
+.diagnosis-remedy p {
+  margin: 0;
+}
+.diagnosis-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.diagnosis-command code {
+  flex: 1;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  white-space: pre;
+}
+.diagnosis-labels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.diagnosis-evidence h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.diagnosis-evidence ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.diagnosis-evidence code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* The filter over the fleet, and the page one machine gets to itself (phase 7.3, increment C2).
+
+   The chips are real checkboxes with the box hidden, not buttons wearing a class: the group is a
+   group to a screen reader, the keyboard works without anybody writing key handlers, and the
+   checked state is the input's own rather than a class somebody has to remember to toggle. */
+/* Everything on the infrastructure screen is a band under the previous one, and the space
+   between two of them belongs to the stack rather than to either band: a margin on each would be
+   a margin to keep in step every time a band is added, removed or reordered. */
+.infra-stack {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+/* The one choice the whole infrastructure screen hangs from, and the count of what it holds, on
+   a single line. Two full-width bands -- one holding a select and one holding four tiles -- were
+   the widest stretch of nothing on the screen. */
+.collector-band {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: flex-end;
+}
+.collector-pick {
+  flex: 0 1 240px;
+  min-width: 190px;
+}
+/* The figures take whatever the select leaves and no more: they are read left to right, and a
+   grid stretching four numbers across a wide screen puts a hand's width between each of them. */
+.collector-band .figure-bar {
+  flex: 1 1 auto;
+}
+/* The collector's mark inside its own option, at the size of the words beside it. */
+.select-trigger > svg:first-child,
+.select-dropdown button > svg:first-child {
+  flex: none;
+}
+
+/* The figures of whatever is being looked at, as a strip rather than as a row of cards. Most of
+   them carry one number, and a card each gave every one of them a box, a border and its own
+   padding: five boxes spending the width of the screen to say five numbers. Divided by a rule and
+   not by a gap, so the strip reads as one thing counted several ways. */
+.figure-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.figure-cell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  justify-content: center;
+  min-width: 118px;
+  padding: 8px 16px;
+  border-left: 1px solid var(--border);
+}
+.figure-cell:first-child {
+  border-left: none;
+}
+.figure-cell strong {
+  font-size: 20px;
+  font-weight: 680;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.figure-cell > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.figure-cell small {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A panel that would have held nothing, reduced to the line it needed. The alerts panel with no
+   alerts was a heading, a border and a sentence; this is the sentence and the way in -- and it
+   takes the width of what it says rather than the width of the screen, because a full-width band
+   holding six words reads as a panel that failed to load its contents. */
+.infra-strip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Heading, filters and the button that adds one, on the line the heading already had. The three
+   of them were three stacked bands, each mostly empty, asking one question between them. */
+.project-panel-heading.fleet-heading {
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: flex-end;
+}
+.fleet-heading > h3 {
+  margin-right: auto;
+}
+/* No box around it any more: a bordered panel drawn around two narrow selects was mostly its own
+   border, and the border said nothing the labels did not. */
+.fleet-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: flex-end;
+  margin: 0;
+}
+.fleet-filter .field {
+  min-width: 150px;
+}
+.fleet-filter .field > .field-label {
+  font-size: 11.5px;
+}
+
+.fleet-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.fleet-filter-group legend {
+  padding: 0;
+  margin-right: 8px;
+  float: left;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fleet-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+/* Off-screen rather than `display: none`, which would take the input out of the tab order and
+   leave the chip unreachable without a mouse. */
+.fleet-chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.fleet-chip:hover {
+  border-color: var(--brand);
+}
+.fleet-chip:has(input:checked) {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+  font-weight: 600;
+}
+.fleet-chip:has(input:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.fleet-filter-count {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* A control that is a link in everything but destination, or a link that is one. */
+.link-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+.link-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.infra-provenance {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.infra-services {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.infra-services > li {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.infra-services > li > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.infra-services > li > header > div {
+  display: grid;
+}
+
+/* What a collector can see: a row per label, the declared ones settled and the rest asking to be. */
+/* Two columns as soon as there is room for two, because one column of twenty containers is a
+   scroll and a screenful of nothing on the right. The groups are what wrap, not the rows: a
+   container list split down the middle of itself would read as two lists. */
+.collector-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+/* One group of twenty beside three groups of one leaves the twenty in a column and the rest of
+   the row empty. Past eight it takes the whole row and spreads its own cards across it. */
+.collector-group[data-many="yes"] {
+  grid-column: 1 / -1;
+}
+.collector-group {
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+/* The fold is the whole row, not a triangle somebody has to aim at. The native marker goes and a
+   caret of our own comes back on the left, so the group reads the same shut as open. */
+.collector-group > summary {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.collector-group > summary::-webkit-details-marker {
+  display: none;
+}
+.collector-group > summary::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  align-self: center;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left: 6px solid var(--muted);
+  transition: transform 120ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collector-group > summary::before {
+    transition: none;
+  }
+}
+.collector-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+.collector-group > summary:hover {
+  color: var(--brand);
+}
+.collector-group > summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.collector-group-name {
+  overflow-wrap: anywhere;
+}
+/* The count beside the name and not in the sentence under it: it is the one number that has to
+   survive the group being shut. */
+.collector-group-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.collector-group > summary > small {
+  margin-left: auto;
+  text-transform: none;
+  font-weight: 500;
+  font-size: 11.5px;
+}
+.collector-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 11px;
+  list-style: none;
+}
+
+.collector-list {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+/* A card each rather than a line each. Twenty containers as twenty lines is a wall that is read
+   by counting; as cards they are scanned, and the eye finds the one that is not green. */
+.collector-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.collector-row-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  align-items: baseline;
+}
+.collector-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 550;
+  line-height: 1.25;
+}
+/* Inside a card it is the whole first line, not a column competing with the button under it. */
+.collector-row > .discovery-label {
+  flex: none;
+  align-self: stretch;
+}
+/* The figures sit right of the name and go quiet, so the column reads as a list of things and
+   their state first, and as numbers only when somebody looks for one. */
+.collector-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.discovery-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+.discovery-ask > label {
+  min-width: 220px;
+}
+.discovery-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.discovery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+/* Undeclared is the row somebody came here to act on, so it is the one that is marked. The colour
+   is never the only carrier: the row also says the words, and it is the only one with a button. */
+.discovery-row[data-declared="no"] {
+  border-left: 3px solid var(--warning);
+}
+.discovery-label {
+  flex: 1 1 220px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+.discovery-undeclared {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* The service selector. Grouped by kind, because twenty containers and one backup read as one
+   undifferentiated list otherwise, and the backup is the line somebody is looking for. */
+.infra-pick-group {
+  margin: 12px 0 0;
+  padding: 10px 14px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.infra-pick-group > legend {
+  padding: 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.infra-pick-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.infra-pick-row > input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.infra-pick-row > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+/* The key is what does the matching, so it is set in the face that makes a stray character
+   visible -- which is the whole reason this screen exists instead of a text field. */
+.infra-pick-row small {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+.infra-pick-declared {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.infra-pick-declared > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.infra-pick-declared small {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
 }

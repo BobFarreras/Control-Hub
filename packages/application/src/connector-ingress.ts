@@ -73,7 +73,14 @@ export type IngressRefusal =
   | "signature_mismatch";
 
 export type IngressOutcome =
-  | { status: "accepted"; eventId: string; duplicate: boolean; stored: "pending" | "discarded" }
+  | {
+      status: "accepted";
+      eventId: string;
+      tenantId: string;
+      instanceId: string;
+      duplicate: boolean;
+      stored: "pending" | "discarded";
+    }
   /**
    * Signed correctly, and the connector could not read it.
    *
@@ -292,6 +299,8 @@ export class ConnectorIngressService {
     return {
       status: "accepted",
       eventId: recorded.id,
+      tenantId: endpoint.tenantId,
+      instanceId: endpoint.instanceId,
       duplicate: recorded.duplicate,
       stored: read.accepted ? "pending" : "discarded"
     };

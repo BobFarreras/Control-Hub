@@ -14,6 +14,7 @@ import {
   type HealthOutcome,
   type InboxOutcome,
   type InboxRecord,
+  type PendingInboxRecord,
   type PurgeRecordsInput,
   type PurgeRecordsResult,
   type PutCredentialInput,
@@ -540,6 +541,24 @@ export class PostgresConnectorRepository implements ConnectorRepository {
         select ${tx.unsafe(inboxColumns)} from connector_inbox
         where tenant_id = ${context.tenantId} and status = 'pending'
         order by received_at asc, id asc limit ${limit}`;
+    });
+  }
+
+  async getPendingInbox(context: TenantContext, eventId: string): Promise<PendingInboxRecord | null> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const [record] = await tx<PendingInboxRecord[]>`
+        select i.id, i.endpoint_id as "endpointId", i.provider_event_id as "providerEventId",
+          i.payload_hash as "payloadHash", i.payload, i.received_at as "receivedAt", i.status,
+          i.attempts, i.processed_at as "processedAt", i.tenant_id as "tenantId",
+          e.instance_id as "instanceId", ci.connector_type as "connectorType",
+          ci.status as "instanceStatus", ci.config
+        from connector_inbox i
+        join connector_webhook_endpoints e
+          on e.tenant_id = i.tenant_id and e.id = i.endpoint_id
+        join connector_instances ci
+          on ci.tenant_id = i.tenant_id and ci.id = e.instance_id
+        where i.tenant_id = ${context.tenantId} and i.id = ${eventId} and i.status = 'pending'`;
+      return record ?? null;
     });
   }
 

@@ -37,8 +37,17 @@ describe("the registry", () => {
 });
 
 describe("what this installation ships", () => {
-  it("carries the reference connector, n8n and prometheus", () => {
-    expect(connectorRegistry.types()).toEqual(["generic-webhook", "n8n", "prometheus"]);
+  it("carries the reviewed built-in connectors", () => {
+    expect(connectorRegistry.types()).toEqual([
+      "anthropic",
+      "generic-webhook",
+      "n8n",
+      "openai",
+      "opencode",
+      "prometheus",
+      "supabase",
+      "vercel"
+    ]);
   });
 
   it("resolves it at build time, with no door to register another at runtime", () => {

@@ -320,6 +320,7 @@ export function IntegrationsWorkspace({
               </div>
             ) : (
               <form className="dialog-form" onSubmit={eventHandler(create, () => setBusy(false))}>
+                <p className="field-help wide">{connectorSummary(t, chosen.type)}</p>
                 <TextField
                   label={t.integrationName!}
                   name="name"

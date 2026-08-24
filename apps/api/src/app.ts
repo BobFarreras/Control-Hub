@@ -17,9 +17,19 @@ import {
   ProjectsError,
   ProjectsService,
   SupportError,
-  SupportService
+  SupportService,
+  UsageService,
+  UsageServiceError
 } from "@control-hub/application";
-import { isFeatureEnabled, parseFeatureFlags, type FeatureFlagSet, type KeyRing } from "@control-hub/config";
+import {
+  isAllowlistedDestination,
+  isFeatureEnabled,
+  parseEgressAllowlist,
+  parseFeatureFlags,
+  type AllowedDestination,
+  type FeatureFlagSet,
+  type KeyRing
+} from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { connectorQueueName } from "@control-hub/contracts/jobs";
@@ -38,7 +48,8 @@ import {
   InvitationError,
   PostgresInfrastructureRepository,
   PostgresProjectsRepository,
-  PostgresSupportRepository
+  PostgresSupportRepository,
+  PostgresUsageRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -49,6 +60,7 @@ import { Queue } from "bullmq";
 import Redis from "ioredis";
 import type { ControlHubAuth } from "./auth.js";
 import { createConnectorHealthCheckQueue } from "./connector-health-queue.js";
+import { createConnectorIngressQueue } from "./connector-ingress-queue.js";
 import type { MailSender } from "./email.js";
 import { describeConnectorError, problemContentType, problemDetails, usesProblemDetails } from "./problem.js";
 import { rateLimitKey } from "./rate-limit.js";
@@ -65,6 +77,7 @@ import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerSupportRoutes } from "./routes/support.js";
+import { registerUsageRoutes } from "./routes/usage.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
@@ -104,6 +117,14 @@ type BuildAppOptions = {
    * secret with, and accepting one would be worse than refusing it. See ADR-0008.
    */
   connectorKeyRing?: KeyRing | null;
+  /**
+   * The origins this installation lets a connector reach besides the public internet.
+   *
+   * The API needs its own copy for one reason: the guided check answers "is this collector's own
+   * origin named here" without making a call. It is a deployment concern and never a tenant one,
+   * which is why it arrives from the environment and has no route that can write it.
+   */
+  connectorEgressAllowlist?: readonly AllowedDestination[];
 };
 
 /**
@@ -124,6 +145,8 @@ export function buildApp(options: BuildAppOptions) {
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
   const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
+  const egressAllowlist =
+    options.connectorEgressAllowlist ?? parseEgressAllowlist(process.env.CONNECTOR_INTERNAL_ALLOWLIST);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   redis.on("error", (error) => app.log.warn({ err: error }, "queue connection unavailable"));
   // A connection of its own: sharing the health-check client would let a slow limiter command
@@ -182,6 +205,7 @@ export function buildApp(options: BuildAppOptions) {
         ].join(" ")
       },
       tags: [
+        { name: "usage", description: "Usage quantities, reproducible costs, exchange rates and budgets." },
         { name: "connectors", description: "What this release can connect to at all." },
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
@@ -327,6 +351,17 @@ export function buildApp(options: BuildAppOptions) {
           : 400;
       return reply.code(status).send({ code: error.code, requestId: request.id });
     }
+    if (error instanceof UsageServiceError) {
+      const status =
+        error.code === "FORBIDDEN"
+          ? 403
+          : error.code === "NOT_FOUND"
+            ? 404
+            : error.code === "INCOMPLETE_EVIDENCE"
+              ? 409
+              : 400;
+      return reply.code(status).send({ code: error.code, requestId: request.id });
+    }
     request.log.error({ err: error }, "request failed");
     return reply.code(500).send({ code: "INTERNAL_ERROR", requestId: request.id });
   });
@@ -358,6 +393,8 @@ export function buildApp(options: BuildAppOptions) {
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
+      if (isFeatureEnabled(featureFlags, "usage_costs"))
+        registerUsageRoutes({ ...context, usage: new UsageService(new PostgresUsageRepository(database)) });
       // Reads what the connectors stored, and nothing more: the module has its own flag
       // because the schema and the code ship before anybody has an n8n to point it at.
       if (isFeatureEnabled(featureFlags, "infrastructure"))
@@ -367,7 +404,17 @@ export function buildApp(options: BuildAppOptions) {
             new PostgresInfrastructureRepository(database),
             // Read from the manifests rather than written here, so a collector shipped with a
             // different cadence needs no second place to be told about it.
-            observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type)))
+            observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type))),
+            // The comparison happens here, where the address is, and only a yes or no travels
+            // any further. A base nobody can parse is not on any list: refusing it is the same
+            // answer the guard itself would give.
+            (baseUrl) => {
+              try {
+                return isAllowlistedDestination(egressAllowlist, new URL(baseUrl));
+              } catch {
+                return false;
+              }
+            }
           )
         });
     }
@@ -413,7 +460,7 @@ export function buildApp(options: BuildAppOptions) {
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate
     // would be worse than no route at all.
-    if (ingress) registerWebhookRoutes({ app, ingress });
+    if (ingress) registerWebhookRoutes({ app, ingress, queue: createConnectorIngressQueue(connectorQueue) });
   }
 
   /**

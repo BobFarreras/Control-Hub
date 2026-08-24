@@ -569,6 +569,63 @@ export type AttendanceVacationsResponse = { vacations: AttendanceVacation[] };
 export type AttendanceAbsencesResponse = { absences: AttendanceAbsence[] };
 export type AttendanceBlocksResponse = { blocks: AttendanceBlock[] };
 
+export type UsageQuantity = { unit: string; qualifier?: string; quantity: string };
+export type UsageEvent = {
+  id: string;
+  sourceId: string;
+  externalId: string;
+  occurredAt: string;
+  operation: string;
+  sku: string;
+  status: "observed" | "estimated" | "void";
+  quantities: UsageQuantity[];
+  createdAt: string;
+  customerId?: string;
+  productId?: string;
+  customerServiceId?: string;
+  projectId?: string;
+};
+export type UsageCost = {
+  id: string;
+  eventId: string | null;
+  adjustmentId: string | null;
+  state: "priced" | "unpriced" | "partial";
+  originalCostMinor: string | null;
+  originalCurrency: string | null;
+  reportCostMinor: string | null;
+  reportCurrency: string;
+};
+export type UsageBudget = {
+  id: string;
+  name: string;
+  amountMinor: string;
+  currency: string;
+  period: "monthly" | "quarterly" | "annual";
+  warningBasisPoints: number;
+  enabled: boolean;
+  sources: { sourceId: string; required: boolean; maxAgeMinutes: number }[];
+  customerId?: string;
+  productId?: string;
+  customerServiceId?: string;
+  projectId?: string;
+};
+export type UsageBudgetEvaluation = {
+  budgetId: string;
+  amountMinor: string;
+  currency: string;
+  periodStart: string;
+  spentMinor: string;
+  hasMissingValuation: boolean;
+  state: "healthy" | "warning" | "exceeded" | "partial" | "stale";
+  observedThrough: string;
+  sources: { required: boolean; lastCompleteAt: string | null; maxAgeMinutes: number }[];
+};
+export type UsageEventsResponse = { events: UsageEvent[] };
+export type UsageSource = { id: string; instanceId: string; operation: string; lastCompleteAt: string | null };
+export type UsageSourcesResponse = { sources: UsageSource[] };
+export type UsageCostsResponse = { costs: UsageCost[] };
+export type UsageBudgetsResponse = { budgets: UsageBudget[] };
+
 /**
  * The connector platform, as the integrations screen sees it.
  *
@@ -696,6 +753,61 @@ export type InfrastructureAutomation = {
   notes: string | null;
 };
 
+/**
+ * A project somebody else hosts, read from the provider (phase 7.4).
+ *
+ * Two fields for production and not one, which is the connector's first decision arriving here:
+ * `productionReady` is what is being served right now, `lastFailureAt` is the last build that
+ * broke, and both can be true at once. `productionReady` is null, never false, for a project
+ * nobody has deployed yet -- an outage of something that never existed is not an outage.
+ */
+export type InfrastructureDeployedProject = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  /** What it is built with, as the provider names it. Null when it says nothing. */
+  framework: string | null;
+  /** When the project was created. Context, not a reading: it never goes stale. */
+  createdAt: string | null;
+  /** The client's own public domain, the one address on this screen that is not the provider's. */
+  domain: string | null;
+  productionReady: boolean | null;
+  /** What the provider calls it: `READY`, `ERROR`, `BUILDING`. Null when nothing is deployed. */
+  productionState: string | null;
+  /** When what production serves was built, which is the last good build while it is serving. */
+  productionDeployedAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureRef: string | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
+/**
+ * A Supabase project as the API hands it over. No connection host, no organisation id: what the
+ * connector reads is kept off this screen the same way a Vercel project's API token is.
+ *
+ * `healthy` is null, never false, for a project mid-transition -- restoring, upgrading, resizing
+ * -- because none of those are an outage.
+ */
+export type InfrastructureSupabaseProject = {
+  instanceId: string;
+  externalId: string;
+  name: string;
+  /** Where the provider hosts it, as it names the region. Null when it says nothing. */
+  region: string | null;
+  /** What the provider calls it: `ACTIVE_HEALTHY`, `INACTIVE`, `RESTORING`. */
+  status: string | null;
+  healthy: boolean | null;
+  /** When the project was created. Context, not a reading: it never goes stale. */
+  createdAt: string | null;
+  /** When the pull that produced this last succeeded. Every observed figure travels with its age. */
+  observedAt: string;
+  customerId: string | null;
+  notes: string | null;
+};
+
 export type InfrastructureAlert = {
   id: string;
   ruleId: string;
@@ -746,6 +858,8 @@ export type InfrastructureAlertRulesResponse = { rules: InfrastructureAlertRule[
 
 export type InfrastructureOverviewResponse = { overview: InfrastructureOverview };
 export type InfrastructureAutomationsResponse = { automations: InfrastructureAutomation[] };
+export type InfrastructureProjectsResponse = { projects: InfrastructureDeployedProject[] };
+export type InfrastructureSupabaseProjectsResponse = { projects: InfrastructureSupabaseProject[] };
 export type InfrastructureAlertsResponse = { alerts: InfrastructureAlert[] };
 
 /**
@@ -766,11 +880,19 @@ export type Reading = {
   state: ObservedState;
   /** When the figure below was read, or null when there is none. Never drawn as an age of zero. */
   observedAt: string | null;
+  /**
+   * Which connector instance read this, or null when nothing was read.
+   *
+   * Ours and never the provider's: the id of a row in `connector_instances`, the same one every
+   * automation and alert rule on this screen already carries. It is what the fleet is filtered by
+   * and what a machine's own page names as the source of its figures.
+   */
+  instanceId: string | null;
   data: Record<string, ReadingValue>;
 };
 
 export type HostEnvironment = "production" | "staging" | "development";
-export type ServiceKind = "container" | "http" | "database" | "automation";
+export type ServiceKind = "container" | "http" | "database" | "automation" | "backup";
 export type ServiceExpectedState = "up" | "stopped" | "ignored";
 
 export type InfrastructureHost = {
@@ -798,10 +920,34 @@ export type InfrastructureService = {
 };
 
 export type ObservedService = InfrastructureService & { reading: Reading };
-export type ObservedHost = InfrastructureHost & { reading: Reading; services: ObservedService[] };
+/**
+ * A machine as the inventory hands it over.
+ *
+ * `services` is what somebody declared on it -- what alert rules are about. `observed` is
+ * what the collectors have actually seen on one of its labels, declared or not, because
+ * declaring means "I want alerts about this" and not "I want to see this", and the machine's
+ * page answers the second question. What is in both appears in `observed` with
+ * `declared: true`.
+ *
+ * `labels` is the other names the machine answers to, beside its `hostname`: a Prometheus
+ * aggregates by scrape target, so one VPS reports under several.
+ */
+export type ObservedHost = InfrastructureHost & {
+  reading: Reading;
+  services: ObservedService[];
+  labels: string[];
+  observed: DiscoveredService[];
+};
+
+/** How many things are in each state. Counted by the API; a screen that re-counted could differ. */
+export type ObservedTally = { total: number; up: number; down: number; unknown: number };
+
+export type InventorySummary = { hosts: ObservedTally; services: ObservedTally };
 
 export type InfrastructureInventory = {
   hosts: ObservedHost[];
+  /** The machines and the services counted by state, from the same readings the rows carry. */
+  summary: InventorySummary;
   /** The oldest reading behind the screen, or null when nothing has been read yet. */
   observedFrom: string | null;
 };
@@ -809,3 +955,66 @@ export type InfrastructureInventory = {
 export type InfrastructureInventoryResponse = { inventory: InfrastructureInventory };
 export type InfrastructureHostResponse = { host: InfrastructureHost };
 export type InfrastructureServiceResponse = { service: InfrastructureService };
+
+/**
+ * The guided check, as it crosses the wire.
+ *
+ * Every rung says what it is and how it went, and the evidence is deliberately narrow: migration
+ * file names and `instance` labels, each with the total behind them so a list cut short is drawn
+ * as one. No address, no credential and no provider hostname appears here, because none is in the
+ * answer -- the sentence that needs one is composed in the browser out of what was just typed.
+ */
+export type ConnectorDiagnosisStep =
+  "migrations" | "allowlist" | "reachable" | "answers_prometheus" | "scraping" | "matching";
+
+export type ConnectorDiagnosisStatus = "passed" | "failed" | "unknown" | "unchecked";
+
+export type ConnectorDiagnosisEvidence = { values: string[]; total: number };
+
+export type ConnectorDiagnosisFinding = {
+  step: ConnectorDiagnosisStep;
+  status: ConnectorDiagnosisStatus;
+  code: string | null;
+  evidence: Partial<Record<"migrations" | "seen" | "declared", ConnectorDiagnosisEvidence>>;
+};
+
+export type ConnectorDiagnosis = {
+  /** The first rung that does not hold, or `null` when the whole chain does. */
+  problem: ConnectorDiagnosisStep | null;
+  findings: ConnectorDiagnosisFinding[];
+};
+
+export type ConnectorDiagnosisResponse = { diagnosis: ConnectorDiagnosis };
+
+/**
+ * One label a collector has stored a reading for, and the machine it was declared as if it was.
+ *
+ * The label is what the collector calls it, which is exactly the field that gets typed wrongly
+ * the first time; `declaredAs` is the record it matched, so a screen can link to it instead of
+ * offering to declare something twice.
+ */
+export type DiscoveredInstance = {
+  label: string;
+  declaredAs: { hostId: string; name: string } | null;
+};
+
+export type ConnectorDiscoveryResponse = { instances: DiscoveredInstance[] };
+
+/**
+ * One thing a collector has seen that could become a declared service.
+ *
+ * `seenOn` is the label of whoever saw it -- for a container, the cAdvisor, which is not the
+ * label the machine is declared under. It is shown so a person with two machines can tell them
+ * apart, and it is never matched on.
+ */
+export type DiscoveredService = {
+  matchKey: string;
+  kind: ServiceKind;
+  name: string;
+  seenOn: string | null;
+  declared: boolean;
+  /** What is currently known of it, decided by the same rule that decides a declared service. */
+  reading: Reading;
+};
+
+export type ConnectorServicesResponse = { services: DiscoveredService[] };

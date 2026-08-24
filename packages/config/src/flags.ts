@@ -44,6 +44,16 @@ export const featureFlags = {
     description: "Infrastructure and n8n: pulled records, scheduled operations, alerts (Phase 7).",
     owner: "owner",
     retireOn: "2027-12-31"
+  },
+  usage_costs: {
+    description: "Provider usage ingestion, reproducible valuation and informative budgets (Phase 8).",
+    owner: "owner",
+    retireOn: "2028-06-30"
+  },
+  mail: {
+    description: "Support mailbox import and confirmed replies through connector actions (Phase 8).",
+    owner: "owner",
+    retireOn: "2028-06-30"
   }
 } as const;
 

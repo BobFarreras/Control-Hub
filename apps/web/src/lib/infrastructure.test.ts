@@ -1,15 +1,29 @@
 import { getInfrastructureDictionary, locales } from "@control-hub/i18n";
 import { describe, expect, it } from "vitest";
-import type { InfrastructureAlert, Reading, ReadingValue } from "./api-types";
+import type {
+  HostEnvironment,
+  InfrastructureAlert,
+  ObservedHost,
+  ObservedService,
+  ObservedState,
+  Reading,
+  ReadingValue
+} from "./api-types";
 import {
   ageLabel,
   alertState,
+  dateLabel,
   alertStateTone,
+  filterInventory,
   observedStateTone,
+  oldestAge,
+  sliceByCollector,
+  tallyReadings,
   readingAge,
   readingFigures,
   severityTone,
-  staleAfterMinutes
+  staleAfterMinutes,
+  type ReadingAge
 } from "./infrastructure";
 
 const at = (iso: string) => new Date(iso);
@@ -138,11 +152,38 @@ describe("an age in words", () => {
   });
 });
 
+/**
+ * A date is not an age, and the difference is not cosmetic: "fa 234 d" is a true sentence about a
+ * project created in January and a useless one. Anything that happened rather than was read gets
+ * the date.
+ */
+describe("a date in words", () => {
+  it("writes the day, the month and the year of something that happened", () => {
+    const label = dateLabel("2026-01-02T12:00:00.000Z", "ca");
+
+    expect(label).toContain("2026");
+    expect(label).toContain("2");
+  });
+
+  it("says nothing at all rather than something wrong when there is no date", () => {
+    expect(dateLabel(null, "ca")).toBeNull();
+    expect(dateLabel(undefined, "ca")).toBeNull();
+    expect(dateLabel("", "ca")).toBeNull();
+    // A provider's string we cannot read is not a date, and `Invalid Date` must never be drawn.
+    expect(dateLabel("ahir", "ca")).toBeNull();
+  });
+
+  it("writes it in the language being read, whichever that is", () => {
+    for (const locale of locales) expect(dateLabel("2026-01-02T12:00:00.000Z", locale), locale).toContain("2026");
+  });
+});
+
 describe("what a machine currently looks like", () => {
   const labels = getInfrastructureDictionary("ca") as unknown as Record<string, string>;
   const reading = (data: Record<string, ReadingValue>): Reading => ({
     state: "up",
     observedAt: "2026-08-13T11:58:00.000Z",
+    instanceId: "prom-a",
     data
   });
   const shown = (data: Record<string, ReadingValue>) => readingFigures(labels, "ca", reading(data), now);
@@ -244,5 +285,268 @@ describe("what a machine currently looks like", () => {
         expect(`${figure.label}${figure.value}`, locale).not.toContain("{count}");
       }
     }
+  });
+});
+
+describe("showing part of a fleet without changing any of it", () => {
+  const reading = (state: ObservedState, instanceId: string | null = "prom-a"): Reading => ({
+    state,
+    observedAt: "2026-08-13T11:59:00.000Z",
+    instanceId,
+    data: {}
+  });
+
+  const service = (id: string, state: ObservedState, instanceId: string | null = "prom-a"): ObservedService => ({
+    id,
+    hostId: "host-1",
+    name: id,
+    kind: "container",
+    matchKey: `container:${id}`,
+    expectedState: "up",
+    customerId: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading(state, instanceId)
+  });
+
+  const host = (
+    id: string,
+    environment: HostEnvironment,
+    state: ObservedState,
+    services: ObservedService[] = [],
+    instanceId: string | null = "prom-a"
+  ): ObservedHost => ({
+    id,
+    name: id,
+    hostname: `${id}.example`,
+    environment,
+    notes: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading(state, instanceId),
+    services,
+    labels: [],
+    observed: []
+  });
+
+  const nothing = { environments: [], states: [], instanceIds: [] };
+
+  const production = host("host-1", "production", "up", [service("n8n", "down"), service("caddy", "up")]);
+  const staging = host("host-2", "staging", "down", [service("api", "up")], "prom-b");
+  const fleet = [production, staging];
+
+  it("shows the whole fleet when nothing is asked of it", () => {
+    expect(filterInventory(fleet, nothing)).toEqual(fleet);
+  });
+
+  it("shows only the machines of the environments asked for", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["staging"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+  });
+
+  it("treats two environments as either of them, not as both at once", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["production", "staging"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-1", "host-2"]);
+  });
+
+  /**
+   * A machine is kept for a service of its own that matches, because a service on its own has
+   * nowhere to be drawn. What it is not is a machine that quietly reports a state nobody asked
+   * for: the services shown are narrowed to the ones that matched.
+   */
+  it("keeps a machine for a service that matched, and shows only the services that did", () => {
+    const shown = filterInventory(fleet, { ...nothing, states: ["down"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-1", "host-2"]);
+    expect(shown[0]!.services.map((item) => item.id)).toEqual(["n8n"]);
+    expect(shown[1]!.services).toEqual([]);
+  });
+
+  it("drops a machine when neither it nor anything on it matched", () => {
+    expect(filterInventory(fleet, { ...nothing, states: ["unknown"] })).toEqual([]);
+  });
+
+  it("shows only what a given collector read", () => {
+    const shown = filterInventory(fleet, { ...nothing, instanceIds: ["prom-b"] });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+  });
+
+  /** Three questions at once, and the answer has to satisfy all three rather than any of them. */
+  it("adds up: a staging machine that is down and read by the second collector", () => {
+    const shown = filterInventory(fleet, {
+      environments: ["staging"],
+      states: ["down"],
+      instanceIds: ["prom-b"]
+    });
+
+    expect(shown.map((item) => item.id)).toEqual(["host-2"]);
+    expect(filterInventory(fleet, { environments: ["production"], states: ["down"], instanceIds: ["prom-b"] })).toEqual(
+      []
+    );
+  });
+
+  /**
+   * The one thing a filter must never do. It hides rows; it does not restate what any of them
+   * says, and the object handed back for a row that passed is the very object that came in.
+   */
+  it("never recomputes a state it was given", () => {
+    const shown = filterInventory(fleet, { ...nothing, environments: ["production"] });
+
+    expect(shown[0]!.reading).toBe(production.reading);
+    expect(shown[0]!.services[0]!.reading).toBe(production.services[0]!.reading);
+  });
+});
+
+describe("what one collector accounts for", () => {
+  const reading = (state: ObservedState, instanceId: string | null): Reading => ({
+    state,
+    observedAt: "2026-08-13T11:59:00.000Z",
+    instanceId,
+    data: {}
+  });
+
+  const service = (id: string, instanceId: string | null): ObservedService => ({
+    id,
+    hostId: "host-1",
+    name: id,
+    kind: "container",
+    matchKey: `container:${id}`,
+    expectedState: "up",
+    customerId: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading("up", instanceId)
+  });
+
+  const host = (id: string, instanceId: string | null, services: ObservedService[] = []): ObservedHost => ({
+    id,
+    name: id,
+    hostname: `${id}.example`,
+    environment: "production",
+    notes: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    reading: reading("up", instanceId),
+    services,
+    labels: [],
+    observed: []
+  });
+
+  const everything = {
+    hosts: [host("vps", "prom"), host("other", "prom-two")],
+    automations: [
+      { id: "w-1", instanceId: "n8n" },
+      { id: "w-2", instanceId: "prom" }
+    ],
+    projects: [
+      { id: "p-1", instanceId: "vercel" },
+      { id: "p-2", instanceId: "prom" }
+    ],
+    alerts: [alert({ id: "a-prom", ruleId: "r-prom" }), alert({ id: "a-n8n", ruleId: "r-n8n" })],
+    rules: [
+      { id: "r-prom", instanceId: "prom" },
+      { id: "r-n8n", instanceId: "n8n" }
+    ]
+  };
+
+  it("hands everything back when nothing is chosen", () => {
+    const all = sliceByCollector(everything, null);
+
+    expect(all.hosts).toHaveLength(2);
+    expect(all.automations).toHaveLength(2);
+    expect(all.projects).toHaveLength(2);
+    expect(all.alerts).toHaveLength(2);
+    expect(all.rules).toHaveLength(2);
+  });
+
+  it("keeps the machines that collector read, and no others", () => {
+    expect(sliceByCollector(everything, "prom").hosts.map((row) => row.id)).toEqual(["vps"]);
+  });
+
+  it("keeps a machine another collector read when this one reads a service of it", () => {
+    const shared = { ...everything, hosts: [host("vps", "prom-two", [service("n8n-container", "prom")])] };
+    const mine = sliceByCollector(shared, "prom");
+
+    expect(mine.hosts.map((row) => row.id)).toEqual(["vps"]);
+    expect(mine.hosts[0]!.services.map((row) => row.id)).toEqual(["n8n-container"]);
+  });
+
+  it("keeps the automations and the rules of that collector", () => {
+    const mine = sliceByCollector(everything, "n8n");
+
+    expect(mine.automations.map((row) => row.id)).toEqual(["w-1"]);
+    expect(mine.rules.map((row) => row.id)).toEqual(["r-n8n"]);
+  });
+
+  /**
+   * A band belongs to the collector that reads it, and to no other. Somebody looking at the n8n
+   * collector is not asking about the projects a hosting provider reads, and an empty projects
+   * table under that heading would be an answer to a question nobody asked.
+   */
+  it("keeps the projects of that collector, and shows none under another", () => {
+    expect(sliceByCollector(everything, "vercel").projects.map((row) => row.id)).toEqual(["p-1"]);
+    expect(sliceByCollector(everything, "n8n").projects).toEqual([]);
+  });
+
+  it("attributes an alert through the rule that raised it", () => {
+    expect(sliceByCollector(everything, "prom").alerts.map((row) => row.id)).toEqual(["a-prom"]);
+  });
+
+  /**
+   * An alert we cannot attribute is left out of a collector's slice and kept in the whole. Showing
+   * it under a collector would be a guess, and a guess here reads as that collector being in
+   * trouble when the trouble may be somewhere else entirely.
+   */
+  it("leaves out an alert whose rule is not on the list", () => {
+    const orphan = { ...everything, alerts: [alert({ id: "a-orphan", ruleId: "r-gone" })] };
+
+    expect(sliceByCollector(orphan, "prom").alerts).toEqual([]);
+    expect(sliceByCollector(orphan, null).alerts.map((row) => row.id)).toEqual(["a-orphan"]);
+  });
+});
+
+describe("counting readings the domain already decided", () => {
+  const of = (state: ObservedState): Reading => ({ state, observedAt: null, instanceId: null, data: {} });
+
+  it("counts each answer once, and the total", () => {
+    expect(tallyReadings([of("up"), of("up"), of("down"), of("unknown")])).toEqual({
+      total: 4,
+      up: 2,
+      down: 1,
+      unknown: 1
+    });
+  });
+
+  it("counts nothing as nothing rather than as unknown", () => {
+    expect(tallyReadings([])).toEqual({ total: 0, up: 0, down: 0, unknown: 0 });
+  });
+});
+
+describe("how fresh a set of figures is", () => {
+  const age = (unit: ReadingAge["unit"], count: number, stale = false): ReadingAge => ({ unit, count, stale });
+
+  it("answers with the stalest of them, because that is what the set is worth", () => {
+    expect(oldestAge([age("minute", 2), age("day", 1), age("hour", 3)])).toEqual(age("day", 1));
+  });
+
+  it("compares counts inside the same unit", () => {
+    expect(oldestAge([age("hour", 2), age("hour", 9), age("hour", 5)])).toEqual(age("hour", 9));
+  });
+
+  it("keeps the age that was handed in, warning included", () => {
+    const stale = age("hour", 4, true);
+    expect(oldestAge([age("minute", 1), stale])).toBe(stale);
+  });
+
+  it("passes over what was never read rather than calling it old", () => {
+    expect(oldestAge([null, age("minute", 7), null])).toEqual(age("minute", 7));
+  });
+
+  it("has no answer when nothing has been read at all", () => {
+    expect(oldestAge([])).toBeNull();
+    expect(oldestAge([null, null])).toBeNull();
   });
 });

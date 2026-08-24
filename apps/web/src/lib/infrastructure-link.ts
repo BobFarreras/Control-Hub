@@ -72,3 +72,32 @@ export function automationLink(baseUrl: string | null | undefined, externalId: s
   if (link.username || link.password || link.search || link.hash) return null;
   return link.toString();
 }
+
+/**
+ * What a production alias may look like: a bare hostname and nothing else.
+ *
+ * The alias is the provider's answer, which makes it data and not a destination, exactly like
+ * everything else in this file. A label of one to sixty-three characters, at least two of them,
+ * separated by dots -- no port, no path, no credentials, no space to hide a second host in. What
+ * fails this renders as text, which is the right answer and not a degraded one.
+ */
+const hostnamePattern = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/**
+ * The address of a deployed site, or null.
+ *
+ * Always `https`: a production alias that only answered on `http` is not a link worth offering,
+ * and letting the scheme be decided anywhere else is how one becomes decidable by the provider.
+ * As with an automation, the result is verified against what went in rather than merely composed
+ * out of it.
+ */
+export function deployedSiteLink(domain: string | null | undefined): string | null {
+  if (!domain) return null;
+  const host = domain.trim().toLowerCase();
+  if (!hostnamePattern.test(host)) return null;
+
+  const link = new URL(`https://${host}/`);
+  if (link.hostname !== host) return null;
+  if (link.port || link.username || link.password || link.search || link.hash) return null;
+  return link.toString();
+}

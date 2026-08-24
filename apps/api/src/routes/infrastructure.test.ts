@@ -2,20 +2,25 @@ import type {
   AlertEventRecord,
   AlertRuleRecord,
   AutomationRecord,
+  DeployedProjectRecord,
   HostRecord,
-  ServiceRecord
+  ServiceRecord,
+  SupabaseProjectRecord
 } from "@control-hub/application";
-import { alertRuleKinds } from "@control-hub/domain";
+import { alertRuleKinds, type ConnectorDiagnosis, type DiagnosisFinding } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   alertResponse,
   automationResponse,
+  deployedProjectResponse,
+  diagnosisResponse,
   hostResponse,
   inventoryResponse,
   overviewOf,
   readingResponse,
   ruleResponse,
-  serviceResponse
+  serviceResponse,
+  supabaseProjectResponse
 } from "./infrastructure.js";
 
 /**
@@ -36,6 +41,50 @@ const automation = {
   baseUrl: "https://n8n.internal.example/rest",
   apiKey: "n8n_api_9f2c8ab4"
 } as unknown as AutomationRecord;
+
+/**
+ * A project as the adapter hands it over, with the same two things on it that must not travel:
+ * the provider's own API address, and the token the collector authenticates with.
+ */
+const project = {
+  instanceId: "i-2",
+  externalId: "project:prj_9",
+  name: "Web publica",
+  framework: "nextjs",
+  createdAt: new Date("2026-01-02T00:00:00.000Z"),
+  domain: "client.example",
+  productionReady: true,
+  productionState: "READY",
+  productionDeployedAt: new Date("2026-08-13T09:00:00.000Z"),
+  lastFailureAt: new Date("2026-08-13T11:00:00.000Z"),
+  lastFailureRef: "fix/preus",
+  observedAt: new Date("2026-08-13T11:55:00.000Z"),
+  customerId: "c-1",
+  notes: "la web publica",
+  baseUrl: "https://api.vercel.com",
+  apiToken: "vercel_tok_4f8c1e"
+} as unknown as DeployedProjectRecord;
+
+/**
+ * A Supabase project as the adapter hands it over, with the same two things on it that must not
+ * travel: the Management API's own address, and the token the collector authenticates with. The
+ * record type has no field for either -- unlike the Vercel project, which does -- but the row is
+ * cast on regardless, so this test still proves the mapper reads field by field and not by spread.
+ */
+const supabaseProject = {
+  instanceId: "i-3",
+  externalId: "project:abcdefgh",
+  name: "app-produccio",
+  region: "eu-west-2",
+  status: "ACTIVE_HEALTHY",
+  healthy: true,
+  createdAt: new Date("2026-02-10T00:00:00.000Z"),
+  observedAt: new Date("2026-08-13T11:55:00.000Z"),
+  customerId: "c-1",
+  notes: "la base de dades de produccio",
+  baseUrl: "https://api.supabase.com",
+  apiToken: "sbp_9f2c8ab4"
+} as unknown as SupabaseProjectRecord;
 
 const rule: AlertRuleRecord = {
   id: "r-1",
@@ -106,6 +155,112 @@ describe("what an automation response says", () => {
 
   it("carries the reading with its hour, because an old figure without its age is a lie", () => {
     expect(automationResponse(automation).observedAt).toEqual(automation.observedAt);
+  });
+});
+
+describe("what a deployed project response says", () => {
+  it("carries no provider address and no token, whatever arrived on the row", () => {
+    const response = deployedProjectResponse(project);
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain("vercel_tok_4f8c1e");
+    expect(serialized).not.toContain("api.vercel.com");
+    expect(Object.keys(response).sort()).toEqual([
+      "createdAt",
+      "customerId",
+      "domain",
+      "externalId",
+      "framework",
+      "instanceId",
+      "lastFailureAt",
+      "lastFailureRef",
+      "name",
+      "notes",
+      "observedAt",
+      "productionDeployedAt",
+      "productionReady",
+      "productionState"
+    ]);
+  });
+
+  /**
+   * The one address that does travel, and the reason it may: it is the client's own public
+   * domain, served to anybody who types it, and without it a row is a name with nothing under it.
+   */
+  it("keeps the client's own domain, which is theirs and not the provider's", () => {
+    expect(deployedProjectResponse(project).domain).toBe("client.example");
+  });
+
+  /**
+   * Decision 1 of the connector, arriving intact at the edge: serving now and the last build
+   * failed are both true, and the response has room for both.
+   */
+  it("says a project is serving and that its last build failed, at the same time", () => {
+    expect(deployedProjectResponse(project)).toMatchObject({
+      productionReady: true,
+      lastFailureRef: "fix/preus"
+    });
+  });
+
+  /**
+   * The date production last shipped is the last build that came out well, whenever production is
+   * serving: production only points at a deployment that finished. It is the reason the connector
+   * keeps no record of successful builds and the screen can still say when the last one was.
+   */
+  it("carries when production last shipped and when the project was made", () => {
+    expect(deployedProjectResponse(project)).toMatchObject({
+      framework: "nextjs",
+      createdAt: new Date("2026-01-02T00:00:00.000Z"),
+      productionDeployedAt: new Date("2026-08-13T09:00:00.000Z")
+    });
+  });
+
+  it("says nothing rather than false about a project nobody has deployed", () => {
+    const never = { ...project, productionReady: null, productionState: null, domain: null };
+    expect(deployedProjectResponse(never)).toMatchObject({ productionReady: null, domain: null });
+  });
+
+  it("carries the reading with its hour, because an old figure without its age is a lie", () => {
+    expect(deployedProjectResponse(project).observedAt).toEqual(project.observedAt);
+  });
+});
+
+describe("what a Supabase project response says", () => {
+  it("carries no provider address and no token, whatever arrived on the row", () => {
+    const response = supabaseProjectResponse(supabaseProject);
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain("sbp_9f2c8ab4");
+    expect(serialized).not.toContain("api.supabase.com");
+    expect(Object.keys(response).sort()).toEqual([
+      "createdAt",
+      "customerId",
+      "externalId",
+      "healthy",
+      "instanceId",
+      "name",
+      "notes",
+      "observedAt",
+      "region",
+      "status"
+    ]);
+  });
+
+  it("carries the region and the provider's own status alongside the boolean read off it", () => {
+    expect(supabaseProjectResponse(supabaseProject)).toMatchObject({
+      region: "eu-west-2",
+      status: "ACTIVE_HEALTHY",
+      healthy: true
+    });
+  });
+
+  it("says nothing rather than false about a project mid-transition", () => {
+    const restoring = { ...supabaseProject, healthy: null, status: "RESTORING" };
+    expect(supabaseProjectResponse(restoring)).toMatchObject({ healthy: null, status: "RESTORING" });
+  });
+
+  it("carries the reading with its hour, because an old figure without its age is a lie", () => {
+    expect(supabaseProjectResponse(supabaseProject).observedAt).toEqual(supabaseProject.observedAt);
   });
 });
 
@@ -285,6 +440,7 @@ describe("what a reading says on the way out", () => {
   const reading = {
     state: "up" as const,
     observedAt: new Date("2026-08-13T11:59:00.000Z"),
+    instanceId: "instance-1",
     data: {
       cpuBusyRatio: 0.12,
       memoryUsedRatio: 0.4,
@@ -317,6 +473,7 @@ describe("what a reading says on the way out", () => {
     const container = readingResponse("container:n8n", {
       state: "up",
       observedAt: null,
+      instanceId: "instance-1",
       data: { memoryBytes: 512, cpuCores: 0.01, host: "node-exporter:9100", cpuBusyRatio: 0.9 }
     });
 
@@ -327,6 +484,7 @@ describe("what a reading says on the way out", () => {
     const probe = readingResponse("probe:https://example.test/healthz", {
       state: "down",
       observedAt: null,
+      instanceId: "instance-1",
       data: { success: false, scrapeUp: true, durationSeconds: 1.2, certificateExpiresAt: "2026-10-09T00:00:00.000Z" }
     });
 
@@ -340,22 +498,38 @@ describe("what a reading says on the way out", () => {
 
   /** A prefix nobody listed shows its state and its age and nothing else, which is the safe way. */
   it("gives a kind nobody has decided about nothing but its state", () => {
-    expect(readingResponse("printer:hp", { state: "unknown", observedAt: null, data: { serial: "X" } })).toEqual({
+    expect(
+      readingResponse("printer:hp", { state: "unknown", observedAt: null, instanceId: null, data: { serial: "X" } })
+    ).toEqual({
       state: "unknown",
       observedAt: null,
+      instanceId: null,
       data: {}
     });
   });
 
   it("omits a field the collector did not write rather than sending it as null", () => {
-    expect(readingResponse("host:vps", { state: "down", observedAt: null, data: { load1: 0.2 } }).data).toEqual({
+    expect(
+      readingResponse("host:vps", { state: "down", observedAt: null, instanceId: "instance-1", data: { load1: 0.2 } })
+        .data
+    ).toEqual({
       load1: 0.2
     });
   });
 });
 
 describe("the inventory a dashboard receives", () => {
-  const reading = { state: "up" as const, observedAt: new Date("2026-08-13T11:59:00.000Z"), data: {} };
+  const reading = {
+    state: "up" as const,
+    observedAt: new Date("2026-08-13T11:59:00.000Z"),
+    instanceId: "instance-1",
+    data: {}
+  };
+
+  const emptySummary = {
+    hosts: { total: 0, up: 0, down: 0, unknown: 0 },
+    services: { total: 0, up: 0, down: 0, unknown: 0 }
+  };
 
   it("hangs the services under their host and looks the host up by its own identifier", () => {
     const response = inventoryResponse({
@@ -363,9 +537,12 @@ describe("the inventory a dashboard receives", () => {
         {
           ...host,
           reading: { ...reading, data: { load1: 0.2, apiToken: "prom_9f2c8ab4" } },
-          services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }]
+          services: [{ ...service, reading: { ...reading, data: { memoryBytes: 512 } } }],
+          labels: [],
+          observed: []
         }
       ],
+      summary: emptySummary,
       observedFrom: new Date("2026-08-13T11:58:00.000Z")
     });
 
@@ -375,7 +552,169 @@ describe("the inventory a dashboard receives", () => {
     expect(response.observedFrom).toEqual(new Date("2026-08-13T11:58:00.000Z"));
   });
 
+  /**
+   * The undeclared things a machine's page shows leave through the same allow-list as the rest.
+   *
+   * They are a newer field on an older answer, and a field added later is exactly the one that
+   * gets its filtering forgotten.
+   *
+   * Specification: `docs/specifications/connector-onboarding.md`, "C8".
+   */
+  it("carries what was seen on a machine's labels, with nothing the allow-list does not name", () => {
+    const response = inventoryResponse({
+      hosts: [
+        {
+          ...host,
+          reading,
+          services: [],
+          labels: ["cadvisor:8080"],
+          observed: [
+            {
+              matchKey: "container:traefik",
+              kind: "container" as const,
+              name: "traefik",
+              seenOn: "cadvisor:8080",
+              declared: false,
+              reading: { ...reading, data: { memoryBytes: 512, apiToken: "prom_9f2c8ab4" } }
+            }
+          ]
+        }
+      ],
+      summary: emptySummary,
+      observedFrom: null
+    });
+
+    expect(response.hosts[0]!.labels).toEqual(["cadvisor:8080"]);
+    expect(response.hosts[0]!.observed).toMatchObject([
+      { matchKey: "container:traefik", declared: false, reading: { data: { memoryBytes: 512 } } }
+    ]);
+    expect(JSON.stringify(response)).not.toContain("prom_9f2c8ab4");
+  });
+
   it("says it has no age rather than inventing one", () => {
-    expect(inventoryResponse({ hosts: [], observedFrom: null })).toEqual({ hosts: [], observedFrom: null });
+    expect(inventoryResponse({ hosts: [], summary: emptySummary, observedFrom: null })).toEqual({
+      hosts: [],
+      summary: emptySummary,
+      observedFrom: null
+    });
+  });
+
+  /**
+   * The summary is passed through and never recomputed here. Counting it a second time on the way
+   * out would let the route and the use case disagree about how many machines are down, which is
+   * exactly the drift that keeping the count in the domain exists to prevent.
+   */
+  it("hands the summary over as it was counted", () => {
+    const summary = {
+      hosts: { total: 3, up: 1, down: 1, unknown: 1 },
+      services: { total: 8, up: 6, down: 2, unknown: 0 }
+    };
+
+    expect(inventoryResponse({ hosts: [], summary, observedFrom: null }).summary).toEqual(summary);
+  });
+
+  /** Which collector read a line is what the fleet is filtered by, so the response has to carry it. */
+  it("says which connector instance each reading came from", () => {
+    const response = inventoryResponse({
+      hosts: [
+        {
+          ...host,
+          reading: { ...reading, instanceId: "instance-1" },
+          services: [{ ...service, reading: { ...reading, instanceId: "instance-2" } }],
+          labels: [],
+          observed: []
+        }
+      ],
+      summary: emptySummary,
+      observedFrom: null
+    });
+
+    expect(response.hosts[0]!.reading.instanceId).toBe("instance-1");
+    expect(response.hosts[0]!.services[0]!.reading.instanceId).toBe("instance-2");
+  });
+});
+
+/**
+ * The second fence, on the side of the wire a browser is on.
+ *
+ * The domain already builds a diagnosis with no field an address could occupy, so nothing here is
+ * the only thing standing between a secret and a client. What it does hold is that a key a later
+ * rung starts attaching reaches nobody by the mere fact of existing -- the same rule
+ * `readableFields` holds for a reading, for the same reason.
+ */
+describe("what a diagnosis says on the way out", () => {
+  const finding = (overrides: Partial<DiagnosisFinding> = {}): DiagnosisFinding => ({
+    step: "matching",
+    status: "failed",
+    code: null,
+    evidence: {},
+    ...overrides
+  });
+
+  const answer = (findings: readonly DiagnosisFinding[], problem: ConnectorDiagnosis["problem"] = "matching") =>
+    diagnosisResponse({ findings, problem });
+
+  it("says which rung is the problem and what each of them found", () => {
+    const response = answer([finding({ step: "migrations", status: "passed" })], "migrations");
+
+    expect(response.problem).toBe("migrations");
+    expect(response.findings[0]).toEqual({ step: "migrations", status: "passed", code: null, evidence: {} });
+  });
+
+  it("carries the code, which is what a screen turns into a sentence", () => {
+    const response = answer([finding({ step: "reachable", code: "CONNECT_TIMEOUT" })], "reachable");
+    expect(response.findings[0]?.code).toBe("CONNECT_TIMEOUT");
+  });
+
+  it("names the migrations and the two lists a mismatch needs", () => {
+    const response = answer([
+      finding({ step: "migrations", evidence: { migrations: ["0037_infrastructure_hosts.sql"] } }),
+      finding({ evidence: { seen: ["node-exporter:9100"], declared: ["hub-vps"] } })
+    ]);
+
+    expect(response.findings[0]?.evidence).toEqual({
+      migrations: { values: ["0037_infrastructure_hosts.sql"], total: 1 }
+    });
+    expect(response.findings[1]?.evidence).toEqual({
+      seen: { values: ["node-exporter:9100"], total: 1 },
+      declared: { values: ["hub-vps"], total: 1 }
+    });
+  });
+
+  /** A key nobody listed travels nowhere, whatever a later rung decides to attach. */
+  it("drops a key the rung was never allowed to say", () => {
+    const leaky = finding({
+      step: "allowlist",
+      evidence: { baseUrl: ["http://prometheus.internal.example:9090"] }
+    });
+
+    expect(answer([leaky], "allowlist").findings[0]?.evidence).toEqual({});
+    expect(JSON.stringify(answer([leaky], "allowlist"))).not.toContain("prometheus.internal.example");
+  });
+
+  it("refuses the same key on a rung that is not the one it belongs to", () => {
+    const misplaced = finding({ step: "scraping", evidence: { seen: ["node-exporter:9100"] } });
+    expect(answer([misplaced], "scraping").findings[0]?.evidence).toEqual({});
+  });
+
+  /**
+   * A collector scraping four hundred targets would turn one question into a data dump, and the
+   * answer is settled by the first handful. The total goes with the list so the screen can say how
+   * many it is not showing: a list cut short and drawn as the whole thing is the same class of lie
+   * as a figure drawn without its age.
+   */
+  it("cuts a long list short and says how long it really was", () => {
+    const seen = Array.from({ length: 412 }, (_, index) => `node-${index}:9100`);
+    const evidence = answer([finding({ evidence: { seen, declared: ["hub-vps"] } })]).findings[0]?.evidence;
+
+    expect(evidence?.seen?.values).toHaveLength(20);
+    expect(evidence?.seen?.total).toBe(412);
+    expect(evidence?.seen?.values[0]).toBe("node-0:9100");
+  });
+
+  it("leaves out a list that is empty rather than sending an empty one", () => {
+    expect(answer([finding({ evidence: { seen: [], declared: ["hub-vps"] } })]).findings[0]?.evidence).toEqual({
+      declared: { values: ["hub-vps"], total: 1 }
+    });
   });
 });

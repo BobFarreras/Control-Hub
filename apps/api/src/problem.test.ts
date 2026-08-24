@@ -4,6 +4,7 @@ import {
   ConnectorStorageError,
   InfrastructureServiceError
 } from "@control-hub/application";
+import { infrastructureErrorCodes } from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import { describeConnectorError, problemDetails, usesProblemDetails } from "./problem.js";
 import { ApiSecurityError } from "./security.js";
@@ -156,4 +157,31 @@ describe("the status an infrastructure failure deserves", () => {
     expect(problem.title).not.toBe("Unexpected error");
     expect(problem.type).toBe("https://control-hub.example/problems/invalid-freshness");
   });
+
+  /** The guided check has exactly one refusal of its own, and it is the ordinary 404. */
+  it("answers 404 for an integration this tenant cannot see", () => {
+    expect(codeAndStatus(new InfrastructureServiceError("INSTANCE_NOT_FOUND"))).toEqual(["INSTANCE_NOT_FOUND", 404]);
+  });
+
+  /**
+   * Acceptance criterion 11, at the boundary that names the failure.
+   *
+   * The vocabulary is closed, so this walks all of it rather than the handful somebody remembered.
+   * A code shipped later with no title of its own fails here instead of reaching a support ticket
+   * as "Unexpected error", which is the sentence this whole increment exists to stop producing.
+   */
+  it.each(infrastructureErrorCodes.filter((code) => code !== "INTERNAL_ERROR"))(
+    "gives %s a title of its own",
+    (code) => {
+      const problem = problemDetails({
+        status: 422,
+        code,
+        instance: "/api/v1/infrastructure/overview",
+        requestId: "req-1"
+      });
+
+      expect(problem.title).not.toBe("Unexpected error");
+      expect(problem.type).toBe(`https://control-hub.example/problems/${code.toLowerCase().replaceAll("_", "-")}`);
+    }
+  );
 });

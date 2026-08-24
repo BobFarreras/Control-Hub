@@ -76,6 +76,17 @@ export type ObservedRecord = {
 /** When an operation last returned successfully. Null means it never has. */
 export type OperationFreshness = { instanceId: string; operation: string; lastSuccessAt: Date | null };
 
+/**
+ * What a declared service is, as opposed to how a collector happens to see it.
+ *
+ * The Postgres of a self-hosted Supabase is a database and cAdvisor reports it as a container:
+ * the kind is what somebody looking at the screen needs to read, and `matchKey` is what does the
+ * matching. `backup` is here because a copy is none of the other four, and calling it an
+ * automation would make the alert work while the screen said something untrue.
+ */
+export const serviceKinds = ["container", "http", "database", "automation", "backup"] as const;
+export type ServiceKind = (typeof serviceKinds)[number];
+
 /** What a service is expected to be doing, which is what makes its absence mean something. */
 export type ServiceExpectedState = "up" | "stopped" | "ignored";
 
@@ -585,6 +596,16 @@ export type CurrentReading = {
   state: ObservedState;
   /** When the reading behind this state was last refreshed, or null when there is none. */
   observedAt: Date | null;
+  /**
+   * The connector instance whose record this state was read from, or null when there is no record
+   * behind it.
+   *
+   * A property of the reading and never of the thing read: the same machine may be scraped by a
+   * different collector tomorrow, and two of them may scrape it today. It is what lets a fleet be
+   * filtered by which collector sees it, and a machine's own page say where its figures came from
+   * -- neither of which is answerable from the declaration alone.
+   */
+  instanceId: string | null;
   /** The projection the connector wrote, handed over whole for the screen to name fields of. */
   data: Readonly<Record<string, JsonValue>>;
 };
@@ -620,7 +641,7 @@ export function currentReading(input: {
   budgets: Readonly<Record<string, number>>;
   now: Date;
 }): CurrentReading {
-  const blind: CurrentReading = { state: "unknown", observedAt: null, data: {} };
+  const blind: CurrentReading = { state: "unknown", observedAt: null, instanceId: null, data: {} };
 
   const operation = operationForPrefix[prefixOf(input.matchKey)];
   if (operation === undefined) return blind;
@@ -639,8 +660,93 @@ export function currentReading(input: {
   if (!lastPass || input.now.getTime() - lastPass.getTime() > budget * 1000) return blind;
 
   const record = latestRecord(input.records, operation, input.matchKey, null);
-  if (!record) return { state: "down", observedAt: null, data: {} };
+  if (!record) return { state: "down", observedAt: null, instanceId: null, data: {} };
 
   const alive = refreshedWithin(record, budget, input.now) && !contradicted(input.matchKey, record);
-  return { state: alive ? "up" : "down", observedAt: record.lastSeenAt, data: record.data };
+  return {
+    state: alive ? "up" : "down",
+    observedAt: record.lastSeenAt,
+    instanceId: record.instanceId,
+    data: record.data
+  };
 }
+
+/** How many declared things are in each of the three states, and how many there are at all. */
+export type ObservedTally = { total: number; up: number; down: number; unknown: number };
+
+/**
+ * The fleet counted by what it is doing right now.
+ *
+ * Here rather than on the screen for the same reason `currentReading` is here: the summary at the
+ * top of a dashboard and the rows below it have to be the same claim counted twice, and a screen
+ * that tallied for itself would be a second opinion about how many machines are down. Every state
+ * lands in exactly one column, so the total is always the sum of the three -- a summary whose
+ * parts do not add up is worse than no summary.
+ */
+export function observedTally(states: readonly ObservedState[]): ObservedTally {
+  const tally: ObservedTally = { total: states.length, up: 0, down: 0, unknown: 0 };
+  for (const state of states) tally[state] += 1;
+  return tally;
+}
+
+/**
+ * Every code an infrastructure response may carry, and the whole of it.
+ *
+ * The same closed list `connectorErrorCodes` is for the connector platform, and for the same
+ * reason: a code with no sentence is not a loud failure but a silent one. The screen falls back
+ * to "the operation could not be completed", which is exactly what a person was told when the
+ * real answer was that a migration had not been applied -- a minute's work, had anybody said so.
+ *
+ * Four sources contribute, and none of them can see the other three, which is why the agreement
+ * lives here: the session guard before a handler runs, the schema that refuses a malformed body,
+ * the service's own rules, and the constraints the adapter turns back into codes. `INTERNAL_ERROR`
+ * is a member because an unclassified failure still reaches a screen and still has to say
+ * something in the reader's language.
+ *
+ * `packages/i18n` walks this list in a test and refuses a code with no words, in any of the three
+ * languages; `apps/api` walks it and refuses one with no title. A code raised anywhere in the
+ * module and not written here is therefore a code somebody has to add on purpose.
+ *
+ * Specification: `docs/specifications/connector-onboarding.md`, acceptance criterion 11.
+ */
+export const infrastructureErrorCodes = [
+  // The session guard, before any handler runs.
+  "AUTHENTICATION_REQUIRED",
+  "TENANT_ACCESS_DENIED",
+  "TENANT_SELECTION_REQUIRED",
+  "MFA_REQUIRED",
+  "PERMISSION_DENIED",
+  // A body or a parameter the schema refused, and the failure nobody classified.
+  "INVALID_INPUT",
+  "INTERNAL_ERROR",
+  // The module's own rules.
+  "FORBIDDEN",
+  "INVALID_NAME",
+  "INVALID_HOSTNAME",
+  "INVALID_MATCH_KEY",
+  "INVALID_FRESHNESS",
+  "NOTES_TOO_LONG",
+  "TARGET_REQUIRED",
+  "TARGET_NOT_ALLOWED",
+  // The module is deployed but not finished: its objects are not in the database yet. Its own
+  // code rather than an internal error, because it is a diagnosed state with a known remedy, and
+  // the guided check is the screen that names the migration to run.
+  "MIGRATION_REQUIRED",
+  // Something named that is not there, or is not this tenant's.
+  "INSTANCE_NOT_FOUND",
+  "HOST_NOT_FOUND",
+  "SERVICE_NOT_FOUND",
+  "RULE_NOT_FOUND",
+  "ALERT_NOT_FOUND",
+  "REFERENCE_NOT_FOUND",
+  // What the constraints refuse, which is two people acting at once as often as it is a mistake.
+  "DUPLICATE_ENTRY",
+  "DUPLICATE_HOST_NAME",
+  "DUPLICATE_HOSTNAME",
+  "DUPLICATE_SERVICE_NAME",
+  "DUPLICATE_MATCH_KEY",
+  "DUPLICATE_RULE_NAME",
+  "ALERT_ALREADY_HAS_INCIDENT"
+] as const;
+
+export type InfrastructureErrorCode = (typeof infrastructureErrorCodes)[number];

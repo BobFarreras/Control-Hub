@@ -54,6 +54,17 @@ export type ConnectorRuntimeOptions = {
    * every instance's destinations, which is not a guard.
    */
   http: (instance: { id: string; connectorType: string; config: unknown }) => HttpPort;
+  usage?: {
+    ingest(
+      context: TenantContext,
+      input: {
+        instanceId: string;
+        operation: string;
+        completedAt: Date;
+        records: readonly { externalId: string; data: Readonly<Record<string, unknown>> }[];
+      }
+    ): Promise<unknown>;
+  };
   backoff?: BackoffPolicy;
   now?: () => Date;
   random?: () => number;
@@ -226,6 +237,14 @@ export class ConnectorRuntime {
         shape: declaration.shape,
         records: result.records.map((record) => ({ externalId: record.externalId, data: record.data })),
         seenAt: this.now()
+      });
+      // Usage is a typed projection of the connector result, not another copy of its payload.
+      // A retry sees the same external IDs and the database turns it into a no-op.
+      await this.options.usage?.ingest(context, {
+        instanceId,
+        operation: request.operation,
+        completedAt: this.now(),
+        records: result.records
       });
       return { itemsProcessed: result.records.length, cursor: result.cursor };
     }

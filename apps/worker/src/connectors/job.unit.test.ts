@@ -46,6 +46,10 @@ describe("the context a job runs under", () => {
     expect(context.permissions).not.toContain("credentials:rotate");
     expect(context.tenantId).toBe(payload.tenantId);
   });
+
+  it("adds the usage write scope only for an enabled installation", () => {
+    expect(jobContext(payload.tenantId, true).permissions).toEqual(["integrations:read", "usage:manage"]);
+  });
 });
 
 describe("running one job", () => {

@@ -55,6 +55,7 @@ const titles: Record<string, string> = {
   INVALID_IDEMPOTENCY_KEY: "Invalid idempotency key",
   UNKNOWN_CONNECTOR_TYPE: "Unknown connector type",
   INSTANCE_NOT_FOUND: "Integration not found",
+  MIGRATION_REQUIRED: "The module's migrations are not applied",
   INSTANCE_NOT_ENABLED: "Integration is not enabled",
   INGRESS_NOT_SUPPORTED: "This connector receives no webhooks",
   ENDPOINT_ALREADY_EXISTS: "The integration already has an endpoint",
@@ -187,6 +188,10 @@ function infrastructureStatus(code: string): number {
   // A body that names something absent is a 422: the route is there and the request is well
   // formed. Only a row this tenant cannot see is a 404.
   if (code === "REFERENCE_NOT_FOUND") return 422;
+  // Nothing is wrong with the request: the module is deployed and its tables are not there yet.
+  // 503 says the module cannot serve this, which is true, and the guided check says which
+  // migration makes it able to.
+  if (code === "MIGRATION_REQUIRED") return 503;
   if (code.endsWith("NOT_FOUND")) return 404;
   if (code.startsWith("DUPLICATE") || code === "ALERT_ALREADY_HAS_INCIDENT") return 409;
   return 422;

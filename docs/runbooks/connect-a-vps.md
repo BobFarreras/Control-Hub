@@ -119,7 +119,67 @@ Aquests set valors, i prou. Cap d'ells es un secret:
 | Targets sondats | `https://exemple.tld/healthz` | serveis `probe:<target>` |
 | Valors de `backup_job` | `hub-vps-daily` | serveis `backup:<valor>` |
 
-## 7. El que no s'ha de fer mai
+## 7. Del costat del Control Hub
+
+Quan la VPS ja reporta els valors de la seccio 6, queden tres passos a la installacio del Control
+Hub. Cap d'ells es toca a la VPS.
+
+**1. Afegir l'origen a `CONNECTOR_INTERNAL_ALLOWLIST`, dins la linia que ja hi ha.** La variable es
+una llista separada per comes, i l'origen nou s'afegeix sense treure els que hi son:
+
+```
+CONNECTOR_INTERNAL_ALLOWLIST=https://n8n.exemple.tld,http://127.0.0.1:9090
+```
+
+**Escriure-la dues vegades no acumula: la segona linia guanya i la primera desapareix sense dir-ho.**
+Es el comportament de `--env-file` de Node, i el simptoma es cruel — el connector nou funciona i
+l'antic deixa de funcionar, o al reves, i cap missatge no parla mai de l'allowlist. Comprova sempre
+quin valor queda de debo:
+
+```bash
+node --env-file=.env -e "console.log(process.env.CONNECTOR_INTERNAL_ALLOWLIST)"
+```
+
+La comparacio es exacta per esquema, nom i port: `http://127.0.0.1:9090` no admet el port 9091 ni
+`https`. Un origen que hi consti queda **tambe** exempt de la regla que refusa adreces privades: es
+l'unica manera que una adreca de loopback o de xarxa interna sigui abastable, i per aixo la llista
+ha de dir origens concrets i mai res que s'hi assembli.
+
+**2. Reiniciar el worker.** L'allowlist es llegeix **un sol cop, en arrencar**. Mentre el worker
+visqui amb el valor vell seguira fallant amb `DESTINATION_NOT_ALLOWLISTED` encara que el `.env` ja
+sigui correcte, i el fitxer semblara desmentir la pantalla.
+
+**3. En desenvolupament, obrir el tunel.** El Prometheus de la VPS nomes escolta al `127.0.0.1`
+**d'alla**, aixi que la maquina que corre el worker se l'ha de portar al seu propi loopback:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:9090:127.0.0.1:9090 <usuari>@<vps>
+```
+
+El tunel viu mentre visqui aquella ordre. `ExitOnForwardFailure` evita el cas pitjor, que es un
+tunel que sembla obert pero no reenvia res perque el port local ja estava ocupat.
+
+### Comprovar-ho sense obrir cap pantalla
+
+```bash
+# El tunel: ha de tornar les series `up` de la VPS.
+curl -s "http://127.0.0.1:9090/api/v1/query?query=up" | jq -r ".data.result[].metric.instance"
+```
+
+I la passada seguent del connector ha de deixar de dir `DESTINATION_NOT_ALLOWLISTED`:
+
+```sql
+select operation, status, error_code, started_at
+from connector_sync_runs
+order by started_at desc
+limit 5;
+```
+
+Si les passades passen a `succeeded` pero la maquina segueix sense lectures, llavors el que falla es
+una altra cosa: `hostLabels` no conte l'etiqueta `instance` que la VPS publica. La comprovacio
+guiada de la integracio ho diu amb aquestes mateixes paraules.
+
+## 8. El que no s'ha de fer mai
 
 - Publicar el Prometheus sense autenticacio, ni tan sols "temporalment".
 - Donar al Control Hub cap acces al sistema, ni credencials d'escriptura.
@@ -130,7 +190,7 @@ Aquests set valors, i prou. Cap d'ells es un secret:
 - Reutilitzar un `backup_job` entre maquines.
 - Canviar el nom d'un job de raspat sense dir-ho.
 
-## 8. Prompt per a l'agent que administra la VPS
+## 9. Prompt per a l'agent que administra la VPS
 
 > Has de preparar aquesta VPS perque el Control Hub en pugui llegir l'estat, i despres reportar els
 > valors que necessita. El Control Hub **nomes** llegira l'API de consulta del Prometheus local; no

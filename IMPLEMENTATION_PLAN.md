@@ -441,7 +441,11 @@ Control Hub mostra l'estat real de la infraestructura i n8n sense assumir-ne el 
 
 ## Fase 7B - Accions i credencials OAuth
 
-**Estat: proposta, pendent d'aprovacio.**
+**Estat: aprovada pel propietari el 23 d'agost de 2026 en l'abast necessari per a la Fase 8.**
+
+**Especificacio acotada per a la Fase 8:**
+`docs/specifications/phase-7b-actions-and-oauth.md`. Defineix OAuth2 amb PKCE, outbox d'accions i un
+port tipat de bustia per IMAP.
 
 **Objectiu:** que un connector pugui **escriure** al proveidor, i que una credencial que caduca es
 renovi sola, sense obrir cap via alternativa d'autoritzacio.
@@ -495,6 +499,11 @@ que caduca es renova sense que ningu hi intervingui.
 ## Fase 8 - Correu, IA i costos variables
 
 **Objectiu:** integrar comunicacions i calcular el cost real per client i producte.
+
+**Especificacio en esborrany:** `docs/specifications/communications-usage-costs.md`, amb la guia
+incremental a `docs/development/phase-8-implementation-guide.md`. Separa consum i costos (8.1) del
+correu entrant (8.2) i sortint (8.3): OAuth i les accions depenen de la Fase 7B, pero el motor de
+costos nomes necessita els connectors de lectura ja entregats.
 
 ### Implementacio
 

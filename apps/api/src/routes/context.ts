@@ -9,10 +9,12 @@ import type {
   CrmService,
   InfrastructureService,
   ProjectsService,
-  SupportService
+  SupportService,
+  UsageService
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
 import type { ControlHubAuth } from "../auth.js";
+import type { ConnectorIngressQueue } from "../connector-ingress-queue.js";
 import type { MailSender } from "../email.js";
 import type { ControlHubApp } from "../server-instance.js";
 
@@ -36,6 +38,7 @@ export type SupportContext = RouteContext & { support: SupportService };
 export type InfrastructureContext = RouteContext & { infrastructure: InfrastructureService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type AttendanceContext = RouteContext & { attendance: AttendanceService };
+export type UsageContext = RouteContext & { usage: UsageService };
 export type InvitationContext = RouteContext & { appOrigin: string | undefined; sendMail: MailSender | undefined };
 
 /**
@@ -58,7 +61,7 @@ export type IntegrationsContext = RouteContext & {
  * for it to run of its own, and giving it one would be the first step towards a public route
  * that reads something it was not meant to.
  */
-export type WebhookContext = { app: ControlHubApp; ingress: ConnectorIngressService };
+export type WebhookContext = { app: ControlHubApp; ingress: ConnectorIngressService; queue: ConnectorIngressQueue };
 
 /** The public routes run before any session exists, so they take no auth instance. */
 export type PublicContext = {
