@@ -106,9 +106,18 @@ retorna salut de col·lectors i cap import. L'**increment C** es l'esquema: la m
 funcions `security definer` que resolen client, token i codi abans que se sapiga el tenant, mes
 les tres columnes additives de `audit_log`. Els invariants es comproven sobre el fitxer SQL, sense
 base de dades, i la migracio s'ha aplicat i desfet contra el Postgres local per veure que passa
-sencera. **El punt de continuacio es el repositori de persistencia**, i tot seguit les rutes
-d'OAuth i el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit: que se n'ha de
-desar depen del transport.
+sencera. L'**increment D** son les regles del flux a `packages/domain/src/mcp-oauth.ts`: vides,
+coincidencia de redirect URI, negociacio d'scopes i veredicte del refresh amb deteccio de reus,
+totes pures i sense hashing. **El punt de continuacio es el repositori de persistencia**, i tot
+seguit les rutes d'OAuth i el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit:
+que se n'ha de desar depen del transport.
+
+El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
+redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual
+declarat i DPoP mes endavant (D7), i el portal de client fora d'aquesta fase (D8). D4 i D7 es van
+decidir mirant el cas d'us real: els clients MCP d'avui --Claude Desktop, Claude Code, Codex,
+OpenCode-- redirigeixen a `127.0.0.1` i parlen bearer, i una regla que els deixi tots fora no
+protegeix ningu perque no hi ha ningu a dins. **Ja no queda cap decisio que bloquegi la 10.1.**
 
 Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **numeros de migracio**,
 que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio

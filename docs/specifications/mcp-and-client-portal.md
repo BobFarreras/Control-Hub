@@ -1,15 +1,18 @@
 # Especificacio de la Fase 10: MCP i portal de client
 
-**Estat: proposta per a revisio del propietari.** Escrita el 24 d'agost de 2026 a la branca
-compartida `feature/oauth-and-agent-platform`.
+**Estat: aprovada, en implementacio.** Escrita el 24 d'agost de 2026 a la branca compartida
+`feature/oauth-and-agent-platform`.
 
-El propietari va aprovar el mateix dia les decisions **D1, D2, D3 i D6** tal com es recomanen aqui:
-emissor propi, tokens opacs de referencia, registre manual de clients i la primera llista de sis
-tools de lectura. Amb aixo aprovat, va autoritzar comencar la **10.1**.
+El propietari va aprovar **les vuit decisions** el 24 d'agost de 2026, D1, D2, D3 i D6 primer i
+D4, D5, D7 i D8 en acabat: emissor propi, tokens opacs de referencia, registre manual de clients,
+la primera llista de sis tools de lectura, redirects loopback per als clients d'escriptori, trenta
+minuts de vida del access token, bearer amb el risc residual declarat, i el portal de client fora
+d'aquesta fase.
 
-**D4, D5, D7 i D8 continuen obertes**, i cadascuna bloqueja la part que en depen: D4 i D5 el flux
-d'autoritzacio (redirects acceptats i vida del token), D7 la proteccio de possessio, D8 el portal.
-La resta de la fase s'implementa; el que penja d'una decisio oberta, no.
+**No queda cap decisio oberta que bloquegi la 10.1.** El que va guiar D4 i D7 va ser el cas d'us
+concret: els clients MCP d'avui --Claude Desktop, Claude Code, Codex, OpenCode-- s'autoritzen amb un
+redirect a `127.0.0.1` i parlen bearer, i una regla que els deixi tots fora no protegeix res perque
+no hi ha ningu a dins.
 
 ## Problema
 
@@ -40,9 +43,9 @@ La fase es parteix en dos increments que no comparteixen dependencia:
 
 - **10.1 MCP read-only** — l'unic increment que aquesta especificacio deixa implementable:
   autoritzacio, cataleg, transport, auditoria i sis tools de lectura.
-- **10.2 Portal de client** — proposta oberta. Comparteix el resource server pero no el model
-  d'identitat, i te decisions materials sense resoldre (seccio "Portal de client"). **No
-  s'implementa amb la 10.1.**
+- **10.2 Portal de client** — **fora d'aquesta fase** per decisio D8. Comparteix el resource server
+  pero no el model d'identitat: necessita identitats externes, sessions de client i un model de
+  permisos propi. La seccio "Portal de client" es queda com a material per a la fase que el reculli.
 
 ### Estat d'implementacio
 
@@ -67,6 +70,10 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   `packages/database/src/mcp-schema.test.ts` comprova els invariants sobre el fitxer, sense base de
   dades: cap taula sense `force`, cap credencial que no sigui un hash SHA-256, cap `drop`, i cap
   funcio `security definer` sense `search_path` fixat.
+- **10.1-D — les regles del flux.** Implementat: `packages/domain/src/mcp-oauth.ts` amb les vides
+  aprovades a D5, la coincidencia de redirect URI amb l'excepcio de loopback de D4, la negociacio
+  d'scopes i el veredicte del refresh amb deteccio de reus. Pur, sense hashing i sense I/O: la
+  comparacio del verificador PKCE es fa on ja hi ha crypto, no aqui.
 - La resta de la fase continua sense implementar: no hi ha ni repositori, ni rutes, ni transport.
 
 ## Fora d'abast de la 10.1
@@ -144,7 +151,7 @@ deliberada: el dia que hi hagi un segon recurs o un emissor extern, la porta ja 
 | Token | Vida | Rotacio |
 | --- | --- | --- |
 | Authorization code | 60 s, single-use | — |
-| Access token | 15 min | Nou a cada refresh |
+| Access token | 30 min | Nou a cada refresh |
 | Refresh token | 30 dies | Rotacio obligatoria amb deteccio de reus |
 | Grant (consentiment) | 90 dies maxim | Requereix consentiment nou |
 | Secret de service account | 365 dies maxim | Rotacio amb finestra de dues claus vives |
@@ -228,6 +235,10 @@ token sense scopes no pot fer res.
 
 Un scope nomes s'ofereix al consentiment si l'actor ja te els permisos que el sostenen, i un service
 account no en pot rebre cap que el seu propietari no tingui.
+
+**`mcp:tools.list` no es negocia: es concedeix sempre.** No obre cap dada --el cataleg que un token
+veu ja esta filtrat al que aquell token podria cridar-- i un client registrat sense aquest scope no
+podria descobrir ni una sola tool, que es una manera de registrar un client que no funciona.
 
 `commerce.read` esta lligat a `products:manage` perque **avui el cataleg no te cap permis de nomes
 lectura**. Aixo no es un detall d'implementacio: es precisament el motiu pel qual la 10.1 no publica
@@ -526,7 +537,7 @@ Client MCP (no fiable) | Internet | proxy | /mcp | cataleg de tools | casos d'us
 
 | Amenaca | STRIDE | Impacte | Controls |
 | --- | --- | --- | --- |
-| Token robat reutilitzat des d'un altre lloc | S | Alt | TLS, vida de 15 min, revocacio immediata, `last_used_at`, alerta per patro anomal |
+| Token robat reutilitzat des d'un altre lloc | S | Alt | TLS, vida de 30 min, revocacio immediata, `last_used_at`, alerta per patro anomal |
 | Token emes per a un altre recurs acceptat a `/mcp` | S | Critic | Audience exacta validada abans de res, `resource` obligatori |
 | Client MCP malicios registrat sol | S | Alt | Sense DCR; registre manual amb `security:manage` i MFA |
 | Codi d'autoritzacio interceptat | S | Critic | PKCE S256 obligatori, codi de 60 s single-use, redirect exacte |
@@ -544,8 +555,10 @@ Client MCP (no fiable) | Internet | proxy | /mcp | cataleg de tools | casos d'us
 
 **Risc residual acceptat i declarat:** els access tokens son bearer. Qui n'obtingui un pot usar-lo
 fins que expiri o es revoqui. Els mitigants son la vida curta, la revocacio immediata i l'auditoria
-de denegacions. El seguent grao seria DPoP o mTLS, i queda **fora de la 10.1**; s'anota com a
-decisio oberta perque el dia que hi hagi tools d'escriptura el calcul canvia.
+de denegacions. El seguent grao seria DPoP o mTLS, i el propietari el va deixar **fora de la 10.1**
+(D7) per una rao concreta: cap client MCP d'avui el parla, i una exigencia que no compleix ningu no
+protegeix ningu. Es revisa el dia que hi hagi tools d'escriptura, perque llavors el calcul canvia; la
+columna del `jkt` s'afegeix a `mcp_access_tokens` sense trencar cap token viu.
 
 ## Proves
 
@@ -645,11 +658,11 @@ Fins que aquestes tres tinguin resposta, la 10.2 continua sent una proposta.
 | D1 | Qui emet els tokens | **Aprovada** 24-08-2026 | Control Hub, authorization server propi i acotat a MCP | Keycloak o IdP extern (hauria reobert `adr/0003`) | Alt: canvia desplegament i operacio |
 | D2 | Format de token | **Aprovada** 24-08-2026 | Opac de referencia, hash a PostgreSQL, revocacio immediata | JWT signat amb JWKS | Mitja: la validacio ja esta aillada |
 | D3 | Registre de clients | **Aprovada** 24-08-2026 | Manual pel propietari; sense DCR a la 10.1 | DCR (RFC 7591) amb aprovacio previa | Baix: additiu |
-| D4 | Redirects loopback | Oberta | Proposta: permesos amb path exacte i port lliure (RFC 8252) | Nomes HTTPS registrats | Baix, pero deixa fora clients d'escriptori |
-| D5 | Vida del access token | Oberta | Proposta: 15 min amb refresh rotatiu | 60 min | Baix |
+| D4 | Redirects loopback | **Aprovada** 24-08-2026 | Permesos a `127.0.0.1` amb path exacte i port lliure (RFC 8252); PKCE els guarda | Nomes HTTPS registrats | Baix, pero hauria deixat fora tot client d'escriptori |
+| D5 | Vida del access token | **Aprovada** 24-08-2026 | 30 minuts, amb refresh rotatiu i deteccio de reus | 15, 60 o 480 minuts | Baix: es configuracio, no esquema |
 | D6 | Primera llista de tools | **Aprovada** 24-08-2026 | Les sis de la taula, cadascuna revisable per separat | Reduir-la a suport i infraestructura, o ampliar-la amb projectes i comerc | Baix: cada tool s'aprova per separat |
-| D7 | Proteccio de possessio | Oberta | Proposta: bearer, amb risc residual declarat | DPoP o mTLS ja a la 10.1 | Mitja: afecta clients existents |
-| D8 | Portal de client | Oberta | Proposta: diferir a la 10.2 | Especificar-lo ara | Baix |
+| D7 | Proteccio de possessio | **Aprovada** 24-08-2026 | Bearer a la 10.1, amb el risc residual declarat; DPoP mes endavant | DPoP o mTLS obligatoris ja ara | Mitja: afecta clients existents, pero la columna del `jkt` es additiva |
+| D8 | Portal de client | **Aprovada** 24-08-2026 | Fase a part: no entra a la 10 | Especificar-lo i implementar-lo aqui | Baix |
 
 D1, D2, D3 i D6 son decisions preses i la resta de l'especificacio les dona per fixades. D4, D5, D7
 i D8 continuen sent propostes: el text les descriu com si s'aprovessin, pero cap d'elles s'escriu en
