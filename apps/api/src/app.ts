@@ -5,6 +5,7 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  ConnectorActionService,
   ConnectorCredentialService,
   ConnectorIngressService,
   ConnectorOAuthService,
@@ -41,6 +42,7 @@ import {
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
+  PostgresConnectorActionRepository,
   PostgresConnectorRepository,
   PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
@@ -464,13 +466,18 @@ export function buildApp(options: BuildAppOptions) {
             options.oauthClientIds ?? {}
           )
         : null;
+    const actions =
+      vault && isFeatureEnabled(featureFlags, "connector_actions")
+        ? new ConnectorActionService(repository, new PostgresConnectorActionRepository(database), connectorRegistry)
+        : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),
       credentials: vault ? new ConnectorCredentialService(repository, vault) : null,
       ingress,
       oauth,
-      appOrigin: options.appOrigin
+      appOrigin: options.appOrigin,
+      actions
     });
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate

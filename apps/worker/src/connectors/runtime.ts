@@ -99,6 +99,8 @@ export type RunRequest = {
   cursor: string | null;
 };
 
+export type ActionExecution = { externalId: string | null };
+
 /**
  * The operation name reserved for a health check, which is not one a connector declares.
  *
@@ -225,6 +227,35 @@ export class ConnectorRuntime {
     } finally {
       await mailbox?.close().catch(() => undefined);
     }
+  }
+
+  async act(
+    context: TenantContext,
+    request: { instanceId: string; action: string; input: Readonly<Record<string, unknown>> }
+  ): Promise<ActionExecution> {
+    const instance = await this.options.repository.getInstance(context, request.instanceId);
+    if (!instance || instance.status !== "enabled") throw new ConnectorRunError("invalid_config", "INVALID_CONFIG");
+    const connector = this.registry.find(instance.connectorType);
+    if (!connector?.capabilities.actions?.[request.action])
+      throw new ConnectorRunError("invalid_config", "INVALID_CONFIG");
+    const secretsSeen = new Set<string>();
+    const secretPort: SecretsPort = {
+      open: async (kind) => {
+        const secret = await this.options.secrets.open(context, instance.id, kind);
+        if (secret === null) throw new ConnectorRunError("unauthorized", "CREDENTIAL_MISSING");
+        secretsSeen.add(secret);
+        return secret;
+      }
+    };
+    const connectorContext: ConnectorContext<unknown> = {
+      instanceId: instance.id,
+      config: instance.config,
+      http: this.options.http({ id: instance.id, connectorType: instance.connectorType, config: instance.config }),
+      secrets: secretPort,
+      logger: this.redactingLogger(instance, request.action, secretsSeen),
+      clock: { now: () => this.now() }
+    };
+    return connector.act(request.action, connectorContext, request.input);
   }
 
   /** Null rather than a throw when nothing has run yet: a first pass starts from the beginning. */

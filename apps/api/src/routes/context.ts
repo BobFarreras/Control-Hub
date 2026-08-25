@@ -3,6 +3,7 @@ import type {
   CommerceService,
   CompanySubscriptionService,
   ConnectorCredentialService,
+  ConnectorActionService,
   ConnectorIngressService,
   ConnectorOAuthService,
   ConnectorService,
@@ -55,6 +56,7 @@ export type IntegrationsContext = RouteContext & {
   ingress: ConnectorIngressService | null;
   oauth: ConnectorOAuthService | null;
   appOrigin: string | undefined;
+  actions: ConnectorActionService | null;
 };
 
 /**

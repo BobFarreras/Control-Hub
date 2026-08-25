@@ -27,6 +27,15 @@ type GraphMessage = {
   "@removed"?: unknown;
 };
 type DeltaPage = { value?: GraphMessage[]; "@odata.nextLink"?: string; "@odata.deltaLink"?: string };
+const sendMailSchema = z.strictObject({
+  to: z.email().max(320),
+  subject: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((value) => !/[\r\n]/.test(value)),
+  text: z.string().min(1).max(20_000)
+});
 
 export const microsoftGraphMail = defineConnector<Config>({
   type: "microsoft_graph_mail",
@@ -41,13 +50,22 @@ export const microsoftGraphMail = defineConnector<Config>({
   capabilities: {
     egress: { schemes: ["https"], destination: "configured_base_url" },
     operations: { pull_messages: { shape: "event", everySeconds: 300 } },
+    actions: {
+      send_mail: {
+        permission: "tickets:manage",
+        confirmation: "explicit",
+        requiresMfa: true,
+        reversible: false,
+        retry: "before-delivery-only"
+      }
+    },
     ingress: false,
     oauth: {
       provider: "microsoft",
       authorizationUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       revocationUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/logout",
-      scopes: ["openid", "offline_access", "Mail.Read"]
+      scopes: ["openid", "offline_access", "Mail.Read", "Mail.Send"]
     }
   },
   async health(context) {
@@ -69,6 +87,32 @@ export const microsoftGraphMail = defineConnector<Config>({
       const cursor = validateCursor(page["@odata.nextLink"] ?? page["@odata.deltaLink"] ?? "");
       const records = (page.value ?? []).filter((message) => !message["@removed"]).map(normalize);
       return { records, cursor };
+    }
+  },
+  actions: {
+    send_mail: {
+      schema: sendMailSchema,
+      async handle(context, input) {
+        const mail = sendMailSchema.parse(input);
+        const token = await context.secrets.open("oauth_access_token");
+        const response = await context.http.send({
+          method: "POST",
+          url: `${graphApi}/v1.0/me/sendMail`,
+          timeoutMs: 15_000,
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            message: {
+              subject: mail.subject,
+              body: { contentType: "Text", content: mail.text },
+              toRecipients: [{ emailAddress: { address: mail.to } }]
+            },
+            saveToSentItems: true
+          })
+        });
+        if (response.status !== 202)
+          throw new ConnectorError(`GRAPH_${(failureForStatus(response.status) ?? "invalid_response").toUpperCase()}`);
+        return { externalId: null };
+      }
     }
   }
 });

@@ -672,6 +672,7 @@ export type ConnectorCatalogueEntry = {
   capabilities: {
     egress: { schemes: string[]; destination: string } | null;
     operations: string[];
+    actions?: string[];
     ingress: boolean;
     oauth: { provider: "google" | "microsoft" } | null;
   };

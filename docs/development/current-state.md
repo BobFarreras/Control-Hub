@@ -72,6 +72,12 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**La Fase 12 te guia tecnica proposada** a `docs/development/phase-12-secrets-management-guide.md`.
+No converteix Control Hub en un password manager: passwords humans van al gestor corporatiu,
+secrets bootstrap queden fora del producte i el vault intern conserva nomes credencials
+tenant-scoped. El contracte recomanat es `_FILE`, amb Bitwarden Secrets Manager com a adaptador
+opcional del desplegament. Les cinc decisions de la guia s'han d'aprovar abans d'implementar-la.
+
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E
 autenticat, imatges de contenidor, secrets, dependencies i CodeQL. L'E2E autenticat va passar
@@ -674,14 +680,28 @@ loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-ope
 Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
-**M1 i M2 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
+**M1, M2 i M3 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
 correu entrant incremental a `support_inbound_messages`, de forma idempotent i amb remitents
 desconeguts en estat `pending`. Gmail i Graph usen OAuth delegat de nomes lectura: `state` d'un sol
 us, PKCE S256, tokens xifrats amb context de proposit, jobs sense secrets i renovacio concurrent
 protegida per lease i compare-and-swap. Els clients OAuth es configuren per instal·lacio segons
 `docs/runbooks/connect-mail.md`; la fitxa inicia el consentiment i mostra nomes metadades. El
-seguent increment de correu es M3, enviament amb accions confirmades; la safata de classificacio
+`M3` afegeix resposta sortint des del detall del ticket amb Gmail o Microsoft Graph, confirmacio
+explicita vinculada al contingut, MFA i `tickets:manage`, idempotencia persistent, transactional
+outbox, execucio al worker i estats `succeeded`, `failed` o `unknown`. Un timeout de transport no
+es reintenta cegament perquè el proveidor podria haver acceptat el correu. La migracio es
+`0054_connector_actions_mail.sql`, la flag es `connector_actions` i les integracions OAuth
+existents s'han de reautoritzar per obtenir `gmail.send` o `Mail.Send`. La safata de classificacio
 visual continua sent M4.
+
+La migracio `0055_connector_oauth_redirect_path_constraint.sql` corregeix la restriccio de
+`redirect_path` publicada a `0050`: PostgreSQL no admetia el quantificador `{1,500}` i impedia
+crear qualsevol intent OAuth. La longitud queda separada en `char_length` i la regex conserva
+l'allowlist de caracters.
+
+Els relays OAuth i d'accions utilitzen IDs BullMQ `oauth-<uuid>` i `action-<uuid>`. BullMQ refusa
+els dos punts als custom job IDs; el format anterior deixava l'intent en `received` amb l'outbox
+pendent encara que el consentiment del proveidor hagués acabat correctament.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

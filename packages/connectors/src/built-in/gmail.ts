@@ -32,6 +32,15 @@ type GmailPart = {
 };
 
 const maxMessages = 50;
+const sendMailSchema = z.strictObject({
+  to: z.email().max(320),
+  subject: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((value) => !/[\r\n]/.test(value)),
+  text: z.string().min(1).max(20_000)
+});
 
 export const gmail = defineConnector<GmailConfig>({
   type: "gmail",
@@ -46,13 +55,22 @@ export const gmail = defineConnector<GmailConfig>({
   capabilities: {
     egress: { schemes: ["https"], destination: "configured_base_url" },
     operations: { pull_messages: { shape: "event", everySeconds: 300 } },
+    actions: {
+      send_mail: {
+        permission: "tickets:manage",
+        confirmation: "explicit",
+        requiresMfa: true,
+        reversible: false,
+        retry: "before-delivery-only"
+      }
+    },
     ingress: false,
     oauth: {
       provider: "google",
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       revocationUrl: "https://oauth2.googleapis.com/revoke",
-      scopes: ["https://www.googleapis.com/auth/gmail.readonly"]
+      scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
     }
   },
   async health(context) {
@@ -80,6 +98,35 @@ export const gmail = defineConnector<GmailConfig>({
         cursor = requiredString(parseJson<{ historyId?: string }>(profile).historyId);
       }
       return { records, cursor };
+    }
+  },
+  actions: {
+    send_mail: {
+      schema: sendMailSchema,
+      async handle(context, input) {
+        const mail = sendMailSchema.parse(input);
+        const raw = [
+          `To: ${mail.to}`,
+          `Subject: ${mail.subject}`,
+          "MIME-Version: 1.0",
+          'Content-Type: text/plain; charset="UTF-8"',
+          "Content-Transfer-Encoding: 8bit",
+          "",
+          mail.text
+        ].join("\r\n");
+        const token = await context.secrets.open("oauth_access_token");
+        const response = await context.http.send({
+          method: "POST",
+          url: `${api}/gmail/v1/users/me/messages/send`,
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ raw: Buffer.from(raw, "utf8").toString("base64url") }),
+          timeoutMs: 15_000
+        });
+        if (response.status !== 200) throw new ConnectorError(`GMAIL_${failure(response.status).toUpperCase()}`);
+        const id = parseJson<{ id?: string }>(response).id;
+        if (!id) throw new ConnectorError("GMAIL_RESPONSE_INVALID");
+        return { externalId: id };
+      }
     }
   }
 });

@@ -13,6 +13,26 @@ const context = (send: HttpPort["send"]) => ({
 });
 
 describe("gmail", () => {
+  it("sends a base64url RFC 822 message through the guarded HTTP port", async () => {
+    const send = vi.fn<HttpPort["send"]>().mockResolvedValue({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ id: "sent-1" })
+    });
+    const result = await gmail.act("send_mail", context(send), {
+      to: "client@example.test",
+      subject: "Re: Help",
+      text: "Resolved"
+    });
+    expect(result).toEqual({ externalId: "sent-1" });
+    const request = send.mock.calls[0]?.[0];
+    expect(request?.method).toBe("POST");
+    expect(request?.url).toContain("/gmail/v1/users/me/messages/send");
+    const raw = JSON.parse(request?.body ?? "{}") as { raw: string };
+    expect(Buffer.from(raw.raw, "base64url").toString()).toContain("To: client@example.test\r\n");
+    expect(request?.headers).toEqual(expect.objectContaining({ authorization: `Bearer ${token}` }));
+  });
+
   it("performs an initial bounded read and returns the provider history cursor", async () => {
     const send = vi
       .fn<HttpPort["send"]>()

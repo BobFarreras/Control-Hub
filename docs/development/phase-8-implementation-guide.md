@@ -226,7 +226,9 @@ tokens manuals i inicia el consentiment des de la fitxa.
 
 ### M3 — Correu sortint
 
-No començar fins tenir accions de la 7B. El flux es:
+**Estat:** implementat el 25 d'agost de 2026 darrere `connector_actions`.
+
+El flux es:
 
 ```text
 usuari confirma -> API valida permis/MFA -> outbox -> cua -> connector -> resultat -> auditoria
@@ -234,6 +236,10 @@ usuari confirma -> API valida permis/MFA -> outbox -> cua -> connector -> result
 
 Una mateixa idempotency key produeix un sol enviament. Timeout despres d'enviar dona `unknown`, no
 `failed`, fins que el proveidor permeti reconciliar.
+
+Gmail i Microsoft Graph implementen `send_mail`; la UI genera una confirmacio d'un sol us lligada
+al tenant, membre, integracio, ticket i cos. La peticio persistent, el missatge visible al client,
+el registre de lliurament i l'outbox neixen en una transaccio. Els jobs nomes transporten IDs.
 
 ### M4 — Integracio amb suport
 

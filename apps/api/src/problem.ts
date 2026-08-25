@@ -1,5 +1,6 @@
 import {
   ConnectorCredentialError,
+  ConnectorActionError,
   ConnectorOAuthError,
   ConnectorServiceError,
   ConnectorStorageError,
@@ -78,6 +79,13 @@ const titles: Record<string, string> = {
   OAUTH_NOT_DECLARED: "This connector does not use OAuth",
   OAUTH_PROVIDER_NOT_CONFIGURED: "OAuth provider is not configured",
   OAUTH_STATE_INVALID: "OAuth state is invalid or expired",
+  ACTION_NOT_DECLARED: "This connector does not declare the action",
+  ACTION_CONFIRMATION_INVALID: "Action confirmation is invalid or expired",
+  ACTION_MFA_REQUIRED: "A recent second factor is required",
+  ACTION_NOT_FOUND: "No such connector action",
+  IDEMPOTENCY_KEY_INVALID: "Idempotency key is invalid",
+  IDEMPOTENCY_KEY_REUSED: "Idempotency key was reused with different content",
+  MAIL_RECIPIENT_MISSING: "The customer has no billing email",
   RULE_NOT_FOUND: "No such alert rule",
   ALERT_NOT_FOUND: "No such alert",
   DUPLICATE_RULE_NAME: "An alert rule already uses that name",
@@ -152,6 +160,8 @@ export function describeConnectorError(
 
   if (error instanceof ConnectorCredentialError) return { status: credentialStatus(error.code), code: error.code };
 
+  if (error instanceof ConnectorActionError) return { status: actionStatus(error.code), code: error.code };
+
   if (error instanceof ConnectorOAuthError) return { status: oauthStatus(error.code), code: error.code };
 
   if (error instanceof ConnectorStorageError) return { status: storageStatus(error.code), code: error.code };
@@ -188,6 +198,13 @@ function oauthStatus(code: string): number {
   if (code === "INSTANCE_NOT_FOUND") return 404;
   if (code === "OAUTH_PROVIDER_NOT_CONFIGURED") return 503;
   if (code === "OAUTH_STATE_INVALID") return 400;
+  return 422;
+}
+
+function actionStatus(code: string): number {
+  if (code === "FORBIDDEN" || code === "ACTION_MFA_REQUIRED") return 403;
+  if (code === "INSTANCE_NOT_FOUND" || code === "ACTION_NOT_FOUND" || code === "TICKET_NOT_FOUND") return 404;
+  if (code === "IDEMPOTENCY_KEY_REUSED") return 409;
   return 422;
 }
 

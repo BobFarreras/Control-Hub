@@ -60,6 +60,11 @@ export const featureFlags = {
     owner: "owner",
     retireOn: "2028-06-30"
   },
+  connector_actions: {
+    description: "Confirmed asynchronous connector actions and outbound mail (Phase 7B/M3).",
+    owner: "owner",
+    retireOn: "2028-06-30"
+  },
   /**
    * Off by default, and it gates a whole authorisation surface rather than a screen: with it
    * closed neither `/mcp` nor the OAuth routes are declared, no token is minted and no tool

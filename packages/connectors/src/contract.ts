@@ -1,4 +1,4 @@
-import type { ConnectorFailureKind } from "@control-hub/domain";
+import type { ConnectorFailureKind, Permission } from "@control-hub/domain";
 import type { ZodType } from "zod";
 
 /**
@@ -172,6 +172,14 @@ export type OAuthDeclaration = {
   scopes: readonly string[];
 };
 
+export type ActionDeclaration = {
+  permission: Permission;
+  confirmation: "explicit";
+  requiresMfa: boolean;
+  reversible: boolean;
+  retry: "before-delivery-only" | "idempotent-provider";
+};
+
 /**
  * The shape of what an operation returns, which is what decides how long it is kept.
  *
@@ -215,6 +223,7 @@ export type OperationDeclaration = {
 export type CapabilityManifest = {
   egress: EgressPolicy | null;
   operations: Readonly<Record<string, OperationDeclaration>>;
+  actions?: Readonly<Record<string, ActionDeclaration>>;
   ingress: boolean;
   /** Absence means this connector must never receive mailbox access. */
   mailbox?: MailboxPolicy;
@@ -255,6 +264,10 @@ export type OperationResult = {
   /** Opaque continuation token. The runtime stores it and hands it back unread. */
   cursor: string | null;
 };
+
+export type ActionInput = Readonly<Record<string, RecordValue>>;
+export type ActionResult = { externalId: string | null };
+export type ConnectorAction<Config> = (context: ConnectorContext<Config>, input: ActionInput) => Promise<ActionResult>;
 
 export type ConnectorOperation<Config> = (
   context: ConnectorContext<Config>,
@@ -346,6 +359,7 @@ export type ConnectorDefinition<Config> = {
   capabilities: CapabilityManifest;
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
   operations: Readonly<Record<string, ConnectorOperation<Config>>>;
+  actions?: Readonly<Record<string, { schema: ZodType<ActionInput>; handle: ConnectorAction<Config> }>>;
   ingress?: { signature: IngressSignature; handle: IngressHandler<Config> };
 };
 
@@ -370,6 +384,7 @@ export type RegisteredConnector = {
   parseConfig(value: unknown): ConfigResult;
   health(context: ConnectorContext<unknown>): Promise<HealthReport>;
   run(operation: string, context: ConnectorContext<unknown>, input: OperationInput): Promise<OperationResult>;
+  act(action: string, context: ConnectorContext<unknown>, input: unknown): Promise<ActionResult>;
   ingest(context: ConnectorContext<unknown>, request: IngressRequest): Promise<IngressResult>;
 };
 
@@ -461,6 +476,12 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   const implemented = new Set(Object.keys(definition.operations));
   for (const name of declared) if (!implemented.has(name)) throw new ConnectorError("OPERATION_NOT_IMPLEMENTED");
   for (const name of implemented) if (!declared.has(name)) throw new ConnectorError("OPERATION_NOT_DECLARED");
+  const declaredActions = new Set(Object.keys(definition.capabilities.actions ?? {}));
+  const implementedActions = new Set(Object.keys(definition.actions ?? {}));
+  for (const name of declaredActions)
+    if (!implementedActions.has(name)) throw new ConnectorError("ACTION_NOT_IMPLEMENTED");
+  for (const name of implementedActions)
+    if (!declaredActions.has(name)) throw new ConnectorError("ACTION_NOT_DECLARED");
   for (const declaration of Object.values(definition.capabilities.operations)) {
     const every = declaration.everySeconds;
     if (every === undefined) continue;
@@ -509,6 +530,13 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
       const handler = declared.has(operation) ? definition.operations[operation] : undefined;
       if (!handler) throw new ConnectorError("UNKNOWN_OPERATION");
       return await handler(typedContext(context), input);
+    },
+    act: async (action, context, input) => {
+      const implementation = declaredActions.has(action) ? definition.actions?.[action] : undefined;
+      if (!implementation) throw new ConnectorError("UNKNOWN_ACTION");
+      const parsed = implementation.schema.safeParse(input);
+      if (!parsed.success) throw new ConnectorError("INVALID_ACTION_INPUT");
+      return await implementation.handle(typedContext(context), parsed.data);
     },
     ingest: async (context, request) => {
       const ingress = definition.ingress;

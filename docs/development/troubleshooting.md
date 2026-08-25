@@ -676,3 +676,14 @@ docker exec control-hub-valkey-1 valkey-cli hget "bull:control-hub-connectors:<i
 **La regla.** Un limit de llargada sobre un valor que composa una llibreria de tercers es un limit
 sobre alguna altra cosa que ningu ha escrit. Si el capem, que sigui amb marge i amb el motiu al
 costat.
+# OAuth torna a Integracions pero continua desconnectat
+
+**Simptoma:** el proveidor torna amb `?oauth=connected`, l'intent queda `received`, no apareix cap
+grant i l'outbox conserva `published_at = null`. Els jobs `connector-oauth-outbox` fallen amb
+`Custom Id cannot contain :`.
+
+**Causa:** BullMQ reserva `:` dins dels identificadors. El relay construia `oauth:<uuid>`; el
+mateix defecte existia preventivament a `action:<uuid>`.
+
+**Solucio:** utilitzar `oauth-<uuid>` i `action-<uuid>`. No s'ha de marcar l'outbox com publicada
+abans que `Queue.add` acabi; així una passada posterior recupera automàticament els intents.

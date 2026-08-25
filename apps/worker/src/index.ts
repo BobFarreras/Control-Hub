@@ -11,6 +11,7 @@ import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import {
   CredentialVault,
+  PostgresConnectorActionRepository,
   PostgresConnectorRepository,
   PostgresConnectorOAuthRepository,
   PostgresInfrastructureRepository,
@@ -19,6 +20,7 @@ import {
 } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import { connectorActionJobName, runConnectorActionJob } from "./connectors/action-job.js";
 import { CircuitStore } from "./connectors/circuit-store.js";
 import { connectorIngressJobName, runConnectorIngressJob } from "./connectors/ingress-job.js";
 import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.js";
@@ -53,6 +55,7 @@ const RECORD_PURGE_JOB = "connector-record-purge";
 const SCHEDULE_RECONCILE_JOB = "connector-schedule-reconcile";
 const ALERT_SWEEP_JOB = "infrastructure-alert-sweep";
 const OAUTH_OUTBOX_JOB = "connector-oauth-outbox";
+const ACTION_OUTBOX_JOB = "connector-action-outbox";
 
 // Read once at boot, like every other flag decision in a composition root. Turning the phase
 // off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
@@ -60,6 +63,7 @@ const infrastructureEnabled = isFeatureEnabled(parseFeatureFlags(environment.CON
 const usageEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "usage_costs");
 const mailEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "mail");
 const oauthEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_oauth");
+const actionsEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_actions");
 const mailConnectorTypes = new Set(["imap", "gmail", "microsoft_graph_mail"]);
 
 /**
@@ -87,6 +91,7 @@ const mailIngestor = mailEnabled
   ? new SupportMailboxIngestor(new PostgresSupportMailboxRepository(database))
   : undefined;
 const oauthRepository = new PostgresConnectorOAuthRepository(database);
+const actionRepository = new PostgresConnectorActionRepository(database);
 const oauthVault = environment.connectorKeyRing ? new CredentialVault(environment.connectorKeyRing) : null;
 const oauthTokens =
   oauthEnabled && oauthVault
@@ -123,6 +128,7 @@ const worker = new Worker(
     }
     if (job.name === ALERT_SWEEP_JOB) return sweepAlerts();
     if (job.name === OAUTH_OUTBOX_JOB) return relayOAuthOutbox();
+    if (job.name === ACTION_OUTBOX_JOB) return relayActionOutbox();
     if (job.name === ESCALATION_JOB) {
       const sweep = await sweepSupportEscalations(database);
       for (const failure of sweep.failed) {
@@ -171,6 +177,10 @@ const connectorWorker = new Worker(
         attemptId: data.attemptId,
         connectorType: data.connectorType
       });
+    }
+    if (job.name === connectorActionJobName) {
+      if (!actionsEnabled || !connectorRuntime) return { status: "skipped", reason: "actions_unavailable" };
+      return runConnectorActionJob(actionRepository, connectorRuntime, job.data);
     }
     if (!connectorRuntime) {
       logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
@@ -227,9 +237,28 @@ async function relayOAuthOutbox() {
       await connectorQueue.add(
         connectorOAuthExchangeJobName,
         { tenantId: tenant.id, attemptId, connectorType: instance.connectorType },
-        { jobId: `oauth:${attemptId}`, attempts: 3, removeOnComplete: 100, removeOnFail: 100 }
+        { jobId: `oauth-${attemptId}`, attempts: 3, removeOnComplete: 100, removeOnFail: 100 }
       );
       await oauthRepository.markPublished(context, attemptId);
+      published += 1;
+    }
+  }
+  return { published };
+}
+
+async function relayActionOutbox() {
+  if (!actionsEnabled) return { published: 0 };
+  const tenants = await database<{ id: string }[]>`select id from tenants order by created_at asc`;
+  let published = 0;
+  for (const tenant of tenants) {
+    const context = jobContext(tenant.id);
+    for (const requestId of await actionRepository.pendingOutbox(context)) {
+      await connectorQueue.add(
+        connectorActionJobName,
+        { tenantId: tenant.id, requestId },
+        { jobId: `action-${requestId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 100 }
+      );
+      await actionRepository.markPublished(context, requestId);
       published += 1;
     }
   }
@@ -276,6 +305,11 @@ await queue.upsertJobScheduler(
   OAUTH_OUTBOX_JOB,
   { every: 60 * 1000 },
   { name: OAUTH_OUTBOX_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
+);
+await queue.upsertJobScheduler(
+  ACTION_OUTBOX_JOB,
+  { every: 30 * 1000 },
+  { name: ACTION_OUTBOX_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
 );
 
 /**
@@ -343,11 +377,13 @@ logger.info(
       RECORD_PURGE_JOB,
       SCHEDULE_RECONCILE_JOB,
       OAUTH_OUTBOX_JOB,
+      ACTION_OUTBOX_JOB,
       ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : [])
     ],
     infrastructure: infrastructureEnabled,
     mail: mailEnabled,
-    oauth: oauthEnabled
+    oauth: oauthEnabled,
+    actions: actionsEnabled
   },
   "worker ready"
 );

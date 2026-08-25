@@ -3672,6 +3672,28 @@ main {
   align-items: flex-end;
   justify-content: space-between;
 }
+.ticket-mail-confirmation {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: 0.55rem;
+  background: var(--surface);
+}
+.ticket-mail-confirmation > p {
+  margin: 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ticket-mail-confirmation > p:last-of-type {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  color: var(--text);
+}
 
 /* ── Mobile: single column ──────────────────────────────────────────── */
 @media (max-width: 760px) {

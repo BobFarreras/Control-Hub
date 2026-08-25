@@ -693,6 +693,30 @@ Un agent publicat pot executar un cas d'us acotat sense travessar tenants ni per
 call queda governada i auditada, i qualsevol efecte extern sensible requereix aprovacio vinculada
 al contingut.
 
+## Fase 12 - Gestio externa de secrets i credencials
+
+**Estat: proposta tecnica pendent d'aprovacio.**
+
+**Guia:** `docs/development/phase-12-secrets-management-guide.md`.
+
+**Objectiu:** separar passwords humans, secrets bootstrap de la instal·lacio i credencials
+tenant-scoped, amb fitxers `_FILE` com a contracte base i un gestor extern opcional com Bitwarden
+Secrets Manager.
+
+### Entregables
+
+- Inventari i classificacio de secrets sense valors.
+- Resolver segur de fitxers de secrets, compatible amb desenvolupament local.
+- Desplegament sense secrets a imatges, build args ni web.
+- Adaptador Bitwarden fora del core amb machine account de minim privilegi.
+- Runbooks de rotacio, backup, restauracio i break-glass.
+- UI limitada a metadata i salut, sense lectura ni copia de secrets.
+
+### Criteri de sortida
+
+Una instal·lacio es pot desplegar, rotar i restaurar sense secrets versionats ni exposats per API,
+UI, logs o jobs, i el vault intern continua contenint nomes credencials tenant-scoped.
+
 ## Plantilla de revisio de fase
 
 En acabar cada fase s'ha de presentar:

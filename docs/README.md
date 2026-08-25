@@ -67,6 +67,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   runs, tools, aprovacions, costos i auditoria sobre la Fase 10.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
+- `development/phase-12-secrets-management-guide.md`: frontera entre passwords, secrets de
+  desplegament i credencials tenant-scoped, amb `_FILE`, rotacio i Bitwarden opcional.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

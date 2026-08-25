@@ -12,6 +12,21 @@ const context = (send: HttpPort["send"]) => ({
 });
 
 describe("microsoft graph mail", () => {
+  it("sends mail without exposing the OAuth token in the payload", async () => {
+    const send = vi.fn<HttpPort["send"]>().mockResolvedValue({ status: 202, headers: {}, body: "" });
+    await expect(
+      microsoftGraphMail.act("send_mail", context(send), {
+        to: "client@example.test",
+        subject: "Re: Help",
+        text: "Resolved"
+      })
+    ).resolves.toEqual({ externalId: null });
+    const request = send.mock.calls[0]?.[0];
+    expect(request?.url).toBe("https://graph.microsoft.com/v1.0/me/sendMail");
+    expect(request?.body).toContain("client@example.test");
+    expect(request?.body).not.toContain("oauth-access-token-for-tests");
+  });
+
   it("keeps the opaque delta cursor and projects only safe mail fields", async () => {
     const cursor = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=opaque";
     const send = vi.fn<HttpPort["send"]>().mockResolvedValue({
