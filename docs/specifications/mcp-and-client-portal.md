@@ -110,8 +110,21 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   Els metodes que el token endpoint pot tocar ja no reben un `TenantContext` sino un
   `McpTenantScope`: alli no hi ha sessio, i inventar rols, permisos i un flag d'MFA que ningu ha
   concedit seria mentir-li al tipus.
-- La resta de la fase continua sense implementar: falten el refresh i la revocacio com a casos
-  d'us, les rutes HTTP, el transport `/mcp`, l'auditoria per crida i la interficie.
+- **10.1-F2 — refresh i revocacio.** Implementat: `refresh` i `revokeToken` a `McpOauthService`.
+  El refresh **no crea cap grant**: els scopes surten del consentiment que ja existeix, aixi que
+  refrescar no pot ampliar mai el que algu va aprovar, i un consentiment retirat atura la linia en
+  comptes de renovar-la en silenci. Un token presentat per un client que no es el seu es refusat
+  (RFC 6749 seccio 6), i si la rotacio perd la cursa el client rep un refus en comptes d'una segona
+  linia viva. La revocacio segueix la RFC 7009: un token desconegut es una revocacio correcta,
+  perque respondre altrament convertiria l'endpoint en un oracle de quins tokens existeixen. Les
+  dues classes no es tracten igual — un access token mor sol, un refresh token s'emporta la
+  familia — i nomes la segona comprova el client, perque alli el radi arriba a tokens que fan
+  servir altres.
+  La migracio `0051_mcp_refresh_lookup.sql` eixampla `lookup_mcp_refresh_token` amb el client i els
+  scopes del grant. Canvia la forma del resultat, aixi que la funcio es recrea; no toca cap taula,
+  cap columna ni cap fila.
+- La resta de la fase continua sense implementar: falten els service accounts com a cas d'us, les
+  rutes HTTP, el transport `/mcp`, l'auditoria per crida i la interficie.
 
 ## Fora d'abast de la 10.1
 

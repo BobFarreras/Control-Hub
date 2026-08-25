@@ -19,6 +19,7 @@ import {
   mcpLifetimes,
   mcpScopes,
   negotiateMcpScopes,
+  refreshTokenVerdict,
   type McpGrantStatus,
   type McpOauthDenialCode,
   type McpScope,
@@ -107,6 +108,10 @@ export type McpRefreshResolution = {
   readonly tokenId: string;
   readonly tenantId: string;
   readonly grantId: string;
+  /** The client the grant was issued to, so a token presented by another one is refused. */
+  readonly clientId: string;
+  /** The scopes of the grant, which is what the next access token is minted with. */
+  readonly scopes: readonly McpScope[];
   readonly familyId: string;
   readonly usedAt: Date | null;
   readonly expiresAt: Date;
@@ -247,6 +252,15 @@ export type McpOauthRepository = {
 
   /** Revokes an entire lineage, which is what reuse detection asks for. */
   revokeRefreshFamily(scope: McpTenantScope, familyId: string, at: Date): Promise<number>;
+
+  /**
+   * Retires one access token, for RFC 7009.
+   *
+   * Narrower than `revokeGrant` on purpose: a client asking to drop the token in its hand is not
+   * asking to withdraw the consent behind it, and treating the two the same would log somebody out
+   * of an agent they never told to stop.
+   */
+  revokeAccessToken(scope: McpTenantScope, tokenId: string, at: Date): Promise<boolean>;
 
   createServiceAccount(
     context: TenantContext,
@@ -475,6 +489,101 @@ export class McpOauthService {
         scopes: claim.scopes
       }
     );
+  }
+
+  /**
+   * Trades a refresh token for the next pair, under the consent that already exists.
+   *
+   * No grant is created here. The scopes come from the grant the token descends from, so a refresh
+   * can never widen what somebody approved, and a consent that has since been withdrawn stops the
+   * lineage rather than quietly renewing it.
+   */
+  async refresh(input: {
+    readonly clientId: string;
+    readonly clientSecret?: string;
+    readonly refreshToken: string;
+  }): Promise<McpTokenIssue> {
+    const client = await this.requireClient(input.clientId);
+    this.authenticateClient(client, input.clientSecret);
+
+    const record = await this.repository.resolveRefreshToken(this.crypto.sha256(input.refreshToken));
+    if (!record) throw new McpOauthError("MCP_REFRESH_INVALID");
+    // RFC 6749 section 6. Without this, any registered client could refresh any other client's
+    // token and the client recorded on the grant would mean nothing.
+    if (record.clientId !== client.id) throw new McpOauthError("MCP_REFRESH_INVALID");
+
+    const scope: McpTenantScope = { tenantId: record.tenantId };
+    const now = this.clock();
+    const verdict = refreshTokenVerdict(record, now);
+    if (verdict.action === "revoke_family") {
+      await this.repository.revokeRefreshFamily(scope, record.familyId, now);
+      throw new McpOauthError(verdict.code);
+    }
+    if (verdict.action === "deny") throw new McpOauthError(verdict.code);
+
+    const refreshToken = this.crypto.mintToken();
+    const rotated = await this.repository.rotateRefreshToken(scope, {
+      tokenId: record.tokenId,
+      grantId: record.grantId,
+      familyId: record.familyId,
+      tokenHash: this.crypto.sha256(refreshToken),
+      expiresAt: mcpExpiry("refreshToken", now),
+      at: now
+    });
+    // The store spends the old token conditionally, so a concurrent refresh that got there first
+    // leaves nothing to rotate. Minting a pair anyway would put two live lineages on one consent.
+    if (rotated === null) throw new McpOauthError("MCP_REFRESH_INVALID");
+
+    const accessToken = this.crypto.mintToken();
+    await this.repository.issueAccessToken(scope, {
+      grantId: record.grantId,
+      tokenHash: this.crypto.sha256(accessToken),
+      audience: this.audience,
+      scopes: record.scopes,
+      expiresAt: mcpExpiry("accessToken", now)
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: mcpLifetimes.accessToken,
+      scope: record.scopes.join(" ")
+    };
+  }
+
+  /**
+   * RFC 7009. Retires whatever the client handed over, and says nothing about what it was.
+   *
+   * An unknown token is a successful revocation, because answering otherwise would turn this
+   * endpoint into an oracle for which tokens exist. The two kinds are not treated alike: an access
+   * token dies alone, while a refresh token takes its family, since leaving the successors alive
+   * would revoke nothing in practice.
+   */
+  async revokeToken(input: {
+    readonly clientId: string;
+    readonly clientSecret?: string;
+    readonly token: string;
+  }): Promise<void> {
+    const client = await this.requireClient(input.clientId);
+    this.authenticateClient(client, input.clientSecret);
+    const hash = this.crypto.sha256(input.token);
+    const now = this.clock();
+
+    const access = await this.repository.resolveAccessToken(hash);
+    if (access) {
+      // No client check here, and deliberately so: the blast radius is the token presented, which
+      // the caller already holds. Refusing would protect nothing that possession does not already
+      // give away.
+      await this.repository.revokeAccessToken({ tenantId: access.tenantId }, access.tokenId, now);
+      return;
+    }
+
+    const refresh = await this.repository.resolveRefreshToken(hash);
+    if (!refresh) return;
+    // Here the check earns its place: revoking a family reaches tokens other holders are using.
+    if (refresh.clientId !== client.id) throw new McpOauthError("MCP_REFRESH_INVALID");
+    await this.repository.revokeRefreshFamily({ tenantId: refresh.tenantId }, refresh.familyId, now);
   }
 
   private async requireClient(clientId: string, tenantId?: string): Promise<McpClientResolution> {

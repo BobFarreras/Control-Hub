@@ -127,3 +127,21 @@ describe("what the migration does to what is already there", () => {
     }
   });
 });
+
+describe("the refresh lookup widened by 0051", () => {
+  const widened = readFileSync(new URL("../migrations/0051_mcp_refresh_lookup.sql", import.meta.url), "utf8");
+
+  it("keeps the pinned search path that makes a definer function safe to own", () => {
+    // A `security definer` function without a fixed `search_path` runs whatever the caller put in
+    // front of `public`. Recreating the function is exactly where that guard gets forgotten.
+    expect(widened).toContain("security definer set search_path = public, pg_temp");
+    expect(widened).toContain("grant execute on function lookup_mcp_refresh_token(text) to control_hub_app");
+  });
+
+  it("touches the function and nothing else", () => {
+    // The only `drop` allowed here is the function being replaced: its result shape changed, and
+    // `create or replace` cannot do that. A dropped table or column would be a different migration.
+    expect(widened).not.toMatch(/drop (table|column|constraint|index|policy)/i);
+    expect(widened).not.toMatch(/(alter table|create table|insert into|update|delete from)/i);
+  });
+});

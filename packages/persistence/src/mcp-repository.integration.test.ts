@@ -241,6 +241,43 @@ suite("PostgresMcpOauthRepository", () => {
     expect(await repository.consumeAuthorizationCode(hash(code), "http://127.0.0.1/cb")).toBeNull();
   });
 
+  it("resolves a refresh token together with the grant it descends from", async () => {
+    const token = `refresh-${randomUUID()}`;
+    await repository.issueRefreshToken(context(tenantA, membershipA), {
+      grantId: grantA,
+      familyId: randomUUID(),
+      tokenHash: hash(token),
+      expiresAt: new Date(Date.now() + 86_400_000)
+    });
+
+    const resolved = await repository.resolveRefreshToken(hash(token));
+    // The client and the scopes come back with the token because the next access token cannot be
+    // minted without them, and reading them separately would let a revocation land in between.
+    expect(resolved?.clientId).toBe(clientA);
+    expect(resolved?.scopes).toEqual(["mcp:tools.list", "crm.read"]);
+    expect(resolved?.grantStatus).toBe("active");
+  });
+
+  it("retires one access token and leaves the grant alone", async () => {
+    const token = `access-${randomUUID()}`;
+    const ctx = context(tenantA, membershipA);
+    const tokenId = await repository.issueAccessToken(ctx, {
+      grantId: grantA,
+      tokenHash: hash(token),
+      audience: "https://hub.test/mcp",
+      scopes: ["crm.read"],
+      expiresAt: new Date(Date.now() + 1_800_000)
+    });
+
+    expect(await repository.revokeAccessToken(ctx, tokenId, new Date())).toBe(true);
+    // Revoking again changes nothing, which is what makes the endpoint safe to retry.
+    expect(await repository.revokeAccessToken(ctx, tokenId, new Date())).toBe(false);
+    const resolved = await repository.resolveAccessToken(hash(token));
+    expect(resolved?.revokedAt).not.toBeNull();
+    // The consent behind it is untouched: dropping the token in your hand is not withdrawing it.
+    expect(resolved?.grantStatus).toBe("active");
+  });
+
   it("retires a refresh token and mints its successor in one step", async () => {
     const family = randomUUID();
     const first = `refresh-${randomUUID()}`;

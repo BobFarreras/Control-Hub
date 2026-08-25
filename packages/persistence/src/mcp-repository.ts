@@ -165,7 +165,9 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         tokenId: string;
         tenantId: string;
         grantId: string;
+        clientId: string;
         familyId: string;
+        scopes: string[];
         usedAt: Date | null;
         expiresAt: Date;
         revokedAt: Date | null;
@@ -173,11 +175,11 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       }>
     >`
       select token_id as "tokenId", tenant_id as "tenantId", grant_id as "grantId",
-             family_id as "familyId", used_at as "usedAt", expires_at as "expiresAt",
-             revoked_at as "revokedAt", grant_status as "grantStatus"
+             client_id as "clientId", family_id as "familyId", scopes, used_at as "usedAt",
+             expires_at as "expiresAt", revoked_at as "revokedAt", grant_status as "grantStatus"
       from lookup_mcp_refresh_token(${tokenHash})`;
     if (!row) return null;
-    return { ...row, grantStatus: row.grantStatus as McpGrantStatus };
+    return { ...row, scopes: row.scopes as McpScope[], grantStatus: row.grantStatus as McpGrantStatus };
   }
 
   async resolveServiceAccount(secretHash: string): Promise<McpServiceAccountResolution | null> {
@@ -405,6 +407,16 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         update mcp_refresh_tokens set replaced_by_id = ${id}
         where tenant_id = ${scope.tenantId} and id = ${input.tokenId}`;
       return id;
+    });
+  }
+
+  revokeAccessToken(scope: McpTenantScope, tokenId: string, at: Date): Promise<boolean> {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
+      const revoked = await tx<{ id: string }[]>`
+        update mcp_access_tokens set revoked_at = ${at}
+        where tenant_id = ${scope.tenantId} and id = ${tokenId} and revoked_at is null
+        returning id`;
+      return revoked.length > 0;
     });
   }
 

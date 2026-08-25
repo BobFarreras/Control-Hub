@@ -6,7 +6,8 @@ import {
   type McpAuthorizationCodeClaim,
   type McpClientResolution,
   type McpCrypto,
-  type McpOauthRepository
+  type McpOauthRepository,
+  type McpRefreshResolution
 } from "./mcp-oauth.js";
 
 const issuer = "https://hub.test";
@@ -46,6 +47,9 @@ type Recorded = {
   grants: Array<{ tenantId: string; clientId: string; scopes: readonly McpScope[] }>;
   accessTokens: Array<{ tenantId: string; grantId: string; tokenHash: string; audience: string }>;
   refreshTokens: Array<{ tenantId: string; grantId: string; tokenHash: string }>;
+  rotations: Array<{ tenantId: string; tokenId: string; familyId: string; tokenHash: string }>;
+  revokedFamilies: string[];
+  revokedAccessTokens: string[];
 };
 
 const client: McpClientResolution = {
@@ -68,8 +72,25 @@ const claim: McpAuthorizationCodeClaim = {
   audience: `${issuer}/mcp`
 };
 
-const build = (overrides: { client?: McpClientResolution | null; claim?: McpAuthorizationCodeClaim | null } = {}) => {
-  const recorded: Recorded = { requests: [], grants: [], accessTokens: [], refreshTokens: [] };
+type Overrides = {
+  client?: McpClientResolution | null;
+  claim?: McpAuthorizationCodeClaim | null;
+  refresh?: McpRefreshResolution | null;
+  access?: { tokenId: string; tenantId: string } | null;
+  /** Null stands for the rotation that lost the race: the store spent the token first. */
+  rotation?: string | null;
+};
+
+const build = (overrides: Overrides = {}) => {
+  const recorded: Recorded = {
+    requests: [],
+    grants: [],
+    accessTokens: [],
+    refreshTokens: [],
+    rotations: [],
+    revokedFamilies: [],
+    revokedAccessTokens: []
+  };
   const repository = {
     resolveClient: (clientId: string) =>
       Promise.resolve(overrides.client === undefined ? (clientId === "public-app" ? client : null) : overrides.client),
@@ -89,6 +110,20 @@ const build = (overrides: { client?: McpClientResolution | null; claim?: McpAuth
     issueRefreshToken: (ctx: { tenantId: string }, input: Recorded["refreshTokens"][number]) => {
       recorded.refreshTokens.push({ ...input, tenantId: ctx.tenantId });
       return Promise.resolve("refresh-1");
+    },
+    resolveRefreshToken: () => Promise.resolve(overrides.refresh ?? null),
+    resolveAccessToken: () => Promise.resolve(overrides.access ?? null),
+    rotateRefreshToken: (ctx: { tenantId: string }, input: Recorded["rotations"][number]) => {
+      recorded.rotations.push({ ...input, tenantId: ctx.tenantId });
+      return Promise.resolve(overrides.rotation === undefined ? "refresh-row-2" : overrides.rotation);
+    },
+    revokeRefreshFamily: (_ctx: { tenantId: string }, familyId: string) => {
+      recorded.revokedFamilies.push(familyId);
+      return Promise.resolve(1);
+    },
+    revokeAccessToken: (_ctx: { tenantId: string }, tokenId: string) => {
+      recorded.revokedAccessTokens.push(tokenId);
+      return Promise.resolve(true);
     }
   } as unknown as McpOauthRepository;
   const service = new McpOauthService({ repository, crypto: fakeCrypto(), issuer, clock: () => now });
@@ -309,5 +344,124 @@ describe("the tenant the token endpoint acts in", () => {
     expect(recorded.grants.every((row) => row.tenantId === tenantA)).toBe(true);
     expect(recorded.accessTokens.every((row) => row.tenantId === tenantA)).toBe(true);
     expect(recorded.refreshTokens.every((row) => row.tenantId === tenantA)).toBe(true);
+  });
+});
+
+describe("refreshing a token", () => {
+  const live = {
+    tokenId: "refresh-row-1",
+    tenantId: tenantA,
+    grantId: "grant-1",
+    clientId: "client-row-1",
+    scopes: ["mcp:tools.list", "crm.read"] as readonly McpScope[],
+    familyId: "grant-1",
+    usedAt: null,
+    expiresAt: new Date("2026-09-24T10:00:00.000Z"),
+    revokedAt: null,
+    grantStatus: "active" as const
+  };
+
+  const refresh = (service: McpOauthService, token = "refresh-1") =>
+    service.refresh({ clientId: "public-app", refreshToken: token });
+
+  it("mints a new pair and keeps the consent it descends from", async () => {
+    const { service, recorded } = build({ refresh: live });
+    const issued = await refresh(service);
+
+    expect(issued.tokenType).toBe("Bearer");
+    expect(issued.scope).toBe("mcp:tools.list crm.read");
+    // No new grant: refreshing is not consenting again. The scopes come from the grant that
+    // already exists, so a refresh can never widen what was approved.
+    expect(recorded.grants).toHaveLength(0);
+    expect(recorded.accessTokens[0]!.grantId).toBe("grant-1");
+    expect(recorded.rotations[0]).toMatchObject({ tokenId: "refresh-row-1", familyId: "grant-1" });
+  });
+
+  it("burns the whole family when a spent token comes back", async () => {
+    // Somebody holds a copy. Which of the two holders is the thief is not knowable, so the lineage
+    // goes -- including the token the honest client is using right now.
+    const { service, recorded } = build({ refresh: { ...live, usedAt: new Date("2026-08-25T09:00:00.000Z") } });
+    expect(await denialOf(() => refresh(service))).toBe("MCP_REFRESH_REUSED");
+    expect(recorded.revokedFamilies).toEqual(["grant-1"]);
+    expect(recorded.accessTokens).toHaveLength(0);
+  });
+
+  it("refuses a revoked token, an expired one and a dead grant without touching the family", async () => {
+    const cases = [
+      [{ revokedAt: now }, "MCP_REFRESH_INVALID"],
+      [{ expiresAt: now }, "MCP_REFRESH_INVALID"],
+      [{ grantStatus: "revoked" as const }, "MCP_GRANT_REVOKED"]
+    ] as const;
+    for (const [patch, code] of cases) {
+      const { service, recorded } = build({ refresh: { ...live, ...patch } });
+      expect(await denialOf(() => refresh(service)), code).toBe(code);
+      expect(recorded.revokedFamilies).toEqual([]);
+    }
+  });
+
+  it("refuses a token the store does not know", async () => {
+    const { service } = build({ refresh: null });
+    expect(await denialOf(() => refresh(service))).toBe("MCP_REFRESH_INVALID");
+  });
+
+  it("refuses a token issued to a different client", async () => {
+    // RFC 6749 section 6. Without this check any registered client could refresh any other
+    // client's token, and the client identity on the grant would mean nothing.
+    const { service } = build({ refresh: { ...live, clientId: "another-client-row" } });
+    expect(await denialOf(() => refresh(service))).toBe("MCP_REFRESH_INVALID");
+  });
+
+  it("loses the race rather than rotating twice", async () => {
+    // The store spends the old token conditionally, so a second concurrent refresh gets nothing
+    // back. Answering it with a fresh pair would leave two live lineages for one consent.
+    const { service } = build({ refresh: live, rotation: null });
+    expect(await denialOf(() => refresh(service))).toBe("MCP_REFRESH_INVALID");
+  });
+});
+
+describe("revoking a token", () => {
+  const live = {
+    tokenId: "refresh-row-1",
+    tenantId: tenantA,
+    grantId: "grant-1",
+    clientId: "client-row-1",
+    scopes: ["mcp:tools.list"] as readonly McpScope[],
+    familyId: "grant-1",
+    usedAt: null,
+    expiresAt: new Date("2026-09-24T10:00:00.000Z"),
+    revokedAt: null,
+    grantStatus: "active" as const
+  };
+
+  it("retires the access token it was handed", async () => {
+    const { service, recorded } = build({ access: { tokenId: "access-row-1", tenantId: tenantA } });
+    await service.revokeToken({ clientId: "public-app", token: "access-1" });
+    expect(recorded.revokedAccessTokens).toEqual(["access-row-1"]);
+    expect(recorded.revokedFamilies).toEqual([]);
+  });
+
+  it("retires the whole lineage when handed a refresh token", async () => {
+    // RFC 7009 asks the server to revoke what the token descends from where it can. For a refresh
+    // token that is the family: leaving its successors alive would revoke nothing in practice.
+    const { service, recorded } = build({ refresh: live });
+    await service.revokeToken({ clientId: "public-app", token: "refresh-1" });
+    expect(recorded.revokedFamilies).toEqual(["grant-1"]);
+  });
+
+  it("says nothing about a token it does not recognise", async () => {
+    // RFC 7009 section 2.2: an unknown token is a successful revocation. Answering otherwise turns
+    // the endpoint into an oracle for which tokens exist.
+    const { service, recorded } = build({ access: null, refresh: null });
+    await expect(service.revokeToken({ clientId: "public-app", token: "nothing" })).resolves.toBeUndefined();
+    expect(recorded.revokedAccessTokens).toEqual([]);
+    expect(recorded.revokedFamilies).toEqual([]);
+  });
+
+  it("refuses to revoke a token belonging to another client", async () => {
+    const { service, recorded } = build({ refresh: { ...live, clientId: "another-client-row" } });
+    expect(await denialOf(() => service.revokeToken({ clientId: "public-app", token: "refresh-1" }))).toBe(
+      "MCP_REFRESH_INVALID"
+    );
+    expect(recorded.revokedFamilies).toEqual([]);
   });
 });
