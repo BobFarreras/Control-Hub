@@ -20,10 +20,11 @@ function fixture() {
   let claimed = false;
   const received: CredentialEnvelope[] = [];
   const repository: ConnectorOAuthRepository = {
-    async createAttempt(_context, input) {
+    createAttempt(_context, input) {
       attempt = input;
+      return Promise.resolve();
     },
-    async claimState(hash, provider, now) {
+    claimState(hash, provider, now) {
       if (
         !attempt ||
         claimed ||
@@ -31,23 +32,31 @@ function fixture() {
         attempt.provider !== provider ||
         attempt.expiresAt <= now
       ) {
-        return null;
+        return Promise.resolve(null);
       }
       claimed = true;
-      return { id: attempt.id, tenantId: context.tenantId, instanceId, redirectPath: attempt.redirectPath };
+      return Promise.resolve({
+        id: attempt.id,
+        tenantId: context.tenantId,
+        instanceId,
+        redirectPath: attempt.redirectPath
+      });
     },
-    async receiveCode(input) {
+    receiveCode(input) {
       received.push(input.code);
+      return Promise.resolve();
     },
-    async cancel() {},
-    async grant() {
-      return null;
+    cancel() {
+      return Promise.resolve();
+    },
+    grant() {
+      return Promise.resolve(null);
     }
   };
   const sealed: { plaintext: string; aad: CredentialAad }[] = [];
   const service = new ConnectorOAuthService(
     {
-      getInstance: async () => ({ connectorType: "gmail" })
+      getInstance: () => Promise.resolve({ connectorType: "gmail" })
     } as unknown as ConnectorRepository,
     repository,
     connectorRegistry,
@@ -95,7 +104,7 @@ describe("ConnectorOAuthService", () => {
       service.begin({ ...context, mfaEnabled: false }, instanceId, "https://hub.example", "en")
     ).rejects.toBeInstanceOf(ConnectorOAuthError);
     const missingClient = new ConnectorOAuthService(
-      { getInstance: async () => ({ connectorType: "gmail" }) } as unknown as ConnectorRepository,
+      { getInstance: () => Promise.resolve({ connectorType: "gmail" }) } as unknown as ConnectorRepository,
       {} as ConnectorOAuthRepository,
       connectorRegistry,
       {} as never,
