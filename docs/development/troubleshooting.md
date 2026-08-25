@@ -50,6 +50,17 @@ discrepen sobre un fitxer identic pels finals de linia.
 (`packages/database/src/migration-fingerprint.ts`). Si torna a apareixer, mira si algu ha
 afegit un calcul de hash nou que no hi passi.
 
+### `pnpm lint` analitza centenars de fitxers de `.next-agent`
+
+**Simptoma.** El lint d'un workspace falla amb errors de project service sobre chunks, manifests
+i tipus dins `apps/web/.next-agent`, especialment mentre `pnpm dev` continua actiu.
+
+**Causa.** La Fase X va afegir `.next-agent` al `.gitignore`, pero no a la llista d'ignores de
+flat ESLint. Ignorar un artefacte a Git no impedeix que `eslint .` el recorri.
+
+**Solucio.** `eslint.config.mjs` ignora `**/.next-agent/**`, igual que `.next` i `.next-verify`.
+No s'ha d'aturar la preview ni esborrar-ne la cache per validar codi font.
+
 ## Proves end-to-end
 
 El procediment complet es a `DEVELOPMENT.md`, seccio "Proves end-to-end autenticades".

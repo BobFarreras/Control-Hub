@@ -95,11 +95,13 @@ eliminacio de contenidors, xarxes, volums, dependències i worktree. La primera 
 i deixar documentats dos casos que les unitàries no veien --allowlist de variables de Turbo i
 paths llargs de pnpm a Windows-- abans de repetir el lifecycle en verd.
 
-**La Fase 12 te guia tecnica proposada** a `docs/development/phase-12-secrets-management-guide.md`.
-No converteix Control Hub en un password manager: passwords humans van al gestor corporatiu,
-secrets bootstrap queden fora del producte i el vault intern conserva nomes credencials
-tenant-scoped. El contracte recomanat es `_FILE`, amb Bitwarden Secrets Manager com a adaptador
-opcional del desplegament. Les cinc decisions de la guia s'han d'aprovar abans d'implementar-la.
+**La Fase 12 esta aprovada i S1 implementat** a la branca
+`agent/codex/ch-012-phase-12-secrets`. L'ADR 0010 fixa el model hibrid: Control Hub governa
+metadata, permisos i auditoria; Bitwarden Password Manager custodia credencials humanes;
+Secrets Manager es un adaptador opcional; el vault intern continua amb credencials tenant-scoped.
+`docs/security/secrets-inventory.json` classifica les variables sensibles amb consumidor, owner,
+entorn i rotacio, i `scripts/secrets-inventory.test.mjs` impedeix afegir-ne una de nova sense
+inventariar-la. El seguent increment es S2, el resolver generic `_FILE` de `packages/config`.
 
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E

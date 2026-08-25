@@ -1,6 +1,6 @@
 # Guia d'implementacio de la Fase 12: secrets i credencials
 
-**Estat:** proposta tecnica preparada per a aprovacio del propietari.
+**Estat:** aprovada pel propietari el 25 d'agost de 2026. L'ADR 0010 fixa la custodia hibrida.
 
 ## Objectiu
 
@@ -42,7 +42,7 @@ o Bitwarden comparteixen contracte.
 
 ## Decisions proposades
 
-1. **Recomanada:** suport generic `*_FILE` com a contracte base i adaptador Bitwarden al pipeline,
+1. **Aprovada:** suport generic `*_FILE` com a contracte base i adaptador Bitwarden al pipeline,
    no dins del proces web.
 2. Bitwarden Password Manager per credencials humanes; Bitwarden Secrets Manager per maquina.
 3. Cap pantalla que permeti llegir, copiar o exportar secrets bootstrap.
@@ -50,8 +50,10 @@ o Bitwarden comparteixen contracte.
    nomes lectura, expiracio operativa i rotacio documentada.
 5. Una instal·lacio sense Bitwarden continua suportada amb fitxers root-owned muntats read-only.
 
-Abans d'implementar cal aprovar aquestes cinc decisions i confirmar llicencia, retencio de logs i
-model de disponibilitat del gestor escollit.
+Les cinc decisions estan aprovades. Bitwarden es opcional, la retencio inicial dels logs
+d'auditoria es de 90 dies i un deploy nou falla tancat si el gestor no respon mentre la release
+viva conserva els seus mounts. La llicencia concreta es valida abans de contractar o desplegar
+l'adaptador, sense alterar el contracte `_FILE`.
 
 ## S1 — Inventari i classificacio
 
