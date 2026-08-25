@@ -4,11 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
 import { TicketDetail } from "@/components/ticket-detail";
 import { apiFetch, loadFailure, readJson } from "@/lib/api";
-import type {
-  ConnectorCatalogueResponse,
-  IntegrationsResponse,
-  TicketDetail as TicketDetailData
-} from "@/lib/api-types";
+import type { TicketDetail as TicketDetailData } from "@/lib/api-types";
 import { requireSession } from "@/lib/require-session";
 
 async function loadTicket(ticketId: string): Promise<TicketDetailData> {
@@ -19,21 +15,9 @@ async function loadTicket(ticketId: string): Promise<TicketDetailData> {
 }
 
 async function loadOutboundMail() {
-  const [instancesResponse, catalogueResponse] = await Promise.all([
-    apiFetch("/api/v1/integrations"),
-    apiFetch("/api/v1/integrations/catalogue")
-  ]);
-  if (!instancesResponse.ok || !catalogueResponse.ok) return [];
-  const [{ integrations }, catalogue] = await Promise.all([
-    readJson<IntegrationsResponse>(instancesResponse),
-    readJson<ConnectorCatalogueResponse>(catalogueResponse)
-  ]);
-  const outboundTypes = new Set(
-    catalogue.connectors.filter((entry) => entry.capabilities.actions?.includes("send_mail")).map((entry) => entry.type)
-  );
-  return integrations
-    .filter((instance) => instance.status === "enabled" && outboundTypes.has(instance.connectorType))
-    .map((instance) => ({ id: instance.id, name: instance.name }));
+  const response = await apiFetch("/api/v1/support/mail-senders");
+  if (!response.ok) return [];
+  return (await readJson<{ integrations: { id: string; name: string }[] }>(response)).integrations;
 }
 
 export default async function TicketPage({ params }: { params: Promise<{ locale: string; ticketId: string }> }) {

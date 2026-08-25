@@ -763,7 +763,7 @@ loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-ope
 Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
-**M1, M2 i M3 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
+**M1, M2, M3 i M4 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
 correu entrant incremental a `support_inbound_messages`, de forma idempotent i amb remitents
 desconeguts en estat `pending`. Gmail i Graph usen OAuth delegat de nomes lectura: `state` d'un sol
 us, PKCE S256, tokens xifrats amb context de proposit, jobs sense secrets i renovacio concurrent
@@ -774,8 +774,29 @@ explicita vinculada al contingut, MFA i `tickets:manage`, idempotencia persisten
 outbox, execucio al worker i estats `succeeded`, `failed` o `unknown`. Un timeout de transport no
 es reintenta cegament perquè el proveidor podria haver acceptat el correu. La migracio es
 `0054_connector_actions_mail.sql`, la flag es `connector_actions` i les integracions OAuth
-existents s'han de reautoritzar per obtenir `gmail.send` o `Mail.Send`. La safata de classificacio
-visual continua sent M4.
+existents s'han de reautoritzar per obtenir `gmail.send` o `Mail.Send`. `M4` afegeix la safata
+`/support/mail`: suggereix client per adreca sense classificar automaticament, permet crear un
+ticket amb l'SLA vigent, vincular el correu a un ticket obert del mateix client o descartar-lo.
+La classificacio bloqueja la fila i importa o crea el ticket dins una sola transaccio; l'auditoria
+no copia cos, assumpte ni remitent. El detall del ticket mostra tambe l'estat persistent de
+lliurament de cada resposta. El contracte es `docs/specifications/support-mailbox.md` i la UI/API
+nomes existeixen amb la flag `mail`.
+
+La UI d'M4 es una safata de dues columnes: resum de remitents i assumptes a l'esquerra i lector
+amb classificacio a la dreta. Els pendents tenen seleccio multiple i descart massiu de fins a
+100 files, atomic i auditat. El selector de correu sortint ja no depen del cataleg general
+d'Integracions: `/api/v1/support/mail-senders` retorna nomes Gmail/Graph habilitats amb grant OAuth
+actiu, sota `tickets:read`, sense exposar configuracio ni credencials.
+El lector i la llista tenen alcada lligada al viewport i scroll independent; suggeriment, client,
+desti, prioritat o ticket, classificacio i descart comparteixen una sola linia a la barra superior
+de la safata. La resposta externa conserva la confirmacio obligatoria d'M3, pero ara
+la presenta en un dialeg modal: "Revisar" nomes prepara i "Confirmar i enviar" crea la peticio
+persistent. Un intent de revisio no es mostra com un enviament.
+
+Validacio M4 observada: typecheck d'application, persistence, API, i18n i web; 7/7 proves unitaries
+de la bustia i proves d'integracio PostgreSQL de deduplicacio, tenancy, classificacio atomica i
+descart massiu. L'E2E autenticat no ha arribat a M4 perquè el setup local no ha mostrat el repte
+TOTP; continua sent porta de CI abans de considerar l'increment publicable.
 
 La migracio `0055_connector_oauth_redirect_path_constraint.sql` corregeix la restriccio de
 `redirect_path` publicada a `0050`: PostgreSQL no admetia el quantificador `{1,500}` i impedia

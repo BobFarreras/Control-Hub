@@ -8,6 +8,8 @@ import {
   type AssignableMember,
   type EscalationCandidate,
   type HolidayRecord,
+  type MailDeliveryRecord,
+  type OutboundMailInstance,
   type PublishSlaTargetInput,
   type SlaTargetKind,
   type SlaTargetRecord,
@@ -114,6 +116,34 @@ export class PostgresSupportRepository implements SupportRepository {
             or ticket_number::text = ${search})`;
       return { items, total: Number(count!.total), page: query.page, pageSize: query.pageSize };
     });
+  }
+
+  async listMailDeliveries(context: TenantContext, ticketId: string): Promise<MailDeliveryRecord[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<MailDeliveryRecord[]>`
+      select d.ticket_message_id as "ticketMessageId", r.status, r.error_code as "errorCode",
+        r.external_id as "externalId", d.created_at as "createdAt", r.finished_at as "finishedAt"
+      from mail_deliveries d join connector_action_requests r
+        on r.tenant_id = d.tenant_id and r.id = d.action_request_id
+      where d.tenant_id = ${context.tenantId} and d.ticket_id = ${ticketId}
+      order by d.created_at, d.id`
+    );
+  }
+
+  async listOutboundMailInstances(context: TenantContext): Promise<OutboundMailInstance[]> {
+    return withTenant(
+      this.database,
+      context.tenantId,
+      (tx) => tx<OutboundMailInstance[]>`
+      select ci.id, ci.name from connector_instances ci
+      join connector_oauth_grants grant_record
+        on grant_record.tenant_id = ci.tenant_id and grant_record.instance_id = ci.id
+      where ci.tenant_id = ${context.tenantId} and ci.status = 'enabled'
+        and ci.connector_type in ('gmail', 'microsoft_graph_mail') and grant_record.status = 'active'
+      order by ci.name, ci.id`
+    );
   }
 
   async getTicket(context: TenantContext, ticketId: string) {

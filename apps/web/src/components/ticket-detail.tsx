@@ -47,7 +47,8 @@ export function TicketDetail({
   const [confirmation, setConfirmation] = useState("");
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
 
-  const { ticket, messages, sla, assignableMembers } = detail;
+  const { ticket, messages, sla, assignableMembers, deliveries } = detail;
+  const deliveryByMessage = new Map(deliveries.map((delivery) => [delivery.ticketMessageId, delivery]));
   const fr = sla.firstResponse;
   const rs = sla.resolution;
 
@@ -311,6 +312,12 @@ export function TicketDetail({
                   <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString(locale)}</time>
                 </header>
                 <p>{message.body}</p>
+                {deliveryByMessage.get(message.id) && (
+                  <small className={`mail-delivery mail-delivery-${deliveryByMessage.get(message.id)!.status}`}>
+                    {t[`delivery_${deliveryByMessage.get(message.id)!.status}`] ??
+                      deliveryByMessage.get(message.id)!.status}
+                  </small>
+                )}
               </article>
             ))}
           </section>
@@ -366,27 +373,38 @@ export function TicketDetail({
               <p className="field-hint">{t.noMailIntegration}</p>
             )}
             {confirmation && (
-              <div className="ticket-mail-confirmation" role="group" aria-label={t.confirmMailTitle}>
-                <strong>{t.confirmMailTitle}</strong>
-                <p>{t.confirmMailDescription}</p>
-                <p>{replyBody}</p>
-                <div className="ticket-reply-actions">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={busy}
-                    onClick={() => setConfirmation("")}
-                  >
-                    {t.cancel}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    disabled={busy}
-                    onClick={actionHandler(confirmMail, fail)}
-                  >
-                    <Send size={16} /> {t.confirmAndSend}
-                  </button>
+              <div className="dialog-backdrop">
+                <div
+                  className="crm-dialog ticket-mail-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="mail-confirm-title"
+                >
+                  <header>
+                    <h2 id="mail-confirm-title">{t.confirmMailTitle}</h2>
+                  </header>
+                  <div className="ticket-mail-dialog-body">
+                    <p>{t.confirmMailDescription}</p>
+                    <div className="ticket-mail-preview">{replyBody}</div>
+                  </div>
+                  <div className="ticket-mail-dialog-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => setConfirmation("")}
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={busy}
+                      onClick={actionHandler(confirmMail, fail)}
+                    >
+                      <Send size={16} /> {t.confirmAndSend}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

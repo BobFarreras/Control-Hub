@@ -174,9 +174,36 @@ export type TicketDetail = {
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
   inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
   assignableMembers: AssignableMember[];
+  deliveries: {
+    ticketMessageId: string;
+    status: "queued" | "running" | "succeeded" | "failed" | "unknown" | "canceled";
+    errorCode: string | null;
+    externalId: string | null;
+    createdAt: string;
+    finishedAt: string | null;
+  }[];
 };
 
 export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
+
+export type InboundMessage = {
+  id: string;
+  instanceName: string;
+  senderAddress: string;
+  senderName: string | null;
+  subject: string | null;
+  preview: string | null;
+  receivedAt: string;
+  status: "pending" | "classified" | "discarded";
+  customerId: string | null;
+  customerName: string | null;
+  ticketId: string | null;
+  ticketNumber: number | null;
+  suggestedCustomerId: string | null;
+  suggestedCustomerName: string | null;
+};
+export type InboundMessagePage = { items: InboundMessage[]; total: number; page: number; pageSize: number };
+export type MailboxTicketOption = { id: string; ticketNumber: number; subject: string; customerId: string };
 
 export type ProjectRow = {
   id: string;

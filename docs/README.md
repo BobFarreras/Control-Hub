@@ -34,6 +34,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/commerce.md`: productes, plans, preus, subscripcions i metriques.
 - `specifications/support.md`: tickets, SLA amb horari laboral i incidencies. Aprovada,
   correspon a la Fase 5.
+- `specifications/support-mailbox.md`: classificacio manual del correu entrant, import atomic a
+  tickets i estat persistent dels enviaments. Aprovada, M4 de la Fase 8.
 - `specifications/attendance.md`: registre de jornada, correccions i conciliacio contra hores
   imputades. Aprovada, Fase 5C. Requereix confirmacio de la gestoria.
 - `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i

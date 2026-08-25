@@ -243,6 +243,8 @@ el registre de lliurament i l'outbox neixen en una transaccio. Els jobs nomes tr
 
 ### M4 — Integracio amb suport
 
+**Estat:** implementada el 25 d'agost de 2026; contracte a `docs/specifications/support-mailbox.md`.
+
 Afegir import, resposta, estat de lliurament i E2E autenticats. El ticket continua sent el domini
 propietari del missatge; correu es un adaptador, no un segon sistema de tickets.
 

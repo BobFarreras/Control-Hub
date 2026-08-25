@@ -19,6 +19,7 @@ import {
   ProjectsError,
   ProjectsService,
   SupportError,
+  SupportMailboxService,
   SupportService,
   UsageService,
   UsageServiceError
@@ -53,6 +54,7 @@ import {
   PostgresInfrastructureRepository,
   PostgresProjectsRepository,
   PostgresSupportRepository,
+  PostgresSupportMailboxRepository,
   PostgresUsageRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
@@ -159,6 +161,9 @@ export function buildApp(options: BuildAppOptions) {
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
   const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
+  const mailbox = isFeatureEnabled(featureFlags, "mail")
+    ? new SupportMailboxService(new PostgresSupportMailboxRepository(database))
+    : null;
   const egressAllowlist =
     options.connectorEgressAllowlist ?? parseEgressAllowlist(process.env.CONNECTOR_INTERNAL_ALLOWLIST);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
@@ -398,7 +403,7 @@ export function buildApp(options: BuildAppOptions) {
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });
-      registerSupportRoutes({ ...context, support });
+      registerSupportRoutes({ ...context, support, mailbox });
       // Behind a flag so the schema can be deployed before the module is opened. Off, the
       // routes are never declared and the API answers 404, which is the truth: there is
       // nothing there. A flag decides what is deployed, never who may use it.

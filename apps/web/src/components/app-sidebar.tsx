@@ -31,6 +31,8 @@ type Labels = {
   companySubscriptions: string;
   projects: string;
   support: string;
+  supportTickets: string;
+  supportMail: string;
   attendance: string;
   attendanceOverview: string;
   attendanceCalendar: string;
@@ -55,6 +57,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const connectorsEnabled = useFeature("connectors");
   const infrastructureEnabled = useFeature("infrastructure");
   const usageEnabled = useFeature("usage_costs");
+  const mailEnabled = useFeature("mail");
   const attendanceStatus = useAttendanceStatus();
   const attendanceMonth = searchParams.get("month");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
@@ -104,7 +107,17 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           <div>{item(`/${locale}/expenses/subscriptions`, labels.companySubscriptions)}</div>
         </details>
         {projectsEnabled && item(`/${locale}/projects`, labels.projects, FolderKanban)}
-        {item(`/${locale}/support`, labels.support, Headphones)}
+        <details className="nav-group" open={pathname.startsWith(`/${locale}/support`)}>
+          <summary>
+            <Headphones size={19} />
+            <span>{labels.support}</span>
+            <ChevronDown size={15} />
+          </summary>
+          <div>
+            {item(`/${locale}/support`, labels.supportTickets, undefined, true, pathname === `/${locale}/support`)}
+            {mailEnabled && item(`/${locale}/support/mail`, labels.supportMail)}
+          </div>
+        </details>
         {attendanceEnabled && (
           <details className="nav-group" open={pathname.startsWith(`/${locale}/attendance`)}>
             <summary>

@@ -1,10 +1,33 @@
-import type { TenantContext } from "@control-hub/domain";
+import { ticketPriorities, type TenantContext, type TicketPriority } from "@control-hub/domain";
+import { SupportError, type SlaTargets } from "./support.js";
 
-export class SupportMailboxError extends Error {
-  constructor(public readonly code: "INVALID_MAILBOX_RECORD") {
+export class SupportMailboxError extends SupportError {
+  constructor(public override readonly code: string) {
     super(code);
   }
 }
+
+export type InboundMessageStatus = "pending" | "classified" | "discarded";
+export type InboundMessageRow = {
+  id: string;
+  instanceName: string;
+  senderAddress: string;
+  senderName: string | null;
+  subject: string | null;
+  preview: string | null;
+  receivedAt: Date;
+  status: InboundMessageStatus;
+  customerId: string | null;
+  customerName: string | null;
+  ticketId: string | null;
+  ticketNumber: number | null;
+  suggestedCustomerId: string | null;
+  suggestedCustomerName: string | null;
+};
+export type InboundMessagePage = { items: InboundMessageRow[]; total: number; page: number; pageSize: number };
+export type MailboxTicketOption = { id: string; ticketNumber: number; subject: string; customerId: string };
+export type MailboxListQuery = { status: InboundMessageStatus; search?: string; page: number; pageSize: number };
+export type ClassifiedInboundMessage = { messageId: string; ticketId: string; ticketNumber: number };
 
 export type MailboxConnectorRecord = {
   externalId: string;
@@ -26,6 +49,68 @@ export interface SupportMailboxRepository {
     context: TenantContext,
     input: { instanceId: string; messages: readonly PendingInboundMessage[] }
   ): Promise<{ inserted: number }>;
+}
+
+export interface SupportMailboxInboxRepository extends SupportMailboxRepository {
+  list(context: TenantContext, query: MailboxListQuery): Promise<InboundMessagePage>;
+  listTicketOptions(context: TenantContext, customerId?: string): Promise<MailboxTicketOption[]>;
+  currentTargets(context: TenantContext, priority: TicketPriority, at: Date): Promise<SlaTargets | null>;
+  classifyExisting(
+    context: TenantContext,
+    input: { messageId: string; customerId: string; ticketId: string; at: Date }
+  ): Promise<ClassifiedInboundMessage>;
+  classifyNew(
+    context: TenantContext,
+    input: { messageId: string; customerId: string; priority: TicketPriority; targets: SlaTargets; at: Date }
+  ): Promise<ClassifiedInboundMessage>;
+  discard(context: TenantContext, input: { messageId: string; at: Date }): Promise<void>;
+  discardMany(context: TenantContext, input: { messageIds: readonly string[]; at: Date }): Promise<number>;
+}
+
+export class SupportMailboxService {
+  constructor(private readonly repository: SupportMailboxInboxRepository) {}
+
+  list(context: TenantContext, query: MailboxListQuery) {
+    return this.repository.list(context, query);
+  }
+
+  listTicketOptions(context: TenantContext, customerId?: string) {
+    return this.repository.listTicketOptions(context, customerId);
+  }
+
+  async classify(
+    context: TenantContext,
+    input: { messageId: string; customerId: string; ticketId?: string; priority?: TicketPriority },
+    now = new Date()
+  ) {
+    if (input.ticketId)
+      return this.repository.classifyExisting(context, {
+        messageId: input.messageId,
+        customerId: input.customerId,
+        ticketId: input.ticketId,
+        at: now
+      });
+    if (!input.priority || !ticketPriorities.includes(input.priority)) throw new SupportMailboxError("INVALID_INPUT");
+    const targets = await this.repository.currentTargets(context, input.priority, now);
+    if (!targets) throw new SupportMailboxError("SLA_TARGETS_NOT_CONFIGURED");
+    return this.repository.classifyNew(context, {
+      messageId: input.messageId,
+      customerId: input.customerId,
+      priority: input.priority,
+      targets,
+      at: now
+    });
+  }
+
+  discard(context: TenantContext, messageId: string, now = new Date()) {
+    return this.repository.discard(context, { messageId, at: now });
+  }
+
+  discardMany(context: TenantContext, messageIds: readonly string[], now = new Date()) {
+    const unique = [...new Set(messageIds)];
+    if (unique.length === 0 || unique.length > 100) throw new SupportMailboxError("INVALID_INPUT");
+    return this.repository.discardMany(context, { messageIds: unique, at: now });
+  }
 }
 
 /**

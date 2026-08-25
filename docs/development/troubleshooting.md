@@ -687,3 +687,29 @@ mateix defecte existia preventivament a `action:<uuid>`.
 
 **Solucio:** utilitzar `oauth-<uuid>` i `action-<uuid>`. No s'ha de marcar l'outbox com publicada
 abans que `Queue.add` acabi; així una passada posterior recupera automàticament els intents.
+
+### La UI nova continua executant una consulta o un cataleg antics
+
+**Simptoma.** La safata de correu falla amb una relacio que ja s'ha corregit al codi, o el detall
+del ticket diu que no hi ha Gmail tot i que la instancia i el grant OAuth son actius.
+
+**Causa.** API i web estaven aixecats abans d'integrar M3/M4. La base conserva l'error real
+(`customer_contacts` en comptes de `contacts`) i el Server Component conserva el contracte antic
+del cataleg fins que els processos de desenvolupament recompilen.
+
+**Solucio.** Comprovar el proces viu, no nomes el fitxer: les rutes M4 han de respondre 401 sense
+sessio —404 significa que el servidor encara no les te— i la consulta tenant-scoped de remitents
+ha de trobar el Gmail habilitat amb grant actiu. Reiniciar API/web/worker si el watcher no ho ha
+fet. El detall del ticket usa `/api/v1/support/mail-senders`, no el cataleg general d'Integracions.
+
+### Una resposta externa desapareix en recarregar el ticket
+
+**Simptoma.** Despres de premer `Revisar enviament` sembla que la resposta s'ha enviat, pero en
+recarregar no hi ha missatge ni estat de lliurament.
+
+**Causa.** La primera accio nomes encunya la confirmacio d'un sol us; no crea ni request, ni
+delivery, ni outbox. Si `connector_action_confirmations.consumed_at` es nul i no existeix cap fila
+a `connector_action_requests`, no hi ha hagut cap intent d'enviament.
+
+**Solucio.** La UI mostra la segona decisio en un dialeg modal inequívoc. Nomes `Confirmar i
+enviar` consumeix la confirmacio i crea request, missatge, delivery i outbox en una transaccio.

@@ -1,6 +1,11 @@
 import type { TenantContext } from "@control-hub/domain";
 import { describe, expect, it, vi } from "vitest";
-import { SupportMailboxIngestor, type SupportMailboxRepository } from "./support-mailbox.js";
+import {
+  SupportMailboxIngestor,
+  SupportMailboxService,
+  type SupportMailboxInboxRepository,
+  type SupportMailboxRepository
+} from "./support-mailbox.js";
 
 const context: TenantContext = {
   tenantId: "00000000-0000-4000-8000-000000000001",
@@ -80,5 +85,56 @@ describe("SupportMailboxIngestor", () => {
       })
     ).resolves.toEqual({ inserted: 0 });
     expect(repo.storePending).not.toHaveBeenCalled();
+  });
+});
+
+describe("SupportMailboxService", () => {
+  function inboxRepository(): SupportMailboxInboxRepository {
+    return {
+      storePending: vi.fn(),
+      list: vi.fn(),
+      listTicketOptions: vi.fn(),
+      currentTargets: vi.fn().mockResolvedValue({ firstResponseMinutes: 60, resolutionMinutes: 480 }),
+      classifyExisting: vi.fn().mockResolvedValue({ messageId: "message", ticketId: "ticket", ticketNumber: 7 }),
+      classifyNew: vi.fn().mockResolvedValue({ messageId: "message", ticketId: "ticket", ticketNumber: 8 }),
+      discard: vi.fn(),
+      discardMany: vi.fn().mockResolvedValue(2)
+    };
+  }
+
+  it("uses the existing-ticket transaction when a ticket is selected", async () => {
+    const repo = inboxRepository();
+    await new SupportMailboxService(repo).classify(context, {
+      messageId: "message",
+      customerId: "customer",
+      ticketId: "ticket"
+    });
+    expect(repo.classifyExisting).toHaveBeenCalledOnce();
+    expect(repo.classifyNew).not.toHaveBeenCalled();
+  });
+
+  it("copies the current SLA targets when it creates a ticket", async () => {
+    const repo = inboxRepository();
+    await new SupportMailboxService(repo).classify(
+      context,
+      { messageId: "message", customerId: "customer", priority: "high" },
+      new Date("2026-08-25T10:00:00Z")
+    );
+    expect(repo.classifyNew).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ priority: "high", targets: { firstResponseMinutes: 60, resolutionMinutes: 480 } })
+    );
+  });
+
+  it("refuses a new ticket without a valid priority", async () => {
+    await expect(
+      new SupportMailboxService(inboxRepository()).classify(context, { messageId: "message", customerId: "customer" })
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("deduplicates identifiers before a bulk discard", async () => {
+    const repo = inboxRepository();
+    await new SupportMailboxService(repo).discardMany(context, ["one", "one", "two"]);
+    expect(repo.discardMany).toHaveBeenCalledWith(context, expect.objectContaining({ messageIds: ["one", "two"] }));
   });
 });
