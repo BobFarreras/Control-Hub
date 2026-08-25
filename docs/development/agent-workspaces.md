@@ -83,7 +83,33 @@ Una coincidencia exacta amb un workspace actiu retorna `SCOPE_COLLISION`. Aixo o
 el contracte o serialitzar el fitxer compartit. No es un lock distribuït ni prediu qualsevol
 conflicte semantic.
 
-## 4. Entregar
+## 4. Provar el que nomes es veu amb un navegador
+
+La suite autenticada de Playwright no corre dins un workspace acabat de crear, i el motiu no es
+obvi: `agent:provision` prepara la base de desenvolupament, pero `seed-e2e` es nega a escriure a
+cap base el nom de la qual no acabi en `_e2e`. Es una guarda deliberada -- el script reescriu el
+compte que troba -- i vol dir que cada workspace necessita una segona base i un segon entorn.
+
+Un cop per workspace: crear `control_hub_e2e` al PostgreSQL d'aquell workspace, escriure un
+`.env.verify` que sigui una copia del `.env` amb ports propis, aquella base i secrets nous,
+aplicar-hi les migracions i sembrar-hi la llavor. Despres ja s'hi pot llancar la suite.
+
+Detalls que costen una tarda si no es diuen:
+
+- **Els ports del stack de verificacio no els reparteix ningu.** El bloc que genera `create`
+  cobreix el stack de `dev` -- web, API, PostgreSQL, Valkey, Mailpit -- i no el de verificacio.
+  Tria una parella que no faci servir cap altre workspace i deixa-la escrita al `.env.verify`. Si
+  dos workspaces trien la mateixa, la segona suite falla dient nomes que el servidor no arrenca.
+- **`APP_ORIGIN` i `PLAYWRIGHT_BASE_URL` han de ser la mateixa cadena** -- `check:e2e` s'hi nega
+  altrament -- i `NEXT_DIST_DIR` ha de ser diferent del que fa servir `pnpm dev`, o els dos
+  servidors es trepitgen el build.
+- **`scripts/run-local-command.mjs` necessita `npm_execpath`**, o sigui que s'ha d'executar des de
+  pnpm. Per passar-li un `--env-file` que no sigui `.env`, crida el binari de pnpm des de node:
+  `node --env-file=.env.verify <ruta>/pnpm.cjs --filter @control-hub/database migrate`.
+- **Els flags importen.** Una pantalla darrere un flag que el `.env.verify` no encen no existeix
+  per a la suite, i la prova falla parlant d'un selector que no apareix enlloc.
+
+## 5. Entregar
 
 L'agent executa les comprovacions exigides per `AGENTS.md`, revisa el diff, crea commits atomics,
 fa push de la seva branca i obre una PR contra `develop`. Cap agent fusiona o publica si el
@@ -95,7 +121,7 @@ Un handoff ha d'indicar:
 task, branch, commit/PR, validations, changed files, migrations, residual risks
 ```
 
-## 5. Veure els workspaces actius
+## 6. Veure els workspaces actius
 
 Des de qualsevol checkout del repositori:
 
@@ -104,7 +130,7 @@ pnpm agent:workspace list
 git worktree list
 ```
 
-## 6. Destruir després del merge
+## 7. Destruir després del merge
 
 Executa-ho des d'un altre checkout, mai des del workspace que retires:
 
@@ -134,3 +160,52 @@ migracions; el context automatic no substitueix aquesta coordinacio.
 La preview es local. Una PR continua utilitzant CI com a entorn reproduible, pero encara no crea
 una URL Vercel ni una branca Supabase. Aquests seran adaptadors posteriors si el volum de treball
 els justifica.
+
+## Limits coneguts de l'aillament
+
+Aixo no son objeccions teoriques: es el que aquest repositori fa avui, comprovat el 25 d'agost de
+2026 mentre es tancava CH-010. Cap d'aquests punts no te encara una solucio implementada, i
+escriure'ls val mes que arreglar-ne un a mitges dins d'una branca que no els toca.
+
+1. **Un worktree sense `.agent/workspace.json` es invisible.** `activeWorkspaceMetadata` salta
+   qualsevol worktree que no en tingui, de manera que no compta per a `SCOPE_COLLISION`, ni per a
+   `PORT_COLLISION`, ni surt a `pnpm agent:workspace list`. Avui n'hi ha dos en aquesta situacio
+   -- `Control-Hub-phase-x` i `Control-Hub-phase8-docs` --, creats abans que existis aquest flux.
+   La deteccio de col·lisions, per tant, nomes veu els workspaces que ja segueixen el flux.
+   *Remei:* que `validate` avisi dels worktrees registrats sense manifest en comptes d'ignorar-los
+   en silenci.
+
+2. **`protectedResources` es declaratiu i prou.** El camp existeix a cada `task.json` i
+   `validateTaskManifest` comprova que sigui una llista de textos, pero cap ordre no el consulta
+   mai despres. Res no impedeix que un agent editi `packages/database/migrations/**` o
+   `.github/workflows/**`: l'unic que ho evita es que l'agent s'ho llegeixi i en faci cas.
+   *Remei:* que `validate` compari els fitxers modificats amb els patrons i falli.
+
+3. **`SCOPE_COLLISION` compara cadenes exactes.** `apps/web/src/app/[locale]/mcp/**` i
+   `apps/web/src/app/[locale]/mcp/consent/page.tsx` son el mateix fitxer i no col·lideixen, perque
+   no son la mateixa cadena. Dos agents poden reclamar el mateix fitxer amb dues escriptures
+   diferents i tots dos passar la validacio.
+   *Remei:* expandir els patrons a fitxers reals abans de comparar-los.
+
+4. **Ningu no comprova que el que has tocat sigui teu.** El `scope` es una declaracio
+   d'intencions: cap pas compara els fitxers modificats amb el que s'ha declarat, i la deriva no
+   la detecta res. El mateix recorregut que arreglaria el punt 2 arreglaria aquest.
+
+5. **No hi ha manera de dir "aquest fitxer el compartim".** `docs/development/current-state.md` el
+   toca practicament cada tasca, i avui el te CH-012 dins del seu scope. L'unica sortida es
+   excloure'l del scope propi i coordinar-ho per fora, que es exactament el que s'ha fet a CH-010:
+   la fase 10 hi consta perque el commit va entrar abans que el workspace existis, no perque hi
+   hagi cap mecanisme que ho resolgui.
+
+6. **Els flags de CI no segueixen els del workspace.** `agent:provision` genera un `.env` amb tots
+   els flags encesos; el job autenticat de CI n'encen cinc. Una pantalla darrere un flag nou es
+   verifica localment i no la verifica ningu al pipeline: la prova de consentiment MCP d'aquesta
+   fase se salta a CI per aquest motiu, i deixar-ho escrit es tot el que pot fer una branca que no
+   toca `.github/workflows/**`.
+   *Remei:* afegir `mcp` a `CONTROL_HUB_FLAGS` i `MCP_ISSUER: http://127.0.0.1:4000` al job
+   `authenticated-end-to-end`.
+
+7. **`git worktree list` acumula entrades `prunable`.** N'hi ha una avui, d'un directori que ja no
+   existeix, i `destroy` no s'hi pot fer servir perque exigeix un worktree present. Un
+   `git worktree prune` de tant en tant.
+
