@@ -11,7 +11,6 @@ import { PageTopbar } from "@/components/page-topbar";
 import { authClient } from "@/lib/auth-client";
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
-import { McpAgents } from "./mcp-agents";
 
 type Session = { id: string; token: string; userAgent?: string | null; ipAddress?: string | null; expiresAt: Date };
 type Invitation = { id: string; email: string; role: "administrator" | "technical"; expiresAt: string };
@@ -262,9 +261,6 @@ export default function SecurityPage() {
                 </div>
               </article>
             )}
-            {/* Draws nothing unless the API says this reader may administer the agents, which is
-                also how the section disappears when the surface is not mounted at all. */}
-            <McpAgents locale={locale} />
           </section>
         </main>
       </div>

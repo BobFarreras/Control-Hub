@@ -1099,8 +1099,11 @@ export type McpClientRow = {
   createdAt: string;
 };
 
-/** The clients, plus the vocabulary a ceiling may be drawn from. The panel keeps no copy of it. */
-export type McpClientsResponse = { clients: McpClientRow[]; scopes: string[] };
+/**
+ * The clients, plus the two facts the panel must not work out for itself: the vocabulary a
+ * ceiling may be drawn from, and the address an agent is pointed at.
+ */
+export type McpClientsResponse = { clients: McpClientRow[]; scopes: string[]; resource: string };
 
 export type McpGrantRow = {
   id: string;

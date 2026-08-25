@@ -379,6 +379,20 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   mig omplir es llegeix com si fos d'aquell formulari, i un secret sota el titol equivocat es un
   secret que algu desa malament. El secret d'una rotacio es mostra un sol cop i la fila passa a dir
   quan s'ha rotat, no que l'anterior ja sigui mort: continua servint fins que s'anulla expressament.
+- **10.1-H5 — la pantalla propia i com s'hi connecta un assistent.** Els agents surten de la
+  pantalla de seguretat i passen a `/{locale}/mcp`; «Configuracio» es un grup del menu amb
+  Seguretat i Agents MCP. A sobre hi ha el panell de connexio: l'adreca del servidor, que ve del
+  `resource` de l'API --composar-la a la pantalla permetria que no coincidis amb l'audience contra
+  la qual es valida el token, i el desajust apareix molt despres i dins del client d'algu altre--,
+  i la configuracio per a Claude Code, Claude d'escriptori, OpenAI i OpenCode. Cap fragment porta
+  identificador de client: aquests assistents se'l treuen registrant-se sols per DCR, que la D3
+  deixa fora d'aquest increment, i un camp inventat perque la pantalla tingues alguna cosa a
+  ensenyar s'enganxaria, s'ignoraria i despres es culparia a l'adreca. El panell ho diu, i mostra
+  l'identificador de l'agent triat per als clients que si que el demanen.
+  **Aixo es el que avui impedeix connectar-hi un assistent sense passos manuals**, i per tant la
+  primera pregunta de la 10.2: si s'implementa DCR --additiu i acotat-- o si es documenta el
+  registre manual com la manera d'entrar-hi. Claude d'escriptori i claude.ai hi posen una segona
+  condicio que no depen de nosaltres: exigeixen https public i rebutgen localhost.
 
 ## Fora d'abast de la 10.1
 

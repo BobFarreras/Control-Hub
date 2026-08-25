@@ -173,7 +173,14 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
         targetType: "mcp_client",
         outcome: "success"
       });
-      return { clients: (await mcp.listClients(context)).map(mcpClientResponse), scopes: registrableScopes };
+      return {
+        clients: (await mcp.listClients(context)).map(mcpClientResponse),
+        scopes: registrableScopes,
+        // The address an agent is pointed at, taken from the same service that mints the tokens
+        // rather than composed on a screen. A panel that guessed it would hand somebody an address
+        // whose audience check fails, and the failure would arrive much later and read as a bug.
+        resource: mcp.audience
+      };
     }
   );
 

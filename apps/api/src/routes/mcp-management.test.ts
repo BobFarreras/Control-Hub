@@ -109,6 +109,7 @@ const serviceStub = (overrides: ServiceOverrides, calls: Array<{ method: string;
       return Promise.resolve(answer);
     };
   return {
+    audience: "http://127.0.0.1:4000/mcp",
     listClients: record("listClients", overrides.listClients ?? [client]),
     registerClient: record("registerClient", overrides.registerClient ?? { client, secret: "chm_cs_new" }),
     deleteClient: record("deleteClient", overrides.deleteClient ?? true),
@@ -193,6 +194,14 @@ describe("the vocabularies the screen is told rather than told to know", () => {
     expect(body.scopes).toContain("crm.read");
     // A ceiling records what may be withheld. Listing what you may call is not one of those.
     expect(body.scopes).not.toContain("mcp:tools.list");
+  });
+
+  it("sends the address an agent is pointed at, from the service that mints the tokens", async () => {
+    // Composed on the screen instead, it would be an address whose audience check fails -- and the
+    // failure arrives much later, in somebody else's client, reading like a bug in the server.
+    const { app } = await boot();
+    const body = (await app.inject({ method: "GET", url: "/api/v1/mcp/clients" })).json<{ resource: string }>();
+    expect(body.resource).toBe("http://127.0.0.1:4000/mcp");
   });
 
   it("sends only the scopes this reader could actually back", async () => {

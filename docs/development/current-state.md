@@ -268,6 +268,24 @@ Un secret es mostra al panell que l'ha encunyat i un refus al panell que l'ha pr
 lloc compartit: una resposta a "retira aquest consentiment" sota un formulari a mig omplir es llegeix
 com si fos d'aquell formulari, i un secret sota el titol equivocat es un secret que algu desa malament.
 
+L'**increment H5** treu els agents de la pantalla de seguretat i els posa a `/{locale}/mcp`, amb
+«Configuracio» convertida en grup del menu --Seguretat i Agents MCP-- perque connectar un assistent
+i donar-se d'alta un segon factor son feines diferents del mateix dia diferent. A sobre hi ha el
+panell **Connectar un assistent**: l'adreca del servidor, que ve del `resource` de l'API i no es
+compon a la pantalla --una adreca muntada aqui pot no coincidir amb l'audience contra la qual es
+valida el token, i el desajust apareix molt despres i dins del client d'algu altre--, i la
+configuracio per a Claude Code, Claude d'escriptori, OpenAI i OpenCode, cadascuna amb la linia que
+diu on va. Els fragments son dades a `apps/web/src/lib/mcp-connection.ts` i es proven: son cadenes
+que algu enganxara a un fitxer de configuracio, i una que sigui subtilment falsa costa una tarda.
+
+Cap fragment porta identificador de client, perque cap d'aquests assistents n'accepta un d'escrit a
+ma: se'l treuen registrant-se sols, per DCR, que la decisio **D3** deixa fora de la 10.1. El panell
+ho diu tal com es en comptes d'ensenyar nomes el cami felic, i mostra l'identificador de l'agent
+triat al costat, per als clients que si que el demanen. **Aixo es, ara mateix, el que impedeix
+connectar-hi un assistent d'una tacada, i la primera cosa a decidir de la 10.2.** El Claude
+d'escriptori i claude.ai hi afegeixen una segona condicio, que no es nostra: exigeixen una adreca
+https publica i rebutgen localhost. Claude Code accepta http a localhost i es la via per provar-ho.
+
 Amb aixo la **10.1 queda tancada de punta a punta**: autoritat, transport, consentiment i gestio.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:

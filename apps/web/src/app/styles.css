@@ -7174,3 +7174,88 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+/* Connecting an assistant is copy-and-paste work, so every string somebody needs sits in its own
+   row with the button that copies it, rather than inside a paragraph they have to select by hand. */
+.connect-address {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.connect-address span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.connect-address code {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.connect-pick {
+  display: grid;
+  gap: 8px;
+  max-width: 340px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.connect-warning {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  background: var(--warning-subtle);
+  color: var(--text);
+  font-size: 13px;
+}
+.connect-warning svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.connect-recipes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.connect-recipes h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.connect-recipes p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.connect-snippet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.connect-snippet pre {
+  margin: 0;
+  overflow-x: auto;
+}
+.connect-snippet code {
+  font-family: "JetBrains Mono";
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
+}

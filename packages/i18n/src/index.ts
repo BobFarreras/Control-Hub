@@ -29,7 +29,9 @@ const dictionaries = {
       usageOverview: "Resum",
       usageCosts: "Costos",
       usageBudgets: "Pressupostos",
-      settings: "Configuracio"
+      settings: "Configuracio",
+      settingsSecurity: "Seguretat",
+      settingsMcp: "Agents MCP"
     },
     header: {
       back: "Tornar enrere",
@@ -186,7 +188,9 @@ const dictionaries = {
       usageOverview: "Resumen",
       usageCosts: "Costes",
       usageBudgets: "Presupuestos",
-      settings: "Configuracion"
+      settings: "Configuracion",
+      settingsSecurity: "Seguridad",
+      settingsMcp: "Agentes MCP"
     },
     header: {
       back: "Volver atras",
@@ -343,7 +347,9 @@ const dictionaries = {
       usageOverview: "Overview",
       usageCosts: "Costs",
       usageBudgets: "Budgets",
-      settings: "Settings"
+      settings: "Settings",
+      settingsSecurity: "Security",
+      settingsMcp: "MCP agents"
     },
     header: {
       back: "Go back",
@@ -5386,6 +5392,27 @@ const mcpDictionaries = {
     errorSessionNotFresh: "Per seguretat, torna a iniciar la sessió abans d'autoritzar.",
     errorUnknown: "No s'ha pogut completar l'operació.",
     signInAgain: "Torna a iniciar la sessió",
+    pageTitle: "Agents MCP",
+    pageDescription: "Quins assistents poden llegir aquestes dades, i amb quin abast",
+    connectTitle: "Connectar un assistent",
+    connectDescription:
+      "Aquesta es l'adreca del servidor MCP. Apunta-hi l'assistent i ell demanara autoritzacio pel seu compte; tu la donaras a la pantalla de consentiment amb la teva sessio.",
+    connectUrl: "Adreca del servidor",
+    connectPickAgent: "Agent registrat",
+    connectPickHint: "Tria'n un per veure'n l'identificador",
+    connectManualNotice:
+      "El registre aqui es manual: aquest servidor encara no fa Dynamic Client Registration (RFC 7591). Els assistents que s'inscriuen sols no es podran connectar fins que s'implementi; els que et deixen enganxar un identificador, fes-hi servir el de l'agent registrat aqui sota.",
+    connectClaudeCode: "Claude Code",
+    connectClaudeCodeHint:
+      "Al terminal, dins del projecte. Accepta http a localhost, o sigui que serveix per provar-ho ara mateix.",
+    connectClaudeApp: "Claude d'escriptori i claude.ai",
+    connectClaudeAppHint:
+      "Configuracio, Connectors, connector personalitzat. Exigeix una adreca https publica: un servidor a localhost el rebutja.",
+    connectOpenai: "OpenAI (Responses API)",
+    connectOpenaiHint: "Una eina mes de la crida. El token surt del circuit d'autoritzacio, no d'aqui.",
+    connectOpencode: "OpenCode",
+    connectOpencodeHint: "Al fitxer opencode.json, global o del projecte.",
+    copy: "Copia",
     agentsTitle: "Agents registrats",
     agentsDescription:
       "Les aplicacions que poden demanar accés. Res es registra sol: aquesta llista és exactament el que algú hi ha posat.",
@@ -5474,6 +5501,27 @@ const mcpDictionaries = {
     errorSessionNotFresh: "Por seguridad, vuelve a iniciar sesión antes de autorizar.",
     errorUnknown: "No se ha podido completar la operación.",
     signInAgain: "Vuelve a iniciar sesión",
+    pageTitle: "Agentes MCP",
+    pageDescription: "Que asistentes pueden leer estos datos, y con que alcance",
+    connectTitle: "Conectar un asistente",
+    connectDescription:
+      "Esta es la direccion del servidor MCP. Apunta ahi el asistente y el pedira autorizacion por su cuenta; tu se la daras en la pantalla de consentimiento con tu sesion.",
+    connectUrl: "Direccion del servidor",
+    connectPickAgent: "Agente registrado",
+    connectPickHint: "Elige uno para ver su identificador",
+    connectManualNotice:
+      "El registro aqui es manual: este servidor todavia no hace Dynamic Client Registration (RFC 7591). Los asistentes que se inscriben solos no podran conectarse hasta que se implemente; en los que te dejan pegar un identificador, usa el del agente registrado aqui debajo.",
+    connectClaudeCode: "Claude Code",
+    connectClaudeCodeHint:
+      "En el terminal, dentro del proyecto. Acepta http en localhost, asi que sirve para probarlo ahora mismo.",
+    connectClaudeApp: "Claude de escritorio y claude.ai",
+    connectClaudeAppHint:
+      "Configuracion, Conectores, conector personalizado. Exige una direccion https publica: un servidor en localhost lo rechaza.",
+    connectOpenai: "OpenAI (Responses API)",
+    connectOpenaiHint: "Una herramienta mas de la llamada. El token sale del circuito de autorizacion, no de aqui.",
+    connectOpencode: "OpenCode",
+    connectOpencodeHint: "En el fichero opencode.json, global o del proyecto.",
+    copy: "Copiar",
     agentsTitle: "Agentes registrados",
     agentsDescription:
       "Las aplicaciones que pueden pedir acceso. Nada se registra solo: esta lista es exactamente lo que alguien ha puesto.",
@@ -5562,6 +5610,27 @@ const mcpDictionaries = {
     errorSessionNotFresh: "For safety, sign in again before allowing this.",
     errorUnknown: "The operation could not be completed.",
     signInAgain: "Sign in again",
+    pageTitle: "MCP agents",
+    pageDescription: "Which assistants may read this data, and how far",
+    connectTitle: "Connect an assistant",
+    connectDescription:
+      "This is the MCP server's address. Point an assistant at it and it will ask for authorization itself; you grant it on the consent screen, with your own session.",
+    connectUrl: "Server address",
+    connectPickAgent: "Registered agent",
+    connectPickHint: "Pick one to see its identifier",
+    connectManualNotice:
+      "Registration here is manual: this server does not do Dynamic Client Registration (RFC 7591) yet. Assistants that enrol themselves cannot connect until it does; where a client lets you paste an identifier, use the one from an agent registered below.",
+    connectClaudeCode: "Claude Code",
+    connectClaudeCodeHint:
+      "In the terminal, inside the project. It accepts http on localhost, so it works for trying this out now.",
+    connectClaudeApp: "Claude desktop and claude.ai",
+    connectClaudeAppHint:
+      "Settings, Connectors, custom connector. It requires a public https address: a server on localhost is refused.",
+    connectOpenai: "OpenAI (Responses API)",
+    connectOpenaiHint: "One more tool on the call. The token comes from the authorization flow, not from here.",
+    connectOpencode: "OpenCode",
+    connectOpencodeHint: "In opencode.json, global or per project.",
+    copy: "Copy",
     agentsTitle: "Registered agents",
     agentsDescription:
       "The applications that may ask for access. Nothing registers itself: this list is exactly what somebody put here.",

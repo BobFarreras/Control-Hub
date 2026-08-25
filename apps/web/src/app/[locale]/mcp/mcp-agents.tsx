@@ -15,6 +15,7 @@ import type {
 import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
 import { agentsSection, redirectUriLines } from "@/lib/mcp-agents";
+import { McpConnection } from "./mcp-connection";
 
 /** Which of the three panels an answer belongs to, so a refusal is read where it was caused. */
 type Panel = "clients" | "grants" | "accounts";
@@ -40,6 +41,8 @@ export function McpAgents({ locale }: { locale: Locale }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [clients, setClients] = useState<McpClientRow[]>([]);
   const [registrableScopes, setRegistrableScopes] = useState<string[]>([]);
+  // The address an agent is pointed at, as the API reports it. Never composed here.
+  const [resource, setResource] = useState("");
   const [grants, setGrants] = useState<McpGrantRow[]>([]);
   const [accounts, setAccounts] = useState<McpServiceAccountRow[]>([]);
   const [grantableScopes, setGrantableScopes] = useState<string[]>([]);
@@ -59,6 +62,7 @@ export function McpAgents({ locale }: { locale: Locale }) {
       const payload = (await response.json()) as McpClientsResponse;
       setClients(payload.clients);
       setRegistrableScopes(payload.scopes);
+      setResource(payload.resource);
 
       const [grantsResponse, accountsResponse] = await Promise.all([
         fetch("/api/v1/mcp/grants"),
@@ -221,6 +225,7 @@ export function McpAgents({ locale }: { locale: Locale }) {
 
   return (
     <>
+      {resource !== "" && <McpConnection locale={locale} resource={resource} clients={clients} />}
       <article className="security-panel agents-panel">
         <Bot size={24} />
         <h2>{t.agentsTitle}</h2>
