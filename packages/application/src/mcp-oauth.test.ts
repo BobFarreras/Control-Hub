@@ -53,7 +53,13 @@ type Recorded = {
   revokedFamilies: string[];
   revokedAccessTokens: string[];
   createdClients: Array<{ name: string; kind: string; secretHash: string | null; maxScopes: readonly McpScope[] }>;
-  createdAccounts: Array<{ name: string; ownerMembershipId: string; scopes: readonly McpScope[]; secretHash: string }>;
+  createdAccounts: Array<{
+    name: string;
+    ownerMembershipId: string;
+    scopes: readonly McpScope[];
+    permissions: readonly string[];
+    secretHash: string;
+  }>;
   rotatedSecrets: Array<{ id: string; secretHash: string; previousExpiresAt: Date }>;
   listedGrantsFor: string[];
   revokedGrants: Array<{ tenantId: string; grantId: string; at: Date; byMembershipId: string | null }>;
@@ -684,6 +690,40 @@ describe("creating a service account", () => {
       })
     );
     expect(denial).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  /**
+   * A screen that draws this form should not have to carry a copy of which permission each scope
+   * is worth. The mapping lives in the domain; leaving `permissions` empty asks for it.
+   */
+  it("works out the permissions from the scopes when none are named", async () => {
+    const { service, recorded } = build();
+    await create(service, ["security:manage", "customers:read", "tickets:read"], {
+      permissions: [],
+      scopes: ["crm.read", "support.read"]
+    });
+    expect(recorded.createdAccounts[0]!.permissions).toEqual(["customers:read", "tickets:read"]);
+    expect(recorded.createdAccounts[0]!.scopes).toEqual(["mcp:tools.list", "crm.read", "support.read"]);
+  });
+
+  it("still caps a derived permission against the creator, exactly as a named one", async () => {
+    // The convenience must not become the way around the rule. Somebody who cannot read tickets
+    // cannot obtain `tickets:read` by asking for the scope instead of the permission.
+    const { service } = build();
+    const denial = await denialOf(() =>
+      create(service, ["security:manage", "customers:read"], { permissions: [], scopes: ["support.read"] })
+    );
+    expect(denial).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("refuses an account that would end up holding no permission at all", async () => {
+    // Listing requires nothing, so this derives an empty set. Such an agent can discover tools and
+    // fail every call it makes, which is not something worth creating a credential for.
+    const { service } = build();
+    for (const scopes of [[], ["mcp:tools.list"]]) {
+      const denial = await denialOf(() => create(service, ["security:manage"], { permissions: [], scopes }));
+      expect(denial, JSON.stringify(scopes)).toBe("MCP_REQUEST_INVALID");
+    }
   });
 });
 

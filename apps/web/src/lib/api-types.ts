@@ -1080,3 +1080,57 @@ export type McpConsentRequest = {
 
 /** Where to send the browser once the decision is recorded: to the client, either way. */
 export type McpConsentDecisionResponse = { redirectTo: string };
+
+/**
+ * A registered client, as the security screen lists it.
+ *
+ * The secret is absent in every shape here and not by omission: a confidential client is handed
+ * one when it is registered and never again, so a listing that carried it would be a listing worth
+ * stealing.
+ */
+export type McpClientRow = {
+  id: string;
+  clientId: string;
+  name: string;
+  kind: "public" | "confidential";
+  redirectUris: string[];
+  maxScopes: string[];
+  status: "active" | "suspended";
+  createdAt: string;
+};
+
+/** The clients, plus the vocabulary a ceiling may be drawn from. The panel keeps no copy of it. */
+export type McpClientsResponse = { clients: McpClientRow[]; scopes: string[] };
+
+export type McpGrantRow = {
+  id: string;
+  clientId: string | null;
+  clientName: string | null;
+  actorType: "user" | "service_account";
+  actorMembershipId: string | null;
+  actorServiceAccountId: string | null;
+  scopes: string[];
+  status: "active" | "revoked" | "expired" | "suspended";
+  consentedAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  /** Null until an agent uses it. The field that tells a stale consent from a working one. */
+  lastUsedAt: string | null;
+};
+
+export type McpGrantsResponse = { grants: McpGrantRow[] };
+
+export type McpServiceAccountRow = {
+  id: string;
+  name: string;
+  ownerMembershipId: string;
+  scopes: string[];
+  permissions: string[];
+  expiresAt: string;
+  disabledAt: string | null;
+  secretRotatedAt: string | null;
+  createdAt: string;
+};
+
+/** The accounts, plus the scopes this reader could actually back -- not the whole vocabulary. */
+export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow[]; grantableScopes: string[] };

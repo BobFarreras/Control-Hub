@@ -7072,3 +7072,105 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+/* The agents section of the security screen. Three panels the width of the grid, because a
+   redirect address and a client identifier are long strings that read badly in a half column. */
+.agents-panel {
+  grid-column: 1 / -1;
+}
+/* "Nothing here yet" is a line of text inside a panel, not a section of its own: the 72px
+   `.crm-empty` reserves is the table on a full-width screen and a hole under one sentence here. */
+.agents-panel .crm-empty {
+  padding: 4px 0 0;
+  text-align: start;
+}
+.agent-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 220px;
+  gap: 14px;
+  align-items: start;
+}
+.agent-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-form label.agent-wide {
+  grid-column: 1 / -1;
+}
+.agent-form input,
+.agent-form textarea {
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+.agent-form input {
+  height: 46px;
+  padding: 0 12px;
+}
+.agent-form textarea {
+  resize: vertical;
+  /* An address per line, so the field has to show more than one without being scrolled. */
+  min-height: 84px;
+  font-family: "JetBrains Mono";
+  font-size: 13px;
+}
+.agent-form small {
+  font-weight: 500;
+}
+.agent-form > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.agent-scopes {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.agent-scopes legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-scopes > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.agent-scopes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.agent-scopes small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.agent-scope-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+@media (max-width: 760px) {
+  .agent-form {
+    grid-template-columns: 1fr;
+  }
+}

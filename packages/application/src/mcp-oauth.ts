@@ -18,6 +18,7 @@ import {
   matchesRegisteredRedirect,
   mcpExpiry,
   mcpLifetimes,
+  mcpScopePermissions,
   mcpScopes,
   negotiateMcpScopes,
   refreshTokenVerdict,
@@ -853,6 +854,13 @@ export class McpOauthService {
    * Its permissions are capped by those of the person creating it. Somebody who cannot read
    * customers cannot leave behind an agent that can, and a permission granted here would otherwise
    * outlive the membership that justified it.
+   *
+   * `permissions` may be left empty, in which case they are the ones the chosen scopes require.
+   * That is not a convenience: it is what keeps the mapping from scope to permission in the domain
+   * instead of copied into whatever screen happens to draw the form. The cap is unchanged either
+   * way -- a derived permission is checked against the creator's exactly as a named one is -- and an
+   * account that would end up holding none is still refused, because an agent with no permissions
+   * is an agent that fails every call it makes.
    */
   async createServiceAccount(
     context: TenantContext,
@@ -864,8 +872,9 @@ export class McpOauthService {
   ): Promise<{ account: McpServiceAccountRecord; secret: string }> {
     const name = input.name.trim();
     if (name.length === 0 || name.length > 120) throw new McpOauthError("MCP_REQUEST_INVALID");
-    if (input.permissions.length === 0) throw new McpOauthError("MCP_REQUEST_INVALID");
-    const permissions = input.permissions as readonly Permission[];
+    const permissions =
+      input.permissions.length > 0 ? (input.permissions as readonly Permission[]) : requiredForScopes(input.scopes);
+    if (permissions.length === 0) throw new McpOauthError("MCP_REQUEST_INVALID");
     if (permissions.some((permission) => !context.permissions.includes(permission)))
       throw new McpOauthError("MCP_SCOPE_UNAVAILABLE");
 
@@ -1039,4 +1048,16 @@ export class McpOauthService {
       scope: grant.scopes.join(" ")
     };
   }
+}
+
+/**
+ * The permissions a set of scopes is worth, with the duplicates removed.
+ *
+ * A name nobody ships contributes nothing here rather than throwing: `negotiateMcpScopes` is what
+ * refuses an unknown scope, and answering the same complaint in two places would mean two codes for
+ * one mistake.
+ */
+function requiredForScopes(scopes: readonly string[]): readonly Permission[] {
+  const known = scopes.filter((scope): scope is McpScope => mcpScopes.includes(scope as McpScope));
+  return [...new Set(known.flatMap((scope) => mcpScopePermissions(scope)))];
 }

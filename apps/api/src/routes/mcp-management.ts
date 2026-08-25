@@ -5,7 +5,7 @@ import type {
   McpServiceAccountRecord
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
-import type { TenantContext } from "@control-hub/domain";
+import { grantableMcpScopes, mcpScopes, type TenantContext } from "@control-hub/domain";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ControlHubAuth } from "../auth.js";
 import { problemContentType, problemDetails } from "../problem.js";
@@ -93,6 +93,16 @@ export function mcpServiceAccountResponse(account: McpServiceAccountRecord) {
   };
 }
 
+/**
+ * The scopes a client may be given as its ceiling.
+ *
+ * It travels with the listing so the screen that offers them does not carry a second copy of a
+ * closed vocabulary -- a copy that would go stale the day a scope is added and be wrong in the
+ * quietest way, by offering fewer choices than exist. `mcp:tools.list` is left out because a
+ * ceiling records what may be withheld, and listing what you may call is never withheld.
+ */
+const registrableScopes = mcpScopes.filter((scope) => scope !== "mcp:tools.list");
+
 export type McpManagementContext = {
   app: ControlHubApp;
   database: DatabaseClient;
@@ -163,7 +173,7 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
         targetType: "mcp_client",
         outcome: "success"
       });
-      return { clients: (await mcp.listClients(context)).map(mcpClientResponse) };
+      return { clients: (await mcp.listClients(context)).map(mcpClientResponse), scopes: registrableScopes };
     }
   );
 
@@ -289,7 +299,13 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
         targetType: "mcp_service_account",
         outcome: "success"
       });
-      return { serviceAccounts: (await mcp.listServiceAccounts(context)).map(mcpServiceAccountResponse) };
+      return {
+        serviceAccounts: (await mcp.listServiceAccounts(context)).map(mcpServiceAccountResponse),
+        // What this reader could actually back, not the whole vocabulary. An account cannot be
+        // created with more than its creator holds, and a form that offered more would be inviting
+        // a refusal it could have foreseen.
+        grantableScopes: grantableMcpScopes(context.permissions)
+      };
     }
   );
 

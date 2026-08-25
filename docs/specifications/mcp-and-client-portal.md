@@ -356,8 +356,29 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   on l'unic boto amb estil es «Autoritza» ja ha decidit pel lector. I la redireccio final es fa amb
   `window.location.assign` i no amb el router: la destinacio es del client que ha iniciat tot aixo
   --normalment un port de loopback d'aquest mateix ordinador-- i no una ruta d'aquesta aplicacio.
-- La resta de la fase continua sense implementar: falta la seccio de seguretat del panell, que
-  consumeix les rutes de gestio de la H1.
+- **10.1-H4 — la seccio d'agents de la pantalla de seguretat.** Tanca la fase: els clients
+  registrats, els consentiments donats i les service accounts, contra les rutes de gestio de la H1,
+  a `apps/web/src/app/[locale]/security/mcp-agents.tsx`.
+  **Si la seccio existeix o no ho decideix l'API.** El primer llistat ho resol: un 404 vol dir que
+  la superficie no esta muntada en aquesta installacio i un 403 que qui mira no l'administra, i en
+  tots dos casos no es dibuixa res. Un panell buit titulat «agents registrats» diu que no n'hi ha
+  cap, que es una frase diferent i falsa, i el lector no te com detectar-ho. La resta de fallades
+  fan el contrari: la seccio hi es i no s'ha pogut llegir, i amagar-la convertiria una averia en una
+  desaparicio silenciosa. La regla es a `apps/web/src/lib/mcp-agents.ts` i es prova alli, perque la
+  flag es llegeix de l'entorn i un component `"use client"` no la pot veure.
+  **Els vocabularis els diu l'API, no els sap la pantalla.** `GET /mcp/clients` porta ara `scopes`
+  --els ambits que poden formar un sostre, sense `mcp:tools.list`, que no es nega mai-- i
+  `GET /mcp/service-accounts` porta `grantableScopes`, els que qui mira pot sostenir de veritat.
+  Son llistes tancades del domini, que `apps/web` no importa, i una copia al navegador envelliria de
+  la manera mes silenciosa que hi ha: oferint menys opcions de les que existeixen, sense que res
+  falli. Pel mateix motiu el formulari de service account no envia permisos, i `createServiceAccount`
+  els dedueix dels ambits amb `mcpScopePermissions` --seguint capats pels de qui la crea, aixi que la
+  comoditat no obre cap via per sobre la regla, i una compta que no sostindria cap permis es refusa.
+  **Cada resposta es llegeix on s'ha causat.** Un secret es mostra al panell que l'ha encunyat i un
+  refus al panell que l'ha provocat: una resposta a «retira aquest consentiment» sota un formulari a
+  mig omplir es llegeix com si fos d'aquell formulari, i un secret sota el titol equivocat es un
+  secret que algu desa malament. El secret d'una rotacio es mostra un sol cop i la fila passa a dir
+  quan s'ha rotat, no que l'anterior ja sigui mort: continua servint fins que s'anulla expressament.
 
 ## Fora d'abast de la 10.1
 

@@ -248,9 +248,27 @@ divergeixin en silenci. Comprovat contra la pila de verificacio al port 3002: un
 espanyol acaba a `/es/mcp/consent`, un en alemany a `/ca/...`, i sense sessio a
 `/es/login?next=...` amb la peticio sencera dins.
 
-**El punt de continuacio es la seccio de seguretat del panell**: la llista d'agents, els
-consentiments i les service accounts, que consumeix les rutes de gestio de la H1. Amb aixo la 10.1
-queda tancada de punta a punta.
+L'**increment H4** es la seccio d'agents de la pantalla de seguretat: els clients registrats, els
+consentiments donats i les service accounts, contra les rutes de gestio de la H1. Si aquesta seccio
+existeix o no ho decideix l'API i no el component: si el primer llistat respon 404 --la superficie
+no esta muntada-- o 403 --qui mira no l'administra-- no es dibuixa res, perque un panell buit
+titulat "agents registrats" diu que no n'hi ha cap, que es una frase diferent i falsa. La flag es
+llegeix de l'entorn i un component `"use client"` no la pot veure, aixi que preguntar-ho a l'API es
+alhora l'unica manera i la correcta.
+
+Els dos vocabularis que els formularis ofereixen tambe venen de l'API: `GET /mcp/clients` afegeix
+`scopes` --els ambits que poden formar un sostre, sense `mcp:tools.list`, que no es nega mai-- i
+`GET /mcp/service-accounts` afegeix `grantableScopes`, els que qui mira pot sostenir de veritat. Son
+llistes tancades del domini, que `apps/web` no importa, i una copia al navegador envelliria oferint
+menys opcions de les que existeixen sense que res falles. Pel mateix motiu el formulari de service
+account no envia permisos: `createServiceAccount` els dedueix dels ambits triats i els segueix
+capant pels de qui la crea, de manera que la comoditat no obre cap via per sobre la regla.
+
+Un secret es mostra al panell que l'ha encunyat i un refus al panell que l'ha provocat, no en un sol
+lloc compartit: una resposta a "retira aquest consentiment" sota un formulari a mig omplir es llegeix
+com si fos d'aquell formulari, i un secret sota el titol equivocat es un secret que algu desa malament.
+
+Amb aixo la **10.1 queda tancada de punta a punta**: autoritat, transport, consentiment i gestio.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

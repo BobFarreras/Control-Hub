@@ -180,6 +180,42 @@ describe("what the management surface shows a screen", () => {
   });
 });
 
+describe("the vocabularies the screen is told rather than told to know", () => {
+  /**
+   * The screen offering these lists lives in `apps/web`, which does not depend on the domain. The
+   * alternative to sending them is a hand-kept copy over there, and a copy of a closed list goes
+   * wrong in the quietest way there is: it offers fewer choices than exist, and nobody notices
+   * because nothing fails.
+   */
+  it("sends the scopes a ceiling may be drawn from, and not the one that is never withheld", async () => {
+    const { app } = await boot();
+    const body = (await app.inject({ method: "GET", url: "/api/v1/mcp/clients" })).json<{ scopes: string[] }>();
+    expect(body.scopes).toContain("crm.read");
+    // A ceiling records what may be withheld. Listing what you may call is not one of those.
+    expect(body.scopes).not.toContain("mcp:tools.list");
+  });
+
+  it("sends only the scopes this reader could actually back", async () => {
+    // Not the whole vocabulary: an account cannot be created with more than its creator holds, and
+    // offering the rest would be inviting a refusal the form could have foreseen.
+    const { app } = await boot({ permissions: ["security:manage", "customers:read"] });
+    const body = (await app.inject({ method: "GET", url: "/api/v1/mcp/service-accounts" })).json<{
+      grantableScopes: string[];
+    }>();
+    expect(body.grantableScopes).toEqual(["mcp:tools.list", "crm.read"]);
+  });
+
+  it("narrows that list with the reader, not with the route", async () => {
+    const { app } = await boot();
+    const body = (await app.inject({ method: "GET", url: "/api/v1/mcp/service-accounts" })).json<{
+      grantableScopes: string[];
+    }>();
+    // `security:manage` opens this surface and backs no scope at all, which is exactly right:
+    // administering the agents is not the same as being allowed to read what they read.
+    expect(body.grantableScopes).toEqual(["mcp:tools.list"]);
+  });
+});
+
 describe("who may reach the management surface", () => {
   const routes = [
     { method: "GET" as const, url: "/api/v1/mcp/clients" },
