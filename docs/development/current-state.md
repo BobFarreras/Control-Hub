@@ -204,12 +204,22 @@ manera que **cap token de service account resolia** des de la `0053` (arreglat p
 `clientStatus` ara `"active" | "suspended" | null`), i el token endpoint responia en la nostra
 nomenclatura en comptes de la de la RFC 6749 seccio 5.1, que cap biblioteca d'OAuth sap llegir.
 
+L'**increment H1** son les rutes de gestio, a `apps/api/src/routes/mcp-management.ts`: clients,
+consentiments i service accounts, deu rutes que nomes arriben a casos d'us que ja existien --al
+servei nomes hi faltaven `listGrants` i `revokeGrant`. Tres regles hi valen per a totes: **un secret
+es torna dues vegades i mai mes** (en crear i en rotar), **s'audita tot, refusos i lectures
+incloses**, i **`security:manage` es exigeix fins i tot per llegir**, perque saber quins agents hi ha
+i que poden llegir ja es la part sensible. El sobre es problem details i la frontera amb l'OAuth es
+dibuixa per ruta: `usesProblemDetails` cobreix `/api/v1/mcp/` excepte `/api/v1/mcp/oauth`, que
+continua parlant RFC 6749. S'hi afegeix `POST /api/v1/mcp/service-accounts/:id/retire-previous-secret`,
+que la llista d'API no tenia i sense la qual el cas d'us de tancar la finestra de rotacio no es
+podia arribar a executar. Amb H1 es declara tambe l'etiqueta `mcp` de l'OpenAPI a
+`apps/api/src/app.ts`, que era l'unica linia pendent de coordinacio amb l'altra sessio.
+
 **El punt de continuacio es la pantalla de consentiment**: `GET /api/v1/mcp/oauth/authorize` i la
 pantalla d'aprovacio, que es el que falta perque una persona --i no nomes un agent amb secret--
-pugui connectar un client. Despres queden les rutes de gestio de clients, grants i service accounts,
-i la UI amb i18n. Queda pendent de coordinacio una linia a `apps/api/src/app.ts`: declarar
-l'etiqueta `mcp` a la llista de tags de l'OpenAPI, perque ara les operacions d'MCP surten al
-document dins d'un grup sense nom.
+pugui connectar un client. Despres queda la UI de seguretat amb i18n, que consumeix les rutes
+d'H1.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

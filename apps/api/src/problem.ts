@@ -4,7 +4,8 @@ import {
   ConnectorOAuthError,
   ConnectorServiceError,
   ConnectorStorageError,
-  InfrastructureServiceError
+  InfrastructureServiceError,
+  McpOauthError
 } from "@control-hub/application";
 import { ApiSecurityError } from "./security.js";
 
@@ -75,6 +76,15 @@ const titles: Record<string, string> = {
   MCP_AUDIENCE_INVALID: "The token was issued for another resource",
   MCP_SCOPE_INSUFFICIENT: "The token does not carry that scope",
   MCP_SESSION_UNKNOWN: "No such session",
+  // The management surface. These reach a screen somebody is looking at, not an agent, so they
+  // say which of the three things was not there rather than collapsing into one answer -- the
+  // caller already holds `security:manage` for this tenant and learns nothing by being told.
+  MCP_REQUEST_INVALID: "The request is missing or malformed",
+  MCP_SCOPE_UNAVAILABLE: "That scope cannot be granted here",
+  MCP_REDIRECT_URI_MISMATCH: "The redirect address is not usable",
+  MCP_CLIENT_UNKNOWN: "No such client",
+  MCP_GRANT_UNKNOWN: "No such consent",
+  MCP_SERVICE_ACCOUNT_UNKNOWN: "No such service account",
   DUPLICATE_INSTANCE_NAME: "An integration already uses that name",
   DUPLICATE_ENTRY: "Already exists",
   CREDENTIAL_SLOT_TAKEN: "A rotation is already open",
@@ -124,7 +134,13 @@ export function usesProblemDetails(url: string): boolean {
   return (
     url.startsWith("/api/v1/integrations") ||
     url.startsWith("/api/v1/connectors") ||
-    url.startsWith("/api/v1/infrastructure")
+    url.startsWith("/api/v1/infrastructure") ||
+    // The MCP management surface, which was written to the error specification from the start --
+    // but not the OAuth endpoints beneath it. Those answer in RFC 6749's own envelope, because
+    // what calls them is a generic OAuth client that branches on `error` and has never heard of
+    // problem details. The two live under one prefix and speak two protocols, so the boundary has
+    // to be drawn by path rather than assumed.
+    (url.startsWith("/api/v1/mcp/") && !url.startsWith("/api/v1/mcp/oauth"))
   );
 }
 
@@ -171,6 +187,8 @@ export function describeConnectorError(
 
   if (error instanceof ConnectorOAuthError) return { status: oauthStatus(error.code), code: error.code };
 
+  if (error instanceof McpOauthError) return { status: mcpManagementStatus(error.code), code: error.code };
+
   if (error instanceof ConnectorStorageError) return { status: storageStatus(error.code), code: error.code };
 
   if (error instanceof InfrastructureServiceError)
@@ -205,6 +223,20 @@ function oauthStatus(code: string): number {
   if (code === "INSTANCE_NOT_FOUND") return 404;
   if (code === "OAUTH_PROVIDER_NOT_CONFIGURED") return 503;
   if (code === "OAUTH_STATE_INVALID") return 400;
+  return 422;
+}
+
+/**
+ * What a `McpOauthError` means on the management surface.
+ *
+ * Only three of its codes can reach here: the rest belong to the token and authorization endpoints,
+ * which answer in OAuth's envelope and never reach this handler. The split is the one the error
+ * specification draws -- a body that could not be read at all is a 400, a body that was read and
+ * refused by a rule is a 422 -- and the fallback is the second of those, because a code that got
+ * here at all was raised by a service after the request had already parsed.
+ */
+function mcpManagementStatus(code: string): number {
+  if (code === "MCP_REQUEST_INVALID") return 400;
   return 422;
 }
 

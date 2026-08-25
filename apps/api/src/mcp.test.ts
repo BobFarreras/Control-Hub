@@ -57,6 +57,17 @@ describe("the MCP surface, as the composition root declares it", () => {
     expect(response.statusCode).toBe(405);
   });
 
+  it("declares no management surface on an installation with no interactive authentication", async () => {
+    // The OAuth endpoints and the transport work without a session -- one caller holds a code, the
+    // other holds a token. The management routes act for a person, so on an installation that
+    // configures no authentication they are absent rather than reachable and unguarded.
+    const app = boot(enabled);
+    for (const url of ["/api/v1/mcp/clients", "/api/v1/mcp/grants", "/api/v1/mcp/service-accounts"]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode, url).toBe(404);
+    }
+  });
+
   it("is not there at all while the flag is off", async () => {
     // 404 is the truth rather than a refusal: with the flag closed there is nothing behind the
     // path, exactly as the infrastructure module already behaves.

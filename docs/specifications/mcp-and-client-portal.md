@@ -257,11 +257,35 @@ La fase es parteix en dos increments que no comparteixen dependencia:
      troba un cos que analitza be i que no conte cap token. `oauthTokenResponse` fa la traduccio a
      la ruta, que es on viu la forma del fil, i el refresh token s'omet en comptes d'enviar-se buit
      quan no n'hi ha --enviar-lo nul es llegiria com un que no ha arribat.
-- **Pendent de coordinacio:** declarar l'etiqueta `mcp` a la llista de tags de l'OpenAPI, a
-  `apps/api/src/app.ts`. Es una linia, i aquell fitxer torna a tenir canvis no committejats de
-  l'altra sessio. Sense ella les operacions d'MCP surten al document dins d'un grup sense nom.
-- La resta de la fase continua sense implementar: falten la pantalla de consentiment, les rutes de
-  gestio i la interficie.
+- **10.1-H1 — les rutes de gestio.** `apps/api/src/routes/mcp-management.ts` posa a l'abast d'una
+  pantalla el que ja existia com a cas d'us: clients, consentiments i service accounts. Al servei
+  nomes hi faltaven `listGrants` i `revokeGrant`; la resta ja hi era des de la 10.1-E i aqui
+  nomes s'hi arriba.
+  Tres propietats valen per a totes les rutes del fitxer. **Un secret es torna exactament dues
+  vegades** --en crear una credencial i en rotar-la-- i mai mes: cap llistat el porta, cap lectura
+  el retorna, i les respostes s'escriuen camp a camp perque una columna afegida a la taula demà no
+  pugui arribar a una pantalla pel sol fet d'existir. **Tot s'audita, els refusos i les lectures
+  incloses**, perque «qui ha mirat les claus» i «a qui s'ha dit que no» son les dues primeres
+  preguntes despres d'un incident. I **`security:manage` es exigeix a totes**, lectures incloses:
+  aqui no hi ha nivell de nomes-lectura, perque saber quins agents hi ha, que poden llegir i quan
+  caduca el seu consentiment ja es la part sensible.
+  El sobre es problem details, com diu «Errors publics» per a la gestio. `usesProblemDetails` hi
+  afegeix `/api/v1/mcp/` **excepte** `/api/v1/mcp/oauth`: sota un mateix prefix hi conviuen dos
+  protocols, i la frontera es dibuixa per ruta en comptes de donar-se per suposada. Un `404` de
+  «no hi havia res» el munta la ruta, perque el servei ho diu tornant `false` i no llancant, i el
+  gestor d'errors no arriba a veure-ho.
+  S'hi afegeix una ruta que la llista d'API proposada no tenia,
+  `POST /api/v1/mcp/service-accounts/:id/retire-previous-secret`: el cas d'us `retirePreviousSecret`
+  existia des de la 10.1-E i sense ruta no s'hi podia arribar, de manera que la finestra de rotacio
+  d'un dia no es podia tancar quan el secret vell es sap compromes.
+  Tretze proves de ruta amb servei, sessio i base de dades falsos --entre elles el recorregut de
+  les deu rutes comprovant que cap oblida el permis-- i una sisena a `apps/api/src/mcp.test.ts`:
+  en una installacio sense autenticacio interactiva la superficie de gestio **no es declara**, en
+  comptes de quedar accessible sense guardia.
+  Amb aquest increment es tanca tambe l'etiqueta `mcp` de l'OpenAPI a `apps/api/src/app.ts`, que
+  quedava pendent de coordinacio amb l'altra sessio.
+- La resta de la fase continua sense implementar: falten `/authorize` amb la pantalla de
+  consentiment i la interficie de seguretat.
 
 ## Fora d'abast de la 10.1
 
@@ -665,6 +689,7 @@ DELETE /api/v1/mcp/grants/:grantId
 GET    /api/v1/mcp/service-accounts
 POST   /api/v1/mcp/service-accounts
 POST   /api/v1/mcp/service-accounts/:id/rotate
+POST   /api/v1/mcp/service-accounts/:id/retire-previous-secret
 DELETE /api/v1/mcp/service-accounts/:id
 POST   /mcp
 ```

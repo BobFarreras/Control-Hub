@@ -19,6 +19,8 @@ import {
   PostgresSupportRepository,
   PostgresUsageRepository
 } from "@control-hub/persistence";
+import type { ControlHubAuth } from "./auth.js";
+import { registerMcpManagementRoutes } from "./routes/mcp-management.js";
 import { registerMcpOauthRoutes } from "./routes/mcp-oauth.js";
 import { registerMcpTransportRoutes } from "./routes/mcp-transport.js";
 import type { ControlHubApp } from "./server-instance.js";
@@ -45,6 +47,15 @@ export function registerMcpRoutes(context: {
    * nothing -- which is the whole reason the audience is checked at all.
    */
   issuer: string | undefined;
+  /**
+   * Absent means the management routes are not declared at all.
+   *
+   * They are the only part of this surface that acts for a person rather than for an agent, so
+   * they need a session to resolve. The OAuth endpoints and the transport do not: one holds a
+   * code and the other holds a token, and both have to work on an installation configured without
+   * interactive authentication.
+   */
+  auth: ControlHubAuth | undefined;
 }): McpOauthService | null {
   if (!isFeatureEnabled(context.featureFlags, "mcp") || !context.issuer) return null;
 
@@ -87,7 +98,18 @@ export function registerMcpRoutes(context: {
   });
   registerMcpTransportRoutes({ app: context.app, session, crypto, issuer: context.issuer });
 
-  // Returned so the increments that follow -- the consent screen and the management routes --
-  // wire onto the same instance rather than building a second one with its own clock.
+  if (context.auth)
+    registerMcpManagementRoutes({
+      app: context.app,
+      database: context.database,
+      auth: context.auth,
+      // The same instance the endpoints mint through: a client registered here is one the token
+      // endpoint can already resolve, and a consent withdrawn here stops the next call rather than
+      // the one after some other object's cache notices.
+      mcp
+    });
+
+  // Returned so the increment that follows -- the consent screen -- wires onto the same instance
+  // rather than building a second one with its own clock.
   return mcp;
 }

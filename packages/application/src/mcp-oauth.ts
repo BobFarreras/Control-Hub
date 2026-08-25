@@ -724,6 +724,24 @@ export class McpOauthService {
     return this.repository.deleteClient(context, clientId);
   }
 
+  listGrants(context: TenantContext): Promise<readonly McpGrantRecord[]> {
+    return this.repository.listGrants(context);
+  }
+
+  /**
+   * Withdraws a consent, and with it everything issued under it.
+   *
+   * Who withdrew it travels to the row rather than being left to the audit trail alone: the
+   * security screen shows a withdrawn consent long after the request that ended it has rolled out
+   * of any log, and "who stopped this agent" is the first question asked about it.
+   *
+   * `false` is not a failure. A consent already withdrawn and one belonging to another tenant are
+   * the same non-event here, and the caller has nothing to retry in either case.
+   */
+  revokeGrant(context: TenantContext, grantId: string): Promise<boolean> {
+    return this.repository.revokeGrant(context, grantId, this.clock(), context.membershipId);
+  }
+
   /**
    * Creates a service account: an agent that logs in with a secret instead of a browser.
    *

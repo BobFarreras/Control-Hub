@@ -229,7 +229,12 @@ export function buildApp(options: BuildAppOptions) {
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
         { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
-        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." }
+        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." },
+        {
+          name: "mcp",
+          description:
+            "The agent surface: OAuth discovery, the clients and consents behind it, and the tools an agent may call."
+        }
       ]
     }
   });
@@ -440,7 +445,7 @@ export function buildApp(options: BuildAppOptions) {
 
     // Unauthenticated by design and therefore outside the block above: a client has to read the
     // discovery documents and reach the token endpoint before it holds any session at all.
-    registerMcpRoutes({ app, database, featureFlags, issuer: options.mcpIssuer });
+    registerMcpRoutes({ app, database, featureFlags, issuer: options.mcpIssuer, auth: options.auth });
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
     registerObservabilityRoutes();
     registerHealthRoutes();

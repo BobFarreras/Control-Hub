@@ -55,6 +55,8 @@ type Recorded = {
   createdClients: Array<{ name: string; kind: string; secretHash: string | null; maxScopes: readonly McpScope[] }>;
   createdAccounts: Array<{ name: string; ownerMembershipId: string; scopes: readonly McpScope[]; secretHash: string }>;
   rotatedSecrets: Array<{ id: string; secretHash: string; previousExpiresAt: Date }>;
+  listedGrantsFor: string[];
+  revokedGrants: Array<{ tenantId: string; grantId: string; at: Date; byMembershipId: string | null }>;
 };
 
 const client: McpClientResolution = {
@@ -87,6 +89,8 @@ type Overrides = {
   account?: McpServiceAccountResolution | null;
   /** False stands for the account that was not there, or belonged to another tenant. */
   rotatedAccount?: boolean;
+  /** False stands for the consent that was already withdrawn, or was never this tenant's. */
+  revokedGrant?: boolean;
 };
 
 const build = (overrides: Overrides = {}) => {
@@ -100,7 +104,9 @@ const build = (overrides: Overrides = {}) => {
     revokedAccessTokens: [],
     createdClients: [],
     createdAccounts: [],
-    rotatedSecrets: []
+    rotatedSecrets: [],
+    listedGrantsFor: [],
+    revokedGrants: []
   };
   const repository = {
     resolveClient: (clientId: string) =>
@@ -162,7 +168,15 @@ const build = (overrides: Overrides = {}) => {
       recorded.rotatedSecrets.push({ id, ...input });
       return Promise.resolve(overrides.rotatedAccount ?? true);
     },
-    retirePreviousSecret: () => Promise.resolve(overrides.rotatedAccount ?? true)
+    retirePreviousSecret: () => Promise.resolve(overrides.rotatedAccount ?? true),
+    listGrants: (ctx: TenantContext) => {
+      recorded.listedGrantsFor.push(ctx.tenantId);
+      return Promise.resolve([]);
+    },
+    revokeGrant: (ctx: TenantContext, grantId: string, at: Date, byMembershipId: string | null) => {
+      recorded.revokedGrants.push({ tenantId: ctx.tenantId, grantId, at, byMembershipId });
+      return Promise.resolve(overrides.revokedGrant ?? true);
+    }
   } as unknown as McpOauthRepository;
   const service = new McpOauthService({ repository, crypto: fakeCrypto(), issuer, clock: () => now });
   return { service, recorded };
@@ -748,5 +762,34 @@ describe("rotating a service account secret", () => {
     expect(
       await denialOf(() => service.rotateServiceAccountSecret(context(tenantA, ["security:manage"]), "missing"))
     ).toBe("MCP_REQUEST_INVALID");
+  });
+});
+
+describe("the consents a tenant can see and withdraw", () => {
+  it("reads the grants through the tenant, never through a list of ids", async () => {
+    // The scope goes to the store and the store filters. A service that fetched everything and
+    // filtered afterwards would be one bug away from returning another tenant's consents, and no
+    // test of the result could tell the difference.
+    const { service, recorded } = build();
+    await service.listGrants(context(tenantB, ["security:manage"]));
+    expect(recorded.listedGrantsFor).toEqual([tenantB]);
+  });
+
+  it("records who withdrew the consent, and when", async () => {
+    // A consent that vanished with nobody's name against it is one no review can explain later,
+    // and the moment is the service clock rather than the store's, so the audit row and the
+    // revocation cannot disagree about when it happened.
+    const { service, recorded } = build();
+    await expect(service.revokeGrant(context(tenantA, ["security:manage"]), "grant-7")).resolves.toBe(true);
+    expect(recorded.revokedGrants).toEqual([
+      { tenantId: tenantA, grantId: "grant-7", at: now, byMembershipId: "membership-1" }
+    ]);
+  });
+
+  it("says plainly when there was no such consent to withdraw", async () => {
+    // False rather than an error: a grant already withdrawn, or one belonging to another tenant,
+    // are the same non-event to the screen, and both leave the caller nothing to retry.
+    const { service } = build({ revokedGrant: false });
+    await expect(service.revokeGrant(context(tenantA, ["security:manage"]), "missing")).resolves.toBe(false);
   });
 });
