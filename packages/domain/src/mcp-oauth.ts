@@ -43,7 +43,15 @@ export const mcpLifetimes = {
   accessToken: 30 * 60,
   refreshToken: 30 * 24 * 60 * 60,
   grant: 90 * 24 * 60 * 60,
-  serviceAccountSecret: 365 * 24 * 60 * 60
+  serviceAccountSecret: 365 * 24 * 60 * 60,
+  /**
+   * How long a rotated-away service account secret keeps working.
+   *
+   * Long enough to redeploy an agent without an outage, short enough that nobody treats it as a
+   * second permanent key. A rotation somebody is afraid to perform is a rotation that never
+   * happens, which is the failure this window exists to prevent.
+   */
+  serviceAccountPreviousSecret: 24 * 60 * 60
 } as const;
 export type McpLifetimeKind = keyof typeof mcpLifetimes;
 

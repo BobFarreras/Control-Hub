@@ -22,6 +22,13 @@ describe("how long a credential lives", () => {
     expect(mcpExpiry("authorizationCode", now)).toEqual(new Date("2026-08-24T10:01:00.000Z"));
   });
 
+  it("keeps the rotation window far shorter than the secret it succeeds", () => {
+    // Two live keys for a day, not two keys forever. The window is there so a rotation can be
+    // deployed, not so an old secret can be left lying around.
+    expect(mcpLifetimes.serviceAccountPreviousSecret).toBeLessThan(mcpLifetimes.serviceAccountSecret / 100);
+    expect(mcpExpiry("serviceAccountPreviousSecret", now)).toEqual(new Date("2026-08-25T10:00:00.000Z"));
+  });
+
   it("never lets a refresh token outlive the grant that justifies it", () => {
     expect(mcpLifetimes.refreshToken).toBeLessThanOrEqual(mcpLifetimes.grant);
   });

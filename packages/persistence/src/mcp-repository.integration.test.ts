@@ -343,10 +343,23 @@ suite("PostgresMcpOauthRepository", () => {
     expect(await repository.disableServiceAccount(context(tenantB, membershipB), account.id, new Date())).toBe(false);
 
     const rotated = `service-${randomUUID()}`;
-    expect(await repository.rotateServiceAccountSecret(ctx, account.id, hash(rotated), new Date())).toBe(true);
-    // The old secret stops working the instant the new one exists: there is no two-key window here.
+    expect(
+      await repository.rotateServiceAccountSecret(ctx, account.id, {
+        secretHash: hash(rotated),
+        at: new Date(),
+        previousExpiresAt: new Date(Date.now() + 86_400_000)
+      })
+    ).toBe(true);
+    // Both keys work during the window, and the resolution says which one was presented so an
+    // agent nobody redeployed can be spotted before the window closes on it.
+    expect((await repository.resolveServiceAccount(hash(rotated)))?.matchedPrevious).toBe(false);
+    expect((await repository.resolveServiceAccount(hash(secret)))?.matchedPrevious).toBe(true);
+
+    // Retiring ends the window at once, which is the answer to a compromise rather than to a
+    // routine rotation.
+    expect(await repository.retirePreviousSecret(ctx, account.id, new Date())).toBe(true);
     expect(await repository.resolveServiceAccount(hash(secret))).toBeNull();
-    expect((await repository.resolveServiceAccount(hash(rotated)))?.id).toBe(account.id);
+    expect(await repository.retirePreviousSecret(ctx, account.id, new Date())).toBe(false);
 
     const at = new Date();
     expect(await repository.disableServiceAccount(ctx, account.id, at)).toBe(true);

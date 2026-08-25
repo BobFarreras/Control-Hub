@@ -132,8 +132,38 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   poden desar com a redirect, i una prova comprova que coincideix amb el que el flux acceptara
   despres — una adreca que el formulari accepta i el flux refusa es el pitjor lloc on descobrir
   un desacord.
-- La resta de la fase continua sense implementar: falten els service accounts com a cas d'us, les
-  rutes HTTP, el transport `/mcp`, l'auditoria per crida i la interficie.
+- **10.1-F3b — service accounts i registre de clients com a casos d'us.** Implementat: la via
+  d'entrada que no passa per cap navegador. `authenticateServiceAccount` canvia un secret per **un
+  sol access token, i deliberadament cap refresh token**: el compte pot tornar a presentar el
+  secret quan vulgui, aixi que un refresh token seria una segona credencial de llarga vida per
+  guardar, rotar i perdre, comprada a canvi de res. Els scopes es tornen a negociar **a cada
+  login** contra els permisos del compte, no es confien de la fila: un permis retirat ha d'estrenyer
+  el token seguent, no el de despres que algu es recordi de reemetre'l. Desconegut, deshabilitat i
+  caducat responen igual (`MCP_CLIENT_AUTH_FAILED`), perque quin dels tres era es precisament el
+  que voldria aprendre algu que provi secrets.
+  La **rotacio mante dues claus vives durant un dia** (`serviceAccountPreviousSecret`), que es la
+  decisio que vas aprovar: substituir el secret de cop trenca tots els qui el fan servir a
+  l'instant exacte de la rotacio, i una rotacio que provoca una caiguda es una rotacio que ningu no
+  fa. La resposta diu `usedPreviousSecret` quan el secret presentat era el que s'esta retirant —
+  un agent que encara el presenta un dia despres es un agent que ningu no ha tornat a desplegar, i
+  aquest es l'unic moment en que algu ho pot notar. Quan el secret vell **es sap compromes**
+  l'operacio es `retirePreviousSecret`, que tanca la finestra ara mateix: esperar un dia seria la
+  resposta equivocada a una fuita.
+  El registre de clients entrega el secret **exactament un cop**; cap llistat el torna a portar i
+  el magatzem nomes en guarda el hash, de manera que qui el perd rota el client en comptes de
+  consultar-lo. Els permisos d'un service account estan **limitats pels de qui el crea**: algu que
+  no pot llegir clients no pot deixar enrere un agent que si, perque el permis sobreviuria a la
+  pertinenca que el justificava.
+  Dues migracions ho fan possible, totes dues additives. `0052_mcp_service_account_rotation.sql`
+  afegeix el hash anterior i la seva caducitat, amb una restriccio que impedeix que cap de les dues
+  meitats existeixi sola — un hash sense caducitat es una segona clau permanent — i recrea
+  `lookup_mcp_service_account` perque digui si el que ha coincidit era l'anterior.
+  `0053_mcp_service_account_grants.sql` fa `client_id` nul·lable a `mcp_grants` i el lliga al tipus
+  d'actor: un grant d'usuari sempre nomena el client que ho va demanar, i un de service account no
+  en nomena cap. Es **mes estricte** que el `not null` que substitueix, no pas mes fluix: abans, un
+  grant de service account hauria pogut portar qualsevol client.
+- La resta de la fase continua sense implementar: falten les rutes HTTP, el transport `/mcp`,
+  l'auditoria per crida i la interficie.
 
 ## Fora d'abast de la 10.1
 

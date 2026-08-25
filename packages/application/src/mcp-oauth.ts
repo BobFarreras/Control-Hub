@@ -14,6 +14,7 @@
  */
 
 import {
+  isRegistrableRedirect,
   matchesRegisteredRedirect,
   mcpExpiry,
   mcpLifetimes,
@@ -23,6 +24,7 @@ import {
   type McpGrantStatus,
   type McpDenialCode,
   type McpOauthDenialCode,
+  type Permission,
   type McpScope,
   type TenantContext
 } from "@control-hub/domain";
@@ -55,8 +57,9 @@ export type McpAccessTokenResolution = {
 /** One consent, as the person who gave it would want to see it listed back. */
 export type McpGrantRecord = {
   readonly id: string;
-  readonly clientId: string;
-  readonly clientName: string;
+  /** Null for a service account, which authorised nothing through a client. */
+  readonly clientId: string | null;
+  readonly clientName: string | null;
   readonly actorType: "user" | "service_account";
   readonly actorMembershipId: string | null;
   readonly actorServiceAccountId: string | null;
@@ -127,6 +130,14 @@ export type McpServiceAccountResolution = {
   readonly permissions: readonly string[];
   readonly expiresAt: Date;
   readonly disabledAt: Date | null;
+  /**
+   * Whether the secret presented was the rotated-away one rather than the current one.
+   *
+   * The call still works -- that is what the window is for -- but the fact is worth recording:
+   * an account still presenting the old secret a day after a rotation is an agent nobody
+   * redeployed, and it is about to stop working.
+   */
+  readonly matchedPrevious: boolean;
 };
 
 export type McpServiceAccountRecord = {
@@ -202,7 +213,8 @@ export type McpOauthRepository = {
   createGrant(
     scope: McpTenantScope,
     input: {
-      readonly clientId: string;
+      /** Null for a service account: there was no client, and inventing one would be a lie. */
+      readonly clientId: string | null;
       readonly actorType: "user" | "service_account";
       readonly actorMembershipId: string | null;
       readonly actorServiceAccountId: string | null;
@@ -275,12 +287,25 @@ export type McpOauthRepository = {
     }
   ): Promise<McpServiceAccountRecord>;
   listServiceAccounts(context: TenantContext): Promise<readonly McpServiceAccountRecord[]>;
+  /**
+   * Issues a new secret and keeps the old one alive until `previousExpiresAt`.
+   *
+   * Two live keys, deliberately: replacing the secret outright breaks every caller at the instant
+   * of the rotation, and a rotation that causes an outage is a rotation nobody performs.
+   */
   rotateServiceAccountSecret(
     context: TenantContext,
     serviceAccountId: string,
-    secretHash: string,
-    at: Date
+    input: { readonly secretHash: string; readonly at: Date; readonly previousExpiresAt: Date }
   ): Promise<boolean>;
+
+  /**
+   * Ends the rotation window now, for the case where the old secret is known to be compromised.
+   *
+   * Separate from rotation because it answers a different question. Rotation is routine and wants
+   * the window; this is the emergency, and waiting a day would be the wrong answer to it.
+   */
+  retirePreviousSecret(context: TenantContext, serviceAccountId: string, at: Date): Promise<boolean>;
   disableServiceAccount(context: TenantContext, serviceAccountId: string, at: Date): Promise<boolean>;
 
   /**
@@ -349,6 +374,22 @@ export type McpTokenIssue = {
   readonly expiresIn: number;
   /** Space delimited, as RFC 6749 asks, so a client can see what it actually got. */
   readonly scope: string;
+};
+
+/**
+ * What a service account receives: one access token and no refresh token.
+ *
+ * The absence is deliberate. An account can present its secret again whenever it likes, so a
+ * refresh token would be a second long-lived credential to store, rotate and lose, bought for
+ * nothing.
+ */
+export type McpServiceTokenIssue = {
+  readonly accessToken: string;
+  readonly tokenType: "Bearer";
+  readonly expiresIn: number;
+  readonly scope: string;
+  /** True when the secret presented was the rotated-away one: it worked, and it is about to stop. */
+  readonly usedPreviousSecret: boolean;
 };
 
 /** RFC 9728. What this server protects, and who authorises access to it. */
@@ -625,6 +666,185 @@ export class McpOauthService {
     // Here the check earns its place: revoking a family reaches tokens other holders are using.
     if (refresh.clientId !== client.id) throw new McpOauthError("MCP_REFRESH_INVALID");
     await this.repository.revokeRefreshFamily({ tenantId: refresh.tenantId }, refresh.familyId, now);
+  }
+
+  /**
+   * Registers a client, and hands back its secret exactly once.
+   *
+   * The secret is returned here and nowhere else: no listing carries it, no read returns it, and
+   * the store holds only its hash. An operator who loses it rotates the client rather than looking
+   * it up, which is the property that makes the store safe to back up.
+   */
+  async registerClient(
+    context: TenantContext,
+    input: {
+      readonly name: string;
+      readonly kind: "public" | "confidential";
+      readonly redirectUris: readonly string[];
+      readonly maxScopes: readonly string[];
+    }
+  ): Promise<{ client: McpClientRecord; secret: string | null }> {
+    const name = input.name.trim();
+    if (name.length === 0 || name.length > 120) throw new McpOauthError("MCP_REQUEST_INVALID");
+    if (input.redirectUris.length === 0 || input.redirectUris.length > 5)
+      throw new McpOauthError("MCP_REQUEST_INVALID");
+    for (const uri of input.redirectUris) {
+      if (!isRegistrableRedirect(uri)) throw new McpOauthError("MCP_REDIRECT_URI_MISMATCH");
+    }
+
+    // Listing is never negotiated, so recording it as a ceiling would suggest it could be withheld.
+    const ceiling = input.maxScopes.filter((scope) => scope !== "mcp:tools.list");
+    const known = ceiling.map((scope) => mcpScopes.find((candidate) => candidate === scope));
+    if (known.length === 0 || known.some((scope) => scope === undefined))
+      throw new McpOauthError("MCP_SCOPE_UNAVAILABLE");
+
+    const secret = input.kind === "confidential" ? this.mint("serviceAccount") : null;
+    const client = await this.repository.createClient(context, {
+      name,
+      kind: input.kind,
+      redirectUris: input.redirectUris,
+      maxScopes: known as McpScope[],
+      secretHash: secret === null ? null : this.crypto.sha256(secret)
+    });
+    return { client, secret };
+  }
+
+  listClients(context: TenantContext): Promise<readonly McpClientRecord[]> {
+    return this.repository.listClients(context);
+  }
+
+  deleteClient(context: TenantContext, clientId: string): Promise<boolean> {
+    return this.repository.deleteClient(context, clientId);
+  }
+
+  /**
+   * Creates a service account: an agent that logs in with a secret instead of a browser.
+   *
+   * Its permissions are capped by those of the person creating it. Somebody who cannot read
+   * customers cannot leave behind an agent that can, and a permission granted here would otherwise
+   * outlive the membership that justified it.
+   */
+  async createServiceAccount(
+    context: TenantContext,
+    input: {
+      readonly name: string;
+      readonly scopes: readonly string[];
+      readonly permissions: readonly string[];
+    }
+  ): Promise<{ account: McpServiceAccountRecord; secret: string }> {
+    const name = input.name.trim();
+    if (name.length === 0 || name.length > 120) throw new McpOauthError("MCP_REQUEST_INVALID");
+    if (input.permissions.length === 0) throw new McpOauthError("MCP_REQUEST_INVALID");
+    const permissions = input.permissions as readonly Permission[];
+    if (permissions.some((permission) => !context.permissions.includes(permission)))
+      throw new McpOauthError("MCP_SCOPE_UNAVAILABLE");
+
+    // The scopes have to be backed by the permissions the account will actually hold, not by the
+    // creator's: an account whose token names a scope it can never exercise fails on every call.
+    const verdict = negotiateMcpScopes({
+      requested: input.scopes,
+      clientMax: mcpScopes,
+      actorPermissions: permissions
+    });
+    if ("code" in verdict) throw new McpOauthError(verdict.code);
+
+    const secret = this.mint("serviceAccount");
+    const account = await this.repository.createServiceAccount(context, {
+      name,
+      ownerMembershipId: context.membershipId,
+      scopes: verdict.granted,
+      permissions,
+      secretHash: this.crypto.sha256(secret),
+      expiresAt: mcpExpiry("serviceAccountSecret", this.clock())
+    });
+    return { account, secret };
+  }
+
+  listServiceAccounts(context: TenantContext): Promise<readonly McpServiceAccountRecord[]> {
+    return this.repository.listServiceAccounts(context);
+  }
+
+  /**
+   * Issues a new secret and leaves the old one working for a day.
+   *
+   * Two live keys on purpose: replacing the secret outright breaks every caller at the instant of
+   * the rotation, and a rotation that causes an outage is a rotation nobody performs. When the old
+   * secret is known to be compromised the operation is `retirePreviousSecret`, not this one.
+   */
+  async rotateServiceAccountSecret(context: TenantContext, serviceAccountId: string): Promise<string> {
+    const secret = this.mint("serviceAccount");
+    const now = this.clock();
+    const rotated = await this.repository.rotateServiceAccountSecret(context, serviceAccountId, {
+      secretHash: this.crypto.sha256(secret),
+      at: now,
+      previousExpiresAt: mcpExpiry("serviceAccountPreviousSecret", now)
+    });
+    if (!rotated) throw new McpOauthError("MCP_REQUEST_INVALID");
+    return secret;
+  }
+
+  retirePreviousSecret(context: TenantContext, serviceAccountId: string): Promise<boolean> {
+    return this.repository.retirePreviousSecret(context, serviceAccountId, this.clock());
+  }
+
+  disableServiceAccount(context: TenantContext, serviceAccountId: string): Promise<boolean> {
+    return this.repository.disableServiceAccount(context, serviceAccountId, this.clock());
+  }
+
+  /**
+   * The way in that has no browser: a secret, exchanged for one access token.
+   *
+   * No refresh token is issued, and that is not an omission. The account can present its secret
+   * again whenever it likes, so a refresh token would be a second long-lived credential to store,
+   * rotate and lose, bought for nothing.
+   */
+  async authenticateServiceAccount(input: {
+    readonly secret: string;
+    readonly resource: string | undefined;
+  }): Promise<McpServiceTokenIssue> {
+    this.requireResource(input.resource);
+    const account = await this.repository.resolveServiceAccount(this.crypto.sha256(input.secret));
+    const now = this.clock();
+    // Unknown, disabled and expired are one answer. Which of the three it was is exactly what an
+    // attacker probing secrets would like to learn.
+    if (!account || account.disabledAt !== null || account.expiresAt.getTime() <= now.getTime())
+      throw new McpOauthError("MCP_CLIENT_AUTH_FAILED");
+
+    // Re-checked at every login rather than trusted from the row: a permission removed from the
+    // account has to narrow the next token, not the one after somebody remembers to reissue.
+    const verdict = negotiateMcpScopes({
+      requested: account.scopes,
+      clientMax: mcpScopes,
+      actorPermissions: account.permissions as readonly Permission[]
+    });
+    if ("code" in verdict) throw new McpOauthError(verdict.code);
+
+    const scope: McpTenantScope = { tenantId: account.tenantId };
+    const grantId = await this.repository.createGrant(scope, {
+      clientId: null,
+      actorType: "service_account",
+      actorMembershipId: null,
+      actorServiceAccountId: account.id,
+      scopes: verdict.granted,
+      expiresAt: mcpExpiry("grant", now)
+    });
+
+    const accessToken = this.mint("accessToken");
+    await this.repository.issueAccessToken(scope, {
+      grantId,
+      tokenHash: this.crypto.sha256(accessToken),
+      audience: this.audience,
+      scopes: verdict.granted,
+      expiresAt: mcpExpiry("accessToken", now)
+    });
+
+    return {
+      accessToken,
+      tokenType: "Bearer",
+      expiresIn: mcpLifetimes.accessToken,
+      scope: verdict.granted.join(" "),
+      usedPreviousSecret: account.matchedPrevious
+    };
   }
 
   private async requireClient(clientId: string, tenantId?: string): Promise<McpClientResolution> {

@@ -91,8 +91,8 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       const rows = await tx<
         Array<{
           id: string;
-          clientId: string;
-          clientName: string;
+          clientId: string | null;
+          clientName: string | null;
           actorType: string;
           actorMembershipId: string | null;
           actorServiceAccountId: string | null;
@@ -112,7 +112,9 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
                (select max(t.last_used_at) from mcp_access_tokens t
                  where t.tenant_id = g.tenant_id and t.grant_id = g.id) as "lastUsedAt"
         from mcp_grants g
-        join mcp_clients c on c.tenant_id = g.tenant_id and c.id = g.client_id
+        -- Left, because a service account grant names no client. An inner join here would hide
+        -- exactly the grants nobody is watching.
+        left join mcp_clients c on c.tenant_id = g.tenant_id and c.id = g.client_id
         where g.tenant_id = ${context.tenantId}
         order by g.consented_at desc, g.id`;
       return rows.map((row) => ({
@@ -191,10 +193,11 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         permissions: string[];
         expiresAt: Date;
         disabledAt: Date | null;
+        matchedPrevious: boolean;
       }>
     >`
-      select id, tenant_id as "tenantId", scopes, permissions,
-             expires_at as "expiresAt", disabled_at as "disabledAt"
+      select id, tenant_id as "tenantId", scopes, permissions, expires_at as "expiresAt",
+             disabled_at as "disabledAt", matched_previous as "matchedPrevious"
       from lookup_mcp_service_account(${secretHash})`;
     if (!row) return null;
     return { ...row, scopes: row.scopes as McpScope[] };
@@ -327,7 +330,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
   createGrant(
     scope: McpTenantScope,
     input: {
-      clientId: string;
+      clientId: string | null;
       actorType: "user" | "service_account";
       actorMembershipId: string | null;
       actorServiceAccountId: string | null;
@@ -494,18 +497,33 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
   rotateServiceAccountSecret(
     context: TenantContext,
     serviceAccountId: string,
-    secretHash: string,
-    at: Date
+    input: { secretHash: string; at: Date; previousExpiresAt: Date }
   ): Promise<boolean> {
     return withTenant(this.database, context.tenantId, async (tx) => {
-      // The old secret stops working the instant the new one lands. A two-key window would mean a
-      // rotation that leaves the compromised key alive, which is not a rotation.
+      // The secret being replaced becomes the previous one, with an expiry. Rotating twice inside
+      // the window therefore drops the oldest key rather than accumulating live secrets.
       const rotated = await tx<{ id: string }[]>`
         update mcp_service_accounts
-        set secret_hash = ${secretHash}, secret_rotated_at = ${at}, updated_at = now()
+        set previous_secret_hash = secret_hash,
+            previous_secret_expires_at = ${input.previousExpiresAt},
+            secret_hash = ${input.secretHash},
+            secret_rotated_at = ${input.at},
+            updated_at = now()
         where tenant_id = ${context.tenantId} and id = ${serviceAccountId} and disabled_at is null
         returning id`;
       return rotated.length > 0;
+    });
+  }
+
+  retirePreviousSecret(context: TenantContext, serviceAccountId: string, at: Date): Promise<boolean> {
+    return withTenant(this.database, context.tenantId, async (tx) => {
+      const retired = await tx<{ id: string }[]>`
+        update mcp_service_accounts
+        set previous_secret_hash = null, previous_secret_expires_at = null, updated_at = ${at}
+        where tenant_id = ${context.tenantId} and id = ${serviceAccountId}
+          and previous_secret_hash is not null
+        returning id`;
+      return retired.length > 0;
     });
   }
 

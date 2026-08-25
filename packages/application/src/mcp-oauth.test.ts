@@ -7,7 +7,8 @@ import {
   type McpClientResolution,
   type McpCrypto,
   type McpOauthRepository,
-  type McpRefreshResolution
+  type McpRefreshResolution,
+  type McpServiceAccountResolution
 } from "./mcp-oauth.js";
 
 const issuer = "https://hub.test";
@@ -45,12 +46,15 @@ const fakeCrypto = (): McpCrypto => {
 
 type Recorded = {
   requests: Array<{ tenantId: string; codeHash: string; scopes: readonly McpScope[]; expiresAt: Date }>;
-  grants: Array<{ tenantId: string; clientId: string; scopes: readonly McpScope[] }>;
+  grants: Array<{ tenantId: string; clientId: string | null; scopes: readonly McpScope[] }>;
   accessTokens: Array<{ tenantId: string; grantId: string; tokenHash: string; audience: string }>;
   refreshTokens: Array<{ tenantId: string; grantId: string; tokenHash: string }>;
   rotations: Array<{ tenantId: string; tokenId: string; familyId: string; tokenHash: string }>;
   revokedFamilies: string[];
   revokedAccessTokens: string[];
+  createdClients: Array<{ name: string; kind: string; secretHash: string | null; maxScopes: readonly McpScope[] }>;
+  createdAccounts: Array<{ name: string; ownerMembershipId: string; scopes: readonly McpScope[]; secretHash: string }>;
+  rotatedSecrets: Array<{ id: string; secretHash: string; previousExpiresAt: Date }>;
 };
 
 const client: McpClientResolution = {
@@ -80,6 +84,9 @@ type Overrides = {
   access?: { tokenId: string; tenantId: string } | null;
   /** Null stands for the rotation that lost the race: the store spent the token first. */
   rotation?: string | null;
+  account?: McpServiceAccountResolution | null;
+  /** False stands for the account that was not there, or belonged to another tenant. */
+  rotatedAccount?: boolean;
 };
 
 const build = (overrides: Overrides = {}) => {
@@ -90,7 +97,10 @@ const build = (overrides: Overrides = {}) => {
     refreshTokens: [],
     rotations: [],
     revokedFamilies: [],
-    revokedAccessTokens: []
+    revokedAccessTokens: [],
+    createdClients: [],
+    createdAccounts: [],
+    rotatedSecrets: []
   };
   const repository = {
     resolveClient: (clientId: string) =>
@@ -100,7 +110,7 @@ const build = (overrides: Overrides = {}) => {
       return Promise.resolve();
     },
     consumeAuthorizationCode: () => Promise.resolve(overrides.claim === undefined ? claim : overrides.claim),
-    createGrant: (ctx: { tenantId: string }, input: { clientId: string; scopes: readonly McpScope[] }) => {
+    createGrant: (ctx: { tenantId: string }, input: { clientId: string | null; scopes: readonly McpScope[] }) => {
       recorded.grants.push({ ...input, tenantId: ctx.tenantId });
       return Promise.resolve("grant-1");
     },
@@ -125,7 +135,34 @@ const build = (overrides: Overrides = {}) => {
     revokeAccessToken: (_ctx: { tenantId: string }, tokenId: string) => {
       recorded.revokedAccessTokens.push(tokenId);
       return Promise.resolve(true);
-    }
+    },
+    createClient: (_ctx: TenantContext, input: Recorded["createdClients"][number]) => {
+      recorded.createdClients.push(input);
+      // The hash is written but never projected back, exactly as the store does it: a record that
+      // carried it would put the credential into every listing that renders one.
+      const { secretHash: _secretHash, ...record } = input;
+      return Promise.resolve({
+        id: "client-row-9",
+        clientId: "generated",
+        ...record,
+        status: "active",
+        createdAt: now
+      });
+    },
+    createServiceAccount: (_ctx: TenantContext, input: Recorded["createdAccounts"][number]) => {
+      recorded.createdAccounts.push(input);
+      return Promise.resolve({ id: "account-9", ...input, disabledAt: null, secretRotatedAt: null, createdAt: now });
+    },
+    resolveServiceAccount: () => Promise.resolve(overrides.account ?? null),
+    rotateServiceAccountSecret: (
+      _ctx: TenantContext,
+      id: string,
+      input: { secretHash: string; previousExpiresAt: Date }
+    ) => {
+      recorded.rotatedSecrets.push({ id, ...input });
+      return Promise.resolve(overrides.rotatedAccount ?? true);
+    },
+    retirePreviousSecret: () => Promise.resolve(overrides.rotatedAccount ?? true)
   } as unknown as McpOauthRepository;
   const service = new McpOauthService({ repository, crypto: fakeCrypto(), issuer, clock: () => now });
   return { service, recorded };
@@ -540,5 +577,176 @@ describe("which resource the client asked for", () => {
         })
       )
     ).toBe("MCP_AUDIENCE_INVALID");
+  });
+});
+
+describe("registering a client", () => {
+  const owner = () => context(tenantA, ["security:manage", "customers:read"]);
+  const register = (service: McpOauthService, overrides: Record<string, unknown> = {}) =>
+    service.registerClient(owner(), {
+      name: "  Claude Desktop  ",
+      kind: "public",
+      redirectUris: ["http://127.0.0.1/callback"],
+      maxScopes: ["crm.read"],
+      ...overrides
+    });
+
+  it("trims the name and hands a public client no secret at all", async () => {
+    const { service, recorded } = build();
+    const registered = await register(service);
+    expect(registered.secret).toBeNull();
+    expect(recorded.createdClients[0]).toMatchObject({ name: "Claude Desktop", secretHash: null });
+  });
+
+  it("gives a confidential client its secret once, and keeps only the hash", async () => {
+    // The value is returned here and nowhere else. An operator who loses it rotates the client
+    // instead of looking it up, which is what makes the store safe to back up.
+    const { service, recorded } = build();
+    const registered = await register(service, { kind: "confidential" });
+    expect(registered.secret).toBe("chm_sa_token-1");
+    expect(recorded.createdClients[0]!.secretHash).toBe("sha256:chm_sa_token-1");
+    expect(JSON.stringify(registered.client)).not.toContain("chm_sa_");
+  });
+
+  it("refuses an address that could not be matched back later", async () => {
+    const { service } = build();
+    expect(await denialOf(() => register(service, { redirectUris: ["http://agent.example.com/cb"] }))).toBe(
+      "MCP_REDIRECT_URI_MISMATCH"
+    );
+    expect(await denialOf(() => register(service, { redirectUris: [] }))).toBe("MCP_REQUEST_INVALID");
+  });
+
+  it("refuses a name that is only spaces", async () => {
+    const { service } = build();
+    expect(await denialOf(() => register(service, { name: "   " }))).toBe("MCP_REQUEST_INVALID");
+  });
+
+  it("refuses a ceiling that names something that is not a scope", async () => {
+    const { service } = build();
+    expect(await denialOf(() => register(service, { maxScopes: ["everything"] }))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("refuses a client whose only ceiling is listing, because it could call nothing", async () => {
+    // `mcp:tools.list` is never negotiated, so recording it as a ceiling would suggest it could be
+    // withheld -- and a client with nothing else can discover tools it may not call.
+    const { service } = build();
+    expect(await denialOf(() => register(service, { maxScopes: ["mcp:tools.list"] }))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+});
+
+describe("creating a service account", () => {
+  const owner = (permissions: string[]) => context(tenantA, permissions);
+  const create = (service: McpOauthService, permissions: string[], overrides: Record<string, unknown> = {}) =>
+    service.createServiceAccount(owner(permissions), {
+      name: "Nightly report agent",
+      scopes: ["crm.read"],
+      permissions: ["customers:read"],
+      ...overrides
+    });
+
+  it("returns the secret once and stores its hash", async () => {
+    const { service, recorded } = build();
+    const created = await create(service, ["security:manage", "customers:read"]);
+    expect(created.secret).toBe("chm_sa_token-1");
+    expect(recorded.createdAccounts[0]!.secretHash).toBe("sha256:chm_sa_token-1");
+    expect(recorded.createdAccounts[0]!.scopes).toEqual(["mcp:tools.list", "crm.read"]);
+  });
+
+  it("refuses to grant an agent a permission the creator does not have", async () => {
+    // Otherwise somebody who cannot read customers could leave behind an agent that can, and the
+    // permission would outlive the membership that was supposed to justify it.
+    const { service } = build();
+    const denial = await denialOf(() => create(service, ["security:manage"], { permissions: ["customers:read"] }));
+    expect(denial).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("refuses a scope the agent's own permissions would not back", async () => {
+    const { service } = build();
+    const denial = await denialOf(() =>
+      create(service, ["security:manage", "customers:read", "tickets:read"], {
+        permissions: ["customers:read"],
+        scopes: ["support.read"]
+      })
+    );
+    expect(denial).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+});
+
+describe("logging in as a service account", () => {
+  const account = {
+    id: "account-1",
+    tenantId: tenantA,
+    scopes: ["mcp:tools.list", "crm.read"] as readonly McpScope[],
+    permissions: ["customers:read"],
+    expiresAt: new Date("2027-08-25T10:00:00.000Z"),
+    disabledAt: null,
+    matchedPrevious: false
+  };
+  const login = (service: McpOauthService) => service.authenticateServiceAccount({ secret: "chm_sa_x", resource });
+
+  it("issues one access token and deliberately no refresh token", async () => {
+    const { service, recorded } = build({ account });
+    const issued = await login(service);
+
+    expect(issued).toEqual({
+      accessToken: "chm_at_token-1",
+      tokenType: "Bearer",
+      expiresIn: 1800,
+      scope: "mcp:tools.list crm.read",
+      usedPreviousSecret: false
+    });
+    expect(recorded.refreshTokens).toHaveLength(0);
+    // The grant names no client, because there was none. A placeholder would be a row the consent
+    // screen then has to explain.
+    expect(recorded.grants[0]).toMatchObject({ clientId: null, tenantId: tenantA });
+  });
+
+  it("says when the secret presented was the rotated-away one", async () => {
+    // It still works -- that is what the window is for -- but an agent nobody redeployed is about
+    // to stop working, and this is the only moment anybody could notice.
+    const { service } = build({ account: { ...account, matchedPrevious: true } });
+    await expect(login(service)).resolves.toMatchObject({ usedPreviousSecret: true });
+  });
+
+  it("gives unknown, disabled and expired the same answer", async () => {
+    // Which of the three it was is exactly what somebody probing secrets would like to learn.
+    for (const patch of [null, { ...account, disabledAt: now }, { ...account, expiresAt: now }]) {
+      const { service } = build({ account: patch });
+      expect(await denialOf(() => login(service))).toBe("MCP_CLIENT_AUTH_FAILED");
+    }
+  });
+
+  it("re-checks the scopes against the permissions at every login", async () => {
+    // A permission taken off the account has to narrow the next token, not the one after somebody
+    // remembers to reissue it.
+    const { service } = build({ account: { ...account, permissions: [] } });
+    expect(await denialOf(() => login(service))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("asks for the resource like every other way in", async () => {
+    const { service } = build({ account });
+    expect(await denialOf(() => service.authenticateServiceAccount({ secret: "chm_sa_x", resource: undefined }))).toBe(
+      "MCP_REQUEST_INVALID"
+    );
+  });
+});
+
+describe("rotating a service account secret", () => {
+  it("keeps the old key alive for a day and says so in the window it writes", async () => {
+    const { service, recorded } = build();
+    const secret = await service.rotateServiceAccountSecret(context(tenantA, ["security:manage"]), "account-1");
+
+    expect(secret).toBe("chm_sa_token-1");
+    expect(recorded.rotatedSecrets[0]).toMatchObject({
+      secretHash: "sha256:chm_sa_token-1",
+      previousExpiresAt: new Date("2026-08-26T10:00:00.000Z")
+    });
+  });
+
+  it("refuses to report success for an account that was not there", async () => {
+    const { service } = build({ rotatedAccount: false });
+    expect(
+      await denialOf(() => service.rotateServiceAccountSecret(context(tenantA, ["security:manage"]), "missing"))
+    ).toBe("MCP_REQUEST_INVALID");
   });
 });

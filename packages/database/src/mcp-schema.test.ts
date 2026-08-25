@@ -141,7 +141,56 @@ describe("the refresh lookup widened by 0051", () => {
   it("touches the function and nothing else", () => {
     // The only `drop` allowed here is the function being replaced: its result shape changed, and
     // `create or replace` cannot do that. A dropped table or column would be a different migration.
-    expect(widened).not.toMatch(/drop (table|column|constraint|index|policy)/i);
-    expect(widened).not.toMatch(/(alter table|create table|insert into|update|delete from)/i);
+    expect(widened).not.toMatch(/\bdrop (table|column|constraint|index|policy)\b/i);
+    expect(widened).not.toMatch(/\b(alter table|create table|insert into|update|delete from)\b/i);
+  });
+});
+
+describe("the rotation window opened by 0052", () => {
+  const rotation = readFileSync(
+    new URL("../migrations/0052_mcp_service_account_rotation.sql", import.meta.url),
+    "utf8"
+  );
+
+  it("refuses to let either half of the window stand alone", () => {
+    // A hash with no expiry is a second permanent key; an expiry with no hash is a window onto
+    // nothing. The paired check is what keeps "two keys for a while" from becoming "two keys".
+    expect(rotation).toContain("check ((previous_secret_hash is null) = (previous_secret_expires_at is null))");
+  });
+
+  it("stops a rotated-away secret from being reusable as somebody else's current one", () => {
+    expect(rotation).toMatch(/create unique index mcp_service_accounts_previous_secret_hash_key/);
+  });
+
+  it("only honours the old secret while the window is still open", () => {
+    // Without the time comparison the previous hash never stops working, which is the whole failure
+    // this migration exists to avoid.
+    expect(rotation).toContain("previous_secret_hash = p_secret_hash and s.previous_secret_expires_at > now()");
+  });
+
+  it("keeps the pinned search path when it recreates the lookup", () => {
+    expect(rotation).toContain("security definer set search_path = public, pg_temp");
+    expect(rotation).toContain("grant execute on function lookup_mcp_service_account(text) to control_hub_app");
+  });
+
+  it("adds its columns nullable, so no account that never rotates is rewritten", () => {
+    expect(rotation).not.toMatch(/add column previous_secret_[a-z_]+[^;]*not null/);
+    expect(rotation).not.toMatch(/drop (table|column|index|policy)/i);
+  });
+});
+
+describe("the grant without a client allowed by 0053", () => {
+  const grants = readFileSync(new URL("../migrations/0053_mcp_service_account_grants.sql", import.meta.url), "utf8");
+
+  it("ties the client to the actor instead of simply dropping the requirement", () => {
+    // Stricter than what it replaces, not looser: before, a service account grant could have
+    // carried any client at all, and a user grant can still never be missing one.
+    expect(grants).toContain("alter column client_id drop not null");
+    expect(grants).toContain("check ((actor_type = 'user') = (client_id is not null))");
+  });
+
+  it("leaves every grant already written valid", () => {
+    // Every existing row is a user grant with a client, which the new constraint already accepts.
+    expect(grants).not.toMatch(/(update|delete from|drop table|drop column)/i);
   });
 });
