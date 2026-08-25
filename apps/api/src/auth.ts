@@ -5,6 +5,15 @@ import { twoFactor } from "better-auth/plugins";
 import { Pool } from "pg";
 import { createMailSender } from "./email.js";
 
+/**
+ * How recently somebody must have proved who they are for a sensitive operation to be allowed.
+ *
+ * Exported rather than written twice: better-auth guards its own sensitive operations with this
+ * number, and Control Hub guards consenting to an MCP client with it. Two copies would drift, and
+ * the drift would show up as one of the two silently accepting a session the other refuses.
+ */
+export const sessionFreshAge = 60 * 10;
+
 export function createAuth(environment: ApiEnvironment, options: { allowSignUp?: boolean } = {}) {
   const sendMail = createMailSender({
     host: environment.SMTP_HOST,
@@ -58,7 +67,7 @@ export function createAuth(environment: ApiEnvironment, options: { allowSignUp?:
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
-      freshAge: 60 * 10,
+      freshAge: sessionFreshAge,
       preserveSessionInDatabase: true
     },
     advanced: { useSecureCookies: environment.NODE_ENV === "production", crossSubDomainCookies: { enabled: false } },

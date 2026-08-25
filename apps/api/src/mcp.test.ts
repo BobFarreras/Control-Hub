@@ -62,10 +62,42 @@ describe("the MCP surface, as the composition root declares it", () => {
     // other holds a token. The management routes act for a person, so on an installation that
     // configures no authentication they are absent rather than reachable and unguarded.
     const app = boot(enabled);
-    for (const url of ["/api/v1/mcp/clients", "/api/v1/mcp/grants", "/api/v1/mcp/service-accounts"]) {
+    for (const url of [
+      "/api/v1/mcp/clients",
+      "/api/v1/mcp/grants",
+      "/api/v1/mcp/service-accounts",
+      "/api/v1/mcp/consent"
+    ]) {
       const response = await app.inject({ method: "GET", url });
       expect(response.statusCode, url).toBe(404);
     }
+  });
+
+  it("offers no interactive authorization on an installation with no panel to send anybody to", async () => {
+    // Without a screen there is nothing to hand a person over to. A 404 tells a client that this
+    // server offers no interactive authorization; a redirect into nothing would tell it nothing.
+    const app = boot(enabled);
+    const response = await app.inject({ method: "GET", url: "/api/v1/mcp/oauth/authorize" });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("hands a person over to the panel, at an address with no locale in it", async () => {
+    // Which language the screen speaks is the panel's decision, made from what the browser asks
+    // for. A list of locales copied into the API would be a second place for it to be wrong.
+    //
+    // The client cannot be resolved here -- there is no database behind this app -- so what the
+    // handover carries is a refusal. That is the case worth pinning: a request nobody can make
+    // sense of still ends at our screen rather than at an address the request chose.
+    const app = boot({ ...enabled, appOrigin: "https://panel.test" });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/mcp/oauth/authorize?client_id=nobody-registered&redirect_uri=http://127.0.0.1/callback"
+    });
+
+    expect(response.statusCode).toBe(303);
+    const target = new URL(response.headers.location as string);
+    expect(`${target.origin}${target.pathname}`).toBe("https://panel.test/mcp/consent");
+    expect(target.searchParams.get("error")).toBe("MCP_REQUEST_INVALID");
   });
 
   it("is not there at all while the flag is off", async () => {

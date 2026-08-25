@@ -62,6 +62,7 @@ type Recorded = {
 const client: McpClientResolution = {
   id: "client-row-1",
   tenantId: tenantA,
+  name: "Claude Desktop",
   kind: "public",
   secretHash: null,
   redirectUris: ["http://127.0.0.1/callback"],
@@ -762,6 +763,74 @@ describe("rotating a service account secret", () => {
     expect(
       await denialOf(() => service.rotateServiceAccountSecret(context(tenantA, ["security:manage"]), "missing"))
     ).toBe("MCP_REQUEST_INVALID");
+  });
+});
+
+describe("what the consent screen is told about a request", () => {
+  const request = {
+    clientId: "public-app",
+    redirectUri: "http://127.0.0.1:51763/callback",
+    scopes: ["crm.read"],
+    codeChallenge: "a".repeat(43),
+    codeChallengeMethod: "S256",
+    resource
+  };
+
+  it("names the client from the row, never from the request that carried it here", async () => {
+    // Everything else on that screen arrives through a query string the client controls. If the
+    // name did too, the consent page would be a phishing page we host ourselves.
+    const { service } = build();
+    await expect(service.describeAuthorization(context(tenantA, ["customers:read"]), request)).resolves.toMatchObject({
+      clientName: "Claude Desktop",
+      clientKind: "public"
+    });
+  });
+
+  it("shows what would be granted, not what the client may ask for", async () => {
+    // The client asked for nothing in particular, and its ceiling allows two scopes. What comes
+    // back is the one the person's own permissions can actually back, plus listing -- which is
+    // never negotiated because it unlocks no data. Showing the ceiling instead would have somebody
+    // approve a sentence that is not true.
+    const { service } = build();
+    const description = await service.describeAuthorization(context(tenantA, ["customers:read"]), {
+      ...request,
+      scopes: []
+    });
+    expect(description.scopes).toEqual(["mcp:tools.list", "crm.read"]);
+  });
+
+  it("says when the consent would lapse", async () => {
+    // Ninety days. A screen that omits it is asking somebody to approve something open-ended.
+    const { service } = build();
+    const description = await service.describeAuthorization(context(tenantA, ["customers:read"]), request);
+    expect(description.grantExpiresAt).toEqual(new Date("2026-11-23T10:00:00.000Z"));
+  });
+
+  it("refuses to describe anything the approval would refuse", async () => {
+    // The screen and the approval run the same checks in the same order, so a request that can be
+    // rendered is one that can be approved. Anything else ends as a person pressing approve and
+    // being told no, with nothing on the screen explaining which answer was the real one.
+    const { service } = build();
+    const person = context(tenantA, ["customers:read"]);
+    const cases = [
+      [{ ...request, resource: undefined }, "MCP_REQUEST_INVALID"],
+      [{ ...request, clientId: "unknown" }, "MCP_CLIENT_UNKNOWN"],
+      [{ ...request, codeChallengeMethod: "plain" }, "MCP_PKCE_INVALID"],
+      [{ ...request, redirectUri: "https://evil.example/callback" }, "MCP_REDIRECT_URI_MISMATCH"],
+      [{ ...request, scopes: ["usage.read"] }, "MCP_SCOPE_UNAVAILABLE"]
+    ] as const;
+    for (const [input, code] of cases) {
+      expect(await denialOf(() => service.describeAuthorization(person, input)), code).toBe(code);
+    }
+  });
+
+  it("does not write anything down", async () => {
+    // Describing is a read. A request that somebody looked at and closed must leave no code, no
+    // grant and no row behind it.
+    const { service, recorded } = build();
+    await service.describeAuthorization(context(tenantA, ["customers:read"]), request);
+    expect(recorded.requests).toEqual([]);
+    expect(recorded.grants).toEqual([]);
   });
 });
 

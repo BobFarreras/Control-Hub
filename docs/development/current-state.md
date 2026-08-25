@@ -97,7 +97,7 @@ clients, service accounts i auditoria per tool call. El propietari va aprovar D1
 (redirects loopback), D5 (vida del token), D7 (bearer o DPoP) i D8 (portal) segueixen obertes i
 bloquegen exactament la part que en depen.
 
-De la 10.1 hi ha tres increments. L'**increment A** son les regles d'autoritat a
+De la 10.1 hi ha aquests increments. L'**increment A** son les regles d'autoritat a
 `packages/domain/src/mcp.ts` amb 23 proves, que decideixen qui pot cridar que --issuer, audience,
 expiracio, revocacio, tenant, scope i permis, en aquest ordre-- i la flag `mcp` registrada i
 apagada. L'**increment B1** es el cataleg de `packages/application/src/mcp.ts`: quatre tools de
@@ -216,10 +216,27 @@ que la llista d'API no tenia i sense la qual el cas d'us de tancar la finestra d
 podia arribar a executar. Amb H1 es declara tambe l'etiqueta `mcp` de l'OpenAPI a
 `apps/api/src/app.ts`, que era l'unica linia pendent de coordinacio amb l'altra sessio.
 
-**El punt de continuacio es la pantalla de consentiment**: `GET /api/v1/mcp/oauth/authorize` i la
-pantalla d'aprovacio, que es el que falta perque una persona --i no nomes un agent amb secret--
-pugui connectar un client. Despres queda la UI de seguretat amb i18n, que consumeix les rutes
-d'H1.
+L'**increment H2** es `/authorize` i la pantalla de consentiment, l'unic tram del flux que necessita
+una persona. `GET /api/v1/mcp/oauth/authorize` valida i redirigeix al panell, i les dues crides que
+la pantalla fa despres viuen a `apps/api/src/routes/mcp-consent.ts` amb el sobre de problem details,
+perque parlen amb el nostre panell i no amb un client OAuth generic. **No hi ha taula de peticions
+pendents**: els parametres viatgen per la query string, pero cap fet que la pantalla ensenya en surt
+--nom del client, scopes que realment es concedirien i data de caducitat es tornen a llegir amb
+`describeAuthorization`, que comparteix `checkAuthorization` amb l'aprovacio perque el que es mostra
+i el que es faria no puguin divergir. A `/authorize` hi ha dos sobres d'error segons qui el pot
+rebre: el que no es pot redirigir --client desconegut, adreca no registrada-- s'atura a la pantalla,
+i la resta torna a l'adreca ja comprovada amb els noms de la RFC 6749 seccio 4.1.2.1 i l'`state` que
+el client va enviar. **Aprovar exigeix una sessio de menys de deu minuts** --`sessionFreshAge`, la
+mateixa finestra que better-auth fa servir per canviar la contrasenya-- i **refusar no**, perque
+demanar un login nou per dir que no es com un «no» acaba sent una pestanya abandonada. La migracio
+`0057` afegeix `name` a `lookup_mcp_client`: sense el nom registrat la pantalla ensenyaria un
+`client_id` opac alli on una persona espera «Claude Desktop». L'API no coneix la llista d'idiomes;
+redirigeix a `${appOrigin}/mcp/consent` i el panell negocia la llengua, i sense `appOrigin` la ruta
+no es declara.
+
+**El punt de continuacio es la interficie**: la pantalla de consentiment amb i18n i la seccio de
+seguretat del panell, que consumeixen el que H1 i H2 deixen a l'abast. Amb aixo la 10.1 queda
+tancada de punta a punta.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

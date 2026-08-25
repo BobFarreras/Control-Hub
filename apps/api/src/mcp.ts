@@ -20,6 +20,7 @@ import {
   PostgresUsageRepository
 } from "@control-hub/persistence";
 import type { ControlHubAuth } from "./auth.js";
+import { registerMcpConsentRoutes } from "./routes/mcp-consent.js";
 import { registerMcpManagementRoutes } from "./routes/mcp-management.js";
 import { registerMcpOauthRoutes } from "./routes/mcp-oauth.js";
 import { registerMcpTransportRoutes } from "./routes/mcp-transport.js";
@@ -56,13 +57,28 @@ export function registerMcpRoutes(context: {
    * interactive authentication.
    */
   auth: ControlHubAuth | undefined;
+  /**
+   * The panel's public origin, or undefined if this installation has none.
+   *
+   * Only the authorization endpoint needs it, and it needs it absolutely: without a screen to send
+   * a person to there is no interactive authorization to offer, so the endpoint is not declared
+   * rather than redirecting into nothing.
+   */
+  appOrigin: string | undefined;
 }): McpOauthService | null {
   if (!isFeatureEnabled(context.featureFlags, "mcp") || !context.issuer) return null;
 
   const crypto = new NodeMcpCrypto();
   const repository = new PostgresMcpOauthRepository(context.database);
   const mcp = new McpOauthService({ repository, crypto, issuer: context.issuer });
-  registerMcpOauthRoutes({ app: context.app, mcp });
+  registerMcpOauthRoutes({
+    app: context.app,
+    mcp,
+    // No locale in the address. Which language the screen speaks is decided by the panel from what
+    // the browser asks for, and a list of locales copied into the API would be a second place for
+    // it to be wrong.
+    consentUrl: context.appOrigin === undefined ? null : `${context.appOrigin}/mcp/consent`
+  });
 
   const session = new McpSessionService({
     // The same store the endpoints mint through, so a token stops working here at the moment it is
@@ -98,7 +114,8 @@ export function registerMcpRoutes(context: {
   });
   registerMcpTransportRoutes({ app: context.app, session, crypto, issuer: context.issuer });
 
-  if (context.auth)
+  if (context.auth) {
+    registerMcpConsentRoutes({ app: context.app, database: context.database, auth: context.auth, mcp });
     registerMcpManagementRoutes({
       app: context.app,
       database: context.database,
@@ -108,8 +125,9 @@ export function registerMcpRoutes(context: {
       // the one after some other object's cache notices.
       mcp
     });
+  }
 
-  // Returned so the increment that follows -- the consent screen -- wires onto the same instance
-  // rather than building a second one with its own clock.
+  // Returned so the panel's own screens can be wired onto the same instance rather than onto a
+  // second one with its own clock.
   return mcp;
 }

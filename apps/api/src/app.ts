@@ -445,7 +445,14 @@ export function buildApp(options: BuildAppOptions) {
 
     // Unauthenticated by design and therefore outside the block above: a client has to read the
     // discovery documents and reach the token endpoint before it holds any session at all.
-    registerMcpRoutes({ app, database, featureFlags, issuer: options.mcpIssuer, auth: options.auth });
+    registerMcpRoutes({
+      app,
+      database,
+      featureFlags,
+      issuer: options.mcpIssuer,
+      auth: options.auth,
+      appOrigin: options.appOrigin
+    });
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
     registerObservabilityRoutes();
     registerHealthRoutes();

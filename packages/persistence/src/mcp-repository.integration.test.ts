@@ -186,6 +186,9 @@ suite("PostgresMcpOauthRepository", () => {
   it("finds a client by the name it presents at /authorize, with no tenant to look in", async () => {
     const resolved = await repository.resolveClient(`client-${clientA}`);
     expect(resolved?.tenantId).toBe(tenantA);
+    // The registered name, because the consent screen renders it and nothing a caller sends may
+    // reach that line. Without it a person approves an opaque identifier.
+    expect(resolved?.name).toBe("Test client");
     expect(resolved?.kind).toBe("public");
     // A public client holds no secret. A hash here would be a secret that is not one.
     expect(resolved?.secretHash).toBeNull();

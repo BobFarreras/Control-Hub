@@ -139,15 +139,29 @@ const stub = (overrides: Partial<Record<string, unknown>> = {}) => {
         usedPreviousSecret: false
       }
     ),
-    revokeToken: record("revokeToken", overrides.revokeToken ?? undefined)
+    revokeToken: record("revokeToken", overrides.revokeToken ?? undefined),
+    // Not built through `record`: this one takes two arguments, and flattening them into a single
+    // `input` would make the test that checks the address was the one submitted unreadable.
+    audience,
+    requireRedirectable: (clientId: string, redirectUri: string): Promise<void> => {
+      calls.push({ method: "requireRedirectable", input: { clientId, redirectUri } });
+      const refusal = overrides.requireRedirectable;
+      return refusal instanceof Error ? Promise.reject(refusal) : Promise.resolve();
+    }
   } as unknown as McpOauthService;
   return { service, calls };
 };
 
-const boot = async (overrides?: Partial<Record<string, unknown>>) => {
+/** The audience this stubbed installation answers for, in both the service and the requests. */
+const audience = "https://hub.test/mcp";
+
+/** Where the authorization endpoint hands a person over: the panel, not this API. */
+const consentUrl = "https://panel.test/mcp/consent";
+
+const boot = async (overrides?: Partial<Record<string, unknown>>, screen: string | null = consentUrl) => {
   const { service, calls } = stub(overrides);
   const app = Fastify();
-  registerMcpOauthRoutes({ app: app as unknown as ControlHubApp, mcp: service });
+  registerMcpOauthRoutes({ app: app as unknown as ControlHubApp, mcp: service, consentUrl: screen });
   await app.ready();
   return { app, calls };
 };
@@ -348,5 +362,145 @@ describe("the discovery documents", () => {
     const { app } = await boot();
     const response = await app.inject({ method: "GET", url: "/.well-known/oauth-authorization-server" });
     expect(response.headers["cache-control"]).toBe("public, max-age=300");
+  });
+});
+
+describe("the authorization endpoint on the wire", () => {
+  const challenge = "a".repeat(43);
+  const redirectUri = "http://127.0.0.1:51763/callback";
+
+  const authorize = (query: Record<string, string>) =>
+    `/api/v1/mcp/oauth/authorize?${new URLSearchParams(query).toString()}`;
+
+  const wellFormed = (overrides: Record<string, string> = {}): Record<string, string> => ({
+    response_type: "code",
+    client_id: "client-1",
+    redirect_uri: redirectUri,
+    scope: "crm.read",
+    state: "s-1",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource: audience,
+    ...overrides
+  });
+
+  /** Where a 303 points, parsed, so a test can assert on parameters rather than on a string. */
+  const destination = (location: string) => new URL(location);
+
+  it("sends a well-formed request to the consent screen, carrying what it will need", async () => {
+    const { app } = await boot();
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+
+    expect(response.statusCode).toBe(303);
+    const target = destination(response.headers.location as string);
+    expect(`${target.origin}${target.pathname}`).toBe(consentUrl);
+    expect(Object.fromEntries(target.searchParams)).toEqual({
+      client_id: "client-1",
+      redirect_uri: redirectUri,
+      scope: "crm.read",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      resource: audience,
+      state: "s-1"
+    });
+  });
+
+  it("never lets the browser or a proxy keep the handover", async () => {
+    // The address carries a state a client will match a code against. A cached copy is that state
+    // handed to whoever opens the endpoint next.
+    const { app } = await boot();
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("checks the client and the address before anything else, and does so through the service", async () => {
+    const { app, calls } = await boot();
+    await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    expect(calls[0]).toMatchObject({
+      method: "requireRedirectable",
+      input: { clientId: "client-1", redirectUri }
+    });
+  });
+
+  it("keeps an unregistered address out of the redirect it would otherwise be handed", async () => {
+    // The whole reason this check comes first: bouncing the error back to the submitted address
+    // would make this endpoint an open redirect for anybody who can compose a URL.
+    const { app } = await boot({ requireRedirectable: new McpOauthError("MCP_REDIRECT_URI_MISMATCH") });
+    const response = await app.inject({
+      method: "GET",
+      url: authorize(wellFormed({ redirect_uri: "https://attacker.test/collect" }))
+    });
+
+    const target = destination(response.headers.location as string);
+    expect(target.origin).toBe(new URL(consentUrl).origin);
+    expect(target.searchParams.get("error")).toBe("MCP_REDIRECT_URI_MISMATCH");
+  });
+
+  it("stops an unknown client at the screen too, since nothing registered it to be answered", async () => {
+    const { app } = await boot({ requireRedirectable: new McpOauthError("MCP_CLIENT_UNKNOWN") });
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    const target = destination(response.headers.location as string);
+    expect(target.origin).toBe(new URL(consentUrl).origin);
+    expect(target.searchParams.get("error")).toBe("MCP_CLIENT_UNKNOWN");
+  });
+
+  it("reports a failure it cannot name as an invalid request rather than leaking what it was", async () => {
+    const { app } = await boot({ requireRedirectable: new Error("the database is down") });
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    const target = destination(response.headers.location as string);
+    expect(target.searchParams.get("error")).toBe("MCP_REQUEST_INVALID");
+  });
+
+  it("bounces the errors a client can act on back to its own address, with the state it sent", async () => {
+    // RFC 6749 section 4.1.2.1. A client waiting on a loopback port learns nothing from a page it
+    // never sees; these have to arrive where it is listening, and `state` is how it matches them
+    // to the request it made.
+    const cases: Array<{ query: Record<string, string>; error: string }> = [
+      { query: { response_type: "token" }, error: "unsupported_response_type" },
+      { query: { code_challenge_method: "plain" }, error: "invalid_request" },
+      { query: { code_challenge: "too-short" }, error: "invalid_request" },
+      { query: { resource: "https://elsewhere.test/mcp" }, error: "invalid_target" },
+      { query: { scope: "crm.read invented.scope" }, error: "invalid_scope" }
+    ];
+
+    for (const { query, error } of cases) {
+      const { app } = await boot();
+      const response = await app.inject({ method: "GET", url: authorize(wellFormed(query)) });
+
+      expect(response.statusCode, error).toBe(303);
+      const target = destination(response.headers.location as string);
+      expect(`${target.origin}${target.pathname}`, error).toBe(redirectUri);
+      expect(target.searchParams.get("error"), error).toBe(error);
+      expect(target.searchParams.get("state"), error).toBe("s-1");
+      expect(target.searchParams.get("error_description"), error).toBeTruthy();
+    }
+  });
+
+  it("omits the state when none was sent, rather than inventing an empty one", async () => {
+    // A client that sent no state and gets `state=` back has to decide whether that is its own
+    // value coming home. It is not, and the answer should not pose the question.
+    const { app } = await boot();
+    const query = wellFormed({ response_type: "token" });
+    delete query.state;
+    const response = await app.inject({ method: "GET", url: authorize(query) });
+    expect(destination(response.headers.location as string).searchParams.has("state")).toBe(false);
+  });
+
+  it("accepts a request that names no scope, because the server may decide", async () => {
+    // RFC 6749 section 3.3. What such a request is actually granted is settled at the screen,
+    // against what the person can back -- not here, where nobody has been identified yet.
+    const { app } = await boot();
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed({ scope: "" })) });
+    const target = destination(response.headers.location as string);
+    expect(`${target.origin}${target.pathname}`).toBe(consentUrl);
+    expect(target.searchParams.get("scope")).toBe("");
+  });
+
+  it("is not declared at all on an installation with no panel to hand over to", async () => {
+    // Better a 404 than a redirect into nothing: a client that gets one knows this server offers
+    // no interactive authorization, and can say so.
+    const { app } = await boot({}, null);
+    const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    expect(response.statusCode).toBe(404);
   });
 });

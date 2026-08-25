@@ -139,6 +139,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       Array<{
         id: string;
         tenantId: string;
+        name: string;
         kind: string;
         secretHash: string | null;
         redirectUris: string[];
@@ -146,13 +147,14 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         status: string;
       }>
     >`
-      select id, tenant_id as "tenantId", kind, secret_hash as "secretHash",
+      select id, tenant_id as "tenantId", name, kind, secret_hash as "secretHash",
              redirect_uris as "redirectUris", max_scopes as "maxScopes", status
       from lookup_mcp_client(${clientId})`;
     if (!row) return null;
     return {
       id: row.id,
       tenantId: row.tenantId,
+      name: row.name,
       kind: row.kind as "public" | "confidential",
       secretHash: row.secretHash,
       redirectUris: row.redirectUris,

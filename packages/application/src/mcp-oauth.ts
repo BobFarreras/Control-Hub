@@ -83,6 +83,13 @@ export type McpGrantRecord = {
 export type McpClientResolution = {
   readonly id: string;
   readonly tenantId: string;
+  /**
+   * The name it was registered under, which is the only name the consent screen may show.
+   *
+   * Everything else on that screen arrives through the query string a client controls. This does
+   * not: it is read from the row, so "Claude Desktop" on the screen means the row says so.
+   */
+  readonly name: string;
   readonly kind: "public" | "confidential";
   /** Null for a public client, which proves itself with PKCE and holds no secret. */
   readonly secretHash: string | null;
@@ -104,6 +111,24 @@ export type McpClientRecord = {
 };
 
 /** What an authorization code turns into, once, when it is exchanged. */
+/**
+ * An authorization request as the person deciding on it sees it.
+ *
+ * Deliberately not a copy of what the client asked for. `scopes` is what would be granted after
+ * the intersection with the client's ceiling and the person's own permissions, and the name is the
+ * registered one -- so the sentence on the screen is the one that will be true after approving.
+ */
+export type McpAuthorizationDescription = {
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly clientKind: "public" | "confidential";
+  readonly redirectUri: string;
+  readonly scopes: readonly McpScope[];
+  readonly audience: string;
+  /** When the consent would lapse, so nobody approves something open-ended by accident. */
+  readonly grantExpiresAt: Date;
+};
+
 export type McpAuthorizationCodeClaim = {
   readonly requestId: string;
   readonly tenantId: string;
@@ -508,6 +533,99 @@ export class McpOauthService {
       readonly resource: string | undefined;
     }
   ): Promise<{ code: string; expiresAt: Date }> {
+    const { client, granted } = await this.checkAuthorization(context, input);
+
+    const code = this.mint("code");
+    const expiresAt = mcpExpiry("authorizationCode", this.clock());
+    await this.repository.createAuthorizationRequest(context, {
+      clientId: client.id,
+      membershipId: context.membershipId,
+      codeHash: this.crypto.sha256(code),
+      scopes: granted,
+      codeChallenge: input.codeChallenge,
+      redirectUri: input.redirectUri,
+      audience: this.audience,
+      expiresAt
+    });
+    return { code, expiresAt };
+  }
+
+  /**
+   * Whether an authorization request may be sent to a screen at all.
+   *
+   * This is the check OAuth 2.1 section 4.1.2.1 requires before anything is redirected anywhere:
+   * an unknown client, a suspended one, or an address that was not registered must be refused
+   * where the person can see it, and never bounced to the address in the request. Bouncing is
+   * exactly how this server would be turned into a way of delivering an authorization code to
+   * somebody who was never meant to have one.
+   *
+   * It runs before any session exists, so it knows no tenant. That is not a gap: the client row
+   * carries the tenant, and the consent itself is checked against the session's tenant later --
+   * this only decides whether the request is worth showing to anyone.
+   */
+  async requireRedirectable(clientId: string, redirectUri: string): Promise<void> {
+    const client = await this.requireClient(clientId);
+    if (!matchesRegisteredRedirect(redirectUri, client.redirectUris))
+      throw new McpOauthError("MCP_REDIRECT_URI_MISMATCH");
+  }
+
+  /**
+   * What the consent screen must show, and the proof that it may be shown at all.
+   *
+   * Every check the approval will make runs here, in the same order and through the same code, so
+   * a request that renders is a request that can be approved. The alternative -- a screen that
+   * validates loosely and an approval that validates properly -- ends as a person reading a
+   * consent, pressing approve and being told no, with nothing on the screen explaining which of
+   * the two answers was the real one.
+   *
+   * The facts come from the store rather than from the query string that carried the request here.
+   * The name, the kind and the scopes that would actually be granted are re-read; a client can put
+   * anything in a URL, and a screen that rendered it would be a phishing page we host ourselves.
+   */
+  async describeAuthorization(
+    context: TenantContext,
+    input: {
+      readonly clientId: string;
+      readonly redirectUri: string;
+      readonly scopes: readonly string[];
+      readonly codeChallenge: string;
+      readonly codeChallengeMethod: string;
+      readonly resource: string | undefined;
+    }
+  ): Promise<McpAuthorizationDescription> {
+    const { client, granted } = await this.checkAuthorization(context, input);
+    return {
+      clientId: input.clientId,
+      clientName: client.name,
+      clientKind: client.kind,
+      redirectUri: input.redirectUri,
+      // What would be granted, not what was asked for. A client asking for more than the person
+      // can give is shown the narrower list, so nobody approves a sentence that is not true.
+      scopes: granted,
+      audience: this.audience,
+      grantExpiresAt: mcpExpiry("grant", this.clock())
+    };
+  }
+
+  /**
+   * The checks an authorization has to pass, in one place because two callers make them.
+   *
+   * `describeAuthorization` runs them to decide whether a screen may be drawn and what it says;
+   * `approveAuthorization` runs them again at the moment a code is minted. Running them twice is
+   * deliberate -- the person may have lost a permission between reading the screen and pressing
+   * the button, and the decision that counts is the one taken when the code is created.
+   */
+  private async checkAuthorization(
+    context: TenantContext,
+    input: {
+      readonly clientId: string;
+      readonly redirectUri: string;
+      readonly scopes: readonly string[];
+      readonly codeChallenge: string;
+      readonly codeChallengeMethod: string;
+      readonly resource: string | undefined;
+    }
+  ): Promise<{ client: McpClientResolution; granted: readonly McpScope[] }> {
     this.requireResource(input.resource);
     const client = await this.requireClient(input.clientId, context.tenantId);
     // OAuth 2.1 has no `plain`, and a challenge shorter than 43 characters is not the base64url
@@ -524,20 +642,7 @@ export class McpOauthService {
       actorPermissions: context.permissions
     });
     if ("code" in verdict) throw new McpOauthError(verdict.code);
-
-    const code = this.mint("code");
-    const expiresAt = mcpExpiry("authorizationCode", this.clock());
-    await this.repository.createAuthorizationRequest(context, {
-      clientId: client.id,
-      membershipId: context.membershipId,
-      codeHash: this.crypto.sha256(code),
-      scopes: verdict.granted,
-      codeChallenge: input.codeChallenge,
-      redirectUri: input.redirectUri,
-      audience: this.audience,
-      expiresAt
-    });
-    return { code, expiresAt };
+    return { client, granted: verdict.granted };
   }
 
   /**

@@ -1,5 +1,5 @@
 import { McpOauthError, type McpOauthService } from "@control-hub/application";
-import type { McpDenialCode, McpOauthDenialCode } from "@control-hub/domain";
+import { mcpScopes, type McpDenialCode, type McpOauthDenialCode, type McpScope } from "@control-hub/domain";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ControlHubApp } from "../server-instance.js";
 
@@ -34,7 +34,10 @@ export const registeredOauthErrors = [
   "access_denied",
   "invalid_token",
   "insufficient_scope",
-  "invalid_target"
+  "invalid_target",
+  // RFC 6749 section 4.1.2.1, which the authorization endpoint answers with and the token endpoint
+  // never does: by the time a client reaches `/token` it has already been told what it may ask for.
+  "unsupported_response_type"
 ] as const;
 export type RegisteredOauthError = (typeof registeredOauthErrors)[number];
 
@@ -126,7 +129,37 @@ const unsupportedGrant: McpOauthAnswer = {
 export type McpOauthContext = {
   app: ControlHubApp;
   mcp: McpOauthService;
+  /**
+   * Where a person is sent to read what they are about to approve, or null if there is no panel.
+   *
+   * The absolute address of the consent screen, built from the configured app origin. It carries
+   * no locale: which language the screen speaks is the panel's decision, made from what the
+   * browser asks for, and the API has no business holding a copy of that list.
+   */
+  consentUrl: string | null;
 };
+
+/**
+ * The authorization request, as it arrives in a query string.
+ *
+ * Every member is optional because every one of them can be missing from a URL somebody typed or
+ * a client got wrong, and the handler answers each absence with the error that names it rather
+ * than with a validation failure that names none of them.
+ */
+type AuthorizeQuery = {
+  response_type?: string;
+  client_id?: string;
+  redirect_uri?: string;
+  scope?: string;
+  state?: string;
+  code_challenge?: string;
+  code_challenge_method?: string;
+  resource?: string;
+};
+
+/** Base64url of a SHA-256 digest, which is 43 characters. The upper bound is RFC 7636 section 4.1. */
+const isPkceChallenge = (value: string | undefined): boolean =>
+  value !== undefined && value.length >= 43 && value.length <= 128;
 
 type TokenBody = {
   grant_type?: string;
@@ -207,7 +240,7 @@ function refuse(reply: FastifyReply, error: unknown) {
     });
 }
 
-export function registerMcpOauthRoutes({ app, mcp }: McpOauthContext) {
+export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext) {
   /**
    * The two discovery documents, unauthenticated by design.
    *
@@ -235,6 +268,91 @@ export function registerMcpOauthRoutes({ app, mcp }: McpOauthContext) {
   app.get("/.well-known/oauth-authorization-server", metadata, async (_request, reply) =>
     reply.header("cache-control", "public, max-age=300").send(mcp.authorizationServerMetadata())
   );
+
+  /**
+   * The authorization endpoint: the one place in this file a person arrives rather than a program.
+   *
+   * It decides nothing about consent. What it does is settle, before anybody is sent anywhere,
+   * which of the two kinds of failure this is -- because OAuth 2.1 section 4.1.2.1 draws the line
+   * here and the line matters. An unknown client or an address that was not registered is refused
+   * where the person can see it: bouncing those to the address in the request is precisely how
+   * this server would be turned into a way of delivering a code to somebody who should not have
+   * one. Everything after that is sent back to the registered address as an `error`, because the
+   * client is the one that can fix it and a browser left on our error page tells it nothing.
+   *
+   * Then it hands over. The screen lives in the panel, in the person's own language, and re-reads
+   * every fact it shows from the store -- so what travels in this redirect is a carrier and not a
+   * source of truth.
+   *
+   * Declared only when there is a panel to hand over to. An installation configured without one
+   * has no interactive authorization to offer, and a route that redirects into nothing would be a
+   * worse answer than not being there.
+   */
+  if (consentUrl !== null) {
+    app.get<{ Querystring: AuthorizeQuery }>(
+      "/api/v1/mcp/oauth/authorize",
+      {
+        schema: {
+          tags: ["mcp"],
+          summary: "Start an authorization",
+          description:
+            "Validates what must never be redirected -- the client and the address -- and then sends the person to the consent screen. Errors a client can act on travel back to the registered address with an `error` from RFC 6749 section 4.1.2.1; the rest stop here."
+        }
+      },
+      async (request, reply) => {
+        const query = request.query;
+        const clientId = query.client_id ?? "";
+        const redirectUri = query.redirect_uri ?? "";
+
+        try {
+          await mcp.requireRedirectable(clientId, redirectUri);
+        } catch (error) {
+          // Not redirected to the client, on purpose: this is the failure that says the request
+          // did not come from anything this installation knows.
+          const code = error instanceof McpOauthError ? error.code : "MCP_REQUEST_INVALID";
+          return noStore(reply).redirect(`${consentUrl}?${new URLSearchParams({ error: code }).toString()}`, 303);
+        }
+
+        // From here the address is registered, so a failure can be reported to the client that
+        // owns it. The names are the ones RFC 6749 section 4.1.2.1 registered for this endpoint --
+        // not the token endpoint's, which a client would not recognise here.
+        const bounce = (error: RegisteredOauthError, description: string) =>
+          noStore(reply).redirect(
+            `${redirectUri}?${new URLSearchParams({
+              error,
+              error_description: description,
+              ...(query.state === undefined ? {} : { state: query.state })
+            }).toString()}`,
+            303
+          );
+
+        if (query.response_type !== "code")
+          return bounce("unsupported_response_type", "This server issues authorization codes only.");
+        if (query.code_challenge_method !== "S256" || !isPkceChallenge(query.code_challenge))
+          return bounce("invalid_request", "A PKCE challenge computed with S256 is required.");
+        if (query.resource !== mcp.audience) return bounce("invalid_target", "The request did not name this resource.");
+        // Only that the names exist. Whether this person may grant them depends on permissions
+        // nobody has read yet, and answering that here would mean answering it twice.
+        if ((query.scope ?? "").split(" ").some((name) => name !== "" && !mcpScopes.includes(name as McpScope)))
+          return bounce("invalid_scope", "One of the scopes asked for is not offered here.");
+
+        return noStore(reply).redirect(
+          `${consentUrl}?${new URLSearchParams({
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            scope: query.scope ?? "",
+            code_challenge: query.code_challenge ?? "",
+            code_challenge_method: "S256",
+            // The audience rather than the echoed value: they are equal by the check above, and
+            // taking ours means the screen cannot be handed a spelling we never validated.
+            resource: mcp.audience,
+            ...(query.state === undefined ? {} : { state: query.state })
+          }).toString()}`,
+          303
+        );
+      }
+    );
+  }
 
   // The callback form rather than an async one: nothing in here awaits, and a promise that
   // resolves immediately would only hide that from the next reader.

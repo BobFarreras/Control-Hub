@@ -284,8 +284,54 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   comptes de quedar accessible sense guardia.
   Amb aquest increment es tanca tambe l'etiqueta `mcp` de l'OpenAPI a `apps/api/src/app.ts`, que
   quedava pendent de coordinacio amb l'altra sessio.
-- La resta de la fase continua sense implementar: falten `/authorize` amb la pantalla de
-  consentiment i la interficie de seguretat.
+- **10.1-H2 — `/authorize` i la pantalla de consentiment.** Tanca l'unic tram del flux que
+  necessita una persona. `GET /api/v1/mcp/oauth/authorize` valida i redirigeix al panell; les dues
+  crides que la pantalla fa despres viuen a `apps/api/src/routes/mcp-consent.ts`, que **no forma
+  part de la superficie OAuth** encara que caigui al mig d'un flux OAuth: `/api/v1/mcp/oauth/*`
+  parla RFC 6749 a programes que no han sentit a parlar mai d'aquest codi, i aquestes dues parlen
+  amb el nostre panell, per cookie de sessio, en els problem details que la resta de pantalles ja
+  saben llegir.
+  **No hi ha taula de peticions pendents.** L'endpoint valida i passa els parametres al panell per
+  la query string, pero cap fet que la pantalla ensenya en surt: el nom del client, els scopes que
+  realment es concedirien i la data en que el consentiment caducaria es tornen a llegir amb
+  `describeAuthorization`. La query string es un transport, mai una font de veritat, i per tant un
+  client no pot compondre una URL que faci que la pantalla parli be d'ell.
+  `describeAuthorization` i `approveAuthorization` comparteixen `checkAuthorization`, de manera que
+  el que la pantalla mostra i el que l'aprovacio faria no poden divergir: no son dues respostes a
+  la mateixa pregunta, es la mateixa resposta llegida dues vegades.
+  **Dos sobres d'error a `/authorize`, i la frontera es qui el pot rebre.** El que no es pot
+  redirigir --un client desconegut, una adreca no registrada-- s'atura a la pantalla de
+  consentiment amb el nostre codi; retornar-ho a l'adreca enviada convertiria l'endpoint en un open
+  redirect per a qualsevol que sapiga escriure una URL. La resta (`unsupported_response_type`,
+  `invalid_request`, `invalid_target`, `invalid_scope`) torna a l'adreca **ja comprovada** amb els
+  noms que la RFC 6749 seccio 4.1.2.1 registra per a aquest endpoint --no els del token endpoint,
+  que un client no reconeixeria aqui-- i amb l'`state` que va enviar, perque un client que espera
+  en un port de loopback no veu cap pagina.
+  **Aprovar exigeix una sessio recent; refusar no.** Donar noranta dies de lectura a un agent es
+  exactament l'operacio que un portatil desates no ha de poder fer, i la finestra es la que
+  better-auth ja fa servir per a canviar la contrasenya: `sessionFreshAge`, deu minuts, una sola
+  constant compartida entre les dues respostes. Refusar des de la sessio que ja es te, en canvi, es
+  el que evita que un «no» acabi sent una pestanya abandonada. Un `createdAt` que no es pot llegir
+  compta com a no fresc: suposar el contrari convertiria una sorpresa en una aprovacio que ningu no
+  ha fet.
+  **L'API no coneix la llista d'idiomes.** Redirigeix a `${appOrigin}/mcp/consent` i el panell
+  negocia la llengua, com ja fa l'arrel: una llista de locales copiada a l'API seria un segon lloc
+  on pot estar malament. Sense `appOrigin` la ruta **no es declara** --millor un 404, que diu que
+  aquesta installacio no ofereix autoritzacio interactiva, que una redireccio cap al no-res.
+  La migracio `0057` afegeix `name` a `lookup_mcp_client`. Es el nom registrat, de la mateixa fila
+  que la resta, i sense ell la pantalla ensenyaria un `client_id` opac alli on una persona espera
+  «Claude Desktop» --que es com s'ensenya la gent a aprovar coses que no ha llegit. Una funcio que
+  torna taula no pot canviar de signatura, aixi que es deixa caure i es torna a crear: mateix
+  argument, mateix `security definer`, mateix `search_path` fixat, mateix grant.
+  L'auditoria guarda `mcp.consent.approved` i `mcp.consent.denied` amb el nom del client i els
+  scopes --«ha aprovat Claude Desktop» no respon res sis setmanes despres; els scopes son la
+  substancia de la decisio-- i **mai el codi**, que es una credencial per als seixanta segons
+  seguents mentre una fila d'auditoria dura anys.
+  Trenta-cinc proves de fil a `apps/api/src/routes/mcp-oauth.test.ts`, quinze a `mcp-consent.test.ts`,
+  cinc de frescor a `apps/api/src/security.test.ts` i cinc de descripcio al servei.
+- La resta de la fase continua sense implementar: falta la interficie --la pantalla de
+  consentiment i la seccio de seguretat del panell--, que consumeix el que aquests dos increments
+  deixen a l'abast.
 
 ## Fora d'abast de la 10.1
 
@@ -679,6 +725,8 @@ error i no una represa, comprovat recalculant-lo a partir del token que s'acaba 
 GET    /.well-known/oauth-protected-resource
 GET    /.well-known/oauth-authorization-server
 GET    /api/v1/mcp/oauth/authorize
+GET    /api/v1/mcp/consent
+POST   /api/v1/mcp/consent
 POST   /api/v1/mcp/oauth/token
 POST   /api/v1/mcp/oauth/revoke
 GET    /api/v1/mcp/clients
@@ -694,7 +742,7 @@ DELETE /api/v1/mcp/service-accounts/:id
 POST   /mcp
 ```
 
-Les rutes de gestio exigeixen `security:manage` i MFA. `/mcp` i `/api/v1/mcp/oauth/*` son les
+Les rutes de gestio exigeixen `security:manage` i MFA. Les dues de `/consent` nomes exigeixen una sessio --qui consent ho fa amb els seus propis permisos, i els scopes que pot sostenir ja son el limit--, pero **aprovar** demana a mes que la sessio s'hagi establert fa menys de deu minuts; refusar no. `/mcp` i `/api/v1/mcp/oauth/*` son les
 uniques que accepten un token MCP; **cap ruta REST de producte l'accepta**, i cap token de sessio de
 la UI serveix per a `/mcp`. Un token no travessa la frontera per a la qual no es va emetre.
 

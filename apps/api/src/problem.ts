@@ -48,6 +48,7 @@ const titles: Record<string, string> = {
   AUTHENTICATION_REQUIRED: "Authentication required",
   PERMISSION_DENIED: "Permission denied",
   MFA_REQUIRED: "Second factor required",
+  SESSION_NOT_FRESH: "Sign in again to confirm this",
   TENANT_ACCESS_DENIED: "Tenant access denied",
   TENANT_SELECTION_REQUIRED: "Tenant selection required",
   FORBIDDEN: "Permission denied",
