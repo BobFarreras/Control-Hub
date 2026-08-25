@@ -187,12 +187,44 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   web, un altre origen) ni `API_INTERNAL_URL` (nomes s'hi arriba des de dins del desplegament), i no
   es dedueix de la capcalera `Host` a proposit: una audiencia que tria qui truca no es cap
   audiencia. Si la flag `mcp` es encesa i no hi es, el boot ho diu i les rutes **no** es declaren.
-- **Pendent de coordinacio:** la crida de registre a `apps/api/src/app.ts`. Aquell fitxer te canvis
-  no committejats de l'altra sessio, aixi que la composicio viu a `apps/api/src/mcp.ts` i el que
-  falta es una sola linia. Fins que no s'afegeixi, les rutes existeixen i estan provades pero no
-  s'exposen.
-- La resta de la fase continua sense implementar: falten la pantalla de consentiment i les rutes
-  de gestio, el transport `/mcp`, l'auditoria per crida i la interficie.
+- **10.1-F5 — les rutes declarades des de l'arrel.** Implementat: `apps/api/src/app.ts` crida
+  `registerMcpRoutes` **fora del bloc autenticat**, perque un client ha de poder llegir els
+  documents de descobriment i arribar al token endpoint abans de tenir cap sessio. El servidor
+  passa `MCP_ISSUER` i avisa al boot quan la flag es encesa sense ell, igual que ja fa l'anell de
+  claus: una instal·lacio a qui li falta serveix tota la resta i diu una vegada per que les rutes
+  d'MCP no hi son, en comptes de respondre 404 a algu que no te manera d'esbrinar-ho.
+- **10.1-G1 — la sessio: de token a actor, i l'auditoria de la crida.** Implementat:
+  `McpSessionService` a `packages/application/src/mcp-session.ts`, amb el port
+  `McpSessionRepository` i `PostgresMcpSessionRepository` a
+  `packages/persistence/src/mcp-session-repository.ts`. Aqui hi viu tot el que passa entre un
+  bearer que arriba i un cas d'us que corre, **i deliberadament no al transport**: una regla que
+  viu en una ruta es una regla que nomes es pot comprovar per un socket.
+  Els permisos **es resolen ara, no es porten dins del token**. Un token encunyat fa una hora no
+  pot continuar carregant una autoritat que algu va retirar fa mitja hora, i com que res no revoca
+  tokens en el moment en que algu surt d'un tenant, aquest es el lloc on s'ha de notar. Un compte
+  de servei rep **els seus propis permisos i cap rol**: llegir els de qui el va crear li donaria
+  autoritat que ningu no li ha concedit.
+  Absent, desconegut i revocat responen **igual**; nomes el caducat es distingeix, perque es
+  l'unic refus sobre el qual un client pot actuar — refresca. Dues comprovacions mes que el domini
+  no pot tenir: un client suspes atura tots els tokens que va emetre sense esborrar cap grant, i un
+  consentiment que ha arribat a la seva caducitat s'ha acabat encara que la fila digui `active`.
+  El llistat de tools **reutilitza la decisio de la crida** (`visibleMcpTools`) en comptes de
+  filtrar a ma, de manera que el cataleg no pot discrepar mai del que passa en invocar — el mode de
+  fallada que converteix una llista en un mapa del que qui truca no pot tocar. Un nom desconegut i
+  una tool que aquesta instal·lacio no desplega responen igual, aixi que sondejar el cataleg no diu
+  a ningu quines tools existeixen en un altre lloc.
+  **Una fila d'auditoria per crida, passi el que passi**: exit, refus i fallada. Guarda el
+  recompte i mai la carrega — una llista de clients copiada a una taula append-only es una copia
+  que ningu no pot esborrar — i tampoc el missatge de l'error, que pot citar una consulta, un host
+  o una fila. Va a `audit_log`, la mateixa taula que tota la resta, amb `source = 'mcp'` i un actor
+  que pot ser un agent: una vista de «que ha passat en aquest tenant» que calgues muntar de dues
+  consultes es la vista que ningu no consulta.
+  Vint proves d'unitat i set d'integracio contra PostgreSQL de debo. El desmuntatge de les
+  d'integracio apaga el trigger d'append-only per esborrar les seves propies files d'auditoria i el
+  torna a encendre: `audit_log` reté el seu tenant amb `on delete restrict`, que es exactament la
+  propietat de la qual depen el codi de produccio.
+- La resta de la fase continua sense implementar: falten el transport `/mcp`, la pantalla de
+  consentiment, les rutes de gestio i la interficie.
 
 ## Fora d'abast de la 10.1
 

@@ -172,10 +172,25 @@ les rutes **no** es declaren. Comprovat contra l'app composada de debo: els dos 
 responen 200, el token endpoint respon `unsupported_grant_type` en el sobre correcte, i sense
 issuer tot plegat es un 404.
 
-**El punt de continuacio es el transport `/mcp`**: `initialize`, `tools/list`, `tools/call` i
-l'auditoria per crida. Despres queden la pantalla de consentiment amb el `GET /authorize`, les rutes
-de gestio de clients, grants i service accounts, i la UI amb i18n. El `Mcp-Session-Id` encara no te
-taula a proposit: que se n'ha de desar depen del transport.
+L'**increment G1** es la sessio: `McpSessionService` a `packages/application/src/mcp-session.ts` i
+`PostgresMcpSessionRepository` a `packages/persistence/src/mcp-session-repository.ts`. Hi viu tot el
+que passa entre un bearer que arriba i un cas d'us que corre --autenticar, llistar i cridar-- i
+deliberadament no al transport, perque una regla que viu en una ruta nomes es pot comprovar per un
+socket. Els permisos **es resolen a cada crida** i no es porten dins del token: res no revoca un
+token en el moment en que algu surt d'un tenant, aixi que aquest es el lloc on s'ha de notar. Un
+service account rep **els seus permisos i cap rol**. Absent, desconegut i revocat responen igual;
+nomes el caducat es distingeix, perque nomes sobre aquest un client pot actuar. El llistat de tools
+reutilitza la decisio de la crida, de manera que el cataleg no pot discrepar del que passa en
+invocar. I **cada crida deixa una fila a `audit_log`** --exit, refus o fallada-- amb el recompte i
+mai la carrega ni el missatge de l'error, marcada `source = 'mcp'`. Vint proves d'unitat i set
+d'integracio contra PostgreSQL de debo.
+
+**El punt de continuacio es el transport `/mcp`**: JSON-RPC amb `initialize`, `tools/list` i
+`tools/call` sobre el servei de sessio que ja hi es, la capcalera `Mcp-Session-Id` i el
+`WWW-Authenticate` amb `resource_metadata` al 401, perque un client pugui descobrir l'authorization
+server. Despres queden la pantalla de consentiment amb el `GET /authorize`, les rutes de gestio de
+clients, grants i service accounts, i la UI amb i18n. El `Mcp-Session-Id` encara no te taula a
+proposit: que se n'ha de desar depen del transport.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

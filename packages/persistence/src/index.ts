@@ -20,6 +20,7 @@ export * from "./infrastructure-repository.js";
 export * from "./ingress-crypto.js";
 export * from "./invitation-repository.js";
 export * from "./mcp-repository.js";
+export * from "./mcp-session-repository.js";
 export * from "./projects-repository.js";
 export * from "./support-repository.js";
 export * from "./support-mailbox-repository.js";
