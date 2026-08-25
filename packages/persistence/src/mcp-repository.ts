@@ -46,7 +46,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         actorType: string;
         actorMembershipId: string | null;
         actorServiceAccountId: string | null;
-        clientStatus: string;
+        clientStatus: string | null;
       }>
     >`
       select token_id as "tokenId", tenant_id as "tenantId", grant_id as "grantId", audience, scopes,
@@ -71,7 +71,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       actorType: row.actorType as "user" | "service_account",
       actorMembershipId: row.actorMembershipId,
       actorServiceAccountId: row.actorServiceAccountId,
-      clientStatus: row.clientStatus as "active" | "suspended"
+      clientStatus: row.clientStatus as "active" | "suspended" | null
     };
   }
 

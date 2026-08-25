@@ -157,6 +157,23 @@ describe("turning a bearer token into somebody who may call things", () => {
     }
   });
 
+  it("lets in an agent whose grant has no client to be suspended", async () => {
+    // A service account opens its grant with a secret, so there is no registered client on it and
+    // the store answers null. Reading that as "not active" refused every agent this server issued
+    // a token to, with the same answer it gives somebody presenting a value they found.
+    const { service } = build({
+      token: {
+        ...resolution,
+        clientStatus: null,
+        actorType: "service_account" as const,
+        actorServiceAccountId: "account-1",
+        actorMembershipId: null
+      }
+    });
+    const actor = await service.authenticate("chm_at_secret");
+    expect(actor).toMatchObject({ actorType: "service_account", actorId: "account-1" });
+  });
+
   it("refuses a token whose actor no longer exists", async () => {
     // A membership that was removed leaves live tokens behind. Nothing revokes them at the moment
     // somebody is taken off a tenant, so this is where that has to be noticed.

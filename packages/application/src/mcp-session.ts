@@ -166,8 +166,9 @@ export class McpSessionService {
 
     // Two facts the domain does not hold: a suspended client has to stop every token it issued
     // without deleting a grant, and a consent that reached its expiry is over even though the row
-    // still says active.
-    if (record.clientStatus !== "active") throw new McpOauthError("MCP_TOKEN_INVALID");
+    // still says active. A null client is not a missing one -- it is a grant a service account
+    // opened with its secret, where there is no client in the story at all.
+    if (record.clientStatus !== null && record.clientStatus !== "active") throw new McpOauthError("MCP_TOKEN_INVALID");
     if (record.grantExpiresAt.getTime() <= now.getTime()) throw new McpOauthError("MCP_TOKEN_INVALID");
 
     const scope: McpTenantScope = { tenantId: record.tenantId };

@@ -94,6 +94,39 @@ suite("PostgresMcpOauthRepository", () => {
     expect(resolved?.clientStatus).toBe("active");
   });
 
+  it("resolves the token of an agent, whose grant names no client at all", async () => {
+    // The failure this covers shipped once. A service account opens a grant with `client_id` null,
+    // and the lookup joined `mcp_clients` inline, so the row matched nothing: every agent received
+    // a token the resource server then refused with the answer it gives a stranger. Null here is
+    // the fact -- there is no client in this story -- and not a client that could be suspended.
+    const accountId = randomUUID();
+    const grantId = randomUUID();
+    await admin`
+      insert into mcp_service_accounts (id, tenant_id, name, owner_membership_id, scopes, permissions,
+        secret_hash, expires_at)
+      values (${accountId}, ${tenantA}, 'Agent without a client', ${membershipA}, array['crm.read'],
+        array['customers:read'], ${hash(`secret-${accountId}`)}, now() + interval '30 days')`;
+    await admin`
+      insert into mcp_grants (id, tenant_id, actor_type, actor_service_account_id, scopes, expires_at)
+      values (${grantId}, ${tenantA}, 'service_account', ${accountId}, array['crm.read'],
+        now() + interval '90 days')`;
+    await admin`
+      insert into mcp_access_tokens (id, tenant_id, grant_id, token_hash, audience, scopes, expires_at)
+      values (${randomUUID()}, ${tenantA}, ${grantId}, ${hash("token-for-agent")}, 'https://hub.test/mcp',
+        array['crm.read'], now() + interval '30 minutes')`;
+
+    const resolved = await repository.resolveAccessToken(hash("token-for-agent"));
+    expect(resolved).toMatchObject({
+      tenantId: tenantA,
+      grantId,
+      actorType: "service_account",
+      actorServiceAccountId: accountId,
+      clientStatus: null
+    });
+
+    await admin`delete from mcp_service_accounts where id = ${accountId}`;
+  });
+
   it("answers nothing for a hash nobody issued", async () => {
     expect(await repository.resolveAccessToken(hash("never-issued"))).toBeNull();
   });

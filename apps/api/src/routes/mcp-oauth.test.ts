@@ -189,6 +189,48 @@ describe("the token endpoint on the wire", () => {
     expect(calls[0]!.input).not.toHaveProperty("clientSecret");
   });
 
+  it("answers in the field names every OAuth library looks for", async () => {
+    // RFC 6749 section 5.1. A library reads `access_token` and nothing else: our own casing here
+    // would be a body that parses fine and contains no token, which reaches a person as "this
+    // integration is broken" rather than as anything anybody can debug.
+    const { app } = await boot({
+      exchangeCode: {
+        accessToken: "chm_at_1",
+        refreshToken: "chm_rt_1",
+        tokenType: "Bearer",
+        expiresIn: 1800,
+        scope: "crm.read"
+      }
+    });
+    const response = await app.inject({
+      ...form({ grant_type: "authorization_code", client_id: "client-1", code: "chm_ac_1" }),
+      url: "/api/v1/mcp/oauth/token"
+    });
+
+    expect(response.json()).toEqual({
+      access_token: "chm_at_1",
+      refresh_token: "chm_rt_1",
+      token_type: "Bearer",
+      expires_in: 1800,
+      scope: "crm.read"
+    });
+  });
+
+  it("omits the refresh token a service account was deliberately not given", async () => {
+    // Sending it as null would read as one that failed to arrive, and a client would keep trying
+    // to refresh with nothing. The account presents its secret again instead.
+    const { app } = await boot();
+    const response = await app.inject({
+      ...form({ grant_type: "client_credentials", client_secret: "chm_sa_1", resource: "https://hub.test/mcp" }),
+      url: "/api/v1/mcp/oauth/token"
+    });
+
+    expect(response.json()).not.toHaveProperty("refresh_token");
+    expect(response.json()).toMatchObject({ access_token: "chm_at_1", token_type: "Bearer" });
+    // Ours, not OAuth's: it is a log line at the login, never a field on the wire.
+    expect(response.json()).not.toHaveProperty("usedPreviousSecret");
+  });
+
   it("tells every cache on the way back not to keep the answer", async () => {
     // RFC 6749 section 5.1. The body is a bearer credential, and a proxy that stores it hands it
     // to the next caller who asks for the same URL.
@@ -254,7 +296,7 @@ describe("the token endpoint on the wire", () => {
     // `usedPreviousSecret` is ours and stays ours: an operational signal, not part of the token
     // response any client parses.
     expect(accepted.json()).not.toHaveProperty("usedPreviousSecret");
-    expect(accepted.json()).toMatchObject({ tokenType: "Bearer" });
+    expect(accepted.json()).toMatchObject({ token_type: "Bearer" });
 
     const withClient = await boot();
     const refused = await withClient.app.inject({

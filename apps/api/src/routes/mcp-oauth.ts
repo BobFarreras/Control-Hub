@@ -164,6 +164,32 @@ function registerFormParser(scope: FastifyInstance) {
 }
 
 /** RFC 6749 section 5.1: a token response must not be stored by anything on the way back. */
+/**
+ * The names RFC 6749 section 5.1 gave these fields.
+ *
+ * The service speaks this codebase's own casing, and the wire speaks OAuth's. Handing a client
+ * `accessToken` would be handing it a body no OAuth library reads: every one of them looks for
+ * `access_token`, finds nothing, and reports a broken server -- which is the exact failure the
+ * decision to answer in OAuth's envelope at all was meant to avoid. The refresh token is omitted
+ * rather than sent empty when there is none, because a service account is deliberately given no
+ * refresh token and a null field would read as one that failed to arrive.
+ */
+export function oauthTokenResponse(issued: {
+  readonly accessToken: string;
+  readonly refreshToken?: string;
+  readonly tokenType: "Bearer";
+  readonly expiresIn: number;
+  readonly scope: string;
+}) {
+  return {
+    access_token: issued.accessToken,
+    token_type: issued.tokenType,
+    expires_in: issued.expiresIn,
+    scope: issued.scope,
+    ...(issued.refreshToken === undefined ? {} : { refresh_token: issued.refreshToken })
+  };
+}
+
 function noStore(reply: FastifyReply) {
   return reply.header("cache-control", "no-store").header("pragma", "no-cache");
 }
@@ -224,23 +250,27 @@ export function registerMcpOauthRoutes({ app, mcp }: McpOauthContext) {
           switch (body.grant_type) {
             case "authorization_code":
               return noStore(reply).send(
-                await mcp.exchangeCode({
-                  clientId: body.client_id ?? "",
-                  ...(body.client_secret === undefined ? {} : { clientSecret: body.client_secret }),
-                  code: body.code ?? "",
-                  codeVerifier: body.code_verifier ?? "",
-                  redirectUri: body.redirect_uri ?? "",
-                  resource: body.resource
-                })
+                oauthTokenResponse(
+                  await mcp.exchangeCode({
+                    clientId: body.client_id ?? "",
+                    ...(body.client_secret === undefined ? {} : { clientSecret: body.client_secret }),
+                    code: body.code ?? "",
+                    codeVerifier: body.code_verifier ?? "",
+                    redirectUri: body.redirect_uri ?? "",
+                    resource: body.resource
+                  })
+                )
               );
             case "refresh_token":
               return noStore(reply).send(
-                await mcp.refresh({
-                  clientId: body.client_id ?? "",
-                  ...(body.client_secret === undefined ? {} : { clientSecret: body.client_secret }),
-                  refreshToken: body.refresh_token ?? "",
-                  resource: body.resource
-                })
+                oauthTokenResponse(
+                  await mcp.refresh({
+                    clientId: body.client_id ?? "",
+                    ...(body.client_secret === undefined ? {} : { clientSecret: body.client_secret }),
+                    refreshToken: body.refresh_token ?? "",
+                    resource: body.resource
+                  })
+                )
               );
             case "client_credentials": {
               // A service account is not a registered client, and accepting a `client_id` here
@@ -257,7 +287,7 @@ export function registerMcpOauthRoutes({ app, mcp }: McpOauthContext) {
               if (issued.usedPreviousSecret)
                 request.log.warn({ scope: issued.scope }, "service account used its previous secret");
               const { usedPreviousSecret: _rotated, ...token } = issued;
-              return noStore(reply).send(token);
+              return noStore(reply).send(oauthTokenResponse(token));
             }
             default:
               return noStore(reply).code(unsupportedGrant.status).send({

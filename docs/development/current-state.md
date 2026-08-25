@@ -185,12 +185,31 @@ invocar. I **cada crida deixa una fila a `audit_log`** --exit, refus o fallada--
 mai la carrega ni el missatge de l'error, marcada `source = 'mcp'`. Vint proves d'unitat i set
 d'integracio contra PostgreSQL de debo.
 
-**El punt de continuacio es el transport `/mcp`**: JSON-RPC amb `initialize`, `tools/list` i
-`tools/call` sobre el servei de sessio que ja hi es, la capcalera `Mcp-Session-Id` i el
-`WWW-Authenticate` amb `resource_metadata` al 401, perque un client pugui descobrir l'authorization
-server. Despres queden la pantalla de consentiment amb el `GET /authorize`, les rutes de gestio de
-clients, grants i service accounts, i la UI amb i18n. El `Mcp-Session-Id` encara no te taula a
-proposit: que se n'ha de desar depen del transport.
+L'**increment G2** es el transport: `POST /mcp` a `apps/api/src/routes/mcp-transport.ts` amb
+`initialize`, `tools/list` i `tools/call` sobre JSON-RPC 2.0, i la composicio sencera a
+`apps/api/src/mcp.ts`. El repartiment de sobres es la decisio de l'increment: **el problema del
+token es respon a la capa HTTP** amb problem details i el `WWW-Authenticate` que nomena el document
+de metadata --es el senyal sobre el qual el client actua sol per anar a autoritzar-se-- i **la
+resta viatja dins del JSON-RPC** amb 200, perque un permis que falta no s'arregla tornant a
+autoritzar i respondre-ho al transport faria que el client tanques la sessio. El `Mcp-Session-Id`
+**es deriva del grant** i no es desa enlloc: tot el que una sessio guardaria es torna a llegir del
+token a cada peticio, aixi que no hi ha taula, ni memoria que creix, ni estat per replicar.
+`GET` i `DELETE` responen 405: no hi ha stream ni sessio que tancar.
+
+Provat de punta a punta contra PostgreSQL real amb un service account creat a ma --secret, token,
+`initialize`, `tools/list`, `tools/call` amb dades del tenant, refus fora d'scope, 404 de sessio
+aliena i les dues files d'auditoria. Aquella passada va destapar dos defectes que cap prova veia i
+que van amb aquest increment: `lookup_mcp_access_token` unia `mcp_clients` amb un join intern, de
+manera que **cap token de service account resolia** des de la `0053` (arreglat per la `0056`, amb
+`clientStatus` ara `"active" | "suspended" | null`), i el token endpoint responia en la nostra
+nomenclatura en comptes de la de la RFC 6749 seccio 5.1, que cap biblioteca d'OAuth sap llegir.
+
+**El punt de continuacio es la pantalla de consentiment**: `GET /api/v1/mcp/oauth/authorize` i la
+pantalla d'aprovacio, que es el que falta perque una persona --i no nomes un agent amb secret--
+pugui connectar un client. Despres queden les rutes de gestio de clients, grants i service accounts,
+i la UI amb i18n. Queda pendent de coordinacio una linia a `apps/api/src/app.ts`: declarar
+l'etiqueta `mcp` a la llista de tags de l'OpenAPI, perque ara les operacions d'MCP surten al
+document dins d'un grup sense nom.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

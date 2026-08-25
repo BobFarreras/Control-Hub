@@ -68,6 +68,13 @@ const titles: Record<string, string> = {
   PAYLOAD_TOO_LARGE: "Payload too large",
   UNSUPPORTED_MEDIA_TYPE: "Unsupported content type",
   RATE_LIMITED: "Too many requests",
+  // The MCP surface. A token this server will not accept is one title whatever was wrong with it,
+  // except for expiry, which is the one a client can act on by refreshing.
+  MCP_TOKEN_INVALID: "The token was not accepted",
+  MCP_TOKEN_EXPIRED: "The token has expired",
+  MCP_AUDIENCE_INVALID: "The token was issued for another resource",
+  MCP_SCOPE_INSUFFICIENT: "The token does not carry that scope",
+  MCP_SESSION_UNKNOWN: "No such session",
   DUPLICATE_INSTANCE_NAME: "An integration already uses that name",
   DUPLICATE_ENTRY: "Already exists",
   CREDENTIAL_SLOT_TAKEN: "A rotation is already open",

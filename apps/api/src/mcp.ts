@@ -1,8 +1,26 @@
-import { McpOauthService } from "@control-hub/application";
+import {
+  CrmService,
+  InfrastructureService,
+  McpOauthService,
+  McpSessionService,
+  SupportService,
+  UsageService,
+  observationBudgets
+} from "@control-hub/application";
 import { isFeatureEnabled, type FeatureFlagSet } from "@control-hub/config";
+import { connectorRegistry } from "@control-hub/connectors";
 import type { DatabaseClient } from "@control-hub/database";
-import { NodeMcpCrypto, PostgresMcpOauthRepository } from "@control-hub/persistence";
+import {
+  NodeMcpCrypto,
+  PostgresCrmRepository,
+  PostgresInfrastructureRepository,
+  PostgresMcpOauthRepository,
+  PostgresMcpSessionRepository,
+  PostgresSupportRepository,
+  PostgresUsageRepository
+} from "@control-hub/persistence";
 import { registerMcpOauthRoutes } from "./routes/mcp-oauth.js";
+import { registerMcpTransportRoutes } from "./routes/mcp-transport.js";
 import type { ControlHubApp } from "./server-instance.js";
 
 /**
@@ -30,13 +48,46 @@ export function registerMcpRoutes(context: {
 }): McpOauthService | null {
   if (!isFeatureEnabled(context.featureFlags, "mcp") || !context.issuer) return null;
 
-  const mcp = new McpOauthService({
-    repository: new PostgresMcpOauthRepository(context.database),
-    crypto: new NodeMcpCrypto(),
-    issuer: context.issuer
-  });
+  const crypto = new NodeMcpCrypto();
+  const repository = new PostgresMcpOauthRepository(context.database);
+  const mcp = new McpOauthService({ repository, crypto, issuer: context.issuer });
   registerMcpOauthRoutes({ app: context.app, mcp });
-  // Returned so the increments that follow -- the consent screen, the management routes and the
-  // transport -- wire onto the same instance rather than building a second one with its own clock.
+
+  const session = new McpSessionService({
+    // The same store the endpoints mint through, so a token stops working here at the moment it is
+    // revoked there and not one read later.
+    tokens: repository,
+    sessions: new PostgresMcpSessionRepository(context.database),
+    services: {
+      crm: new CrmService(new PostgresCrmRepository(context.database)),
+      support: new SupportService(new PostgresSupportRepository(context.database)),
+      infrastructure: new InfrastructureService(
+        new PostgresInfrastructureRepository(context.database),
+        // Derived from the manifests, exactly as the REST surface derives them: a collector shipped
+        // with a different cadence must not need a second place to be told about it.
+        observationBudgets(connectorRegistry.types().map((type) => connectorRegistry.require(type))),
+        // No tool in the catalogue reaches the one method that inspects an address, so there is no
+        // allowlist to consult here. Throwing rather than answering `false` is deliberate: if a
+        // later tool ever does reach it, this fails loudly instead of quietly reporting that every
+        // host in the deployment is off the list.
+        () => {
+          throw new Error("the MCP catalogue reaches no read that inspects an address");
+        }
+      ),
+      usage: new UsageService(new PostgresUsageRepository(context.database)),
+      clock: () => new Date()
+    },
+    crypto,
+    // Built from the service rather than assembled again here, so the audience a token is minted
+    // for and the audience it is checked against cannot drift apart.
+    identity: { issuer: context.issuer, audience: mcp.audience },
+    // A flag says what this installation deploys, never who may use it. A tool whose module is
+    // closed is not listed and cannot be called, and answers exactly as an unknown name does.
+    isDeployed: (flag) => flag === null || isFeatureEnabled(context.featureFlags, flag)
+  });
+  registerMcpTransportRoutes({ app: context.app, session, crypto, issuer: context.issuer });
+
+  // Returned so the increments that follow -- the consent screen and the management routes --
+  // wire onto the same instance rather than building a second one with its own clock.
   return mcp;
 }

@@ -50,8 +50,15 @@ export type McpAccessTokenResolution = {
   readonly actorType: "user" | "service_account";
   readonly actorMembershipId: string | null;
   readonly actorServiceAccountId: string | null;
-  /** A suspended client makes every grant it holds unusable without deleting any of them. */
-  readonly clientStatus: "active" | "suspended";
+  /**
+   * A suspended client makes every grant it holds unusable without deleting any of them.
+   *
+   * Null when the grant names no client, which is what a service account's grant looks like: it
+   * was opened with a secret and there is no registered client to suspend. Distinguished from
+   * `active` on purpose -- reporting a live client where there is none would hide the difference
+   * the day somebody suspends one.
+   */
+  readonly clientStatus: "active" | "suspended" | null;
 };
 
 /** One consent, as the person who gave it would want to see it listed back. */

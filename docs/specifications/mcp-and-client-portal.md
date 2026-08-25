@@ -223,8 +223,45 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   d'integracio apaga el trigger d'append-only per esborrar les seves propies files d'auditoria i el
   torna a encendre: `audit_log` reté el seu tenant amb `on delete restrict`, que es exactament la
   propietat de la qual depen el codi de produccio.
-- La resta de la fase continua sense implementar: falten el transport `/mcp`, la pantalla de
-  consentiment, les rutes de gestio i la interficie.
+- **10.1-G2 — el transport.** Implementat: `POST /mcp` a `apps/api/src/routes/mcp-transport.ts`,
+  amb `initialize`, `tools/list` i `tools/call` sobre JSON-RPC 2.0, i la composicio sencera a
+  `apps/api/src/mcp.ts`. Es un adaptador i res mes: qui truca, que pot veure i que se n'apunta ho
+  decideix `McpSessionService`, i aqui nomes hi ha el que es de debo del fil.
+  El repartiment de sobres es la decisio de l'increment i esta a la seccio «Errors publics»: el
+  token a la capa HTTP amb repte, la resta dins del JSON-RPC. El `WWW-Authenticate` nomena el
+  document de metadata (RFC 9728 seccio 5.1), que es tot el cami de descobriment d'un client que
+  no ha vist mai aquest servidor.
+  Quatre coses mes hi son deliberades. Un `Authorization` absent **tambe passa pel servei**, de
+  manera que absent, desconegut i revocat continuen sent una sola resposta decidida en un sol lloc.
+  El llistat **no torna a filtrar**: retorna exactament el que el servei ha decidit, perque dues
+  respostes a la mateixa pregunta acaben divergint. Els missatges son frases fixes de taula i mai
+  el missatge d'un error --el d'un argument invalid cita el que s'ha enviat, i el d'una fallada pot
+  citar una consulta o un host. I `GET` i `DELETE` responen **405**, que es la veritat: no hi ha
+  stream que obrir ni sessio que tancar; un 404 diria que l'adreca no hi es.
+  Vint-i-tres proves del fil amb un servei fals, i cinc mes (`apps/api/src/mcp.test.ts`) contra
+  l'aplicacio composada de debo: el repte hi es, el document de recurs publica la mateixa audiencia
+  que s'encunya als tokens, i sense flag o sense issuer tota la superficie es un 404.
+  **Provat de punta a punta** contra PostgreSQL real amb un service account creat a ma: secret ->
+  token -> `initialize` -> `tools/list` -> `tools/call`, amb dades del tenant de debo, el refus
+  d'una tool fora d'scope, el 404 d'una sessio d'un altre grant i les dues files d'auditoria que en
+  van quedar. Aquella passada va destapar **dos defectes que cap prova nostra veia**, tots dos
+  corregits amb aquest increment:
+  1. `lookup_mcp_access_token` unia `mcp_clients` amb un join intern. Des que la `0053` va fer
+     `client_id` nul·lable, el token de **qualsevol** service account no resolia cap fila i es
+     responia com un token que ningu no havia emes mai. La `0056` la converteix en un left join i
+     `clientStatus` passa a ser `"active" | "suspended" | null`; el null es el fet --no hi ha cap
+     client en aquesta historia-- i no un client actiu, que amagaria la diferencia el dia que algu
+     en suspengui un.
+  2. El token endpoint responia amb la nostra nomenclatura (`accessToken`, `tokenType`,
+     `expiresIn`) en comptes de la de la RFC 6749 seccio 5.1. Cap biblioteca d'OAuth llegeix aixo:
+     troba un cos que analitza be i que no conte cap token. `oauthTokenResponse` fa la traduccio a
+     la ruta, que es on viu la forma del fil, i el refresh token s'omet en comptes d'enviar-se buit
+     quan no n'hi ha --enviar-lo nul es llegiria com un que no ha arribat.
+- **Pendent de coordinacio:** declarar l'etiqueta `mcp` a la llista de tags de l'OpenAPI, a
+  `apps/api/src/app.ts`. Es una linia, i aquell fitxer torna a tenir canvis no committejats de
+  l'altra sessio. Sense ella les operacions d'MCP surten al document dins d'un grup sense nom.
+- La resta de la fase continua sense implementar: falten la pantalla de consentiment, les rutes de
+  gestio i la interficie.
 
 ## Fora d'abast de la 10.1
 
@@ -604,10 +641,13 @@ repositori ja ha pagat un xoc de numeracio abans (`current-state.md`, cas A9b) i
 Aixi es va fer: quan es va escriure aquest esquema la 7B ja tenia la `0048`, i li va tocar la
 `0049`.
 
-**El `Mcp-Session-Id` encara no te taula.** La sessio d'MCP es lliga al grant, pero que se n'ha de
-desar --si res, mes enlla del token que ja hi ha-- depen de com el transport gestioni `initialize`.
-Inventar-ne l'esquema abans de tenir el transport seria inventar-se el requisit; la decisio va amb
-l'increment del transport.
+**El `Mcp-Session-Id` no te taula, i ja no n'hi haura.** Decidit amb la 10.1-G2: l'identificador
+**es deriva del grant** (`sha256("mcp-session:" + grantId)`) en comptes de desar-se. Tot el que una
+sessio hauria de guardar --tenant, actor, scopes-- es torna a llegir del token a cada peticio,
+perque una autoritat resolta un cop i desada es una autoritat que sobreviu a la seva retirada. Aixo
+deixa l'identificador sense res a indexar: cap taula, cap memoria que creix mentre ningu no mira i
+cap estat per replicar entre instancies. Presentar l'identificador d'un altre grant es aleshores un
+error i no una represa, comprovat recalculant-lo a partir del token que s'acaba de presentar.
 
 ## API proposada
 
@@ -649,6 +689,18 @@ Els noms d'error son nomes els registrats (RFC 6749 seccions 5.2 i 4.1.2.1, RFC 
 RFC 8707 seccio 2). La `error_description` es una frase fixa de taula i **mai** un valor que hagi
 enviat qui truca: aquest text acaba a registres, terminals i pantalles compartides.
 
+**Correccio del 25 d'agost de 2026, amb la 10.1-G2.** A `/mcp` el sobre tampoc es un de sol, i el
+tall no es arbitrari. Un problema **del token** --absent, desconegut, revocat, caducat, per a una
+altra audiencia, o amb un scope insuficient-- es respon a la capa HTTP amb problem details i el
+`WWW-Authenticate`, perque el codi d'autoritzacio d'un client MCP vigila precisament el `401` i el
+`403` amb repte i actua sol: amagar-ho dins un error JSON-RPC li treu l'unic senyal sobre el qual
+pot fer res. **La resta** --un permis que l'actor no te, una tool que aquesta instal·lacio no
+publica, uns arguments que no encaixen, una execucio que ha fallat-- viatja **dins del sobre
+JSON-RPC** amb HTTP 200, perque no es arregla tornant a autoritzar i respondre-ho a la capa de
+transport faria que el client tanques la sessio davant d'una resposta que era simplement la
+correcta. El nostre `code` i el `requestId` viatgen a `error.data`, aixi que la paritat amb REST
+--el mateix codi per a la mateixa decisio-- es mante en tots dos sobres.
+
 Problem details RFC 9457, amb la capcalera `WWW-Authenticate` que RFC 9728 demana perque un client
 MCP pugui descobrir com autoritzar-se.
 
@@ -661,7 +713,10 @@ MCP pugui descobrir com autoritzar-se.
 - `MCP_REDIRECT_URI_MISMATCH`, `MCP_PKCE_REQUIRED`, `MCP_GRANT_TYPE_UNSUPPORTED` (400).
 - `MCP_AUTHORIZATION_CODE_INVALID` (400) — desconegut, caducat o ja consumit.
 - `MCP_REFRESH_REUSE_DETECTED` (401) — la familia queda revocada.
-- `TOOL_NOT_PUBLISHED` (404) — la tool no existeix en aquesta instal.lacio.
+- `TOOL_NOT_PUBLISHED` — la tool no existeix en aquesta instal.lacio. A `/mcp` viatja com a
+  `invalid_params` (-32602) del JSON-RPC, que es el que un client MCP sap llegir.
+- `MCP_SESSION_UNKNOWN` (404) — un `Mcp-Session-Id` que no es el d'aquest grant. Un 404 diu al
+  client que torni a comencar amb `initialize` en comptes de continuar presentant-lo.
 - `TOOL_INPUT_INVALID` (400), `TOOL_LIMIT_EXCEEDED` (422), `RATE_LIMITED` (429).
 - `PERMISSION_DENIED` (403) — la mateixa que dona REST, amb el mateix codi.
 
