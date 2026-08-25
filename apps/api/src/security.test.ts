@@ -73,6 +73,56 @@ describe("second factor policy", () => {
   });
 });
 
+describe("how recently the caller proved who they are", () => {
+  const sessionCreated = (createdAt: unknown) =>
+    ({
+      api: {
+        getSession: () => Promise.resolve({ user: { id: "user", twoFactorEnabled: true }, session: { createdAt } })
+      }
+    }) as unknown as ControlHubAuth;
+
+  const resolve = (auth: ControlHubAuth) =>
+    resolveTenantContext(auth, databaseReturning([membershipRow]), request, { requireFreshSession: true });
+
+  it("lets through a session established within the window", async () => {
+    const context = await resolve(sessionCreated(new Date(Date.now() - 60 * 1000)));
+    expect(context.tenantId).toBe(membershipRow.tenant_id);
+  });
+
+  it("refuses one older than the window, however valid it still is", async () => {
+    // The session is perfectly good for reading the panel. It is not evidence that the person who
+    // signed in is the one now handing an agent ninety days of access.
+    await expect(resolve(sessionCreated(new Date(Date.now() - 60 * 60 * 1000)))).rejects.toMatchObject({
+      statusCode: 403,
+      code: "SESSION_NOT_FRESH"
+    });
+  });
+
+  it("reads a creation time that arrived as a string, because a driver may hand one back", async () => {
+    const context = await resolve(sessionCreated(new Date(Date.now() - 60 * 1000).toISOString()));
+    expect(context.userId).toBe("user");
+  });
+
+  it("treats a session it cannot read a creation time from as not fresh", async () => {
+    // Assuming freshness for a shape this code did not expect would turn a surprise into an
+    // approval nobody made.
+    for (const createdAt of [undefined, null, "not a date"]) {
+      await expect(resolve(sessionCreated(createdAt))).rejects.toMatchObject({ code: "SESSION_NOT_FRESH" });
+    }
+  });
+
+  it("asks nothing about freshness unless the route says to", async () => {
+    // Every other route in the API resolves a context without this, and adding the check by
+    // default would log everybody out of the panel ten minutes after signing in.
+    const context = await resolveTenantContext(
+      sessionCreated(new Date(Date.now() - 60 * 60 * 1000)),
+      databaseReturning([membershipRow]),
+      request
+    );
+    expect(context.tenantId).toBe(membershipRow.tenant_id);
+  });
+});
+
 describe("requirePermission", () => {
   it("allows a permission the membership holds", () => {
     expect(() => requirePermission(contextWith(), "leads:read")).not.toThrow();

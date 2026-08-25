@@ -76,4 +76,36 @@ describe("requireSession", () => {
     await expect(requireSession("ca")).rejects.toThrow("REDIRECT:/ca/login");
     expect(apiFetch).not.toHaveBeenCalled();
   });
+
+  /**
+   * The consent screen is opened from a link an agent composed, so somebody arriving signed out is
+   * answering a request rather than browsing. Landing them on the dashboard after they authenticate
+   * loses the request -- and carrying the destination in the address is also how open redirects are
+   * built, which is why it is validated rather than trusted.
+   */
+  it("carries a return path so a sign-in does not lose the request", async () => {
+    hasSessionCookie.mockResolvedValue(false);
+    await expect(requireSession("es", "/es/mcp/consent?client_id=abc&state=1")).rejects.toThrow("REDIRECT:");
+    expect(redirect).toHaveBeenCalledWith(
+      `/es/login?next=${encodeURIComponent("/es/mcp/consent?client_id=abc&state=1")}`
+    );
+  });
+
+  it("drops a return path that could leave the panel, rather than repairing it", async () => {
+    hasSessionCookie.mockResolvedValue(false);
+    for (const destination of ["https://attacker.test/collect", "//attacker.test", "/\\attacker.test"]) {
+      vi.clearAllMocks();
+      hasSessionCookie.mockResolvedValue(false);
+      await expect(requireSession("ca", destination)).rejects.toThrow("REDIRECT:/ca/login");
+      expect(redirect, destination).toHaveBeenCalledWith("/ca/login");
+    }
+  });
+
+  it("carries the return path through a session the API rejects, not only a missing cookie", async () => {
+    // The two paths out of this function reach the login form separately, and an increment that
+    // fixed one and forgot the other would look right until somebody's cookie went stale.
+    apiFetch.mockResolvedValue(json(200, null));
+    await expect(requireSession("ca", "/ca/mcp/consent?client_id=abc")).rejects.toThrow("REDIRECT:");
+    expect(redirect).toHaveBeenCalledWith(`/ca/login?next=${encodeURIComponent("/ca/mcp/consent?client_id=abc")}`);
+  });
 });

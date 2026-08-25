@@ -29,7 +29,12 @@ const tagBytes = 16;
  * so the separator cannot be pushed around to make two different pairs produce the same bytes.
  */
 function additionalData(aad: CredentialAad): Buffer {
-  return Buffer.from(`control-hub:connector-credential:v1:${aad.tenantId}:${aad.instanceId}`, "utf8");
+  return Buffer.from(
+    aad.purpose
+      ? `control-hub:connector-credential:v2:${aad.tenantId}:${aad.instanceId}:${aad.purpose}`
+      : `control-hub:connector-credential:v1:${aad.tenantId}:${aad.instanceId}`,
+    "utf8"
+  );
 }
 
 export class CredentialVault implements CredentialSealer {

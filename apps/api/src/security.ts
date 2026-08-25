@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import { hasPermission, type Permission, type RoleCode, type TenantContext } from "@control-hub/domain";
 import type { FastifyRequest } from "fastify";
-import type { ControlHubAuth } from "./auth.js";
+import { sessionFreshAge, type ControlHubAuth } from "./auth.js";
 
 export class ApiSecurityError extends Error {
   constructor(
@@ -26,7 +26,14 @@ export class ApiSecurityError extends Error {
  * enrol: refusing those would leave a new member unable to ever set up the factor being
  * demanded of them. Pass it deliberately, never to make a failing test pass.
  */
-export type TenantContextOptions = { allowWithoutSecondFactor?: boolean };
+/**
+ * `requireFreshSession` is the other direction: not "have you enrolled a factor" but "did you prove
+ * it recently". Consenting to an MCP client is the operation it exists for -- it hands an agent
+ * ninety days of read access to a tenant, which is exactly the kind of thing an unattended laptop
+ * should not be able to do. The window is better-auth's own `freshAge`, so the answer here and the
+ * answer better-auth gives for changing a password are the same answer.
+ */
+export type TenantContextOptions = { allowWithoutSecondFactor?: boolean; requireFreshSession?: boolean };
 
 export async function resolveTenantContext(
   auth: ControlHubAuth,
@@ -64,7 +71,28 @@ export async function resolveTenantContext(
     mfaEnabled: Boolean("twoFactorEnabled" in session.user && session.user.twoFactorEnabled)
   };
   if (!options.allowWithoutSecondFactor && !context.mfaEnabled) throw new ApiSecurityError(403, "MFA_REQUIRED");
+  if (options.requireFreshSession && !isFresh(session, new Date()))
+    throw new ApiSecurityError(403, "SESSION_NOT_FRESH");
   return context;
+}
+
+/**
+ * Whether this session was established recently enough to authorise something sensitive.
+ *
+ * Measured from when the session was created rather than from when it was last touched: extending
+ * a session because somebody has the panel open in a tab is not evidence that the person is still
+ * the one at the keyboard, and treating it as such would make the window meaningless for any
+ * session in daily use.
+ *
+ * A session with no readable creation time is not fresh. The alternative -- assuming it is -- turns
+ * a shape this code did not expect into an approval nobody made.
+ */
+function isFresh(session: unknown, now: Date): boolean {
+  const record = session as { session?: { createdAt?: unknown } };
+  const createdAt = record.session?.createdAt;
+  const created = createdAt instanceof Date ? createdAt : typeof createdAt === "string" ? new Date(createdAt) : null;
+  if (!created || Number.isNaN(created.getTime())) return false;
+  return now.getTime() - created.getTime() <= sessionFreshAge * 1000;
 }
 
 export function requirePermission(context: TenantContext, permission: Permission) {

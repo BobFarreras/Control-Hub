@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SelectControl } from "@/components/form-field";
 import type { TicketDetail as TicketDetailData } from "@/lib/api-types";
-import { formValue } from "@/lib/form";
 import { actionHandler, eventHandler } from "@/lib/handlers";
 
 type Labels = Record<string, string>;
@@ -31,18 +30,25 @@ function formatMinutes(minutes: number): string {
 export function TicketDetail({
   detail,
   labels: t,
-  locale
+  locale,
+  outboundMail
 }: {
   detail: TicketDetailData;
   labels: Labels;
   locale: string;
+  outboundMail: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [visibility, setVisibility] = useState("internal");
+  const [mailInstanceId, setMailInstanceId] = useState(outboundMail[0]?.id ?? "");
+  const [confirmation, setConfirmation] = useState("");
   const fail = () => setError(t.formError ?? "OPERATION_FAILED");
 
-  const { ticket, messages, sla, assignableMembers } = detail;
+  const { ticket, messages, sla, assignableMembers, deliveries } = detail;
+  const deliveryByMessage = new Map(deliveries.map((delivery) => [delivery.ticketMessageId, delivery]));
   const fr = sla.firstResponse;
   const rs = sla.resolution;
 
@@ -61,14 +67,37 @@ export function TicketDetail({
 
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    await send(
-      `/api/v1/support/tickets/${ticket.id}/messages`,
-      { body: formValue(data, "body"), visibility: formValue(data, "visibility") },
-      "POST"
-    );
-    form.reset();
+    if (visibility === "customer" && mailInstanceId) {
+      setBusy(true);
+      setError("");
+      const response = await fetch(`/api/v1/integrations/${mailInstanceId}/actions/send_mail/confirmation`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ticketId: ticket.id, body: replyBody })
+      });
+      setBusy(false);
+      if (!response.ok) return fail();
+      const payload = (await response.json()) as { confirmation: string };
+      setConfirmation(payload.confirmation);
+      return;
+    }
+    await send(`/api/v1/support/tickets/${ticket.id}/messages`, { body: replyBody, visibility }, "POST");
+    setReplyBody("");
+  }
+
+  async function confirmMail() {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/v1/integrations/${mailInstanceId}/actions/send_mail`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({ ticketId: ticket.id, body: replyBody, confirmation })
+    });
+    setBusy(false);
+    if (!response.ok) return fail();
+    setConfirmation("");
+    setReplyBody("");
+    router.refresh();
   }
 
   return (
@@ -283,6 +312,12 @@ export function TicketDetail({
                   <time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString(locale)}</time>
                 </header>
                 <p>{message.body}</p>
+                {deliveryByMessage.get(message.id) && (
+                  <small className={`mail-delivery mail-delivery-${deliveryByMessage.get(message.id)!.status}`}>
+                    {t[`delivery_${deliveryByMessage.get(message.id)!.status}`] ??
+                      deliveryByMessage.get(message.id)!.status}
+                  </small>
+                )}
               </article>
             ))}
           </section>
@@ -291,26 +326,88 @@ export function TicketDetail({
           <form className="ticket-reply" onSubmit={eventHandler(reply, fail)}>
             <label className="ticket-reply-label">
               {t.reply}
-              <textarea name="body" required maxLength={20000} rows={4} disabled={busy} />
+              <textarea
+                name="body"
+                required
+                maxLength={20000}
+                rows={4}
+                disabled={busy || Boolean(confirmation)}
+                value={replyBody}
+                onChange={(event) => setReplyBody(event.target.value)}
+              />
             </label>
             <div className="ticket-reply-actions">
               <label>
                 {t.replyVisibility}
                 <SelectControl
                   name="visibility"
-                  defaultValue="internal"
+                  value={visibility}
                   disabled={busy}
+                  onChange={(event) => {
+                    setVisibility(event.target.value);
+                    setConfirmation("");
+                  }}
                   options={[
                     { value: "internal", label: t.internalNote ?? "INTERNAL_NOTE" },
                     { value: "customer", label: t.customerReply ?? "CUSTOMER_REPLY" }
                   ]}
                 />
               </label>
-              <button className="primary-button" disabled={busy}>
+              {visibility === "customer" && outboundMail.length > 0 && (
+                <label>
+                  {t.mailIntegration}
+                  <SelectControl
+                    value={mailInstanceId}
+                    disabled={busy || Boolean(confirmation)}
+                    onChange={(event) => setMailInstanceId(event.target.value)}
+                    options={outboundMail.map((instance) => ({ value: instance.id, label: instance.name }))}
+                  />
+                </label>
+              )}
+              <button className="primary-button" disabled={busy || (visibility === "customer" && !mailInstanceId)}>
                 <Send size={16} />
-                {t.send}
+                {visibility === "customer" && mailInstanceId ? t.prepareMail : t.send}
               </button>
             </div>
+            {visibility === "customer" && outboundMail.length === 0 && (
+              <p className="field-hint">{t.noMailIntegration}</p>
+            )}
+            {confirmation && (
+              <div className="dialog-backdrop">
+                <div
+                  className="crm-dialog ticket-mail-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="mail-confirm-title"
+                >
+                  <header>
+                    <h2 id="mail-confirm-title">{t.confirmMailTitle}</h2>
+                  </header>
+                  <div className="ticket-mail-dialog-body">
+                    <p>{t.confirmMailDescription}</p>
+                    <div className="ticket-mail-preview">{replyBody}</div>
+                  </div>
+                  <div className="ticket-mail-dialog-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => setConfirmation("")}
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={busy}
+                      onClick={actionHandler(confirmMail, fail)}
+                    >
+                      <Send size={16} /> {t.confirmAndSend}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </div>

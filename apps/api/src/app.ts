@@ -5,8 +5,10 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  ConnectorActionService,
   ConnectorCredentialService,
   ConnectorIngressService,
+  ConnectorOAuthService,
   ConnectorService,
   CustomerServicesError,
   CustomerServicesService,
@@ -17,6 +19,7 @@ import {
   ProjectsError,
   ProjectsService,
   SupportError,
+  SupportMailboxService,
   SupportService,
   UsageService,
   UsageServiceError
@@ -40,7 +43,9 @@ import {
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
+  PostgresConnectorActionRepository,
   PostgresConnectorRepository,
+  PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
   IdentityInvariantError,
@@ -49,6 +54,7 @@ import {
   PostgresInfrastructureRepository,
   PostgresProjectsRepository,
   PostgresSupportRepository,
+  PostgresSupportMailboxRepository,
   PostgresUsageRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
@@ -62,6 +68,7 @@ import type { ControlHubAuth } from "./auth.js";
 import { createConnectorHealthCheckQueue } from "./connector-health-queue.js";
 import { createConnectorIngressQueue } from "./connector-ingress-queue.js";
 import type { MailSender } from "./email.js";
+import { registerMcpRoutes } from "./mcp.js";
 import { describeConnectorError, problemContentType, problemDetails, usesProblemDetails } from "./problem.js";
 import { rateLimitKey } from "./rate-limit.js";
 import { registerAttendanceRoutes } from "./routes/attendance.js";
@@ -125,6 +132,15 @@ type BuildAppOptions = {
    * which is why it arrives from the environment and has no route that can write it.
    */
   connectorEgressAllowlist?: readonly AllowedDestination[];
+  oauthClientIds?: Readonly<Partial<Record<"google" | "microsoft", string>>>;
+  /**
+   * The public origin an MCP client reaches this API at, and so the OAuth issuer it announces.
+   *
+   * Absent means the MCP routes are not declared, whatever the flag says. An authorization server
+   * that does not know its own name would have to take one from a request header, and a token
+   * whose audience the caller chooses protects nothing. See @control-hub/config.
+   */
+  mcpIssuer?: string | undefined;
 };
 
 /**
@@ -145,6 +161,9 @@ export function buildApp(options: BuildAppOptions) {
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
   const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
+  const mailbox = isFeatureEnabled(featureFlags, "mail")
+    ? new SupportMailboxService(new PostgresSupportMailboxRepository(database))
+    : null;
   const egressAllowlist =
     options.connectorEgressAllowlist ?? parseEgressAllowlist(process.env.CONNECTOR_INTERNAL_ALLOWLIST);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
@@ -210,7 +229,12 @@ export function buildApp(options: BuildAppOptions) {
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
         { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
-        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." }
+        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." },
+        {
+          name: "mcp",
+          description:
+            "The agent surface: OAuth discovery, the clients and consents behind it, and the tools an agent may call."
+        }
       ]
     }
   });
@@ -384,7 +408,7 @@ export function buildApp(options: BuildAppOptions) {
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });
-      registerSupportRoutes({ ...context, support });
+      registerSupportRoutes({ ...context, support, mailbox });
       // Behind a flag so the schema can be deployed before the module is opened. Off, the
       // routes are never declared and the API answers 404, which is the truth: there is
       // nothing there. A flag decides what is deployed, never who may use it.
@@ -419,6 +443,16 @@ export function buildApp(options: BuildAppOptions) {
         });
     }
 
+    // Unauthenticated by design and therefore outside the block above: a client has to read the
+    // discovery documents and reach the token endpoint before it holds any session at all.
+    registerMcpRoutes({
+      app,
+      database,
+      featureFlags,
+      issuer: options.mcpIssuer,
+      auth: options.auth,
+      appOrigin: options.appOrigin
+    });
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
     registerObservabilityRoutes();
     registerHealthRoutes();
@@ -451,11 +485,28 @@ export function buildApp(options: BuildAppOptions) {
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
     const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;
+    const oauth =
+      vault && isFeatureEnabled(featureFlags, "connector_oauth")
+        ? new ConnectorOAuthService(
+            repository,
+            new PostgresConnectorOAuthRepository(database),
+            connectorRegistry,
+            vault,
+            options.oauthClientIds ?? {}
+          )
+        : null;
+    const actions =
+      vault && isFeatureEnabled(featureFlags, "connector_actions")
+        ? new ConnectorActionService(repository, new PostgresConnectorActionRepository(database), connectorRegistry)
+        : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),
       credentials: vault ? new ConnectorCredentialService(repository, vault) : null,
-      ingress
+      ingress,
+      oauth,
+      appOrigin: options.appOrigin,
+      actions
     });
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate

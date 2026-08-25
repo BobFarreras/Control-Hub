@@ -3,12 +3,15 @@ import type {
   CommerceService,
   CompanySubscriptionService,
   ConnectorCredentialService,
+  ConnectorActionService,
   ConnectorIngressService,
+  ConnectorOAuthService,
   ConnectorService,
   CustomerServicesService,
   CrmService,
   InfrastructureService,
   ProjectsService,
+  SupportMailboxService,
   SupportService,
   UsageService
 } from "@control-hub/application";
@@ -34,7 +37,7 @@ export type RouteContext = {
 export type CrmContext = RouteContext & { crm: CrmService };
 export type CommerceContext = RouteContext & { commerce: CommerceService; customerServices: CustomerServicesService };
 export type CompanySubscriptionContext = RouteContext & { companySubscriptions: CompanySubscriptionService };
-export type SupportContext = RouteContext & { support: SupportService };
+export type SupportContext = RouteContext & { support: SupportService; mailbox: SupportMailboxService | null };
 export type InfrastructureContext = RouteContext & { infrastructure: InfrastructureService };
 export type ProjectsContext = RouteContext & { projects: ProjectsService };
 export type AttendanceContext = RouteContext & { attendance: AttendanceService };
@@ -52,6 +55,9 @@ export type IntegrationsContext = RouteContext & {
   credentials: ConnectorCredentialService | null;
   /** Null for the same reason: minting an endpoint means sealing the secret that signs for it. */
   ingress: ConnectorIngressService | null;
+  oauth: ConnectorOAuthService | null;
+  appOrigin: string | undefined;
+  actions: ConnectorActionService | null;
 };
 
 /**

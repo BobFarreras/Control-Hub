@@ -9,6 +9,7 @@ import type {
   ConnectorCatalogueResponse,
   ConnectorCredentialsResponse,
   ConnectorEndpointsResponse,
+  ConnectorOAuthGrantResponse,
   ConnectorInstance,
   ConnectorRunsResponse,
   IntegrationDetail
@@ -39,10 +40,11 @@ import { requireSession } from "@/lib/require-session";
  * An empty section says exactly that, which is truer than an error banner would be.
  */
 async function loadDetail(instance: ConnectorInstance): Promise<IntegrationDetail> {
-  const [endpoints, credentials, runs] = await Promise.all([
+  const [endpoints, credentials, runs, oauthGrant] = await Promise.all([
     apiFetch(`/api/v1/integrations/${instance.id}/endpoints`),
     apiFetch(`/api/v1/integrations/${instance.id}/credentials`),
-    apiFetch(`/api/v1/integrations/${instance.id}/runs?page=1&pageSize=20`)
+    apiFetch(`/api/v1/integrations/${instance.id}/runs?page=1&pageSize=20`),
+    apiFetch(`/api/v1/integrations/${instance.id}/oauth/grant`)
   ]);
   const runsPage = runs.ok ? await readJson<ConnectorRunsResponse>(runs) : null;
   return {
@@ -53,7 +55,8 @@ async function loadDetail(instance: ConnectorInstance): Promise<IntegrationDetai
     runsTotal: runsPage?.total ?? 0,
     // The instance was fetched successfully, so it exists: a 404 here is the route missing, not
     // the integration.
-    vaultAvailable: endpoints.status !== 404
+    vaultAvailable: endpoints.status !== 404,
+    oauthGrant: oauthGrant.ok ? (await readJson<ConnectorOAuthGrantResponse>(oauthGrant)).grant : null
   };
 }
 

@@ -1,5 +1,11 @@
-import type { ConnectorRepository, ConnectorSecretReader, SyncRunRecord } from "@control-hub/application";
-import type { ConnectorContext, HttpPort, RegisteredConnector } from "@control-hub/connectors";
+import type { ConnectorRepository, SyncRunRecord } from "@control-hub/application";
+import type {
+  ConnectorContext,
+  HttpPort,
+  MailboxPort,
+  RegisteredConnector,
+  SecretsPort
+} from "@control-hub/connectors";
 import { connectorHealthOperation } from "@control-hub/contracts/jobs";
 import {
   backoffDelayMs,
@@ -45,7 +51,7 @@ export type RuntimeLogger = {
 
 export type ConnectorRuntimeOptions = {
   repository: ConnectorRepository;
-  secrets: ConnectorSecretReader;
+  secrets: { open(context: TenantContext, instanceId: string, kind: string): Promise<string | null> };
   circuits: CircuitStore;
   logger: RuntimeLogger;
   /**
@@ -54,6 +60,10 @@ export type ConnectorRuntimeOptions = {
    * every instance's destinations, which is not a guard.
    */
   http: (instance: { id: string; connectorType: string; config: unknown }) => HttpPort;
+  mailbox?: (
+    instance: { id: string; connectorType: string; config: unknown },
+    secrets: SecretsPort
+  ) => Promise<MailboxPort & { close(): Promise<void> }>;
   usage?: {
     ingest(
       context: TenantContext,
@@ -61,6 +71,17 @@ export type ConnectorRuntimeOptions = {
         instanceId: string;
         operation: string;
         completedAt: Date;
+        records: readonly { externalId: string; data: Readonly<Record<string, unknown>> }[];
+      }
+    ): Promise<unknown>;
+  };
+  mail?: {
+    ingest(
+      context: TenantContext,
+      input: {
+        instanceId: string;
+        connectorType: string;
+        operation: string;
         records: readonly { externalId: string; data: Readonly<Record<string, unknown>> }[];
       }
     ): Promise<unknown>;
@@ -77,6 +98,8 @@ export type RunRequest = {
   attempt: number;
   cursor: string | null;
 };
+
+export type ActionExecution = { externalId: string | null };
 
 /**
  * The operation name reserved for a health check, which is not one a connector declares.
@@ -137,6 +160,14 @@ export class ConnectorRuntime {
 
     const secretsSeen = new Set<string>();
     const startedAt = this.now();
+    const secretPort: SecretsPort = {
+      open: async (kind: string) => {
+        const secret = await this.options.secrets.open(context, instance.id, kind);
+        if (secret === null) throw new ConnectorRunError("unauthorized", "CREDENTIAL_MISSING");
+        secretsSeen.add(secret);
+        return secret;
+      }
+    };
     const connectorContext: ConnectorContext<unknown> = {
       instanceId: instance.id,
       config: instance.config,
@@ -145,16 +176,7 @@ export class ConnectorRuntime {
         connectorType: instance.connectorType,
         config: instance.config
       }),
-      secrets: {
-        open: async (kind: string) => {
-          const secret = await this.options.secrets.open(context, instance.id, kind);
-          if (secret === null) throw new ConnectorRunError("unauthorized", "CREDENTIAL_MISSING");
-          // Held for the length of the run so the logger can take it back out of whatever a
-          // provider echoes at us. It never leaves this object.
-          secretsSeen.add(secret);
-          return secret;
-        }
-      },
+      secrets: secretPort,
       logger: this.redactingLogger(instance, request.operation, secretsSeen),
       clock: { now: () => this.now() }
     };
@@ -164,7 +186,12 @@ export class ConnectorRuntime {
     // one that names it explicitly is replaying on purpose, and that wins.
     const cursor = request.cursor ?? (await this.storedCursor(context, instance.id, request.operation));
 
+    let mailbox: (MailboxPort & { close(): Promise<void> }) | undefined;
     try {
+      if (connector.capabilities.mailbox && this.options.mailbox) {
+        mailbox = await this.options.mailbox(instance, secretPort);
+        connectorContext.mailbox = mailbox;
+      }
       const result = await this.attempt(context, connector, connectorContext, instance.id, {
         ...request,
         cursor
@@ -197,7 +224,38 @@ export class ConnectorRuntime {
         });
       }
       return await this.recordFailure(context, instance, request, run, startedAt, error, secretsSeen);
+    } finally {
+      await mailbox?.close().catch(() => undefined);
     }
+  }
+
+  async act(
+    context: TenantContext,
+    request: { instanceId: string; action: string; input: Readonly<Record<string, unknown>> }
+  ): Promise<ActionExecution> {
+    const instance = await this.options.repository.getInstance(context, request.instanceId);
+    if (!instance || instance.status !== "enabled") throw new ConnectorRunError("invalid_config", "INVALID_CONFIG");
+    const connector = this.registry.find(instance.connectorType);
+    if (!connector?.capabilities.actions?.[request.action])
+      throw new ConnectorRunError("invalid_config", "INVALID_CONFIG");
+    const secretsSeen = new Set<string>();
+    const secretPort: SecretsPort = {
+      open: async (kind) => {
+        const secret = await this.options.secrets.open(context, instance.id, kind);
+        if (secret === null) throw new ConnectorRunError("unauthorized", "CREDENTIAL_MISSING");
+        secretsSeen.add(secret);
+        return secret;
+      }
+    };
+    const connectorContext: ConnectorContext<unknown> = {
+      instanceId: instance.id,
+      config: instance.config,
+      http: this.options.http({ id: instance.id, connectorType: instance.connectorType, config: instance.config }),
+      secrets: secretPort,
+      logger: this.redactingLogger(instance, request.action, secretsSeen),
+      clock: { now: () => this.now() }
+    };
+    return connector.act(request.action, connectorContext, request.input);
   }
 
   /** Null rather than a throw when nothing has run yet: a first pass starts from the beginning. */
@@ -244,6 +302,12 @@ export class ConnectorRuntime {
         instanceId,
         operation: request.operation,
         completedAt: this.now(),
+        records: result.records
+      });
+      await this.options.mail?.ingest(context, {
+        instanceId,
+        connectorType: connector.type,
+        operation: request.operation,
         records: result.records
       });
       return { itemsProcessed: result.records.length, cursor: result.cursor };

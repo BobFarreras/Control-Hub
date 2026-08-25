@@ -36,6 +36,7 @@ Les branques son referencies Git, no carpetes del repositori.
 | `hotfix/` | `main` | `main` i `develop` | Correccio urgent de produccio |
 | `docs/` | `develop` | `develop` | Documentacio sense canvi funcional |
 | `chore/` | `develop` | `develop` | Tooling o manteniment |
+| `agent/<agent>/` | `develop` | `develop` | Tasca concurrent en un workspace aillat |
 
 Format recomanat:
 
@@ -119,7 +120,13 @@ Per aixo cada major va sol, a la seva branca:
 ```text
 chore/deps-bullmq-6
 chore/deps-node-26
+agent/codex/ch-241-mailbox-ui
 ```
+
+Quan treballen diversos agents, `agent/<agent>/<ticket>-<slug>` substitueix temporalment el prefix
+funcional: la PR continua indicant si el canvi es feature, fix, docs o chore. La branca es crea
+amb `pnpm agent:workspace create`, mai canviant de branca dins el directori d'un altre agent. El
+flux operatiu complet es a `docs/development/agent-workspaces.md`.
 
 Una branca, un major. Si dos es barregen i alguna cosa peta, tens dos sospitosos i un sol revert.
 

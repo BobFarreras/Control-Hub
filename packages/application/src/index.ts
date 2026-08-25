@@ -1,16 +1,22 @@
 export type { TenantContext } from "@control-hub/domain";
 export * from "./commerce.js";
 export * from "./connector-credentials.js";
+export * from "./connector-actions.js";
 export * from "./connector-ingress.js";
+export * from "./connector-oauth.js";
 export * from "./connector-instances.js";
 export * from "./connectors.js";
 export * from "./infrastructure.js";
 export * from "./customer-services.js";
 export * from "./company-subscriptions.js";
 export * from "./support.js";
+export * from "./support-mailbox.js";
 export * from "./projects.js";
 export * from "./attendance.js";
 export * from "./usage.js";
+export * from "./mcp.js";
+export * from "./mcp-oauth.js";
+export * from "./mcp-session.js";
 import {
   canTransitionLead,
   normalizeComparableName,

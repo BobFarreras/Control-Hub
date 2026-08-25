@@ -1,12 +1,21 @@
 import { connectorRegistry } from "@control-hub/connectors";
-import { connectorDiagnosisSteps, connectorErrorCodes, infrastructureErrorCodes } from "@control-hub/domain";
+import {
+  connectorDiagnosisSteps,
+  connectorErrorCodes,
+  infrastructureErrorCodes,
+  mcpOauthDenialCodes,
+  mcpScopes
+} from "@control-hub/domain";
 import { describe, expect, it } from "vitest";
 import {
   getAttendanceDictionary,
   getDictionary,
   getInfrastructureDictionary,
   getIntegrationsDictionary,
-  locales
+  getMcpDictionary,
+  locales,
+  mcpErrorMessage,
+  mcpScopeLabel
 } from "./index.js";
 
 /**
@@ -37,6 +46,63 @@ describe("dictionaries", () => {
 
   it("does the same for the infrastructure module", () => {
     expectSameShapeInEveryLocale(getInfrastructureDictionary);
+  });
+
+  it("does the same for the consent screen", () => {
+    expectSameShapeInEveryLocale(getMcpDictionary);
+  });
+});
+
+/**
+ * The consent screen is the one place a person decides what a stranger's software may read, and it
+ * is reached in whatever language their browser asks for. A scope with no sentence would arrive as
+ * `infrastructure.read` in the middle of a paragraph of Catalan, which is not a description of
+ * anything -- it is a line somebody clicks past.
+ *
+ * The closed lists in `@control-hub/domain` are walked rather than copied, and they are walked
+ * through the very functions the screen calls: a derivation proved here and performed there could
+ * drift, and the drift is silent.
+ */
+describe("the words a person approves an agent in", () => {
+  it("says what every scope this build offers would let an agent read, in every locale", () => {
+    for (const locale of locales) {
+      for (const scope of mcpScopes) {
+        const label = mcpScopeLabel(locale, scope);
+        expect(label, `${scope} in ${locale}`).toBeTruthy();
+        // A label that is the identifier is the lookup having missed.
+        expect(label, `${scope} in ${locale}`).not.toBe(scope);
+      }
+    }
+  });
+
+  it("explains every way this flow can refuse, in every locale", () => {
+    for (const locale of locales) {
+      const generic = getMcpDictionary(locale).errorUnknown;
+      for (const code of mcpOauthDenialCodes) {
+        expect(mcpErrorMessage(locale, code), `${code} in ${locale}`).not.toBe(generic);
+      }
+    }
+  });
+
+  /**
+   * The refusal a person is most likely to meet, and it comes from the API's own freshness rule
+   * rather than from the MCP vocabulary: it is what they get for taking their time over the
+   * decision. Answering it with the generic sentence would say nothing at the exact moment
+   * somebody needs to be told to sign in again.
+   */
+  it("explains a stale session too, which no closed list would have caught", () => {
+    for (const locale of locales) {
+      expect(mcpErrorMessage(locale, "SESSION_NOT_FRESH"), locale).not.toBe(getMcpDictionary(locale).errorUnknown);
+    }
+  });
+
+  it("answers something it has never heard of with the sentence that admits as much", () => {
+    for (const locale of locales) {
+      const generic = getMcpDictionary(locale).errorUnknown;
+      for (const code of [null, undefined, "", "SOMETHING_NOBODY_SHIPPED"]) {
+        expect(mcpErrorMessage(locale, code), String(code)).toBe(generic);
+      }
+    }
   });
 });
 

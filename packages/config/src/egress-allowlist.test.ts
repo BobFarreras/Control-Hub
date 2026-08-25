@@ -17,6 +17,7 @@ describe("reading the operator's allowlist", () => {
 
   it("fills in the scheme's own default port rather than leaving it open", () => {
     expect(parseEgressAllowlist("https://api.internal")[0]?.port).toBe(443);
+    expect(parseEgressAllowlist("imaps://mail.internal")[0]?.port).toBe(993);
   });
 
   it("refuses an entry with a path, instead of ignoring the part it cannot enforce", () => {
@@ -44,6 +45,12 @@ describe("deciding whether a URL was allowed", () => {
     expect(isAllowlistedDestination(allowlist, new URL("http://n8n.internal:5678/rest/x"))).toBe(false);
     expect(isAllowlistedDestination(allowlist, new URL("https://n8n.internal:5679/rest/x"))).toBe(false);
     expect(isAllowlistedDestination(allowlist, new URL("https://other.internal:5678/"))).toBe(false);
+  });
+
+  it("allows an exact TLS-only IMAP origin", () => {
+    const imap = parseEgressAllowlist("imaps://mail.internal:993");
+    expect(isAllowlistedDestination(imap, new URL("imaps://mail.internal:993"))).toBe(true);
+    expect(isAllowlistedDestination(imap, new URL("imaps://mail.internal:994"))).toBe(false);
   });
 
   it("compares an IPv6 literal without the brackets the URL puts around it", () => {
