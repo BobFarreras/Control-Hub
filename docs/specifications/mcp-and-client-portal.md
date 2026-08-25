@@ -329,9 +329,35 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   seguents mentre una fila d'auditoria dura anys.
   Trenta-cinc proves de fil a `apps/api/src/routes/mcp-oauth.test.ts`, quinze a `mcp-consent.test.ts`,
   cinc de frescor a `apps/api/src/security.test.ts` i cinc de descripcio al servei.
-- La resta de la fase continua sense implementar: falta la interficie --la pantalla de
-  consentiment i la seccio de seguretat del panell--, que consumeix el que aquests dos increments
-  deixen a l'abast.
+- **10.1-H3 — la pantalla que la persona llegeix.** La cara visible del que la H2 va deixar a
+  l'abast: `apps/web/src/app/mcp/consent/page.tsx` rep la redireccio de l'API sense idioma a
+  l'adreca, tria la llengua amb `negotiateLocale` a partir de l'`Accept-Language` i passa la
+  peticio sencera, sense tocar-la, a `/{locale}/mcp/consent`.
+  **La pantalla es de servidor**, i aixo no es un detall de rendiment. La descripcio es torna a
+  llegir per l'API abans de dibuixar res, de manera que la pantalla no es pot renderitzar nomes a
+  partir de l'adreca ni per l'instant que trigaria una carrega de client a substituir-la. Els
+  parametres continuen viatjant cap al component de decisio tal com van arribar, perque el POST ha
+  de fer la mateixa pregunta que el GET va descriure i l'API els torna a validar alli.
+  **Qui hi arriba sense sessio no perd la peticio.** `requireSession` accepta ara un `returnTo`, i
+  el formulari d'inici de sessio l'obeeix. Es l'unica pantalla del producte que s'obre des d'un
+  enllac que ha escrit algu altre, aixi que la destinacio passa per `internalPath`: nomes un cami
+  dins del panell, i es refusa --no es repara-- qualsevol cosa que en pugui sortir, incloses
+  `//host`, la barra invertida que alguns navegadors normalitzen i els caracters de control. Una
+  destinacio treta d'una adreca es exactament com es construeix un open redirect.
+  **Els textos son tres idiomes i cap identificador.** `getMcpDictionary` porta les frases, i
+  `mcpScopeLabel` i `mcpErrorMessage` viuen al costat de les paraules en comptes de al component:
+  la derivacio de la clau i la prova que la comprova han de ser a la mateixa banda del cable, o
+  divergeixen en silenci i la pantalla passa a dir «no s'ha pogut completar l'operacio» justament
+  alli on el lector mes necessita saber quina de mitja dotzena de coses ha fallat. La suite recorre
+  `mcpScopes` i `mcpOauthDenialCodes` del domini a traves d'aquestes mateixes funcions, i hi afegeix
+  `SESSION_NOT_FRESH`, que no surt de cap llista tancada i es el refus que una persona te mes
+  numeros de trobar: es el que et toca per pensar-t'ho.
+  **Refusar es tan visible com autoritzar.** Els dos botons ocupen la mateixa amplada; una pantalla
+  on l'unic boto amb estil es «Autoritza» ja ha decidit pel lector. I la redireccio final es fa amb
+  `window.location.assign` i no amb el router: la destinacio es del client que ha iniciat tot aixo
+  --normalment un port de loopback d'aquest mateix ordinador-- i no una ruta d'aquesta aplicacio.
+- La resta de la fase continua sense implementar: falta la seccio de seguretat del panell, que
+  consumeix les rutes de gestio de la H1.
 
 ## Fora d'abast de la 10.1
 

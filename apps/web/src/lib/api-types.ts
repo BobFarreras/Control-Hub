@@ -1058,3 +1058,25 @@ export type DiscoveredService = {
 };
 
 export type ConnectorServicesResponse = { services: DiscoveredService[] };
+
+/**
+ * What an agent is asking for, as the API resolved it.
+ *
+ * Every field here is the API's answer and not the query string the browser arrived with: the name
+ * is the registered one, the scopes are the ones this reader could actually back, and the address
+ * is the one already matched against the client's registrations. The screen renders this and never
+ * the request, which is what keeps a composed URL from describing itself generously.
+ */
+export type McpConsentRequest = {
+  clientId: string;
+  clientName: string;
+  clientKind: "public" | "confidential";
+  redirectUri: string;
+  scopes: string[];
+  resource: string;
+  /** ISO 8601. When the consent would lapse if it is given now. */
+  grantExpiresAt: string;
+};
+
+/** Where to send the browser once the decision is recorded: to the client, either way. */
+export type McpConsentDecisionResponse = { redirectTo: string };

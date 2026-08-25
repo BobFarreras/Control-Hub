@@ -5331,3 +5331,182 @@ const usageDictionaries = {
 export function getUsageDictionary(locale: Locale) {
   return usageDictionaries[locale];
 }
+
+/**
+ * The words a person reads while deciding what an agent may see.
+ *
+ * This screen is the only one in the product that a stranger's software links to, and the only
+ * decision on it is irreversible for as long as the consent lasts. So the wording carries weight
+ * the rest of the panel does not have to: it says what will be readable, that nothing can be
+ * written, where the browser will be sent afterwards, and how to take the permission back. A
+ * sentence missing here is a person approving something they were not told about.
+ *
+ * The scope sentences are keyed off the closed list in `@control-hub/domain`, and a test walks that
+ * list rather than a copy kept here -- a scope shipped without words would otherwise reach a screen
+ * as `infrastructure.read` in the middle of a paragraph of Catalan.
+ */
+const mcpDictionaries = {
+  ca: {
+    eyebrow: "Autorització d'agent",
+    title: "Un agent vol connectar-se",
+    subtitle: "Revisa què podrà llegir abans d'autoritzar-lo.",
+    clientLabel: "Aplicació",
+    kindPublic: "Aplicació d'escriptori, instal·lada en aquest ordinador",
+    kindConfidential: "Servei registrat, amb credencial pròpia",
+    redirectLabel: "Et tornarà a",
+    expiresLabel: "Caduca el",
+    scopesTitle: "Què podrà llegir",
+    scopesDescription: "Només lectura: cap agent pot crear, modificar ni esborrar res.",
+    scopesOwn: "I només allò que tu mateix ja pots veure amb el teu rol.",
+    scope_mcp_tools_list: "Veure quines eines té disponibles",
+    scope_crm_read: "Clients, contactes i oportunitats",
+    scope_support_read: "Tiquets de suport i el seu estat",
+    scope_projects_read: "Projectes, tasques i dedicacions",
+    scope_commerce_read: "Catàleg, comandes i facturació",
+    scope_infrastructure_read: "Estat de la flota i alertes",
+    scope_usage_read: "Consum i cobertura de les fonts",
+    approve: "Autoritza",
+    deny: "Rebutja",
+    deciding: "Un moment…",
+    freshnessNote: "Per autoritzar cal haver iniciat la sessió fa menys de deu minuts.",
+    revokeNote: "Pots retirar aquest consentiment quan vulguis des de Seguretat.",
+    loading: "Carregant la sol·licitud…",
+    errorTitle: "No es pot autoritzar",
+    errorMcpClientUnknown: "Aquesta aplicació no està registrada en aquest espai.",
+    errorMcpClientSuspended: "Aquesta aplicació està suspesa. Un propietari la pot tornar a activar.",
+    errorMcpRedirectUriMismatch: "L'adreça de retorn no és cap de les registrades per a aquesta aplicació.",
+    errorMcpScopeUnavailable: "Demana permisos que el teu rol no sosté. Demana-ho a un propietari.",
+    errorMcpCodeInvalid: "La sol·licitud ha caducat. Torna-ho a provar des de l'aplicació.",
+    errorMcpPkceInvalid: "La sol·licitud no ve acompanyada de la prova que la lliga a aquesta aplicació.",
+    errorMcpClientAuthFailed: "L'aplicació no ha pogut demostrar qui és.",
+    errorMcpRequestInvalid: "La sol·licitud no es pot llegir. Torna-ho a provar des de l'aplicació.",
+    errorMcpRefreshInvalid: "La sessió de l'agent ja no és vàlida.",
+    errorMcpRefreshReused: "S'ha reutilitzat una credencial antiga i s'ha tallat l'accés per precaució.",
+    errorMcpGrantRevoked: "Aquest consentiment ja s'ha retirat.",
+    errorSessionNotFresh: "Per seguretat, torna a iniciar la sessió abans d'autoritzar.",
+    errorUnknown: "No s'ha pogut completar l'operació.",
+    signInAgain: "Torna a iniciar la sessió",
+    backToPanel: "Torna al panell"
+  },
+  es: {
+    eyebrow: "Autorización de agente",
+    title: "Un agente quiere conectarse",
+    subtitle: "Revisa qué podrá leer antes de autorizarlo.",
+    clientLabel: "Aplicación",
+    kindPublic: "Aplicación de escritorio, instalada en este ordenador",
+    kindConfidential: "Servicio registrado, con credencial propia",
+    redirectLabel: "Te devolverá a",
+    expiresLabel: "Caduca el",
+    scopesTitle: "Qué podrá leer",
+    scopesDescription: "Solo lectura: ningún agente puede crear, modificar ni borrar nada.",
+    scopesOwn: "Y solo aquello que tú ya puedes ver con tu rol.",
+    scope_mcp_tools_list: "Ver qué herramientas tiene disponibles",
+    scope_crm_read: "Clientes, contactos y oportunidades",
+    scope_support_read: "Tickets de soporte y su estado",
+    scope_projects_read: "Proyectos, tareas y dedicaciones",
+    scope_commerce_read: "Catálogo, pedidos y facturación",
+    scope_infrastructure_read: "Estado de la flota y alertas",
+    scope_usage_read: "Consumo y cobertura de las fuentes",
+    approve: "Autorizar",
+    deny: "Rechazar",
+    deciding: "Un momento…",
+    freshnessNote: "Para autorizar hay que haber iniciado sesión hace menos de diez minutos.",
+    revokeNote: "Puedes retirar este consentimiento cuando quieras desde Seguridad.",
+    loading: "Cargando la solicitud…",
+    errorTitle: "No se puede autorizar",
+    errorMcpClientUnknown: "Esta aplicación no está registrada en este espacio.",
+    errorMcpClientSuspended: "Esta aplicación está suspendida. Un propietario puede reactivarla.",
+    errorMcpRedirectUriMismatch: "La dirección de retorno no es ninguna de las registradas para esta aplicación.",
+    errorMcpScopeUnavailable: "Pide permisos que tu rol no sostiene. Pídeselo a un propietario.",
+    errorMcpCodeInvalid: "La solicitud ha caducado. Vuelve a intentarlo desde la aplicación.",
+    errorMcpPkceInvalid: "La solicitud no viene con la prueba que la liga a esta aplicación.",
+    errorMcpClientAuthFailed: "La aplicación no ha podido demostrar quién es.",
+    errorMcpRequestInvalid: "La solicitud no se puede leer. Vuelve a intentarlo desde la aplicación.",
+    errorMcpRefreshInvalid: "La sesión del agente ya no es válida.",
+    errorMcpRefreshReused: "Se ha reutilizado una credencial antigua y se ha cortado el acceso por precaución.",
+    errorMcpGrantRevoked: "Este consentimiento ya se ha retirado.",
+    errorSessionNotFresh: "Por seguridad, vuelve a iniciar sesión antes de autorizar.",
+    errorUnknown: "No se ha podido completar la operación.",
+    signInAgain: "Vuelve a iniciar sesión",
+    backToPanel: "Volver al panel"
+  },
+  en: {
+    eyebrow: "Agent authorization",
+    title: "An agent wants to connect",
+    subtitle: "Check what it will be able to read before you allow it.",
+    clientLabel: "Application",
+    kindPublic: "Desktop application, installed on this computer",
+    kindConfidential: "Registered service, with a credential of its own",
+    redirectLabel: "It will send you back to",
+    expiresLabel: "Expires on",
+    scopesTitle: "What it will be able to read",
+    scopesDescription: "Read only: no agent can create, change or delete anything.",
+    scopesOwn: "And only what you can already see with your own role.",
+    scope_mcp_tools_list: "See which tools it has available",
+    scope_crm_read: "Customers, contacts and opportunities",
+    scope_support_read: "Support tickets and their status",
+    scope_projects_read: "Projects, tasks and time spent",
+    scope_commerce_read: "Catalogue, orders and invoicing",
+    scope_infrastructure_read: "Fleet status and alerts",
+    scope_usage_read: "Usage and source coverage",
+    approve: "Allow",
+    deny: "Refuse",
+    deciding: "One moment…",
+    freshnessNote: "Allowing requires a session you started less than ten minutes ago.",
+    revokeNote: "You can withdraw this consent at any time from Security.",
+    loading: "Loading the request…",
+    errorTitle: "This cannot be authorized",
+    errorMcpClientUnknown: "This application is not registered in this workspace.",
+    errorMcpClientSuspended: "This application is suspended. An owner can enable it again.",
+    errorMcpRedirectUriMismatch: "The return address is not one of those registered for this application.",
+    errorMcpScopeUnavailable: "It asks for permissions your role does not carry. Ask an owner.",
+    errorMcpCodeInvalid: "The request has expired. Start again from the application.",
+    errorMcpPkceInvalid: "The request does not carry the proof that ties it to this application.",
+    errorMcpClientAuthFailed: "The application could not prove who it is.",
+    errorMcpRequestInvalid: "The request cannot be read. Start again from the application.",
+    errorMcpRefreshInvalid: "The agent's session is no longer valid.",
+    errorMcpRefreshReused: "An old credential was reused, so access was cut as a precaution.",
+    errorMcpGrantRevoked: "This consent has already been withdrawn.",
+    errorSessionNotFresh: "For safety, sign in again before allowing this.",
+    errorUnknown: "The operation could not be completed.",
+    signInAgain: "Sign in again",
+    backToPanel: "Back to the panel"
+  }
+} as const;
+
+export function getMcpDictionary(locale: Locale) {
+  return mcpDictionaries[locale];
+}
+
+/**
+ * The consent screen asks for a sentence by scope or by refusal code, not by key.
+ *
+ * The keys are derived, because the vocabularies they come from are closed lists in
+ * `@control-hub/domain` and a hand-kept mapping is a mapping somebody forgets to extend. Deriving
+ * them in the screen instead would put the derivation on one side of the wire and the test that
+ * proves it on the other: the pair could drift, and the drift is silent -- a key that misses falls
+ * back to a sentence that says nothing, on the one screen where the reader most needs to know
+ * which of half a dozen things went wrong.
+ *
+ * So both live here, next to the words, and the suite walks the domain's lists through these very
+ * functions.
+ */
+export function mcpScopeLabel(locale: Locale, scope: string): string {
+  const words = mcpDictionaries[locale] as unknown as Record<string, string>;
+  // An unknown scope answers as itself rather than as nothing. A permission with no description is
+  // still a permission, and omitting it from the list would understate what is being granted.
+  return words[`scope_${scope.replace(/[.:]/g, "_")}`] ?? scope;
+}
+
+export function mcpErrorMessage(locale: Locale, code: string | null | undefined): string {
+  const words = mcpDictionaries[locale] as unknown as Record<string, string>;
+  if (!code) return words.errorUnknown!;
+  const key = [
+    "error",
+    ...code
+      .toLowerCase()
+      .split("_")
+      .map((part) => (part === "" ? "" : part[0]!.toUpperCase() + part.slice(1)))
+  ].join("");
+  return words[key] ?? words.errorUnknown!;
+}

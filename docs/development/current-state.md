@@ -234,9 +234,23 @@ demanar un login nou per dir que no es com un «no» acaba sent una pestanya aba
 redirigeix a `${appOrigin}/mcp/consent` i el panell negocia la llengua, i sense `appOrigin` la ruta
 no es declara.
 
-**El punt de continuacio es la interficie**: la pantalla de consentiment amb i18n i la seccio de
-seguretat del panell, que consumeixen el que H1 i H2 deixen a l'abast. Amb aixo la 10.1 queda
-tancada de punta a punta.
+L'**increment H3** es la pantalla que la persona llegeix. L'API redirigeix a `/mcp/consent` sense
+idioma a l'adreca i `negotiateLocale` en tria un a partir de l'`Accept-Language`; la peticio passa
+sencera i sense tocar a `/{locale}/mcp/consent`, que es **de servidor**: la descripcio es torna a
+llegir per l'API abans de dibuixar res, de manera que la pantalla no es pot renderitzar nomes a
+partir de l'adreca. Qui hi arriba sense sessio no perd la peticio --`requireSession` accepta un
+`returnTo` i el formulari d'inici de sessio l'obeeix--, i la destinacio passa per `internalPath`,
+que nomes accepta camins dins del panell: es l'unica pantalla del producte que s'obre des d'un
+enllac escrit per algu altre, i una destinacio treta d'una adreca es com es construeix un open
+redirect. Les frases son a `getMcpDictionary` en tres idiomes, i `mcpScopeLabel` i `mcpErrorMessage`
+viuen al costat de les paraules perque la derivacio de la clau i la prova que la comprova no
+divergeixin en silenci. Comprovat contra la pila de verificacio al port 3002: un navegador en
+espanyol acaba a `/es/mcp/consent`, un en alemany a `/ca/...`, i sense sessio a
+`/es/login?next=...` amb la peticio sencera dins.
+
+**El punt de continuacio es la seccio de seguretat del panell**: la llista d'agents, els
+consentiments i les service accounts, que consumeix les rutes de gestio de la H1. Amb aixo la 10.1
+queda tancada de punta a punta.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

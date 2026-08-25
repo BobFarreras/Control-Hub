@@ -6936,3 +6936,139 @@ main {
     display: none;
   }
 }
+
+/*
+ * The consent screen.
+ *
+ * A single card on an otherwise empty page, because this is the one screen in the product with
+ * exactly one thing to do on it: there is no navigation, no sidebar and nothing else to look at
+ * while deciding. The two buttons carry the same weight -- refusing is not a secondary action --
+ * and the facts sit above them in a list rather than in a paragraph, so that the address a
+ * browser will be sent to is read rather than skimmed.
+ */
+.consent-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 5vw, 64px);
+  background: var(--surface-subtle);
+}
+.consent-card {
+  width: min(560px, 100%);
+  padding: clamp(24px, 4vw, 40px);
+  display: grid;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.consent-card > svg {
+  color: var(--brand);
+}
+.consent-card h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.15;
+}
+.consent-eyebrow {
+  color: var(--brand);
+  font: 500 11px/1 "JetBrains Mono";
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.consent-subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+.consent-facts {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.consent-facts > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.consent-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.consent-facts dd {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.consent-facts dd small {
+  color: var(--muted);
+}
+.consent-facts code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.consent-scopes h2 {
+  margin: 6px 0 4px;
+  font-size: 17px;
+}
+.consent-scopes > p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.consent-scopes ul {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+.consent-scopes li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+.consent-scopes li > svg {
+  color: var(--brand);
+}
+.consent-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.consent-actions {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.consent-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.consent-card-refused > svg {
+  color: var(--danger);
+}
+.consent-card-refused .secondary-button {
+  justify-self: start;
+  margin-top: 8px;
+}
+@media (max-width: 520px) {
+  .consent-facts > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .consent-actions {
+    grid-template-columns: 1fr;
+  }
+}
