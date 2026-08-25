@@ -92,8 +92,26 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   continuaria trucant amb un token encunyat abans que algu decidis aturar-lo. Les proves
   d'integracio del fitxer pugen a quinze, i la de la caducitat del codi envelleix la fila en
   comptes de neixer caducada, perque `expires_at > created_at` es una restriccio de taula.
-- La resta de la fase continua sense implementar: falten les rutes d'OAuth, el transport `/mcp`,
-  l'auditoria per crida i la interficie.
+- **10.1-F — el flux com a casos d'us.** Implementat: `McpOauthService` a
+  `packages/application/src/mcp-oauth.ts` amb els dos documents de metadata (RFC 9728 i RFC 8414),
+  l'aprovacio del consentiment i l'intercanvi del codi. Cap regla nova: la negociacio d'scopes, la
+  coincidencia de redirect i les vides venen del domini, i la unicitat del codi ve de la base de
+  dades. El que hi viu es l'ordre en que es consulten i la crypto que cap dels dos pot tenir.
+  Quatre coses son deliberades. L'**issuer surt de la configuracio validada**, mai d'una capcalera:
+  cap metode n'accepta un, aixi que un `Host` que el client controla no pot decidir per a quina
+  audiencia s'encunya un token. Un **client d'un altre tenant es respon igual que un que no
+  existeix**, perque distingir-los convertiria `/authorize` en un directori de la instal·lacio.
+  El **client s'autentica abans de reclamar el codi**, de manera que un secret erroni no crema el
+  codi d'algu altre pel cami. I un **client public que presenta un secret es refusat**: ignorar-lo
+  en silenci amagaria tant una configuracio dolenta com algu provant.
+  El port `McpCrypto` declara les quatre operacions (encunyar, `sha256`, repte PKCE i comparacio en
+  temps constant) i `NodeMcpCrypto` les implementa al costat del magatzem, amb el vector de
+  l'apendix B de la RFC 7636 com a prova.
+  Els metodes que el token endpoint pot tocar ja no reben un `TenantContext` sino un
+  `McpTenantScope`: alli no hi ha sessio, i inventar rols, permisos i un flag d'MFA que ningu ha
+  concedit seria mentir-li al tipus.
+- La resta de la fase continua sense implementar: falten el refresh i la revocacio com a casos
+  d'us, les rutes HTTP, el transport `/mcp`, l'auditoria per crida i la interficie.
 
 ## Fora d'abast de la 10.1
 

@@ -1,14 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type {
   McpAccessTokenResolution,
   McpAuthorizationCodeClaim,
   McpClientRecord,
   McpClientResolution,
+  McpCrypto,
   McpGrantRecord,
   McpOauthRepository,
   McpRefreshResolution,
   McpServiceAccountRecord,
-  McpServiceAccountResolution
+  McpServiceAccountResolution,
+  McpTenantScope
 } from "@control-hub/application";
 import { withTenant, type DatabaseClient } from "@control-hub/database";
 import type { McpGrantStatus, McpScope, TenantContext } from "@control-hub/domain";
@@ -73,14 +75,14 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
     };
   }
 
-  touchAccessToken(context: TenantContext, tokenId: string, at: Date): Promise<void> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+  touchAccessToken(scope: McpTenantScope, tokenId: string, at: Date): Promise<void> {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       // `greatest` because two concurrent calls of the same token would otherwise let the slower
       // one write the earlier time and make the token look less recently used than it is.
       await tx`
         update mcp_access_tokens
         set last_used_at = greatest(coalesce(last_used_at, '-infinity'), ${at})
-        where tenant_id = ${context.tenantId} and id = ${tokenId}`;
+        where tenant_id = ${scope.tenantId} and id = ${tokenId}`;
     });
   }
 
@@ -321,7 +323,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
   }
 
   createGrant(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       clientId: string;
       actorType: "user" | "service_account";
@@ -331,7 +333,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       expiresAt: Date;
     }
   ): Promise<string> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       const id = randomUUID();
       await tx`
         insert into mcp_grants (
@@ -339,7 +341,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
           scopes, expires_at
         )
         values (
-          ${id}, ${context.tenantId}, ${input.clientId}, ${input.actorType},
+          ${id}, ${scope.tenantId}, ${input.clientId}, ${input.actorType},
           ${input.actorMembershipId}, ${input.actorServiceAccountId},
           ${tx.array([...input.scopes])}, ${input.expiresAt}
         )`;
@@ -348,35 +350,35 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
   }
 
   issueAccessToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: { grantId: string; tokenHash: string; audience: string; scopes: readonly McpScope[]; expiresAt: Date }
   ): Promise<string> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       const id = randomUUID();
       await tx`
         insert into mcp_access_tokens (id, tenant_id, grant_id, token_hash, audience, scopes, expires_at)
-        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.tokenHash}, ${input.audience},
+        values (${id}, ${scope.tenantId}, ${input.grantId}, ${input.tokenHash}, ${input.audience},
           ${tx.array([...input.scopes])}, ${input.expiresAt})`;
       return id;
     });
   }
 
   issueRefreshToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: { grantId: string; familyId: string; tokenHash: string; expiresAt: Date }
   ): Promise<string> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       const id = randomUUID();
       await tx`
         insert into mcp_refresh_tokens (id, tenant_id, grant_id, family_id, token_hash, expires_at)
-        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
+        values (${id}, ${scope.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
           ${input.expiresAt})`;
       return id;
     });
   }
 
   rotateRefreshToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       tokenId: string;
       grantId: string;
@@ -386,31 +388,31 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       at: Date;
     }
   ): Promise<string | null> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       // Spending the old token is the lock. `used_at is null` in the predicate means two requests
       // racing the same refresh produce one successor and one loser, not two live lineages.
       const spent = await tx<{ id: string }[]>`
         update mcp_refresh_tokens set used_at = ${input.at}
-        where tenant_id = ${context.tenantId} and id = ${input.tokenId} and used_at is null
+        where tenant_id = ${scope.tenantId} and id = ${input.tokenId} and used_at is null
         returning id`;
       if (spent.length === 0) return null;
       const id = randomUUID();
       await tx`
         insert into mcp_refresh_tokens (id, tenant_id, grant_id, family_id, token_hash, expires_at)
-        values (${id}, ${context.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
+        values (${id}, ${scope.tenantId}, ${input.grantId}, ${input.familyId}, ${input.tokenHash},
           ${input.expiresAt})`;
       await tx`
         update mcp_refresh_tokens set replaced_by_id = ${id}
-        where tenant_id = ${context.tenantId} and id = ${input.tokenId}`;
+        where tenant_id = ${scope.tenantId} and id = ${input.tokenId}`;
       return id;
     });
   }
 
-  revokeRefreshFamily(context: TenantContext, familyId: string, at: Date): Promise<number> {
-    return withTenant(this.database, context.tenantId, async (tx) => {
+  revokeRefreshFamily(scope: McpTenantScope, familyId: string, at: Date): Promise<number> {
+    return withTenant(this.database, scope.tenantId, async (tx) => {
       const revoked = await tx<{ id: string }[]>`
         update mcp_refresh_tokens set revoked_at = ${at}
-        where tenant_id = ${context.tenantId} and family_id = ${familyId} and revoked_at is null
+        where tenant_id = ${scope.tenantId} and family_id = ${familyId} and revoked_at is null
         returning id`;
       return revoked.length;
     });
@@ -536,5 +538,39 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
         where tenant_id = ${context.tenantId} and grant_id = ${grantId} and revoked_at is null`;
       return true;
     });
+  }
+}
+
+/**
+ * The crypto the OAuth flow runs on, beside the store that holds what it produces.
+ *
+ * It lives in this layer for the same reason `IngressCrypto` has an implementation next to its
+ * repository (ADR-0008): the use case is allowed to depend on the operation, not on `node:crypto`.
+ * Nothing here is configurable. A knob on a token length or a digest is a knob somebody can turn
+ * the wrong way.
+ */
+export class NodeMcpCrypto implements McpCrypto {
+  /** 256 bits, base64url, 43 characters. Long enough that guessing is not a strategy. */
+  mintToken(): string {
+    return randomBytes(32).toString("base64url");
+  }
+
+  sha256(value: string): string {
+    return createHash("sha256").update(value).digest("hex");
+  }
+
+  /** RFC 7636 S256: the digest is base64url, not hex, because that is what the client sends. */
+  pkceChallenge(verifier: string): string {
+    return createHash("sha256").update(verifier).digest("base64url");
+  }
+
+  matches(a: string, b: string): boolean {
+    const left = Buffer.from(a, "utf8");
+    const right = Buffer.from(b, "utf8");
+    // Everything compared here is a digest of fixed width, so an early return on length reveals
+    // nothing an attacker did not already know. `timingSafeEqual` throws on a mismatch, so the
+    // check has to happen before it rather than inside it.
+    if (left.length !== right.length) return false;
+    return timingSafeEqual(left, right);
   }
 }

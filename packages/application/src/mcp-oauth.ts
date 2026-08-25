@@ -13,7 +13,17 @@
  * Specification: `docs/specifications/mcp-and-client-portal.md`.
  */
 
-import type { McpGrantStatus, McpScope, TenantContext } from "@control-hub/domain";
+import {
+  matchesRegisteredRedirect,
+  mcpExpiry,
+  mcpLifetimes,
+  mcpScopes,
+  negotiateMcpScopes,
+  type McpGrantStatus,
+  type McpOauthDenialCode,
+  type McpScope,
+  type TenantContext
+} from "@control-hub/domain";
 
 /**
  * Everything one bearer token resolves to, gathered in a single read.
@@ -125,6 +135,16 @@ export type McpServiceAccountRecord = {
   readonly createdAt: Date;
 };
 
+/**
+ * A tenant to write in, and nothing else.
+ *
+ * The token endpoint and the resource server both act without a session: one holds a code, the
+ * other a bearer, and neither has a person behind it. Giving those methods a `TenantContext` would
+ * mean inventing roles, permissions and an MFA flag that nobody granted, so they take the one fact
+ * that is real -- the tenant the credential resolved to -- and RLS does the rest.
+ */
+export type McpTenantScope = { readonly tenantId: string };
+
 export type McpOauthRepository = {
   /**
    * The pre-tenant read. Takes a hash, never a token, and returns null for a hash nobody knows --
@@ -174,7 +194,7 @@ export type McpOauthRepository = {
   ): Promise<void>;
 
   createGrant(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       readonly clientId: string;
       readonly actorType: "user" | "service_account";
@@ -186,7 +206,7 @@ export type McpOauthRepository = {
   ): Promise<string>;
 
   issueAccessToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       readonly grantId: string;
       readonly tokenHash: string;
@@ -197,7 +217,7 @@ export type McpOauthRepository = {
   ): Promise<string>;
 
   issueRefreshToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       readonly grantId: string;
       readonly familyId: string;
@@ -214,7 +234,7 @@ export type McpOauthRepository = {
    * old token was already spent, so a race loses rather than rotates twice.
    */
   rotateRefreshToken(
-    context: TenantContext,
+    scope: McpTenantScope,
     input: {
       readonly tokenId: string;
       readonly grantId: string;
@@ -226,7 +246,7 @@ export type McpOauthRepository = {
   ): Promise<string | null>;
 
   /** Revokes an entire lineage, which is what reuse detection asks for. */
-  revokeRefreshFamily(context: TenantContext, familyId: string, at: Date): Promise<number>;
+  revokeRefreshFamily(scope: McpTenantScope, familyId: string, at: Date): Promise<number>;
 
   createServiceAccount(
     context: TenantContext,
@@ -252,7 +272,7 @@ export type McpOauthRepository = {
    * Records that a token was accepted. Best-effort and deliberately separate from the read: a
    * failure to write it must never turn a valid call into a denied one.
    */
-  touchAccessToken(context: TenantContext, tokenId: string, at: Date): Promise<void>;
+  touchAccessToken(scope: McpTenantScope, tokenId: string, at: Date): Promise<void>;
 
   listGrants(context: TenantContext): Promise<readonly McpGrantRecord[]>;
 
@@ -264,3 +284,259 @@ export type McpOauthRepository = {
    */
   revokeGrant(context: TenantContext, grantId: string, at: Date, byMembershipId: string | null): Promise<boolean>;
 };
+
+/**
+ * The primitives the flow needs, as a port.
+ *
+ * Declared here so the use case depends on the operation rather than on `node:crypto`, exactly as
+ * `CredentialSealer` and `IngressCrypto` do. It is also the only reason this module may hold a
+ * token at all: hashing happens here, and what leaves for the store is already a digest.
+ */
+export type McpCrypto = {
+  /** 256 bits of CSPRNG, URL-safe. Codes, access tokens and refresh tokens all come from here. */
+  mintToken(): string;
+  /** Hex SHA-256. What the store keeps instead of the credential. */
+  sha256(value: string): string;
+  /** The S256 transform of RFC 7636: base64url of the SHA-256 of the verifier. */
+  pkceChallenge(verifier: string): string;
+  /** Constant time. A `===` on a secret is the leak, however short the comparison looks. */
+  matches(a: string, b: string): boolean;
+};
+
+export class McpOauthError extends Error {
+  constructor(public readonly code: McpOauthDenialCode) {
+    super(code);
+  }
+}
+
+/** What a client receives from the token endpoint. The only moment these values exist in the clear. */
+export type McpTokenIssue = {
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly tokenType: "Bearer";
+  readonly expiresIn: number;
+  /** Space delimited, as RFC 6749 asks, so a client can see what it actually got. */
+  readonly scope: string;
+};
+
+/** RFC 9728. What this server protects, and who authorises access to it. */
+export type McpProtectedResourceMetadata = {
+  readonly resource: string;
+  readonly authorization_servers: readonly string[];
+  readonly scopes_supported: readonly string[];
+  readonly bearer_methods_supported: readonly string[];
+};
+
+/** RFC 8414, trimmed to what this server actually does. Nothing here is aspirational. */
+export type McpAuthorizationServerMetadata = {
+  readonly issuer: string;
+  readonly authorization_endpoint: string;
+  readonly token_endpoint: string;
+  readonly revocation_endpoint: string;
+  readonly scopes_supported: readonly string[];
+  readonly response_types_supported: readonly string[];
+  readonly grant_types_supported: readonly string[];
+  readonly code_challenge_methods_supported: readonly string[];
+  readonly token_endpoint_auth_methods_supported: readonly string[];
+};
+
+/**
+ * The OAuth 2.1 flow, as use cases.
+ *
+ * Every rule it applies is either in the domain (`negotiateMcpScopes`, `matchesRegisteredRedirect`,
+ * `mcpExpiry`) or in the store (single-use codes, rotation). What lives here is the order the two
+ * are consulted in, and the crypto that neither may hold.
+ *
+ * The issuer comes from validated installation configuration and is never derived from a request
+ * header, which is why no method takes one: a `Host` the caller controls must not get to decide
+ * which audience a token is minted for.
+ */
+export class McpOauthService {
+  private readonly repository: McpOauthRepository;
+  private readonly crypto: McpCrypto;
+  private readonly issuer: string;
+  private readonly clock: () => Date;
+
+  constructor(deps: { repository: McpOauthRepository; crypto: McpCrypto; issuer: string; clock?: () => Date }) {
+    this.repository = deps.repository;
+    this.crypto = deps.crypto;
+    this.issuer = deps.issuer.replace(/\/+$/, "");
+    this.clock = deps.clock ?? (() => new Date());
+  }
+
+  /** The one resource this server protects. Compared exactly, so it is built in exactly one place. */
+  get audience(): string {
+    return `${this.issuer}/mcp`;
+  }
+
+  protectedResourceMetadata(): McpProtectedResourceMetadata {
+    return {
+      resource: this.audience,
+      authorization_servers: [this.issuer],
+      scopes_supported: [...mcpScopes],
+      bearer_methods_supported: ["header"]
+    };
+  }
+
+  authorizationServerMetadata(): McpAuthorizationServerMetadata {
+    return {
+      issuer: this.issuer,
+      authorization_endpoint: `${this.issuer}/api/v1/mcp/oauth/authorize`,
+      token_endpoint: `${this.issuer}/api/v1/mcp/oauth/token`,
+      revocation_endpoint: `${this.issuer}/api/v1/mcp/oauth/revoke`,
+      scopes_supported: [...mcpScopes],
+      response_types_supported: ["code"],
+      // No implicit, no password, no client credentials. A grant type that is neither advertised
+      // nor implemented is one fewer flow to keep safe.
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none", "client_secret_post"]
+    };
+  }
+
+  /**
+   * Turns an approved consent into an authorization code.
+   *
+   * The caller has already established who is approving and that their second factor is fresh.
+   * What this decides is whether the client, the redirect, the challenge and the scopes hold up.
+   */
+  async approveAuthorization(
+    context: TenantContext,
+    input: {
+      readonly clientId: string;
+      readonly redirectUri: string;
+      readonly scopes: readonly string[];
+      readonly codeChallenge: string;
+      readonly codeChallengeMethod: string;
+    }
+  ): Promise<{ code: string; expiresAt: Date }> {
+    const client = await this.requireClient(input.clientId, context.tenantId);
+    // OAuth 2.1 has no `plain`, and a challenge shorter than 43 characters is not the base64url
+    // SHA-256 of anything. Both are refused before the redirect is even looked at.
+    if (input.codeChallengeMethod !== "S256") throw new McpOauthError("MCP_PKCE_INVALID");
+    if (input.codeChallenge.length < 43 || input.codeChallenge.length > 128)
+      throw new McpOauthError("MCP_PKCE_INVALID");
+    if (!matchesRegisteredRedirect(input.redirectUri, client.redirectUris))
+      throw new McpOauthError("MCP_REDIRECT_URI_MISMATCH");
+
+    const verdict = negotiateMcpScopes({
+      requested: input.scopes,
+      clientMax: client.maxScopes,
+      actorPermissions: context.permissions
+    });
+    if ("code" in verdict) throw new McpOauthError(verdict.code);
+
+    const code = this.crypto.mintToken();
+    const expiresAt = mcpExpiry("authorizationCode", this.clock());
+    await this.repository.createAuthorizationRequest(context, {
+      clientId: client.id,
+      membershipId: context.membershipId,
+      codeHash: this.crypto.sha256(code),
+      scopes: verdict.granted,
+      codeChallenge: input.codeChallenge,
+      redirectUri: input.redirectUri,
+      audience: this.audience,
+      expiresAt
+    });
+    return { code, expiresAt };
+  }
+
+  /**
+   * Exchanges a code for tokens, once.
+   *
+   * The client is authenticated before the code is claimed, so a wrong secret cannot burn somebody
+   * else's code on its way to being refused.
+   */
+  async exchangeCode(input: {
+    readonly clientId: string;
+    readonly clientSecret?: string;
+    readonly code: string;
+    readonly codeVerifier: string;
+    readonly redirectUri: string;
+  }): Promise<McpTokenIssue> {
+    const client = await this.requireClient(input.clientId);
+    this.authenticateClient(client, input.clientSecret);
+
+    const claim = await this.repository.consumeAuthorizationCode(this.crypto.sha256(input.code), input.redirectUri);
+    // The store refuses an unknown code, a consumed one, an expired one and a mismatched redirect
+    // all by returning nothing. The client learns only that the code did not work.
+    if (!claim) throw new McpOauthError("MCP_CODE_INVALID");
+    if (claim.clientId !== client.id) throw new McpOauthError("MCP_CODE_INVALID");
+    if (!this.crypto.matches(this.crypto.pkceChallenge(input.codeVerifier), claim.codeChallenge))
+      throw new McpOauthError("MCP_PKCE_INVALID");
+
+    return this.issueTokens(
+      { tenantId: claim.tenantId },
+      {
+        clientId: client.id,
+        actorType: "user",
+        actorMembershipId: claim.membershipId,
+        actorServiceAccountId: null,
+        scopes: claim.scopes
+      }
+    );
+  }
+
+  private async requireClient(clientId: string, tenantId?: string): Promise<McpClientResolution> {
+    const client = await this.repository.resolveClient(clientId);
+    // A client belonging to another tenant is answered exactly like one that does not exist.
+    // Telling the two apart would turn this endpoint into a directory of the installation.
+    if (!client || (tenantId !== undefined && client.tenantId !== tenantId))
+      throw new McpOauthError("MCP_CLIENT_UNKNOWN");
+    if (client.status !== "active") throw new McpOauthError("MCP_CLIENT_SUSPENDED");
+    return client;
+  }
+
+  private authenticateClient(client: McpClientResolution, secret: string | undefined): void {
+    if (client.kind === "public") {
+      // A public client holds no secret, so one arriving is either a misconfigured client or
+      // somebody probing. Ignoring it quietly would hide both.
+      if (secret !== undefined) throw new McpOauthError("MCP_CLIENT_AUTH_FAILED");
+      return;
+    }
+    if (secret === undefined || client.secretHash === null) throw new McpOauthError("MCP_CLIENT_AUTH_FAILED");
+    if (!this.crypto.matches(this.crypto.sha256(secret), client.secretHash))
+      throw new McpOauthError("MCP_CLIENT_AUTH_FAILED");
+  }
+
+  private async issueTokens(
+    scope: McpTenantScope,
+    grant: {
+      readonly clientId: string;
+      readonly actorType: "user" | "service_account";
+      readonly actorMembershipId: string | null;
+      readonly actorServiceAccountId: string | null;
+      readonly scopes: readonly McpScope[];
+    }
+  ): Promise<McpTokenIssue> {
+    const now = this.clock();
+    const grantId = await this.repository.createGrant(scope, { ...grant, expiresAt: mcpExpiry("grant", now) });
+
+    const accessToken = this.crypto.mintToken();
+    await this.repository.issueAccessToken(scope, {
+      grantId,
+      tokenHash: this.crypto.sha256(accessToken),
+      audience: this.audience,
+      scopes: grant.scopes,
+      expiresAt: mcpExpiry("accessToken", now)
+    });
+
+    const refreshToken = this.crypto.mintToken();
+    // The family is named after the grant it descends from. A lineage of rotated refresh tokens is
+    // exactly the set issued under one consent, so there is no second identifier to keep in step.
+    await this.repository.issueRefreshToken(scope, {
+      grantId,
+      familyId: grantId,
+      tokenHash: this.crypto.sha256(refreshToken),
+      expiresAt: mcpExpiry("refreshToken", now)
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: mcpLifetimes.accessToken,
+      scope: grant.scopes.join(" ")
+    };
+  }
+}
