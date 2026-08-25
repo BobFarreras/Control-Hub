@@ -162,8 +162,37 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   d'actor: un grant d'usuari sempre nomena el client que ho va demanar, i un de service account no
   en nomena cap. Es **mes estricte** que el `not null` que substitueix, no pas mes fluix: abans, un
   grant de service account hauria pogut portar qualsevol client.
-- La resta de la fase continua sense implementar: falten les rutes HTTP, el transport `/mcp`,
-  l'auditoria per crida i la interficie.
+- **10.1-F4 — els endpoints de l'authorization server.** Implementat: els dos documents de
+  descobriment, `/api/v1/mcp/oauth/token` amb els tres grants (codi, refresc i el secret d'un
+  service account) i `/api/v1/mcp/oauth/revoke`, a `apps/api/src/routes/mcp-oauth.ts`.
+  Aquestes rutes responen amb **el sobre d'OAuth** i no amb problem details, per la rao que hi ha
+  a la seccio «Errors publics»: qui truca aqui es un client que no hem escrit nosaltres.
+  La taula de refusos es un `Record` sobre la unio de codis del domini, no un `switch` amb
+  `default`: un codi nou que ningu tradueixi **no compila**, en comptes d'arribar al client com una
+  resposta generica que descriu malament el que ha passat.
+  Tres coses hi son deliberades. La resposta porta `Cache-Control: no-store` **tambe als refusos**
+  (RFC 6749 seccio 5.1): el cos es una credencial i un proxy que el desi el donara al seguent que
+  demani la mateixa URL. El parser de `application/x-www-form-urlencoded` viu **dins d'un plugin
+  encapsulat**, no a la instancia arrel, de manera que la resta de l'API continua refusant aquest
+  tipus de contingut. I un service account presenta **nomes el seu secret**: un `client_id` seria
+  dir que es un client registrat, i qui l'administra l'aniria a buscar a la llista de clients, on
+  no hi sera mai.
+  El document de recurs protegit es serveix a `/.well-known/oauth-protected-resource` **i** a
+  `/.well-known/oauth-protected-resource/mcp`, perque els clients no coincideixen en quin proven
+  primer i un 404 al que hagi triat un client es un client que no pot arrencar.
+  Les proves cobreixen dues capes: la taula de refusos, recorreguda sobre tots els codis, i el fil
+  mateix amb `app.inject` — que el cos en format formulari s'arriba a llegir, que les capceleres de
+  cache hi son, i que res del que ha enviat qui truca no torna dins la resposta.
+  Configuracio nova: **`MCP_ISSUER`**, l'origen public d'aquesta API. No pot ser `APP_ORIGIN` (es el
+  web, un altre origen) ni `API_INTERNAL_URL` (nomes s'hi arriba des de dins del desplegament), i no
+  es dedueix de la capcalera `Host` a proposit: una audiencia que tria qui truca no es cap
+  audiencia. Si la flag `mcp` es encesa i no hi es, el boot ho diu i les rutes **no** es declaren.
+- **Pendent de coordinacio:** la crida de registre a `apps/api/src/app.ts`. Aquell fitxer te canvis
+  no committejats de l'altra sessio, aixi que la composicio viu a `apps/api/src/mcp.ts` i el que
+  falta es una sola linia. Fins que no s'afegeixi, les rutes existeixen i estan provades pero no
+  s'exposen.
+- La resta de la fase continua sense implementar: falten la pantalla de consentiment i les rutes
+  de gestio, el transport `/mcp`, l'auditoria per crida i la interficie.
 
 ## Fora d'abast de la 10.1
 
@@ -573,6 +602,20 @@ uniques que accepten un token MCP; **cap ruta REST de producte l'accepta**, i ca
 la UI serveix per a `/mcp`. Un token no travessa la frontera per a la qual no es va emetre.
 
 ## Errors publics
+
+**Correccio del 25 d'agost de 2026, amb la 10.1-F4.** Aquesta seccio deia problem details RFC 9457
+per a tot. Val per a `/mcp` i per a les rutes de gestio, pero **no** per a `/token` ni per a
+`/revoke`: alli qui truca es un client OAuth generic — Claude Desktop, un SDK, una CLI — que
+decideix mirant el camp `error` de la RFC 6749 seccio 5.2 i no sap res del nostre `code`. Un
+sobre que no sap llegir converteix «el consentiment s'ha retirat, torna a autoritzar» en una
+fallada opaca, i tot el sentit de parlar un estandard es que programari que no hem escrit nosaltres
+pugui actuar sobre la resposta. El nostre `code` i el `requestId` hi viatgen com a camps extra, aixi
+que els registres i el suport conserven els mateixos identificadors que a la resta de l'API; un
+client OAuth ignora els camps que no coneix, i aixo es el que ho fa gratis.
+
+Els noms d'error son nomes els registrats (RFC 6749 seccions 5.2 i 4.1.2.1, RFC 6750 seccio 3.1,
+RFC 8707 seccio 2). La `error_description` es una frase fixa de taula i **mai** un valor que hagi
+enviat qui truca: aquest text acaba a registres, terminals i pantalles compartides.
 
 Problem details RFC 9457, amb la capcalera `WWW-Authenticate` que RFC 9728 demana perque un client
 MCP pugui descobrir com autoritzar-se.

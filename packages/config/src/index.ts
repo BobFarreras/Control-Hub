@@ -32,7 +32,27 @@ const baseSchema = z.object({
 
 export const apiEnvironmentSchema = baseSchema.extend({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  API_HOST: z.string().min(1).default("127.0.0.1")
+  API_HOST: z.string().min(1).default("127.0.0.1"),
+  /**
+   * The public origin an MCP client reaches this API at, and therefore the OAuth issuer.
+   *
+   * Neither `APP_ORIGIN` (the web app, a different origin) nor `API_INTERNAL_URL` (reachable only
+   * from inside the deployment) can stand in for it. It has to be configured because the
+   * alternative is reading the `Host` header, and a token whose audience a caller can choose is
+   * exactly the confused-deputy hole the audience exists to close.
+   *
+   * An origin and nothing more: RFC 8414 section 2 makes the issuer both the place the metadata
+   * document is fetched from and the string a client compares against, and a path or a trailing
+   * slash makes a comparison that is only ever string equality ambiguous.
+   */
+  MCP_ISSUER: z
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return url.pathname === "/" && url.search === "" && url.hash === "";
+    }, "MCP_ISSUER must be a bare origin, with no path, query or fragment")
+    .transform((value) => value.replace(/\/$/, ""))
+    .optional()
 });
 
 export const workerEnvironmentSchema = baseSchema;
@@ -89,6 +109,22 @@ export function connectorKeyRingWarning(environment: {
   if (environment.connectorKeyRing) return null;
   if (!isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connectors")) return null;
   return "connectors are enabled but CONNECTOR_KEY_RING is unset: credentials cannot be stored or read";
+}
+
+/**
+ * What to log at boot when MCP is on and nobody said what this server is called.
+ *
+ * Returned rather than logged for the same reason as the key ring above: this package is a leaf
+ * and has no logger. And it warns rather than throwing, for the same reason too -- taking the
+ * whole API down over one optional capability is a worse failure than not declaring its routes.
+ */
+export function mcpIssuerWarning(environment: {
+  CONTROL_HUB_FLAGS: string;
+  MCP_ISSUER?: string | undefined;
+}): string | null {
+  if (environment.MCP_ISSUER) return null;
+  if (!isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "mcp")) return null;
+  return "mcp is enabled but MCP_ISSUER is unset: the MCP routes are not declared";
 }
 
 export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {

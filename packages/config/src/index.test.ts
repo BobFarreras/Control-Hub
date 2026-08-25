@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   apiEnvironmentSchema,
   connectorKeyRingWarning,
+  mcpIssuerWarning,
   parseApiEnvironment,
   parseWorkerEnvironment,
   workerEnvironmentSchema
@@ -122,5 +123,38 @@ describe("the variables the task runner has to carry", () => {
     const read = [...Object.keys(apiEnvironmentSchema.shape), ...Object.keys(workerEnvironmentSchema.shape)];
 
     expect(read.filter((name) => !declared.has(name))).toEqual([]);
+  });
+});
+
+describe("the MCP issuer at boot", () => {
+  it("is absent when nothing supplied one, and MCP is off", () => {
+    const environment = parseApiEnvironment(base);
+    expect(environment.MCP_ISSUER).toBeUndefined();
+    expect(mcpIssuerWarning(environment)).toBeNull();
+  });
+
+  it("says so when the flag is on and nobody said what this server is called", () => {
+    // Without it the server cannot mint an audience, and the alternative -- reading the Host
+    // header -- is precisely the confused-deputy hole the audience exists to close. Refusing to
+    // start would take the whole API down over one optional capability, so it warns and the
+    // routes are not declared.
+    const environment = parseApiEnvironment({ ...base, CONTROL_HUB_FLAGS: "mcp" });
+    expect(mcpIssuerWarning(environment)).toContain("MCP_ISSUER");
+  });
+
+  it("refuses an issuer that is not an absolute origin", () => {
+    // RFC 8414 section 2: the issuer is what the metadata document is fetched from and what a
+    // client compares its token against. A path or a bare host makes both comparisons ambiguous.
+    for (const value of ["hub.example.com", "https://hub.example.com/mcp", "not a url"]) {
+      expect(() => parseApiEnvironment({ ...base, MCP_ISSUER: value }), value).toThrow();
+    }
+  });
+
+  it("accepts an origin and keeps no trailing slash, so the audience concatenates cleanly", () => {
+    // `https://hub.example.com/` plus `/mcp` is `https://hub.example.com//mcp`, which is a
+    // different string from the one in every token, and string equality is the whole check.
+    const environment = parseApiEnvironment({ ...base, MCP_ISSUER: "https://hub.example.com/" });
+    expect(environment.MCP_ISSUER).toBe("https://hub.example.com");
+    expect(mcpIssuerWarning(environment)).toBeNull();
   });
 });
