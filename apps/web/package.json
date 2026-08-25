@@ -3,8 +3,8 @@
   "version": "0.3.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port 3001",
-    "dev:verify": "next dev --hostname 127.0.0.1 --port 3002",
+    "dev": "node ../../scripts/run-web.mjs",
+    "dev:verify": "node ../../scripts/run-web.mjs --verify",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 3001",
     "typecheck": "tsc -p tsconfig.json --noEmit",

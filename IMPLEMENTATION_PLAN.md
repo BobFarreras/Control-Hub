@@ -717,6 +717,37 @@ Secrets Manager.
 Una instal·lacio es pot desplegar, rotar i restaurar sense secrets versionats ni exposats per API,
 UI, logs o jobs, i el vault intern continua contenint nomes credencials tenant-scoped.
 
+## Fase X - Plataforma de desenvolupament multi-agent
+
+**Estat: increment local implementat; adaptadors remots diferits.**
+
+**Especificacio:** `docs/specifications/multi-agent-development.md`.
+
+**Objectiu:** separar l'estat mutable dels agents que desenvolupen Control Hub. Es una iniciativa
+transversal amb prioritat abans de les fases 11 i 12; no es la plataforma d'agents que el
+producte ofereix als tenants.
+
+### Implementacio inicial
+
+- Una tasca, branca `agent/*`, Git worktree i manifest local per agent.
+- Ports, `.env`, secrets efimers, projecte Compose, volums i PostgreSQL propis.
+- CLI cross-platform de creacio, provisionament, validacio, inventari i destruccio segura.
+- Deteccio de col·lisions exactes de scope i blocs de ports.
+- Dev Container com a contracte d'eines reproduible.
+- Regles comunes a `AGENTS.md` i guia operativa per al propietari.
+
+### Increments posteriors condicionats a demanda
+
+- `DatabaseWorkspaceProvider` per Supabase Branching o un altre PostgreSQL gestionat.
+- Deployment previews per PR i live previews remotes.
+- Coder o Daytona com a provider de workspaces.
+- Control plane, TTL, quotes i cleanup remot.
+
+### Criteri de sortida inicial
+
+De dos a quatre agents poden treballar alhora sense compartir directori, branca, ports, secrets,
+serveis ni base de dades, i el propietari pot crear i retirar cada entorn amb ordres documentades.
+
 ## Plantilla de revisio de fase
 
 En acabar cada fase s'ha de presentar:

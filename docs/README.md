@@ -67,6 +67,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   call. Separada dels grants OAuth de connectors de la Fase 7B.
 - `specifications/agent-platform.md`: proposta de la Fase 11 per governar agents versionats,
   runs, tools, aprovacions, costos i auditoria sobre la Fase 10.
+- `specifications/multi-agent-development.md`: Fase X transversal per aillar els agents que
+  desenvolupen Control Hub; no es el runtime de producte de la Fase 11.
+- `development/agent-workspaces.md`: crear, validar, entregar i destruir un workspace per tasca.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-12-secrets-management-guide.md`: frontera entre passwords, secrets de

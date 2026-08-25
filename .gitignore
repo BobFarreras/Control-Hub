@@ -4,6 +4,7 @@ node_modules/
 dist/
 coverage/
 .turbo/
+.turbo-workspace/
 *.tsbuildinfo
 playwright-report/
 test-results/
@@ -42,4 +43,8 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 
+# Per-workspace identity, generated secrets and lifecycle metadata.
+.agent/
+
 .next-verify/
+.next-agent/

@@ -11,6 +11,12 @@ Aquest fitxer defineix les normes per a qualsevol agent que treballi al reposito
 
 ## Abans de modificar codi
 
+Quan hi hagi mes d'un agent actiu, **no es comparteixen branca ni directori**. Cada tasca es crea
+des d'un workspace propi amb el flux de `docs/development/agent-workspaces.md`. Abans de tocar
+codi, l'agent executa `pnpm agent:validate`; si el directori no te manifest `.agent/`, demana o
+crea el workspace des del repositori coordinador. No s'ha de canviar de branca dins un worktree
+que pertany a una altra tasca.
+
 Primer, situar-se. Aquests dos responen "on som" i "que ja ens ha mossegat", i estalvien mes
 temps que cap altre:
 
@@ -191,6 +197,10 @@ Abans de donar una feina per acabada, respon aquestes cinc amb un si:
 ## Git
 
 - Commits atomics amb Conventional Commits.
+- Una tasca concurrent correspon a una branca `agent/<agent>/<ticket>-<slug>` i un worktree
+  exclusiu. No existeixen branques permanents per Codex, Claude o OpenCode.
+- No treballar directament a `main` ni `develop`, no fer force push sobre branques compartides,
+  no canviar la branca d'un altre workspace i no eliminar branques o worktrees d'un altre agent.
 - No reescriure historial compartit ni utilitzar operacions destructives sense autoritzacio.
 - No incloure `.env`, claus, certificats privats, backups, dumps o credencials.
 - No barrejar refactors aliens amb una funcionalitat.

@@ -72,6 +72,29 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**La Fase X de desenvolupament multi-agent te el primer increment implementat** a la branca
+`chore/phase-x-agent-workspaces`. Separa per tasca la branca, worktree, `.env`, secrets efimers,
+ports, projecte Compose, volums i PostgreSQL; inclou CLI de lifecycle, deteccio de col·lisions,
+Dev Container, ADR, especificacio i guia operativa. Es una iniciativa transversal per als agents
+que modifiquen el repositori, no el runtime empresarial de la Fase 11. Abans d'obrir la 11 o la
+12 amb diversos agents, aquest increment s'ha d'integrar i cada tasca nova ha de neixer amb
+`pnpm agent:workspace create`.
+
+Validacio vista en aquest increment: `pnpm check` passa sencer amb cache Turbo propia --14/14
+typechecks sense cap hit aliè, 24/24 tasques de test i 14/14 builds--, `pnpm test:scripts` passa
+15/15 i les proves noves creen dos worktrees reals, comproven ports diferents, absencia de secrets
+heretats, el refus `SCOPE_COLLISION` i que el web no arrenca sense un port explicit.
+`docker compose config` confirma que el nom es deriva del directori i que tots els ports publicats
+son obligatoris i variables. Les suites PostgreSQL de `pnpm test` es continuen saltant sense
+`TEST_DATABASE_URL`; la Fase X no canvia esquema ni repositoris.
+
+La prova de lifecycle completa tambe s'ha executat sobre un worktree temporal real: instal·lacio
+immutable, tres serveis Compose i volums amb nom propi, totes les migracions sobre PostgreSQL
+buit, web a `3159`, API a `4159`, worker preparat, readiness directa i via proxy en 200, aturada i
+eliminacio de contenidors, xarxes, volums, dependències i worktree. La primera passada va detectar
+i deixar documentats dos casos que les unitàries no veien --allowlist de variables de Turbo i
+paths llargs de pnpm a Windows-- abans de repetir el lifecycle en verd.
+
 **La Fase 12 te guia tecnica proposada** a `docs/development/phase-12-secrets-management-guide.md`.
 No converteix Control Hub en un password manager: passwords humans van al gestor corporatiu,
 secrets bootstrap queden fora del producte i el vault intern conserva nomes credencials

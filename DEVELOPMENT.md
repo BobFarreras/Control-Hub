@@ -25,6 +25,10 @@ Copy-Item .env.example .env
 pnpm dev:all
 ```
 
+Si hi ha dos o mes agents actius, aquest flux nomes s'utilitza dins un workspace aillat. La
+creacio, ports, base de dades i cleanup es descriuen a
+`docs/development/agent-workspaces.md`; no es copia el `.env` del directori principal.
+
 En entorns Windows on Node no reconegui una CA corporativa o del sistema, mantenir la validacio TLS activa i executar abans d'instal·lar:
 
 ```powershell
@@ -75,7 +79,7 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 
 | Ordre | Responsabilitat |
 |---|---|
-| `pnpm dev` | Web, API i worker en watch mode. Comprova abans que Docker i els contenidors hi siguin, i s'atura amb un missatge accionable si no |
+| `pnpm dev` | Web, API i worker en watch mode. El web respecta `WEB_PORT`; comprova abans que Docker i els contenidors propis hi siguin |
 | `pnpm dev:all` | Infraestructura local + `pnpm dev` |
 | `pnpm dev:verify` | Segona pila aillada a 3002/4002 per verificar sense tocar la sessio de ningu |
 | `pnpm infra:up` | PostgreSQL, cua i Mailpit |
@@ -95,6 +99,9 @@ El navegador utilitza origen unic per simplificar cookies, sessions, CSRF i CORS
 | `pnpm build` | Build reproduible de totes les apps |
 | `pnpm check` | Lint + format + typecheck + tests + tests dels scripts + build |
 | `pnpm deps:log` | Regenera `docs/development/dependency-log.md` des de l'historial de git |
+| `pnpm agent:workspace create ...` | Crea branca, worktree, entorn i identitat aillats per una tasca |
+| `pnpm agent:provision` | Instal·la, aixeca la infraestructura propia i aplica migracions al workspace |
+| `pnpm agent:validate` | Comprova branca, ruta, secrets locals, ports i col·lisions declarades |
 
 Cap script de test utilitza la base de dades manual del desenvolupador.
 
