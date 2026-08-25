@@ -1,5 +1,6 @@
 import {
   connectorKeyRingWarning,
+  mcpIssuerWarning,
   parseApiEnvironment,
   parseFeatureFlags,
   unknownFeatureFlags
@@ -27,7 +28,8 @@ const app = buildApp({
   featureFlags: parseFeatureFlags(environment.CONTROL_HUB_FLAGS),
   connectorKeyRing: environment.connectorKeyRing,
   connectorEgressAllowlist: environment.connectorEgressAllowlist,
-  oauthClientIds: environment.oauthClientIds
+  oauthClientIds: environment.oauthClientIds,
+  mcpIssuer: environment.MCP_ISSUER
 });
 
 // A flag name nobody declared is a typo that would otherwise be indistinguishable from a
@@ -39,6 +41,11 @@ if (unknown.length > 0) app.log.warn({ unknown }, "ignoring feature flags that a
 // credential routes are not there, rather than failing when somebody first tries to save one.
 const keyRingWarning = connectorKeyRingWarning(environment);
 if (keyRingWarning) app.log.warn(keyRingWarning);
+
+// Same shape, same reason: MCP on with nothing to call this server means the routes are not
+// declared, and that is worth one line at boot rather than a 404 nobody can explain later.
+const issuerWarning = mcpIssuerWarning(environment);
+if (issuerWarning) app.log.warn(issuerWarning);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutdown requested");

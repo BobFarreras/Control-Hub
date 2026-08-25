@@ -66,6 +66,7 @@ import type { ControlHubAuth } from "./auth.js";
 import { createConnectorHealthCheckQueue } from "./connector-health-queue.js";
 import { createConnectorIngressQueue } from "./connector-ingress-queue.js";
 import type { MailSender } from "./email.js";
+import { registerMcpRoutes } from "./mcp.js";
 import { describeConnectorError, problemContentType, problemDetails, usesProblemDetails } from "./problem.js";
 import { rateLimitKey } from "./rate-limit.js";
 import { registerAttendanceRoutes } from "./routes/attendance.js";
@@ -130,6 +131,14 @@ type BuildAppOptions = {
    */
   connectorEgressAllowlist?: readonly AllowedDestination[];
   oauthClientIds?: Readonly<Partial<Record<"google" | "microsoft", string>>>;
+  /**
+   * The public origin an MCP client reaches this API at, and so the OAuth issuer it announces.
+   *
+   * Absent means the MCP routes are not declared, whatever the flag says. An authorization server
+   * that does not know its own name would have to take one from a request header, and a token
+   * whose audience the caller chooses protects nothing. See @control-hub/config.
+   */
+  mcpIssuer?: string | undefined;
 };
 
 /**
@@ -424,6 +433,9 @@ export function buildApp(options: BuildAppOptions) {
         });
     }
 
+    // Unauthenticated by design and therefore outside the block above: a client has to read the
+    // discovery documents and reach the token endpoint before it holds any session at all.
+    registerMcpRoutes({ app, database, featureFlags, issuer: options.mcpIssuer });
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
     registerObservabilityRoutes();
     registerHealthRoutes();

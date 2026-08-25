@@ -124,9 +124,58 @@ consumeix amb la mateixa sentencia que el llegeix, i la rotacio del refresh gast
 successor a la mateixa transaccio amb `used_at is null` al predicat, de manera que dues peticions
 simultanies donen un successor i un perdedor, mai dues linies vives. Desactivar un service account
 arrossega els seus grants i els seus tokens. Quinze proves d'integracio contra PostgreSQL de debo,
-amb l'aillament entre tenants comprovat i no nomes escrit. **El punt de continuacio son les rutes
-d'OAuth** i tot seguit el transport `/mcp`. El `Mcp-Session-Id` encara no te taula a proposit: que
-se n'ha de desar depen del transport.
+amb l'aillament entre tenants comprovat i no nomes escrit.
+
+L'**increment F** es el flux com a casos d'us: `McpOauthService` a
+`packages/application/src/mcp-oauth.ts`, amb els dos documents de metadata, l'aprovacio del
+consentiment i l'intercanvi del codi. L'issuer surt de la configuracio validada i **mai d'una
+capcalera**, aixi que un `Host` que tria qui truca no pot decidir per a quina audiencia s'encunya
+un token. El port `McpCrypto` declara encunyar, `sha256`, repte PKCE i comparacio en temps constant,
+i `NodeMcpCrypto` les implementa amb el vector de l'apendix B de la RFC 7636 com a prova. Els
+metodes que toca el token endpoint reben un `McpTenantScope` i no un `TenantContext`: alli no hi ha
+sessio, i inventar rols, permisos i un flag d'MFA que ningu ha concedit seria mentir-li al tipus.
+L'**increment F2** hi afegeix `refresh` i `revokeToken`. El refresc **no crea cap grant** --els
+scopes surten del consentiment que ja existeix-- i la revocacio segueix la RFC 7009: un token
+desconegut es una revocacio correcta, perque respondre altrament faria de l'endpoint un oracle de
+quins tokens existeixen. La migracio `0051` eixampla `lookup_mcp_refresh_token` amb el client i els
+scopes del grant. L'**increment F3** posa prefix a cada credencial (`chm_at_`, `chm_rt_`, `chm_sa_`,
+`chm_ac_`), de manera que un token enganxat a un commit fa saltar gitleaks, i fa **obligatori** el
+`resource` de la RFC 8707 a `/authorize`, a `/token` i al refresc.
+
+L'**increment F3b** son els service accounts i el registre de clients: la via d'entrada sense
+navegador. Un service account canvia el seu secret per **un sol access token i cap refresh token**
+--pot tornar a presentar el secret quan vulgui, aixi que un refresh token seria una segona
+credencial de llarga vida per guardar, rotar i perdre-- i els seus scopes es tornen a negociar a
+cada login contra els permisos del compte. La **rotacio mante dues claus vives durant un dia**
+(migracio `0052`): substituir el secret de cop trenca tots els qui el fan servir a l'instant exacte
+de la rotacio, i una rotacio que provoca una caiguda es una rotacio que ningu no fa. La resposta diu
+`usedPreviousSecret` quan el que s'ha presentat era el que s'esta retirant, i quan el secret vell es
+sap compromes l'operacio es `retirePreviousSecret`, que tanca la finestra ara mateix. La migracio
+`0053` fa `client_id` nul·lable a `mcp_grants` i el lliga al tipus d'actor: un grant d'usuari sempre
+nomena el client que ho va demanar i un de service account no en nomena cap, cosa que es **mes
+estricta** que el `not null` que substitueix.
+
+L'**increment F4** posa l'authorization server al fil: els dos documents de descobriment,
+`/api/v1/mcp/oauth/token` amb els tres grants i `/api/v1/mcp/oauth/revoke`, a
+`apps/api/src/routes/mcp-oauth.ts`, ja registrats al composition root des d'`apps/api/src/mcp.ts`.
+Aquestes rutes responen amb **el sobre d'OAuth** i no amb problem details: qui truca es un client
+que no hem escrit nosaltres i decideix mirant el camp `error`. La taula de refusos es un `Record`
+sobre la unio de codis del domini, aixi que un codi nou sense traduccio no compila. `Cache-Control:
+no-store` hi es **tambe als refusos**, el parser de formulari viu dins d'un plugin encapsulat
+--la resta de l'API continua refusant aquell tipus de contingut-- i un service account presenta
+nomes el seu secret, perque un `client_id` seria dir que es un client registrat.
+
+Configuracio nova amb la F4: **`MCP_ISSUER`**, l'origen public d'aquesta API. No pot ser
+`APP_ORIGIN` (es el web) ni `API_INTERNAL_URL` (nomes des de dins del desplegament), i no es dedueix
+de la capcalera `Host` a proposit. Amb la flag `mcp` encesa i sense `MCP_ISSUER`, el boot ho diu i
+les rutes **no** es declaren. Comprovat contra l'app composada de debo: els dos `.well-known`
+responen 200, el token endpoint respon `unsupported_grant_type` en el sobre correcte, i sense
+issuer tot plegat es un 404.
+
+**El punt de continuacio es el transport `/mcp`**: `initialize`, `tools/list`, `tools/call` i
+l'auditoria per crida. Despres queden la pantalla de consentiment amb el `GET /authorize`, les rutes
+de gestio de clients, grants i service accounts, i la UI amb i18n. El `Mcp-Session-Id` encara no te
+taula a proposit: que se n'ha de desar depen del transport.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual
