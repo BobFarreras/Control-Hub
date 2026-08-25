@@ -202,18 +202,22 @@ escriure'ls val mes que arreglar-ne un a mitges dins d'una branca que no els toc
    job no encen no existeix per a la suite, i la prova que la condueix no la verifica ningu.
 
    Amb `mcp` aixo ja esta arreglat: el job l'encen, amb `MCP_ISSUER`, i la prova de consentiment
-   d'aquesta fase hi corre de debo. Pero la deriva no era hipotetica ni era nomes nostra. Amb els
-   flags exactes de CI i sense `mcp` enlloc,
-   `support-mailbox.authenticated.spec.ts` falla: la pantalla que condueix es darrere el flag
-   `mail`, que aquell job no encen, i per tant espera per sempre una peticio que no arriba a
-   sortir. Es una prova que no pot passar a l'entorn que li donen, i ho era abans d'aquesta branca.
-   *Remei:* afegir `mail` a `CONTROL_HUB_FLAGS` del job `authenticated-end-to-end`, i mirar els
-   flags d'aquell job cada cop que una prova nova depengui d'un.
+   d'aquesta fase hi corre de debo.
 
    La regla general: qui afegeix una prova darrere un flag ha d'encendre'l a CI **al mateix
    commit**, o la prova nomes existeix a la maquina de qui la va escriure.
 
-7. **`git worktree list` acumula entrades `prunable`.** N'hi ha una avui, d'un directori que ja no
+7. **`support-mailbox.authenticated.spec.ts` no pot passar enlloc.** Va apareixer buscant la
+   fallada anterior i no hi te res a veure, aixi que val la pena escriure-la: la prova arma un
+   `page.waitForResponse` sobre `/api/v1/support/mailbox?status=pending` i despres obre
+   `/ca/support/mail`. Aquella peticio no la fa mai el navegador -- la pantalla es un component
+   de servidor i la crida surt del servidor de Next --, o sigui que l'espera esgota el temps
+   sempre. No depen de cap flag: falla igual amb `mail` ences i amb `mail` apagat, i falla des del
+   commit que la va introduir. Encendre `mail` a CI no l'arregla, i per aixo no s'hi ha tocat.
+   *Remei:* que la prova asserti sobre el que la pantalla dibuixa, no sobre transit de xarxa que
+   no existeix; i quan es faci, encendre `mail` al job al mateix commit.
+
+8. **`git worktree list` acumula entrades `prunable`.** N'hi ha una avui, d'un directori que ja no
    existeix, i `destroy` no s'hi pot fer servir perque exigeix un worktree present. Un
    `git worktree prune` de tant en tant.
 
