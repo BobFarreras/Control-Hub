@@ -175,6 +175,17 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
    *
    * Both identifiers are minted here rather than in the database for the same reason `createClient`
    * mints them: the public one is quoted back at `/authorize` and must say nothing about anyone.
+   *
+   * The arrays are written as plain JavaScript arrays with an explicit `::text[]`, and not with
+   * `database.array()` as everywhere else in this file, because this is the one statement that can
+   * be the first thing a connection ever sends. `database.array()` reads the array type out of a
+   * catalogue the driver fetches while it is connecting, and a statement that arrives before that
+   * fetch lands is sent with no array type at all: the elements go out joined by commas, and
+   * Postgres answers that no `register_mcp_client(..., text, text)` exists. That is one 500 for the
+   * first assistant to register after a deploy, and none after it. Every other array here is inside
+   * `withTenant`, which awaits a `set_config` first and so is never the first statement. A plain
+   * array is serialised by the driver as an array literal whatever it knows, and the cast says what
+   * it is, so the answer no longer depends on what arrived first.
    */
   async registerSelfClient(input: {
     name: string;
@@ -186,7 +197,7 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
     await this.database`
       select register_mcp_client(
         ${id}, ${clientId}, ${input.name},
-        ${this.database.array([...input.redirectUris])}, ${this.database.array([...input.maxScopes])}
+        ${[...input.redirectUris]}::text[], ${[...input.maxScopes]}::text[]
       )`;
     return { id, clientId };
   }

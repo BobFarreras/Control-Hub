@@ -475,4 +475,30 @@ suite("PostgresMcpOauthRepository", () => {
 
     await admin`delete from mcp_clients where id = ${registered.id}`;
   });
+
+  it("registers on a connection that has never been used, which is the one that failed", async () => {
+    // The failure this covers was found by driving the running server rather than by any test:
+    // the first registration after a deploy answered 500 and every one after it answered 201. On a
+    // connection whose type cache has not warmed, the driver declares `text` for an array, and
+    // Postgres then reports that no `register_mcp_client(..., text, text)` exists. Every other
+    // array in the repository is written into a column, where the server already knows the type;
+    // a function argument has to be resolved from what the driver said. So the connection here is
+    // its own, and this call is the first statement it ever sends -- warm it and the test passes
+    // whether the cast is there or not, which would make it worth nothing.
+    const cold = createDatabaseClient(databaseUrl!);
+    try {
+      const registered = await new PostgresMcpOauthRepository(cold).registerSelfClient({
+        name: "Claude Code",
+        redirectUris: ["http://127.0.0.1:51763/callback"],
+        maxScopes: ["crm.read"]
+      });
+      expect(await repository.resolveClient(registered.clientId)).toMatchObject({
+        redirectUris: ["http://127.0.0.1:51763/callback"],
+        maxScopes: ["crm.read"]
+      });
+      await admin`delete from mcp_clients where id = ${registered.id}`;
+    } finally {
+      await cold.end({ timeout: 5 });
+    }
+  });
 });
