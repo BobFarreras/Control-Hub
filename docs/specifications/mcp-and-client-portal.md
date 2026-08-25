@@ -385,14 +385,15 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   `resource` de l'API --composar-la a la pantalla permetria que no coincidis amb l'audience contra
   la qual es valida el token, i el desajust apareix molt despres i dins del client d'algu altre--,
   i la configuracio per a Claude Code, Claude d'escriptori, OpenAI i OpenCode. Cap fragment porta
-  identificador de client: aquests assistents se'l treuen registrant-se sols per DCR, que la D3
-  deixa fora d'aquest increment, i un camp inventat perque la pantalla tingues alguna cosa a
-  ensenyar s'enganxaria, s'ignoraria i despres es culparia a l'adreca. El panell ho diu, i mostra
-  l'identificador de l'agent triat per als clients que si que el demanen.
-  **Aixo es el que avui impedeix connectar-hi un assistent sense passos manuals**, i per tant la
-  primera pregunta de la 10.2: si s'implementa DCR --additiu i acotat-- o si es documenta el
-  registre manual com la manera d'entrar-hi. Claude d'escriptori i claude.ai hi posen una segona
-  condicio que no depen de nosaltres: exigeixen https public i rebutgen localhost.
+  identificador de client: aquests assistents se'l treuen registrant-se sols, i un camp inventat
+  perque la pantalla tingues alguna cosa a ensenyar s'enganxaria, s'ignoraria i despres es culparia
+  a l'adreca. El panell ho diu, i mostra l'identificador de l'agent triat per als clients que si que
+  el demanen. Claude d'escriptori i claude.ai hi posen una segona condicio que no depen de
+  nosaltres: exigeixen https public i rebutgen localhost.
+- **10.1-H6 — el registre dinamic, que es el que permetia connectar-s'hi de veritat.** Ampliacio de
+  la decisio D3, descrita a «Registre de clients»: `POST /api/v1/mcp/oauth/register` obert,
+  anunciat a la metadata, amb la fila sense tenant fins que la primera persona que l'autoritza la
+  reclama. Aixo es el que treu «cap assistent no pot connectar-s'hi» de la llista del que falta.
 
 ## Fora d'abast de la 10.1
 
@@ -499,6 +500,9 @@ parametre `resource` (RFC 8707) tant a l'authorization request com al token requ
 ### Registre de clients
 
 **Recomanacio (decisio D3): registre manual pel propietari, sense DCR a la 10.1.**
+**Ampliada el 25 d'agost de 2026: el registre dinamic tambe, sense tenant fins que algu
+l'autoritza.** El registre manual continua sent el cami del propietari; el dinamic es el cami de
+l'assistent, i tots dos acaben a la mateixa pantalla de consentiment.
 
 Un client MCP es una fila creada des de la pantalla de seguretat per algu amb `security:manage` i
 sessio amb MFA fresca. Declara nom, tipus (`public` o `confidential`), redirect URIs exactes i els
@@ -512,9 +516,50 @@ scopes maxims que podra demanar.
 - Un client suspes no pot iniciar autoritzacions ni refrescar; els seus grants queden inutilitzables
   sense esborrar-se.
 
-El cost d'aquesta decisio es real i s'ha de dir: **els clients MCP que nomes saben registrar-se per
-DCR no es podran connectar** fins que la decisio D3 s'ampli. La contrapartida es que a la primera
-entrega ningu es pot registrar sol contra el nostre authorization server.
+#### Registre dinamic (RFC 7591), ampliacio del 25 d'agost de 2026
+
+El cost de la decisio original era real i es va complir: **cap assistent es podia connectar.** Claude
+Code, Claude d'escriptori, OpenAI i OpenCode comencen tots registrant-se sols, i cap no ofereix un
+camp on enganxar un `client_id`. "Registre manual" volia dir, a la practica, que la superficie MCP no
+la feia servir ningu. Per aixo la D3 s'amplia amb `POST /api/v1/mcp/oauth/register`, obert i sense
+autenticar, anunciat com a `registration_endpoint` a `/.well-known/oauth-authorization-server`.
+
+El xoc que calia resoldre: una fila de client pertany a un tenant, i un registre arriba abans que
+ningu hagi iniciat sessio. No hi ha cap tenant a escriure, i inventar-ne un -- un tenant designat, un
+tenant a la URL -- faria l'adreca del servidor especifica de cada tenant i donaria a un desconegut una
+manera d'anomenar el tenant d'algu altre, que es pitjor que el problema.
+
+La resolucio: **la fila s'escriu sense tenant, i la reclama la primera persona que l'autoritza.**
+
+- Mentre no te tenant no es de ningu, i aixo s'imposa en comptes de prometre's: la politica
+  d'aillament compara `tenant_id` amb el tenant de la sessio, i un null no s'iguala a res. Una fila
+  sense reclamar es invisible a qualsevol consulta amb tenant, el llistat de gestio inclos. Tampoc
+  s'hi pot consentir: un grant referencia `(tenant_id, id)`, i cap fila sense reclamar el satisfa.
+- La reclamacio es un `update` condicionat a `tenant_id is null`, o sigui que si dos tenants
+  autoritzen el mateix registre alhora nomes en guanya un; el que perd es troba mirant el client d'un
+  altre i rep la mateixa resposta que rep sempre un desconegut.
+- El client es **public i sense secret**, per constraint de base de dades
+  (`mcp_clients_unclaimed_is_public`). Donar un secret a qui no s'ha autenticat es donar-lo a qui
+  l'hagi demanat; el que prova el client despres es PKCE.
+- Els redirect URIs passen exactament la mateixa regla que els d'un client registrat a ma: HTTPS, o
+  HTTP nomes a loopback literal (RFC 8252).
+- El sostre de scopes que es registra no atorga res: el que s'atorga continua sent la interseccio amb
+  els permisos de qui consent.
+- **El nom es obligatori**, encara que la RFC 7591 el faci opcional. Es l'unic lloc on som mes
+  estrictes que l'especificacio, i el motiu es la pantalla de consentiment: demanar a algu que aprovi
+  un client sense nom es allotjar-li nosaltres mateixos una pagina de phishing.
+- La pantalla de consentiment **avisa** quan el client s'ha registrat sol i encara no l'ha reclamat
+  ningu, perque autoritzar-lo es alhora el consentiment i l'acte que el lliga al tenant.
+- El registre no es pot auditar: passa sense sessio, i una fila d'auditoria pertany a un tenant. El
+  que queda al rastre es l'aprovacio, amb `selfRegistered` a les metadades.
+- Les files que ningu no reclama en 24 hores les escombra el registre seguent, sense cap tasca
+  programada que s'hagi de recordar i vigilar.
+- L'endpoint nomes es declara si la installacio te pantalla de consentiment, i te limit de peticions
+  per qui truca. Un registre que no es pot acabar mai es pitjor que no oferir-lo.
+
+Continua sense haver-hi cap manera que un desconegut llegeixi dades: registrar-se no revela res de la
+installacio i no arriba a cap tenant fins que una persona amb sessio fresca ho aprova en una pantalla
+que diu en veu alta que el client s'ha presentat sol.
 
 ### Consentiment
 
@@ -790,6 +835,7 @@ GET    /api/v1/mcp/consent
 POST   /api/v1/mcp/consent
 POST   /api/v1/mcp/oauth/token
 POST   /api/v1/mcp/oauth/revoke
+POST   /api/v1/mcp/oauth/register
 GET    /api/v1/mcp/clients
 POST   /api/v1/mcp/clients
 DELETE /api/v1/mcp/clients/:clientId
@@ -1010,7 +1056,7 @@ Fins que aquestes tres tinguin resposta, la 10.2 continua sent una proposta.
 | --- | --- | --- | --- | --- | --- |
 | D1 | Qui emet els tokens | **Aprovada** 24-08-2026 | Control Hub, authorization server propi i acotat a MCP | Keycloak o IdP extern (hauria reobert `adr/0003`) | Alt: canvia desplegament i operacio |
 | D2 | Format de token | **Aprovada** 24-08-2026 | Opac de referencia, hash a PostgreSQL, revocacio immediata | JWT signat amb JWKS | Mitja: la validacio ja esta aillada |
-| D3 | Registre de clients | **Aprovada** 24-08-2026 | Manual pel propietari; sense DCR a la 10.1 | DCR (RFC 7591) amb aprovacio previa | Baix: additiu |
+| D3 | Registre de clients | **Aprovada** 24-08-2026, **ampliada** 25-08-2026 | Manual pel propietari, i DCR (RFC 7591) amb la fila sense tenant fins que una persona l'autoritza | Nomes manual | Baix: additiu |
 | D4 | Redirects loopback | **Aprovada** 24-08-2026 | Permesos a `127.0.0.1` amb path exacte i port lliure (RFC 8252); PKCE els guarda | Nomes HTTPS registrats | Baix, pero hauria deixat fora tot client d'escriptori |
 | D5 | Vida del access token | **Aprovada** 24-08-2026 | 30 minuts, amb refresh rotatiu i deteccio de reus | 15, 60 o 480 minuts | Baix: es configuracio, no esquema |
 | D6 | Primera llista de tools | **Aprovada** 24-08-2026 | Les sis de la taula, cadascuna revisable per separat | Reduir-la a suport i infraestructura, o ampliar-la amb projectes i comerc | Baix: cada tool s'aprova per separat |

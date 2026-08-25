@@ -401,4 +401,78 @@ suite("PostgresMcpOauthRepository", () => {
     expect(await repository.disableServiceAccount(ctx, account.id, at)).toBe(true);
     expect((await repository.resolveServiceAccount(hash(rotated)))?.disabledAt).toEqual(at);
   });
+  it("keeps a client that registered itself out of every tenant's sight until somebody claims it", async () => {
+    const registered = await repository.registerSelfClient({
+      name: "Claude Code",
+      redirectUris: ["http://127.0.0.1:51763/callback"],
+      maxScopes: ["crm.read"]
+    });
+
+    // Resolvable by identifier, because that read goes through a definer function: at the point in
+    // the flow where it happens there is no session and so no tenant to be scoped to.
+    expect(await repository.resolveClient(registered.clientId)).toMatchObject({
+      id: registered.id,
+      tenantId: null,
+      kind: "public",
+      secretHash: null
+    });
+
+    // And invisible to everybody. This is the property the whole design rests on, and it is the
+    // database enforcing it rather than a filter somebody remembered to write: the isolation
+    // policy compares `tenant_id` to the session's tenant, and a null compares to nothing.
+    for (const ctx of [context(tenantA, membershipA), context(tenantB, membershipB)]) {
+      const listed = (await repository.listClients(ctx)).map((client) => client.clientId);
+      expect(listed).not.toContain(registered.clientId);
+    }
+
+    // The first tenant to authorize it takes it, and only the first: the update is conditional on
+    // the row still being nobody's, so a second tenant is refused rather than taking it over.
+    expect(await repository.claimClient(registered.clientId, tenantA)).toBe(true);
+    expect(await repository.claimClient(registered.clientId, tenantB)).toBe(false);
+    expect(await repository.resolveClient(registered.clientId)).toMatchObject({ tenantId: tenantA });
+    expect((await repository.listClients(context(tenantA, membershipA))).map((client) => client.clientId)).toContain(
+      registered.clientId
+    );
+    expect(
+      (await repository.listClients(context(tenantB, membershipB))).map((client) => client.clientId)
+    ).not.toContain(registered.clientId);
+
+    await admin`delete from mcp_clients where id = ${registered.id}`;
+  });
+
+  it("will not let an unclaimed client hold a secret, whoever writes it", async () => {
+    // A secret minted for an unauthenticated caller is a secret minted for whoever asked. The
+    // application never does it, and the check is what makes that a property of the store rather
+    // than of the code path that happens to be in front of it today.
+    await expect(
+      admin`
+        insert into mcp_clients (id, client_id, name, kind, secret_hash, redirect_uris, max_scopes)
+        values (${randomUUID()}, ${`unclaimed-${randomUUID()}`}, 'Confidential stranger', 'confidential',
+          ${hash("secret")}, array['https://agent.test/cb'], array['crm.read'])`
+    ).rejects.toThrow(/mcp_clients_unclaimed_is_public/);
+  });
+
+  it("sweeps the registrations nobody claimed within a day, on the way in", async () => {
+    // The whole garbage collection story for an open endpoint. A scheduled job would be one more
+    // thing to remember and monitor; a registration nobody has authorized in 24 hours is one
+    // nobody is going to, and the next registration is exactly when it is worth removing.
+    const stale = randomUUID();
+    await admin`
+      insert into mcp_clients (id, client_id, name, kind, redirect_uris, max_scopes, created_at)
+      values (${stale}, ${`stale-${stale}`}, 'Abandoned registration', 'public',
+        array['http://127.0.0.1/cb'], array['crm.read'], now() - interval '25 hours')`;
+
+    const registered = await repository.registerSelfClient({
+      name: "Claude Code",
+      redirectUris: ["http://127.0.0.1:51763/callback"],
+      maxScopes: ["crm.read"]
+    });
+
+    expect(await repository.resolveClient(`stale-${stale}`)).toBeNull();
+    // And the fresh one survives its own sweep, which is the half that a broken interval would
+    // silently get wrong.
+    expect(await repository.resolveClient(registered.clientId)).not.toBeNull();
+
+    await admin`delete from mcp_clients where id = ${registered.id}`;
+  });
 });

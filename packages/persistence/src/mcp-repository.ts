@@ -138,7 +138,8 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
     const [row] = await this.database<
       Array<{
         id: string;
-        tenantId: string;
+        // Null for a client that registered itself and has not been claimed by a tenant yet.
+        tenantId: string | null;
         name: string;
         kind: string;
         secretHash: string | null;
@@ -161,6 +162,46 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       maxScopes: row.maxScopes as McpScope[],
       status: row.status as "active" | "suspended"
     };
+  }
+
+  /**
+   * A client registering itself, before anybody has signed in (RFC 7591).
+   *
+   * Outside `withTenant` because there is no tenant to be inside: the row is written with none,
+   * and the isolation policy would refuse an insert whose `tenant_id` does not match a session
+   * that does not exist. `register_mcp_client` is the definer function of migration `0058`, which
+   * is what lets the application role write a row nobody owns -- and, on its way in, sweep the
+   * unclaimed rows older than a day.
+   *
+   * Both identifiers are minted here rather than in the database for the same reason `createClient`
+   * mints them: the public one is quoted back at `/authorize` and must say nothing about anyone.
+   */
+  async registerSelfClient(input: {
+    name: string;
+    redirectUris: readonly string[];
+    maxScopes: readonly McpScope[];
+  }): Promise<{ id: string; clientId: string }> {
+    const id = randomUUID();
+    const clientId = randomUUID();
+    await this.database`
+      select register_mcp_client(
+        ${id}, ${clientId}, ${input.name},
+        ${this.database.array([...input.redirectUris])}, ${this.database.array([...input.maxScopes])}
+      )`;
+    return { id, clientId };
+  }
+
+  /**
+   * The first tenant to authorize an unclaimed client takes it.
+   *
+   * False means it was not this call's to take: either it never existed, or somebody else claimed
+   * it first. The caller decides which, by looking again -- this method deliberately does not, so
+   * that the answer it gives is only ever about what this statement did.
+   */
+  async claimClient(clientId: string, tenantId: string): Promise<boolean> {
+    const [row] = await this.database<Array<{ claimed: boolean }>>`
+      select claim_mcp_client(${clientId}, ${tenantId}) as claimed`;
+    return row?.claimed === true;
   }
 
   async resolveRefreshToken(tokenHash: string): Promise<McpRefreshResolution | null> {

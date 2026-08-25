@@ -279,14 +279,43 @@ diu on va. Els fragments son dades a `apps/web/src/lib/mcp-connection.ts` i es p
 que algu enganxara a un fitxer de configuracio, i una que sigui subtilment falsa costa una tarda.
 
 Cap fragment porta identificador de client, perque cap d'aquests assistents n'accepta un d'escrit a
-ma: se'l treuen registrant-se sols, per DCR, que la decisio **D3** deixa fora de la 10.1. El panell
-ho diu tal com es en comptes d'ensenyar nomes el cami felic, i mostra l'identificador de l'agent
-triat al costat, per als clients que si que el demanen. **Aixo es, ara mateix, el que impedeix
-connectar-hi un assistent d'una tacada, i la primera cosa a decidir de la 10.2.** El Claude
-d'escriptori i claude.ai hi afegeixen una segona condicio, que no es nostra: exigeixen una adreca
-https publica i rebutgen localhost. Claude Code accepta http a localhost i es la via per provar-ho.
+ma: se'l treuen registrant-se sols. El panell ho diu tal com es en comptes d'ensenyar nomes el cami
+felic, i mostra l'identificador de l'agent triat al costat, per als clients que si que el demanen. El
+Claude d'escriptori i claude.ai hi afegeixen una segona condicio, que no es nostra: exigeixen una
+adreca https publica i rebutgen localhost. Claude Code accepta http a localhost i es la via per
+provar-ho.
 
-Amb aixo la **10.1 queda tancada de punta a punta**: autoritat, transport, consentiment i gestio.
+L'**increment H6** es el registre dinamic, RFC 7591, i es el que treu «cap assistent no s'hi pot
+connectar d'una tacada» de la llista. `POST /api/v1/mcp/oauth/register` es obert i sense autenticar
+--l'unica escriptura sense autenticar de l'API-- i s'anuncia com a `registration_endpoint` a
+`/.well-known/oauth-authorization-server`. Amplia la decisio **D3**, que queda: registre manual pel
+propietari **i** registre dinamic per a l'assistent, tots dos acabant a la mateixa pantalla de
+consentiment.
+
+El xoc que calia resoldre es que una fila de client pertany a un tenant i un registre arriba abans
+que ningu hagi iniciat sessio. **La fila s'escriu sense tenant, i la reclama la primera persona que
+l'autoritza.** Mentre no te tenant no es de ningu, i aixo s'imposa en comptes de prometre's: la
+politica d'aillament compara `tenant_id` amb el de la sessio i un null no s'iguala a res, o sigui que
+una fila sense reclamar es invisible a qualsevol consulta amb tenant --el llistat de gestio inclos--
+i no s'hi pot consentir, perque un grant referencia `(tenant_id, id)`. La reclamacio es un `update`
+condicionat a `tenant_id is null`: si dos tenants autoritzen el mateix registre alhora nomes en
+guanya un, i el que perd es troba mirant el client d'un altre. El client es public i sense secret per
+constraint (`mcp_clients_unclaimed_is_public`), els redirect URIs passen la mateixa regla que els
+manuals, i les files que ningu no reclama en 24 hores les escombra el registre seguent, sense cap
+tasca programada. La migracio es la `0058_mcp_dynamic_registration.sql`, amb dues funcions
+`security definer` --`register_mcp_client` i `claim_mcp_client`-- perque una escriptura sense tenant
+no pot passar per la politica d'aillament.
+
+Dues coses que no s'han negociat per fer-ho funcionar. **El nom del client es obligatori**, encara
+que la RFC el faci opcional: es l'unic lloc on som mes estrictes que l'especificacio, i el motiu es
+que demanar a algu que aprovi un client sense nom es allotjar-li una pagina de phishing. I la
+pantalla de consentiment **avisa** quan el client s'ha registrat sol, perque autoritzar-lo es alhora
+el consentiment i l'acte que el lliga al tenant. El registre mateix no es pot auditar --passa sense
+sessio, i una fila d'auditoria pertany a un tenant--, o sigui que el que queda al rastre es
+l'aprovacio, amb `selfRegistered` a les metadades.
+
+Amb aixo la **10.1 queda tancada de punta a punta**: autoritat, transport, consentiment, gestio i
+registre.
 
 El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
 redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual

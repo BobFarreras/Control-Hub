@@ -37,7 +37,12 @@ export const registeredOauthErrors = [
   "invalid_target",
   // RFC 6749 section 4.1.2.1, which the authorization endpoint answers with and the token endpoint
   // never does: by the time a client reaches `/token` it has already been told what it may ask for.
-  "unsupported_response_type"
+  "unsupported_response_type",
+  // RFC 7591 section 3.2.2, which only the registration endpoint answers with. A client reading
+  // `invalid_request` there would look for a syntax error; what it has to fix is one of the fields
+  // it sent, and these two names say which kind.
+  "invalid_redirect_uri",
+  "invalid_client_metadata"
 ] as const;
 export type RegisteredOauthError = (typeof registeredOauthErrors)[number];
 
@@ -161,6 +166,43 @@ type AuthorizeQuery = {
 const isPkceChallenge = (value: string | undefined): boolean =>
   value !== undefined && value.length >= 43 && value.length <= 128;
 
+/**
+ * A registration request, RFC 7591 section 2.
+ *
+ * Every member optional for the same reason the authorize query's are: these arrive from software
+ * nobody here wrote, and each absence is answered by the check that names it rather than by a
+ * schema failure that names none of them.
+ */
+type RegistrationBody = {
+  client_name?: string;
+  redirect_uris?: unknown;
+  scope?: string;
+};
+
+/** What the client is told it registered as. RFC 7591 section 3.2.1. */
+export function oauthRegistrationResponse(registration: {
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly redirectUris: readonly string[];
+  readonly scopes: readonly string[];
+  readonly issuedAt: Date;
+}) {
+  return {
+    client_id: registration.clientId,
+    client_id_issued_at: Math.floor(registration.issuedAt.getTime() / 1000),
+    client_name: registration.clientName,
+    redirect_uris: registration.redirectUris,
+    // Stated rather than echoed. A client may ask for `client_secret_basic` or for the implicit
+    // flow; RFC 7591 section 3.2.1 lets the server answer with what it actually assigned, and
+    // answering is more useful than refusing -- the client reads these three fields and configures
+    // itself from them, whereas a refusal leaves somebody to guess which of the two was wrong.
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none",
+    scope: registration.scopes.join(" ")
+  };
+}
+
 type TokenBody = {
   grant_type?: string;
   client_id?: string;
@@ -227,8 +269,38 @@ function noStore(reply: FastifyReply) {
   return reply.header("cache-control", "no-store").header("pragma", "no-cache");
 }
 
-function refuse(reply: FastifyReply, error: unknown) {
-  const answer = error instanceof McpOauthError ? mcpOauthAnswer(error.code) : null;
+/**
+ * The refusals the registration endpoint gives different names to.
+ *
+ * The same domain codes, because the same checks made them: what changes is that RFC 7591 section
+ * 3.2.2 registered its own two names for this endpoint, and a client reading `invalid_request`
+ * here would go looking for a syntax error instead of at the field it got wrong. Everything not
+ * listed falls through to the shared table, so a code added to the domain still cannot be missed.
+ */
+const registrationAnswers: Partial<Record<McpOauthDenialCode | McpDenialCode, McpOauthAnswer>> = {
+  MCP_REDIRECT_URI_MISMATCH: {
+    status: 400,
+    error: "invalid_redirect_uri",
+    description: "A redirect address must be https, or http on a literal loopback address."
+  },
+  MCP_REQUEST_INVALID: {
+    status: 400,
+    error: "invalid_client_metadata",
+    description: "A client name and between one and five redirect addresses are required."
+  },
+  MCP_SCOPE_UNAVAILABLE: {
+    status: 400,
+    error: "invalid_client_metadata",
+    description: "One of the scopes asked for is not offered here."
+  }
+};
+
+function refuse(
+  reply: FastifyReply,
+  error: unknown,
+  overrides: Partial<Record<McpOauthDenialCode | McpDenialCode, McpOauthAnswer>> = {}
+) {
+  const answer = error instanceof McpOauthError ? (overrides[error.code] ?? mcpOauthAnswer(error.code)) : null;
   if (!answer) throw error;
   return noStore(reply)
     .code(answer.status)
@@ -350,6 +422,58 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
           }).toString()}`,
           303
         );
+      }
+    );
+
+    /**
+     * Dynamic client registration, RFC 7591, and the only unauthenticated write in this API.
+     *
+     * It exists because every assistant that speaks MCP begins by registering itself and none of
+     * them offers a field to paste an identifier into: without this endpoint, "registration is
+     * manual" meant in practice that nothing could connect. What makes an open write acceptable is
+     * that the row it creates belongs to nobody and can reach nothing -- it is public, holds no
+     * secret, is invisible to every tenant-scoped query, and stays that way until a person with a
+     * fresh session approves it on a screen that says out loud that it registered itself.
+     *
+     * Declared beside `/authorize` and under the same condition. An installation with no consent
+     * screen has no interactive authorization to offer, and letting a client register into a flow
+     * it can never finish would be a worse answer than not being there.
+     *
+     * The limit is per caller and deliberately low. There is no cost to a registration nobody
+     * claims -- the next one sweeps it after a day -- but a table somebody can grow without bound
+     * is a table somebody will.
+     */
+    app.post<{ Body: RegistrationBody }>(
+      "/api/v1/mcp/oauth/register",
+      {
+        config: { rateLimit: { max: 20, timeWindow: "1 hour" } },
+        schema: {
+          tags: ["mcp"],
+          summary: "Register a client",
+          description:
+            "Registers a public client for an assistant that has no identifier yet (RFC 7591). The client is created without a tenant and without a secret; the first person who authorizes it claims it for theirs. A `client_name` is required although the RFC makes it optional, because it is what the consent screen shows."
+        }
+      },
+      async (request, reply) => {
+        const body = request.body ?? {};
+        const redirectUris = Array.isArray(body.redirect_uris)
+          ? body.redirect_uris.filter((uri): uri is string => typeof uri === "string")
+          : [];
+        try {
+          const registration = await mcp.selfRegisterClient({
+            ...(body.client_name === undefined ? {} : { clientName: body.client_name }),
+            redirectUris,
+            // Absent is not empty: RFC 6749 section 3.3 lets a client name no scope and take what
+            // the server decides, which the service reads as the whole registrable vocabulary.
+            ...(body.scope === undefined ? {} : { scopes: body.scope.split(" ").filter((name) => name !== "") })
+          });
+          // The identifier is not a credential -- it travels in a query string by design -- but the
+          // rest of this response says what a caller may ask for, and a cache that answered a
+          // second registration with the first one's identifier would hand two clients one row.
+          return noStore(reply).code(201).send(oauthRegistrationResponse(registration));
+        } catch (error) {
+          return refuse(reply, error, registrationAnswers);
+        }
       }
     );
   }

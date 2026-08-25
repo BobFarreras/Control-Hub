@@ -48,7 +48,11 @@ export function mcpConsentResponse(description: McpAuthorizationDescription) {
     redirectUri: description.redirectUri,
     scopes: description.scopes,
     resource: description.audience,
-    grantExpiresAt: description.grantExpiresAt
+    grantExpiresAt: description.grantExpiresAt,
+    // The screen warns when nobody in the organisation has ever seen this client before. It is the
+    // difference between approving something an administrator set up and approving something that
+    // introduced itself a moment ago, and only the store knows which of the two this is.
+    unclaimed: description.unclaimed
   };
 }
 
@@ -168,7 +172,15 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
       targetType: "mcp_client",
       targetId: description.clientId,
       outcome: decision === "approved" ? "success" : "denied",
-      metadata: { clientName: description.clientName, scopes: description.scopes.join(" ") }
+      metadata: {
+        clientName: description.clientName,
+        scopes: description.scopes.join(" "),
+        // The registration itself cannot be audited: it happens with nobody signed in, and an
+        // audit row belongs to a tenant. This is where it becomes visible instead -- approving an
+        // unclaimed client is the act that brought it into this tenant, and the trail should say
+        // that the client was one that introduced itself rather than one somebody registered.
+        selfRegistered: String(description.unclaimed)
+      }
     });
   }
 }

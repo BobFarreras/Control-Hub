@@ -3,6 +3,7 @@ import {
   authoriseMcpToolCall,
   grantableMcpScopes,
   mcpScopes,
+  registrableMcpScopes,
   verifyMcpToken,
   visibleMcpTools,
   type McpToolAuthority,
@@ -267,6 +268,24 @@ describe("which scopes a person may consent to", () => {
 
   it("never invents a scope outside the declared list", () => {
     for (const scope of grantableMcpScopes(["customers:read", "usage:read"])) {
+      expect(mcpScopes).toContain(scope);
+    }
+  });
+});
+
+describe("which scopes a client may record as its ceiling", () => {
+  it("is every scope that can be asked for, and listing is not one of them", () => {
+    // Derived from `mcpScopes` rather than written out again: a scope added there must appear in
+    // the registration form and in dynamic registration without anybody remembering to add it.
+    expect(registrableMcpScopes).toEqual(mcpScopes.filter((scope) => scope !== "mcp:tools.list"));
+    expect(registrableMcpScopes).not.toContain("mcp:tools.list");
+    expect(registrableMcpScopes.length).toBeGreaterThan(0);
+  });
+
+  it("offers nothing a consent could not negotiate", () => {
+    // A ceiling naming something outside the vocabulary would be a promise the tool decision
+    // refuses to keep, discovered at the first call rather than at registration.
+    for (const scope of registrableMcpScopes) {
       expect(mcpScopes).toContain(scope);
     }
   });

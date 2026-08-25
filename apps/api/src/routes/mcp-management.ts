@@ -5,7 +5,7 @@ import type {
   McpServiceAccountRecord
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
-import { grantableMcpScopes, mcpScopes, type TenantContext } from "@control-hub/domain";
+import { grantableMcpScopes, registrableMcpScopes, type TenantContext } from "@control-hub/domain";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ControlHubAuth } from "../auth.js";
 import { problemContentType, problemDetails } from "../problem.js";
@@ -93,16 +93,6 @@ export function mcpServiceAccountResponse(account: McpServiceAccountRecord) {
   };
 }
 
-/**
- * The scopes a client may be given as its ceiling.
- *
- * It travels with the listing so the screen that offers them does not carry a second copy of a
- * closed vocabulary -- a copy that would go stale the day a scope is added and be wrong in the
- * quietest way, by offering fewer choices than exist. `mcp:tools.list` is left out because a
- * ceiling records what may be withheld, and listing what you may call is never withheld.
- */
-const registrableScopes = mcpScopes.filter((scope) => scope !== "mcp:tools.list");
-
 export type McpManagementContext = {
   app: ControlHubApp;
   database: DatabaseClient;
@@ -164,7 +154,7 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
     "/api/v1/mcp/clients",
     listing(
       "The MCP clients registered here",
-      "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. Registration is manual: nothing self-registers, so this list is exactly what somebody decided to add."
+      "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. A client appears here either because somebody registered it by hand or because it registered itself and a person authorized it, which is the act that claims it for this tenant."
     ),
     async (request) => {
       const context = await authorise(request, { action: "mcp.clients.list", targetType: "mcp_client" });
@@ -175,7 +165,10 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
       });
       return {
         clients: (await mcp.listClients(context)).map(mcpClientResponse),
-        scopes: registrableScopes,
+        // The vocabulary travels with the listing so the screen that offers it does not keep a
+        // second copy of a closed list -- a copy that would go stale the day a scope is added, and
+        // be wrong in the quietest way possible, by offering fewer choices than exist.
+        scopes: registrableMcpScopes,
         // The address an agent is pointed at, taken from the same service that mints the tokens
         // rather than composed on a screen. A panel that guessed it would hand somebody an address
         // whose audience check fails, and the failure would arrive much later and read as a bug.

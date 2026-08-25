@@ -7208,19 +7208,41 @@ main {
   font-size: 13px;
   font-weight: 650;
 }
-.connect-warning {
+/* An explanation of how registration works, not a warning about it: bordered like the rest of the
+   panel rather than in the warning colour, which is reserved for what somebody has to act on. */
+.connect-notice {
   display: flex;
   align-items: start;
   gap: 8px;
   margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 13px;
+}
+.connect-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--muted);
+}
+/* The consent screen's one warning, and the only place on it painted in the warning colour: this
+   client introduced itself a moment ago and approving it is what lets it in. */
+.consent-warning {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin: 0 0 20px;
   padding: 12px 14px;
   border: 1px solid var(--warning);
   border-radius: 6px;
   background: var(--warning-subtle);
   color: var(--text);
   font-size: 13px;
+  text-align: start;
 }
-.connect-warning svg {
+.consent-warning svg {
   flex: none;
   margin-top: 1px;
   color: var(--warning);

@@ -1,4 +1,4 @@
-import { mcpScopes, type McpScope, type TenantContext } from "@control-hub/domain";
+import { mcpScopes, registrableMcpScopes, type McpScope, type TenantContext } from "@control-hub/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   McpOauthError,
@@ -60,6 +60,8 @@ type Recorded = {
     permissions: readonly string[];
     secretHash: string;
   }>;
+  selfRegistered: Array<{ name: string; redirectUris: readonly string[]; maxScopes: readonly McpScope[] }>;
+  claims: Array<{ clientId: string; tenantId: string }>;
   rotatedSecrets: Array<{ id: string; secretHash: string; previousExpiresAt: Date }>;
   listedGrantsFor: string[];
   revokedGrants: Array<{ tenantId: string; grantId: string; at: Date; byMembershipId: string | null }>;
@@ -86,8 +88,18 @@ const claim: McpAuthorizationCodeClaim = {
   audience: `${issuer}/mcp`
 };
 
+/** The same client before anybody has claimed it: registered itself, belongs to no tenant. */
+const unclaimedClient: McpClientResolution = { ...client, tenantId: null };
+
 type Overrides = {
   client?: McpClientResolution | null;
+  /**
+   * Successive answers from `resolveClient`, for the one case where the row changes underneath: a
+   * claim that lost a race looks again, and what it finds is the point of the test.
+   */
+  clientSequence?: Array<McpClientResolution | null>;
+  /** False stands for the claim that lost: somebody else took the client first. */
+  claimed?: boolean;
   claim?: McpAuthorizationCodeClaim | null;
   refresh?: McpRefreshResolution | null;
   access?: { tokenId: string; tenantId: string } | null;
@@ -111,13 +123,30 @@ const build = (overrides: Overrides = {}) => {
     revokedAccessTokens: [],
     createdClients: [],
     createdAccounts: [],
+    selfRegistered: [],
+    claims: [],
     rotatedSecrets: [],
     listedGrantsFor: [],
     revokedGrants: []
   };
+  const sequence = [...(overrides.clientSequence ?? [])];
   const repository = {
-    resolveClient: (clientId: string) =>
-      Promise.resolve(overrides.client === undefined ? (clientId === "public-app" ? client : null) : overrides.client),
+    resolveClient: (clientId: string) => {
+      // The last answer stands once the sequence runs out, so a test only has to describe the
+      // reads whose answers differ.
+      if (sequence.length > 0) return Promise.resolve(sequence.length === 1 ? sequence[0]! : sequence.shift()!);
+      return Promise.resolve(
+        overrides.client === undefined ? (clientId === "public-app" ? client : null) : overrides.client
+      );
+    },
+    registerSelfClient: (input: Recorded["selfRegistered"][number]) => {
+      recorded.selfRegistered.push(input);
+      return Promise.resolve({ id: "client-row-11", clientId: "self-registered-1" });
+    },
+    claimClient: (clientId: string, tenantId: string) => {
+      recorded.claims.push({ clientId, tenantId });
+      return Promise.resolve(overrides.claimed ?? true);
+    },
     createAuthorizationRequest: (ctx: { tenantId: string }, input: Recorded["requests"][number]) => {
       recorded.requests.push({ ...input, tenantId: ctx.tenantId });
       return Promise.resolve();
@@ -230,6 +259,14 @@ describe("what the metadata documents say", () => {
     expect(metadata.authorization_endpoint).toBe("https://hub.test/api/v1/mcp/oauth/authorize");
     expect(metadata.token_endpoint).toBe("https://hub.test/api/v1/mcp/oauth/token");
     expect(metadata.revocation_endpoint).toBe("https://hub.test/api/v1/mcp/oauth/revoke");
+  });
+
+  it("advertises where a client registers itself", () => {
+    // RFC 7591 section 3. A client that cannot find this endpoint in the metadata does not go
+    // looking for it -- it reports that the server does not support registration and stops.
+    expect(service.authorizationServerMetadata().registration_endpoint).toBe(
+      "https://hub.test/api/v1/mcp/oauth/register"
+    );
   });
 });
 
@@ -652,6 +689,160 @@ describe("registering a client", () => {
     // withheld -- and a client with nothing else can discover tools it may not call.
     const { service } = build();
     expect(await denialOf(() => register(service, { maxScopes: ["mcp:tools.list"] }))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+});
+
+describe("a client registering itself", () => {
+  const register = (service: McpOauthService, overrides: Record<string, unknown> = {}) =>
+    service.selfRegisterClient({
+      clientName: "  Claude Code  ",
+      redirectUris: ["http://127.0.0.1:51763/callback"],
+      ...overrides
+    });
+
+  it("writes a public client with no tenant and no secret, and says what it registered as", async () => {
+    // No `TenantContext` anywhere in this call, which is the property: the caller has not signed
+    // in, so there is nobody to be. The row is claimed later, by whoever authorizes it.
+    const { service, recorded } = build();
+    const registration = await register(service);
+    expect(registration).toEqual({
+      clientId: "self-registered-1",
+      clientName: "Claude Code",
+      redirectUris: ["http://127.0.0.1:51763/callback"],
+      scopes: [...registrableMcpScopes],
+      issuedAt: now
+    });
+    expect(recorded.selfRegistered).toEqual([
+      {
+        name: "Claude Code",
+        redirectUris: ["http://127.0.0.1:51763/callback"],
+        maxScopes: [...registrableMcpScopes]
+      }
+    ]);
+    // Nothing that could be presented as a credential. A secret minted for an unauthenticated
+    // caller is a secret minted for whoever asked; PKCE is what proves this client later.
+    expect(JSON.stringify(registration)).not.toContain("chm_");
+  });
+
+  it("asking for no scope in particular records the whole registrable vocabulary as the ceiling", async () => {
+    // RFC 6749 section 3.3, and it grants nothing: a ceiling is what may be asked for, and what is
+    // given is still the intersection with the permissions of the person who consents.
+    const { service, recorded } = build();
+    await register(service, { scopes: undefined });
+    expect(recorded.selfRegistered[0]!.maxScopes).toEqual([...registrableMcpScopes]);
+    expect(recorded.selfRegistered[0]!.maxScopes).not.toContain("mcp:tools.list");
+  });
+
+  it("drops listing from a ceiling that names it, and refuses a ceiling that is only listing", async () => {
+    const { service, recorded } = build();
+    await register(service, { scopes: ["mcp:tools.list", "crm.read"] });
+    expect(recorded.selfRegistered[0]!.maxScopes).toEqual(["crm.read"]);
+    expect(await denialOf(() => register(service, { scopes: ["mcp:tools.list"] }))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("refuses a scope this server has never heard of instead of quietly dropping it", async () => {
+    // A client that believes it registered for something should learn now, not at the first call
+    // that fails for a reason it cannot see.
+    const { service } = build();
+    expect(await denialOf(() => register(service, { scopes: ["billing.write"] }))).toBe("MCP_SCOPE_UNAVAILABLE");
+  });
+
+  it("holds an open endpoint to the same address rule as a hand-registered client", async () => {
+    // The one place a registration could nominate somewhere an authorization code should never
+    // travel. https or a literal loopback address, exactly as `registerClient` demands.
+    const { service } = build();
+    expect(await denialOf(() => register(service, { redirectUris: ["http://agent.example.com/cb"] }))).toBe(
+      "MCP_REDIRECT_URI_MISMATCH"
+    );
+    expect(await denialOf(() => register(service, { redirectUris: [] }))).toBe("MCP_REQUEST_INVALID");
+    expect(await denialOf(() => register(service, { redirectUris: Array(6).fill("https://a.test/cb") }))).toBe(
+      "MCP_REQUEST_INVALID"
+    );
+  });
+
+  it("requires a name, although RFC 7591 does not", async () => {
+    // The one place this server is stricter than the specification, and the consent screen is the
+    // reason: asking somebody to approve an unnamed client is a phishing page we would be hosting.
+    const { service } = build();
+    expect(await denialOf(() => register(service, { clientName: undefined }))).toBe("MCP_REQUEST_INVALID");
+    expect(await denialOf(() => register(service, { clientName: "   " }))).toBe("MCP_REQUEST_INVALID");
+  });
+});
+
+describe("claiming a client that registered itself", () => {
+  const approve = (service: McpOauthService) =>
+    service.approveAuthorization(context(tenantA, ["customers:read"]), {
+      clientId: "public-app",
+      redirectUri: "http://127.0.0.1:51763/callback",
+      scopes: ["crm.read"],
+      codeChallenge: "a".repeat(43),
+      codeChallengeMethod: "S256",
+      resource
+    });
+
+  const describeIt = (service: McpOauthService) =>
+    service.describeAuthorization(context(tenantA, ["customers:read"]), {
+      clientId: "public-app",
+      redirectUri: "http://127.0.0.1:51763/callback",
+      scopes: ["crm.read"],
+      codeChallenge: "a".repeat(43),
+      codeChallengeMethod: "S256",
+      resource
+    });
+
+  it("lets an unclaimed client be authorized at all", async () => {
+    // A client belonging to no tenant is not another tenant's client. Refusing it here is what
+    // made dynamic registration useless: nothing that registered itself could ever be approved.
+    const { service } = build({ client: unclaimedClient });
+    await expect(approve(service)).resolves.toMatchObject({ expiresAt: new Date(now.getTime() + 60_000) });
+  });
+
+  it("claims it before the authorization request is written, not after", async () => {
+    // The request references the client by `(tenant_id, id)`, and a client with no tenant satisfies
+    // no such reference. Claiming afterwards would fail on a foreign key, having minted a code.
+    const { service, recorded } = build({ client: unclaimedClient });
+    await approve(service);
+    expect(recorded.claims).toEqual([{ clientId: "public-app", tenantId: tenantA }]);
+    expect(recorded.requests).toHaveLength(1);
+  });
+
+  it("does not claim a client that already belongs to the tenant", async () => {
+    const { service, recorded } = build();
+    await approve(service);
+    expect(recorded.claims).toEqual([]);
+  });
+
+  it("describing the request never claims anything", async () => {
+    // Reading what an agent wants is not the act that binds it to a tenant. A screen somebody
+    // opened and closed must leave the store exactly as it found it.
+    const { service, recorded } = build({ client: unclaimedClient });
+    const description = await describeIt(service);
+    expect(description.unclaimed).toBe(true);
+    expect(recorded.claims).toEqual([]);
+  });
+
+  it("says on the description when the client was registered by somebody in the tenant", async () => {
+    const { service } = build();
+    await expect(describeIt(service)).resolves.toMatchObject({ unclaimed: false });
+  });
+
+  it("refuses the approval that lost the race to another tenant", async () => {
+    // Two tenants authorizing one registration at the same instant: the update is conditional, so
+    // exactly one wins, and the loser is now looking at somebody else's client.
+    const { service, recorded } = build({
+      claimed: false,
+      clientSequence: [unclaimedClient, { ...client, tenantId: tenantB }]
+    });
+    expect(await denialOf(() => approve(service))).toBe("MCP_CLIENT_UNKNOWN");
+    expect(recorded.requests).toEqual([]);
+  });
+
+  it("lets through the approval that lost the race to its own tenant", async () => {
+    // Two sessions of one tenant racing is not a conflict: the client ended up where this approval
+    // was going to put it, and refusing would be an error message about nothing.
+    const { service, recorded } = build({ claimed: false, clientSequence: [unclaimedClient, client] });
+    await expect(approve(service)).resolves.toMatchObject({ code: expect.any(String) as unknown as string });
+    expect(recorded.requests).toHaveLength(1);
   });
 });
 

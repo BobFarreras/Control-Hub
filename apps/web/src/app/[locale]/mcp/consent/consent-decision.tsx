@@ -1,7 +1,7 @@
 "use client";
 
 import { getMcpDictionary, mcpErrorMessage, mcpScopeLabel, type Locale } from "@control-hub/i18n";
-import { Check, Eye, LoaderCircle, ShieldCheck, X } from "lucide-react";
+import { Check, Eye, LoaderCircle, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import type { McpConsentRequest } from "@/lib/api-types";
 
@@ -65,6 +65,20 @@ export function ConsentDecision({
         <ShieldCheck size={28} />
         <h1>{t.title}</h1>
         <p className="consent-subtitle">{t.subtitle}</p>
+
+        {/*
+          Placed above the facts rather than below the buttons, because it changes how the facts
+          should be read. An administrator registered client was vetted by somebody in the
+          organisation before it ever reached this screen; one that registered itself was vetted by
+          nobody, and approving it is both the consent and the act that binds it to the tenant. A
+          reader who was not expecting an agent to connect has everything they need to stop here.
+        */}
+        {description.unclaimed && (
+          <p className="consent-warning" role="note">
+            <TriangleAlert size={17} />
+            <span>{t.selfRegisteredWarning}</span>
+          </p>
+        )}
 
         <dl className="consent-facts">
           <div>

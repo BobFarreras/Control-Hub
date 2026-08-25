@@ -22,6 +22,7 @@ import {
   mcpScopes,
   negotiateMcpScopes,
   refreshTokenVerdict,
+  registrableMcpScopes,
   type McpGrantStatus,
   type McpDenialCode,
   type McpOauthDenialCode,
@@ -83,7 +84,16 @@ export type McpGrantRecord = {
 /** A registered client, as `/authorize` finds it: by name, before any tenant is known. */
 export type McpClientResolution = {
   readonly id: string;
-  readonly tenantId: string;
+  /**
+   * Null for a client that registered itself and nobody has claimed.
+   *
+   * A registration under RFC 7591 arrives before anybody has signed in, so there is no tenant to
+   * write; the first person who authorizes it claims it for theirs. Until then the row belongs to
+   * nobody, which is enforced rather than promised -- row level security compares `tenant_id` to
+   * the session's tenant and a null compares to nothing, so an unclaimed client is invisible to
+   * every tenant-scoped query and cannot be consented to at all.
+   */
+  readonly tenantId: string | null;
   /**
    * The name it was registered under, which is the only name the consent screen may show.
    *
@@ -128,6 +138,30 @@ export type McpAuthorizationDescription = {
   readonly audience: string;
   /** When the consent would lapse, so nobody approves something open-ended by accident. */
   readonly grantExpiresAt: Date;
+  /**
+   * Whether this client registered itself and nobody has claimed it yet.
+   *
+   * The screen says so, because it changes what approving means. A client an administrator entered
+   * by hand was vetted by somebody in the organisation before it ever appeared here; one that
+   * registered itself was vetted by nobody, and this approval is both a consent and the act that
+   * binds it to the tenant. A reader who is not expecting an agent to connect should stop here.
+   */
+  readonly unclaimed: boolean;
+};
+
+/**
+ * What a client learns about itself after registering, in this codebase's own words.
+ *
+ * RFC 7591's names are put on it at the edge, as the token response's are: the wire speaks OAuth
+ * and the inside speaks English. No secret appears here because a self-registered client is never
+ * given one.
+ */
+export type McpSelfRegistration = {
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly redirectUris: readonly string[];
+  readonly scopes: readonly McpScope[];
+  readonly issuedAt: Date;
 };
 
 export type McpAuthorizationCodeClaim = {
@@ -228,6 +262,22 @@ export type McpOauthRepository = {
   ): Promise<McpClientRecord>;
   listClients(context: TenantContext): Promise<readonly McpClientRecord[]>;
   deleteClient(context: TenantContext, clientId: string): Promise<boolean>;
+
+  /**
+   * Writes a client that belongs to nobody yet, for a caller that has not signed in.
+   *
+   * No `TenantContext` and no secret, and neither omission is an oversight: there is no tenant at
+   * registration time, and a secret handed to an unauthenticated caller is a secret handed to
+   * whoever asked. A self-registered client is public and proves itself with PKCE.
+   */
+  registerSelfClient(input: {
+    readonly name: string;
+    readonly redirectUris: readonly string[];
+    readonly maxScopes: readonly McpScope[];
+  }): Promise<{ id: string; clientId: string }>;
+
+  /** Binds an unclaimed client to a tenant. False if it was already claimed, by anyone. */
+  claimClient(clientId: string, tenantId: string): Promise<boolean>;
 
   createAuthorizationRequest(
     context: TenantContext,
@@ -439,6 +489,8 @@ export type McpAuthorizationServerMetadata = {
   readonly authorization_endpoint: string;
   readonly token_endpoint: string;
   readonly revocation_endpoint: string;
+  /** RFC 7591 section 3. Advertised because a client that cannot find it cannot connect at all. */
+  readonly registration_endpoint: string;
   readonly scopes_supported: readonly string[];
   readonly response_types_supported: readonly string[];
   readonly grant_types_supported: readonly string[];
@@ -506,6 +558,7 @@ export class McpOauthService {
       authorization_endpoint: `${this.issuer}/api/v1/mcp/oauth/authorize`,
       token_endpoint: `${this.issuer}/api/v1/mcp/oauth/token`,
       revocation_endpoint: `${this.issuer}/api/v1/mcp/oauth/revoke`,
+      registration_endpoint: `${this.issuer}/api/v1/mcp/oauth/register`,
       scopes_supported: [...mcpScopes],
       response_types_supported: ["code"],
       // No implicit, no password, no client credentials. A grant type that is neither advertised
@@ -535,6 +588,10 @@ export class McpOauthService {
     }
   ): Promise<{ code: string; expiresAt: Date }> {
     const { client, granted } = await this.checkAuthorization(context, input);
+    // Before the request is written, never after: an authorization request references the client
+    // by `(tenant_id, id)`, and a client with no tenant satisfies no such reference. This is the
+    // moment a self-registered client stops belonging to nobody.
+    if (client.tenantId === null) await this.claimClient(context, input.clientId);
 
     const code = this.mint("code");
     const expiresAt = mcpExpiry("authorizationCode", this.clock());
@@ -604,8 +661,26 @@ export class McpOauthService {
       // can give is shown the narrower list, so nobody approves a sentence that is not true.
       scopes: granted,
       audience: this.audience,
-      grantExpiresAt: mcpExpiry("grant", this.clock())
+      grantExpiresAt: mcpExpiry("grant", this.clock()),
+      // Describing never claims. Reading what an agent wants is not the act that binds it to a
+      // tenant, and a screen somebody opened and closed must leave the store as it found it.
+      unclaimed: client.tenantId === null
     };
+  }
+
+  /**
+   * The claim, and what to do when it loses.
+   *
+   * `claimClient` is a conditional update, so two people approving the same registration at the
+   * same instant produce exactly one winner. The loser looks again rather than failing outright:
+   * if the client is now theirs, two sessions of one tenant raced and both may proceed; if it
+   * belongs to somebody else, this request is refused with the answer a stranger's client always
+   * gets, because that is what it now is.
+   */
+  private async claimClient(context: TenantContext, clientId: string): Promise<void> {
+    if (await this.repository.claimClient(clientId, context.tenantId)) return;
+    const current = await this.repository.resolveClient(clientId);
+    if (!current || current.tenantId !== context.tenantId) throw new McpOauthError("MCP_CLIENT_UNKNOWN");
   }
 
   /**
@@ -822,6 +897,61 @@ export class McpOauthService {
     return { client, secret };
   }
 
+  /**
+   * A client registering itself, with nobody signed in (RFC 7591).
+   *
+   * Every assistant that speaks MCP begins here, and none of them offers a field to paste a
+   * `client_id` into. Without this endpoint the honest instruction was "ask an administrator to
+   * register your assistant by hand, then find somewhere to put the identifier" -- which no client
+   * has anywhere to put. The registration is therefore open, and everything that would normally be
+   * decided by knowing who is asking is decided by constraint instead:
+   *
+   *   - the client is public and gets no secret, because a secret handed to an unauthenticated
+   *     caller is a secret handed to whoever asked. PKCE is what proves it later;
+   *   - the addresses it may be sent back to must pass the same rule a hand-registered client's
+   *     do -- https, or a literal loopback address -- so a registration cannot nominate somewhere
+   *     a code should never travel;
+   *   - the ceiling is the scopes that can be asked for at all, which grants nothing: what is
+   *     actually granted is the intersection with the permissions of the person who consents;
+   *   - the row belongs to no tenant until somebody authorizes it, so registering reveals nothing
+   *     about this installation and reaches nobody's data.
+   *
+   * A name is required although RFC 7591 makes it optional, and this is the one place we are
+   * stricter than the specification. The name is what the consent screen shows, and a screen that
+   * asks a person to approve an unnamed client is a phishing page we would be hosting ourselves.
+   */
+  async selfRegisterClient(input: {
+    readonly clientName?: string;
+    readonly redirectUris: readonly string[];
+    readonly scopes?: readonly string[];
+  }): Promise<McpSelfRegistration> {
+    const name = (input.clientName ?? "").trim();
+    if (name.length === 0 || name.length > 120) throw new McpOauthError("MCP_REQUEST_INVALID");
+    if (input.redirectUris.length === 0 || input.redirectUris.length > 5)
+      throw new McpOauthError("MCP_REQUEST_INVALID");
+    for (const uri of input.redirectUris) {
+      if (!isRegistrableRedirect(uri)) throw new McpOauthError("MCP_REDIRECT_URI_MISMATCH");
+    }
+
+    // Asking for nothing in particular is asking for everything that can be asked for -- RFC 6749
+    // section 3.3 -- and the ceiling grants none of it. An unknown name is refused rather than
+    // dropped: a client that believes it registered for a scope this server has never heard of
+    // should learn that now, not at the first call that fails.
+    const requested = input.scopes ?? registrableMcpScopes;
+    const ceiling = requested.filter((scope) => scope !== "mcp:tools.list");
+    const known = ceiling.map((scope) => mcpScopes.find((candidate) => candidate === scope));
+    if (known.length === 0 || known.some((scope) => scope === undefined))
+      throw new McpOauthError("MCP_SCOPE_UNAVAILABLE");
+
+    const scopes = known as McpScope[];
+    const { clientId } = await this.repository.registerSelfClient({
+      name,
+      redirectUris: input.redirectUris,
+      maxScopes: scopes
+    });
+    return { clientId, clientName: name, redirectUris: input.redirectUris, scopes, issuedAt: this.clock() };
+  }
+
   listClients(context: TenantContext): Promise<readonly McpClientRecord[]> {
     return this.repository.listClients(context);
   }
@@ -990,7 +1120,12 @@ export class McpOauthService {
     const client = await this.repository.resolveClient(clientId);
     // A client belonging to another tenant is answered exactly like one that does not exist.
     // Telling the two apart would turn this endpoint into a directory of the installation.
-    if (!client || (tenantId !== undefined && client.tenantId !== tenantId))
+    //
+    // A client belonging to no tenant is let through, and that is the whole of what dynamic
+    // registration adds here: it has registered but nobody has claimed it, so it is not another
+    // tenant's -- it is not yet anyone's. What it may then do is decided by the same permission
+    // and scope negotiation as any other client; the only thing being allowed is being seen.
+    if (!client || (tenantId !== undefined && client.tenantId !== null && client.tenantId !== tenantId))
       throw new McpOauthError("MCP_CLIENT_UNKNOWN");
     if (client.status !== "active") throw new McpOauthError("MCP_CLIENT_SUSPENDED");
     return client;
