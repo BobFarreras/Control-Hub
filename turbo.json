@@ -3,6 +3,8 @@
   "ui": "tui",
   "globalEnv": [
     "NODE_ENV",
+    "WEB_PORT",
+    "VERIFY_WEB_PORT",
     "LOG_LEVEL",
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",

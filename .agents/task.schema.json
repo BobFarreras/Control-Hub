@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control-hub.local/schemas/agent-task.json",
+  "title": "Control Hub agent task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "agent", "branch", "baseRef", "scope", "protectedResources"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "pattern": "^[A-Z][A-Z0-9]+-[0-9]+$" },
+    "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "branch": { "type": "string", "pattern": "^agent/[a-z][a-z0-9-]*/[a-z0-9-]+$" },
+    "baseRef": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "protectedResources": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}
