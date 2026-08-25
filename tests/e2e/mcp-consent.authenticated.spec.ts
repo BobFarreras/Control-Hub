@@ -69,9 +69,12 @@ function pkce() {
  *
  * The surface is behind the `mcp` flag, so an environment that has not turned it on serves no
  * discovery document at all. Skipping there is the same choice the rest of this suite makes about
- * a database nobody seeded: a wall of failures about a flag is not a finding. The flag is not on
- * in the workflow that runs this suite, which is a gap in coverage and not in the product; it is
- * written down in `docs/development/multi-agent-workspaces.md`.
+ * a database nobody seeded: a wall of failures about a flag is not a finding.
+ *
+ * This is not how the flow is meant to go unverified, though. The workflow that runs this suite
+ * turns the flag on, in the same commit that added this file, and `docs/development/agent-workspaces.md`
+ * says why that has to be the habit: a test behind a flag nobody enabled at CI exists only on the
+ * machine of whoever wrote it.
  */
 async function resourceIdentifier(request: APIRequestContext): Promise<string> {
   const response = await request.get(`${api}/.well-known/oauth-protected-resource`);

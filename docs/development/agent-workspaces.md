@@ -197,13 +197,21 @@ escriure'ls val mes que arreglar-ne un a mitges dins d'una branca que no els toc
    la fase 10 hi consta perque el commit va entrar abans que el workspace existis, no perque hi
    hagi cap mecanisme que ho resolgui.
 
-6. **Els flags de CI no segueixen els del workspace.** `agent:provision` genera un `.env` amb tots
-   els flags encesos; el job autenticat de CI n'encen cinc. Una pantalla darrere un flag nou es
-   verifica localment i no la verifica ningu al pipeline: la prova de consentiment MCP d'aquesta
-   fase se salta a CI per aquest motiu, i deixar-ho escrit es tot el que pot fer una branca que no
-   toca `.github/workflows/**`.
-   *Remei:* afegir `mcp` a `CONTROL_HUB_FLAGS` i `MCP_ISSUER: http://127.0.0.1:4000` al job
-   `authenticated-end-to-end`.
+6. **Els flags de CI no segueixen els de les proves.** `agent:provision` genera un `.env` amb tots
+   els flags encesos; el job autenticat de CI n'encen cinc. Una pantalla darrere un flag que aquell
+   job no encen no existeix per a la suite, i la prova que la condueix no la verifica ningu.
+
+   Amb `mcp` aixo ja esta arreglat: el job l'encen, amb `MCP_ISSUER`, i la prova de consentiment
+   d'aquesta fase hi corre de debo. Pero la deriva no era hipotetica ni era nomes nostra. Amb els
+   flags exactes de CI i sense `mcp` enlloc,
+   `support-mailbox.authenticated.spec.ts` falla: la pantalla que condueix es darrere el flag
+   `mail`, que aquell job no encen, i per tant espera per sempre una peticio que no arriba a
+   sortir. Es una prova que no pot passar a l'entorn que li donen, i ho era abans d'aquesta branca.
+   *Remei:* afegir `mail` a `CONTROL_HUB_FLAGS` del job `authenticated-end-to-end`, i mirar els
+   flags d'aquell job cada cop que una prova nova depengui d'un.
+
+   La regla general: qui afegeix una prova darrere un flag ha d'encendre'l a CI **al mateix
+   commit**, o la prova nomes existeix a la maquina de qui la va escriure.
 
 7. **`git worktree list` acumula entrades `prunable`.** N'hi ha una avui, d'un directori que ja no
    existeix, i `destroy` no s'hi pot fer servir perque exigeix un worktree present. Un

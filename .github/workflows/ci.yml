@@ -273,7 +273,15 @@ jobs:
       # so it exercises the deployment that cannot hold a secret.
       # `infrastructure` opens the module infrastructure.authenticated.spec.ts drives; with it
       # closed there is no route, no menu entry and no screen, which is the point of the flag.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs
+      # `mcp` opens the agent surface. Without it there is no discovery document, no
+      # registration endpoint and no consent screen, and mcp-consent.authenticated.spec.ts
+      # skips itself rather than failing about a flag -- which is a suite that says nothing
+      # about the one flow in this product a person walks with an agent on the other side.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs,mcp
+      # The bare origin an MCP client reaches this API at, and so the issuer it announces. Not
+      # APP_ORIGIN, which is the web app, and never with a path: a client compares this string
+      # to the one in the discovery document.
+      MCP_ISSUER: http://127.0.0.1:4000
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
