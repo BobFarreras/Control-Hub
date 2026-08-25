@@ -123,6 +123,15 @@ La fase es parteix en dos increments que no comparteixen dependencia:
   La migracio `0051_mcp_refresh_lookup.sql` eixampla `lookup_mcp_refresh_token` amb el client i els
   scopes del grant. Canvia la forma del resultat, aixi que la funcio es recrea; no toca cap taula,
   cap columna ni cap fila.
+- **10.1-F3 — prefixos i resource indicators.** Implementat: cada credencial que s'encunya diu
+  que es a les primeres lletres (`chm_at_`, `chm_rt_`, `chm_sa_` i `chm_ac_` per al codi). El
+  prefix forma part del valor, aixi que tambe es dins del hash, i un token enganxat a un commit fa
+  saltar gitleaks abans que ho vegi ningu. El parametre `resource` de la RFC 8707 **es obligatori**
+  a `/authorize`, a `/token` i al refresh: si en falta es `MCP_REQUEST_INVALID` i si en nomena un
+  altre es `MCP_AUDIENCE_INVALID`. `isRegistrableRedirect` al domini decideix quines adreces es
+  poden desar com a redirect, i una prova comprova que coincideix amb el que el flux acceptara
+  despres — una adreca que el formulari accepta i el flux refusa es el pitjor lloc on descobrir
+  un desacord.
 - La resta de la fase continua sense implementar: falten els service accounts com a cas d'us, les
   rutes HTTP, el transport `/mcp`, l'auditoria per crida i la interficie.
 

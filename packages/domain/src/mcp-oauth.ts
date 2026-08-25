@@ -103,6 +103,24 @@ export function matchesRegisteredRedirect(requested: string, registered: readonl
   return false;
 }
 
+/**
+ * Whether an address may be written down as a client's redirect in the first place.
+ *
+ * `matchesRegisteredRedirect` answers the question at the moment a code would be handed over, when
+ * refusing means a client that mysteriously does not work. This answers it while somebody is typing
+ * it into a form, where the refusal is a sentence they can act on. The two agree on purpose: an
+ * address this function accepts is one that function can match, and `localhost` fails both.
+ */
+export function isRegistrableRedirect(uri: string): boolean {
+  const url = parse(uri);
+  if (!url) return false;
+  // A fragment never survives the round trip and a query would have to be reproduced exactly, so
+  // both are refused rather than silently ignored later.
+  if (url.hash !== "" || url.search !== "") return false;
+  if (url.protocol === "https:") return true;
+  return url.protocol === "http:" && loopbackHosts.has(url.host.replace(/:\d+$/, ""));
+}
+
 export type McpScopeRequest = {
   /** Exactly what the client asked for. Unknown names are refused rather than dropped. */
   readonly requested: readonly string[];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isRegistrableRedirect,
   matchesRegisteredRedirect,
   mcpExpiry,
   mcpLifetimes,
@@ -170,6 +171,34 @@ describe("what to do when a refresh token comes back", () => {
         action: "deny",
         code: "MCP_GRANT_REVOKED"
       });
+    }
+  });
+});
+
+describe("which redirect may be registered at all", () => {
+  it("accepts https anywhere and http only on the literal loopback", () => {
+    expect(isRegistrableRedirect("https://agent.example.com/oauth/callback")).toBe(true);
+    expect(isRegistrableRedirect("http://127.0.0.1/callback")).toBe(true);
+    expect(isRegistrableRedirect("http://127.0.0.1:51763/callback")).toBe(true);
+    expect(isRegistrableRedirect("http://[::1]/cb")).toBe(true);
+    expect(isRegistrableRedirect("http://agent.example.com/cb")).toBe(false);
+    expect(isRegistrableRedirect("http://localhost/cb")).toBe(false);
+  });
+
+  it("refuses what a round trip would not reproduce, and what is not a URI", () => {
+    expect(isRegistrableRedirect("https://agent.example.com/cb#part")).toBe(false);
+    expect(isRegistrableRedirect("https://agent.example.com/cb?next=/")).toBe(false);
+    expect(isRegistrableRedirect("https://user:pw@agent.example.com/cb")).toBe(false);
+    expect(isRegistrableRedirect("not a uri")).toBe(false);
+    expect(isRegistrableRedirect("ftp://agent.example.com/cb")).toBe(false);
+  });
+
+  it("agrees with the matcher: anything registrable can be matched back", () => {
+    // The two rules drifting apart would mean an address the form accepts and the flow refuses,
+    // which is the worst place to discover a disagreement.
+    for (const uri of ["https://agent.example.com/cb", "http://127.0.0.1/cb", "http://[::1]/cb"]) {
+      expect(isRegistrableRedirect(uri), uri).toBe(true);
+      expect(matchesRegisteredRedirect(uri, [uri]), uri).toBe(true);
     }
   });
 });

@@ -21,6 +21,7 @@ import {
   negotiateMcpScopes,
   refreshTokenVerdict,
   type McpGrantStatus,
+  type McpDenialCode,
   type McpOauthDenialCode,
   type McpScope,
   type TenantContext
@@ -318,10 +319,27 @@ export type McpCrypto = {
 };
 
 export class McpOauthError extends Error {
-  constructor(public readonly code: McpOauthDenialCode) {
+  constructor(public readonly code: McpOauthDenialCode | McpDenialCode) {
     super(code);
   }
 }
+
+/**
+ * The prefix each kind of credential carries.
+ *
+ * A secret scanner can only stop what it recognises, so every credential this server mints says
+ * what it is in its first characters: `chm_at_` an access token, `chm_rt_` a refresh token,
+ * `chm_sa_` a service account secret, `chm_ac_` an authorization code. The prefix is part of the
+ * value, so it is inside the hash as well, and a token pasted into a commit trips gitleaks before
+ * a human notices.
+ */
+const mcpTokenPrefixes = {
+  accessToken: "chm_at_",
+  refreshToken: "chm_rt_",
+  serviceAccount: "chm_sa_",
+  code: "chm_ac_"
+} as const;
+type McpTokenKind = keyof typeof mcpTokenPrefixes;
 
 /** What a client receives from the token endpoint. The only moment these values exist in the clear. */
 export type McpTokenIssue = {
@@ -378,6 +396,22 @@ export class McpOauthService {
     this.clock = deps.clock ?? (() => new Date());
   }
 
+  private mint(kind: McpTokenKind): string {
+    return `${mcpTokenPrefixes[kind]}${this.crypto.mintToken()}`;
+  }
+
+  /**
+   * The `resource` of RFC 8707, checked against the one resource this server has.
+   *
+   * A client that asks for a different audience is refused rather than quietly given a token for
+   * ours: the day there is a second resource, the request that meant one of them must not have
+   * silently meant the other all along.
+   */
+  private requireResource(resource: string | undefined): void {
+    if (resource === undefined) throw new McpOauthError("MCP_REQUEST_INVALID");
+    if (resource !== this.audience) throw new McpOauthError("MCP_AUDIENCE_INVALID");
+  }
+
   /** The one resource this server protects. Compared exactly, so it is built in exactly one place. */
   get audience(): string {
     return `${this.issuer}/mcp`;
@@ -422,8 +456,11 @@ export class McpOauthService {
       readonly scopes: readonly string[];
       readonly codeChallenge: string;
       readonly codeChallengeMethod: string;
+      /** RFC 8707. Required: a client that names no resource has not asked for this one. */
+      readonly resource: string | undefined;
     }
   ): Promise<{ code: string; expiresAt: Date }> {
+    this.requireResource(input.resource);
     const client = await this.requireClient(input.clientId, context.tenantId);
     // OAuth 2.1 has no `plain`, and a challenge shorter than 43 characters is not the base64url
     // SHA-256 of anything. Both are refused before the redirect is even looked at.
@@ -440,7 +477,7 @@ export class McpOauthService {
     });
     if ("code" in verdict) throw new McpOauthError(verdict.code);
 
-    const code = this.crypto.mintToken();
+    const code = this.mint("code");
     const expiresAt = mcpExpiry("authorizationCode", this.clock());
     await this.repository.createAuthorizationRequest(context, {
       clientId: client.id,
@@ -467,7 +504,9 @@ export class McpOauthService {
     readonly code: string;
     readonly codeVerifier: string;
     readonly redirectUri: string;
+    readonly resource: string | undefined;
   }): Promise<McpTokenIssue> {
+    this.requireResource(input.resource);
     const client = await this.requireClient(input.clientId);
     this.authenticateClient(client, input.clientSecret);
 
@@ -502,7 +541,9 @@ export class McpOauthService {
     readonly clientId: string;
     readonly clientSecret?: string;
     readonly refreshToken: string;
+    readonly resource: string | undefined;
   }): Promise<McpTokenIssue> {
+    this.requireResource(input.resource);
     const client = await this.requireClient(input.clientId);
     this.authenticateClient(client, input.clientSecret);
 
@@ -521,7 +562,7 @@ export class McpOauthService {
     }
     if (verdict.action === "deny") throw new McpOauthError(verdict.code);
 
-    const refreshToken = this.crypto.mintToken();
+    const refreshToken = this.mint("refreshToken");
     const rotated = await this.repository.rotateRefreshToken(scope, {
       tokenId: record.tokenId,
       grantId: record.grantId,
@@ -534,7 +575,7 @@ export class McpOauthService {
     // leaves nothing to rotate. Minting a pair anyway would put two live lineages on one consent.
     if (rotated === null) throw new McpOauthError("MCP_REFRESH_INVALID");
 
-    const accessToken = this.crypto.mintToken();
+    const accessToken = this.mint("accessToken");
     await this.repository.issueAccessToken(scope, {
       grantId: record.grantId,
       tokenHash: this.crypto.sha256(accessToken),
@@ -621,7 +662,7 @@ export class McpOauthService {
     const now = this.clock();
     const grantId = await this.repository.createGrant(scope, { ...grant, expiresAt: mcpExpiry("grant", now) });
 
-    const accessToken = this.crypto.mintToken();
+    const accessToken = this.mint("accessToken");
     await this.repository.issueAccessToken(scope, {
       grantId,
       tokenHash: this.crypto.sha256(accessToken),
@@ -630,7 +671,7 @@ export class McpOauthService {
       expiresAt: mcpExpiry("accessToken", now)
     });
 
-    const refreshToken = this.crypto.mintToken();
+    const refreshToken = this.mint("refreshToken");
     // The family is named after the grant it descends from. A lineage of rotated refresh tokens is
     // exactly the set issued under one consent, so there is no second identifier to keep in step.
     await this.repository.issueRefreshToken(scope, {

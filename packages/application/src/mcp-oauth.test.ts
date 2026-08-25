@@ -12,6 +12,7 @@ import {
 
 const issuer = "https://hub.test";
 const now = new Date("2026-08-25T10:00:00.000Z");
+const resource = `${issuer}/mcp`;
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
 
@@ -136,7 +137,8 @@ const codeOf = async (service: McpOauthService) =>
     redirectUri: "http://127.0.0.1:51763/callback",
     scopes: ["crm.read"],
     codeChallenge: "a".repeat(43),
-    codeChallengeMethod: "S256"
+    codeChallengeMethod: "S256",
+    resource
   });
 
 const denialOf = async (run: () => Promise<unknown>) => {
@@ -178,10 +180,10 @@ describe("approving a consent", () => {
     const { service, recorded } = build();
     const approval = await codeOf(service);
 
-    expect(approval.code).toBe("token-1");
+    expect(approval.code).toBe("chm_ac_token-1");
     expect(recorded.requests).toHaveLength(1);
     const [request] = recorded.requests;
-    expect(request!.codeHash).toBe("sha256:token-1");
+    expect(request!.codeHash).toBe("sha256:chm_ac_token-1");
     expect(request!.tenantId).toBe(tenantA);
     expect(request!.expiresAt).toEqual(new Date("2026-08-25T10:01:00.000Z"));
     // `mcp:tools.list` rides along without being asked for: a client that cannot list is a client
@@ -214,7 +216,8 @@ describe("approving a consent", () => {
         redirectUri: "https://evil.test/callback",
         scopes: ["crm.read"],
         codeChallenge: "a".repeat(43),
-        codeChallengeMethod: "S256"
+        codeChallengeMethod: "S256",
+        resource
       })
     );
     expect(denial).toBe("MCP_REDIRECT_URI_MISMATCH");
@@ -228,7 +231,8 @@ describe("approving a consent", () => {
         redirectUri: "http://127.0.0.1:51763/callback",
         scopes: ["crm.read"],
         codeChallenge,
-        codeChallengeMethod
+        codeChallengeMethod,
+        resource
       });
     expect(await denialOf(() => approve("a".repeat(43), "plain"))).toBe("MCP_PKCE_INVALID");
     expect(await denialOf(() => approve("short", "S256"))).toBe("MCP_PKCE_INVALID");
@@ -242,7 +246,8 @@ describe("approving a consent", () => {
         redirectUri: "http://127.0.0.1:51763/callback",
         scopes: ["support.read"],
         codeChallenge: "a".repeat(43),
-        codeChallengeMethod: "S256"
+        codeChallengeMethod: "S256",
+        resource
       })
     );
     expect(denial).toBe("MCP_SCOPE_UNAVAILABLE");
@@ -256,6 +261,7 @@ describe("exchanging a code for tokens", () => {
       code: "code-1",
       codeVerifier: "verifier-1",
       redirectUri: "http://127.0.0.1:51763/callback",
+      resource,
       ...overrides
     });
 
@@ -264,8 +270,8 @@ describe("exchanging a code for tokens", () => {
     const issued = await exchange(service);
 
     expect(issued).toEqual({
-      accessToken: "token-1",
-      refreshToken: "token-2",
+      accessToken: "chm_at_token-1",
+      refreshToken: "chm_rt_token-2",
       tokenType: "Bearer",
       expiresIn: 1800,
       scope: "mcp:tools.list crm.read"
@@ -278,8 +284,8 @@ describe("exchanging a code for tokens", () => {
     const { service, recorded } = build();
     await exchange(service);
 
-    expect(recorded.accessTokens[0]!.tokenHash).toBe("sha256:token-1");
-    expect(recorded.refreshTokens[0]!.tokenHash).toBe("sha256:token-2");
+    expect(recorded.accessTokens[0]!.tokenHash).toBe("sha256:chm_at_token-1");
+    expect(recorded.refreshTokens[0]!.tokenHash).toBe("sha256:chm_rt_token-2");
     // The audience is stamped on the token at issue, so the resource server compares against a
     // value that was decided here rather than one a caller can suggest later.
     expect(recorded.accessTokens[0]!.audience).toBe("https://hub.test/mcp");
@@ -334,7 +340,8 @@ describe("the tenant the token endpoint acts in", () => {
       clientId: "public-app",
       code: "code-1",
       codeVerifier: "verifier-1",
-      redirectUri: "http://127.0.0.1:51763/callback"
+      redirectUri: "http://127.0.0.1:51763/callback",
+      resource
     });
   });
 
@@ -362,7 +369,7 @@ describe("refreshing a token", () => {
   };
 
   const refresh = (service: McpOauthService, token = "refresh-1") =>
-    service.refresh({ clientId: "public-app", refreshToken: token });
+    service.refresh({ clientId: "public-app", refreshToken: token, resource });
 
   it("mints a new pair and keeps the consent it descends from", async () => {
     const { service, recorded } = build({ refresh: live });
@@ -463,5 +470,75 @@ describe("revoking a token", () => {
       "MCP_REFRESH_INVALID"
     );
     expect(recorded.revokedFamilies).toEqual([]);
+  });
+});
+
+describe("what a credential says about itself", () => {
+  it("prefixes every kind so a secret scanner can recognise it", async () => {
+    // The prefix is part of the value, so it is inside the hash too. A token pasted into a commit
+    // trips gitleaks before a human notices, which is the whole reason it is there.
+    const { service } = build();
+    const approval = await codeOf(service);
+    expect(approval.code.startsWith("chm_ac_")).toBe(true);
+
+    const issued = await build().service.exchangeCode({
+      clientId: "public-app",
+      code: "code-1",
+      codeVerifier: "verifier-1",
+      redirectUri: "http://127.0.0.1:51763/callback",
+      resource
+    });
+    expect(issued.accessToken.startsWith("chm_at_")).toBe(true);
+    expect(issued.refreshToken.startsWith("chm_rt_")).toBe(true);
+  });
+});
+
+describe("which resource the client asked for", () => {
+  const approve = (service: McpOauthService, value: string | undefined) =>
+    service.approveAuthorization(context(tenantA, ["customers:read"]), {
+      clientId: "public-app",
+      redirectUri: "http://127.0.0.1:51763/callback",
+      scopes: ["crm.read"],
+      codeChallenge: "a".repeat(43),
+      codeChallengeMethod: "S256",
+      resource: value
+    });
+
+  it("refuses a request that names another resource", async () => {
+    // RFC 8707. The day there is a second resource, a request that meant one of them must not turn
+    // out to have silently meant the other all along.
+    const { service } = build();
+    expect(await denialOf(() => approve(service, "https://hub.test/other"))).toBe("MCP_AUDIENCE_INVALID");
+  });
+
+  it("refuses a request that names none", async () => {
+    const { service } = build();
+    expect(await denialOf(() => approve(service, undefined))).toBe("MCP_REQUEST_INVALID");
+  });
+
+  it("asks the same of the token endpoint and of the refresh", async () => {
+    const exchange = build();
+    expect(
+      await denialOf(() =>
+        exchange.service.exchangeCode({
+          clientId: "public-app",
+          code: "code-1",
+          codeVerifier: "verifier-1",
+          redirectUri: "http://127.0.0.1:51763/callback",
+          resource: undefined
+        })
+      )
+    ).toBe("MCP_REQUEST_INVALID");
+
+    const refresh = build();
+    expect(
+      await denialOf(() =>
+        refresh.service.refresh({
+          clientId: "public-app",
+          refreshToken: "chm_rt_x",
+          resource: "https://elsewhere.test"
+        })
+      )
+    ).toBe("MCP_AUDIENCE_INVALID");
   });
 });
