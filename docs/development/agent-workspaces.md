@@ -207,15 +207,15 @@ escriure'ls val mes que arreglar-ne un a mitges dins d'una branca que no els toc
    La regla general: qui afegeix una prova darrere un flag ha d'encendre'l a CI **al mateix
    commit**, o la prova nomes existeix a la maquina de qui la va escriure.
 
-7. **`support-mailbox.authenticated.spec.ts` no pot passar enlloc.** Va apareixer buscant la
-   fallada anterior i no hi te res a veure, aixi que val la pena escriure-la: la prova arma un
-   `page.waitForResponse` sobre `/api/v1/support/mailbox?status=pending` i despres obre
-   `/ca/support/mail`. Aquella peticio no la fa mai el navegador -- la pantalla es un component
-   de servidor i la crida surt del servidor de Next --, o sigui que l'espera esgota el temps
-   sempre. No depen de cap flag: falla igual amb `mail` ences i amb `mail` apagat, i falla des del
-   commit que la va introduir. Encendre `mail` a CI no l'arregla, i per aixo no s'hi ha tocat.
-   *Remei:* que la prova asserti sobre el que la pantalla dibuixa, no sobre transit de xarxa que
-   no existeix; i quan es faci, encendre `mail` al job al mateix commit.
+7. **Una prova no pot esperar transit que un component de servidor no genera.** Ho explica el
+   cas de `support-mailbox.authenticated.spec.ts`, que armava un `page.waitForResponse` sobre
+   `/api/v1/support/mailbox?status=pending` i despres obria `/ca/support/mail`. Aquella peticio
+   no la fa mai el navegador -- la pantalla es un component de servidor i la crida surt del
+   servidor de Next --, o sigui que l'espera esgotava el temps sempre, des del commit que la va
+   introduir i amb qualsevol flag. Es va perseguir primer com si fos cosa de `mail`, i no ho era.
+   Ja esta corregida: asserta sobre el que la pantalla dibuixa. **La regla:** davant una
+   pantalla, mira si es de servidor abans d'escriure cap espera de xarxa; si ho es, el que es pot
+   observar es l'HTML que arriba, no la peticio que el va omplir.
 
 8. **`git worktree list` acumula entrades `prunable`.** N'hi ha una avui, d'un directori que ja no
    existeix, i `destroy` no s'hi pot fer servir perque exigeix un worktree present. Un

@@ -286,7 +286,11 @@ jobs:
       # registration endpoint and no consent screen, and mcp-consent.authenticated.spec.ts
       # skips itself rather than failing about a flag -- which is a suite that says nothing
       # about the one flow in this product a person walks with an agent on the other side.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs,mcp
+      # `mail` declares the mailbox routes. It was never the reason
+      # support-mailbox.authenticated.spec.ts failed, but with it off that spec drives a screen
+      # whose three fetches all come back refused, and it would pass on the empty fallback --
+      # green while proving nothing.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,mcp
       # The bare origin an MCP client reaches this API at, and so the issuer it announces. Not
       # APP_ORIGIN, which is the web app, and never with a path: a client compares this string
       # to the one in the discovery document.
