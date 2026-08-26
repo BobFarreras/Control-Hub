@@ -24,6 +24,14 @@ import { pathToFileURL } from "node:url";
  * a publishing workflow is the last place to widen a token. So the list lives here, and
  * `release.test.mjs` holds it against the jobs `ci.yml` actually declares -- a job added there and
  * forgotten here fails the suite rather than quietly dropping out of the requirement.
+ *
+ * CodeQL is deliberately not here, and this is the one entry worth explaining before somebody adds
+ * it back as an oversight. GitHub's advanced-security app reports on pull request commits; on a
+ * push to `develop` it produces no check suite at all, so requiring it meant every `edge` publish
+ * waited out the full deadline and gave up -- observed, not predicted, on 43e0a0f. Nothing is
+ * loosened by its absence: branch protection blocks the merge into `develop` unless CodeQL passed
+ * on the pull request, so the code in the merge commit has already been through it. The gate was
+ * asking the merge commit for a verdict that only the pull request commit can carry.
  */
 export const requiredChecks = [
   "Repository standards",
@@ -34,9 +42,7 @@ export const requiredChecks = [
   "Container image",
   "Secret scan",
   "Vulnerable dependencies",
-  "Static analysis",
-  // Not a job in `ci.yml`: GitHub's default setup runs it and reports under this name.
-  "CodeQL"
+  "Static analysis"
 ];
 
 /**
