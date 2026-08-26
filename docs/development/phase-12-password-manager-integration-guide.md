@@ -193,11 +193,20 @@ funcions oficials disponibles i deixa cost, pla, termes i regio com a gate expli
 
 ### S8 — Domini, persistencia i permisos
 
-Migracions additives, RLS, FKs tenant-scoped, casos d'us i xifrat contextual de la referencia.
+**Implementat** amb vocabulari i transicions al domini, els permisos `credentials:read`,
+`credentials:open`, `credentials:manage` i `vault:manage`, casos d'us desacoblats i un repositori
+PostgreSQL. La migracio `0058_credential_catalog.sql` crea instal·lacions, entrades i events amb
+RLS forçada, FKs compostes tenant-scoped, concurrencia optimista i historial append-only. Les
+referencies usen AES-256-GCM amb context propi de tenant i entrada; les lectures ordinàries no
+seleccionen cap columna de l'envelope.
 
 ### S9 — API i auditoria
 
-OpenAPI, validacio HTTPS, MFA recent, RBAC, open intents, rate limits i auditoria allowlisted.
+**Implementat** amb la flag `credential_catalog`, els deu endpoints inicials publicats a OpenAPI,
+errors RFC 9457, validacio dels deep links HTTPS contra l'origen registrat, RBAC, MFA i sessio
+recent per configurar instal·lacions i obrir entrades. Els open intents reconstrueixen una
+destinacio allowlisted, responen amb `Cache-Control: no-store`, tenen rate limit reforcat i
+auditen exclusivament identificadors i resultats, mai URLs ni referencies.
 
 ### S10 — UI del cataleg
 

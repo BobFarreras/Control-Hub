@@ -15,6 +15,8 @@ describe("which routes answer in problem details", () => {
     expect(usesProblemDetails("/api/v1/integrations/abc/runs?page=2")).toBe(true);
     expect(usesProblemDetails("/api/v1/connectors")).toBe(true);
     expect(usesProblemDetails("/api/v1/infrastructure/alerts")).toBe(true);
+    expect(usesProblemDetails("/api/v1/credential-catalog/id/open-intents")).toBe(true);
+    expect(usesProblemDetails("/api/v1/password-manager/installations")).toBe(true);
     expect(usesProblemDetails("/api/v1/crm/leads")).toBe(false);
     expect(usesProblemDetails("/health/ready")).toBe(false);
   });

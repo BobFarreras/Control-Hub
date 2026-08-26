@@ -45,6 +45,11 @@ describe("feature flags", () => {
     expect(unknownFeatureFlags("mcp")).toEqual([]);
   });
 
+  it("keeps the human credential catalogue off by default", () => {
+    expect(isFeatureEnabled(parseFeatureFlags(""), "credential_catalog")).toBe(false);
+    expect(isFeatureEnabled(parseFeatureFlags("credential_catalog"), "credential_catalog")).toBe(true);
+  });
+
   it("gives every declared flag an owner and a date to be gone by", () => {
     for (const [name, flag] of Object.entries(featureFlags)) {
       expect(flag.owner, name).toBeTruthy();

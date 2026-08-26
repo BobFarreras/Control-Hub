@@ -82,7 +82,7 @@ Permisos nous:
 - `credentials:read`: llistar i llegir fitxes visibles;
 - `credentials:open`: crear un intent d'obertura;
 - `credentials:manage`: crear, editar, revisar, revocar i arxivar;
-- `password_manager:manage`: configurar instal·lacions, reservat a Owner.
+- `vault:manage`: configurar instal·lacions, reservat a Owner.
 
 `Owner` rep tots quatre. `Administrator` pot rebre els tres primers. `Technical` pot rebre
 `credentials:read` i `credentials:open`, limitats a entrades assignades o compartides. Tot acces

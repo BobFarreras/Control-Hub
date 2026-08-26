@@ -5,6 +5,7 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  CredentialCatalogService,
   ConnectorActionService,
   ConnectorCredentialService,
   ConnectorIngressService,
@@ -40,6 +41,7 @@ import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
   CredentialVault,
+  CredentialCatalogReferenceVault,
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
@@ -48,6 +50,7 @@ import {
   PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
+  PostgresCredentialCatalogRepository,
   IdentityInvariantError,
   nodeIngressCrypto,
   InvitationError,
@@ -76,6 +79,7 @@ import { registerAuthProxyRoutes } from "./routes/auth-proxy.js";
 import { registerCommerceRoutes } from "./routes/commerce.js";
 import { registerCompanySubscriptionRoutes } from "./routes/company-subscriptions.js";
 import type { RouteContext } from "./routes/context.js";
+import { registerCredentialCatalogRoutes } from "./routes/credential-catalog.js";
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInfrastructureRoutes } from "./routes/infrastructure.js";
@@ -231,6 +235,7 @@ export function buildApp(options: BuildAppOptions) {
         { name: "connectors", description: "What this release can connect to at all." },
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
+        { name: "credential-catalog", description: "Non-secret metadata and guarded navigation to Bitwarden." },
         { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
         { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." },
         {
@@ -426,6 +431,14 @@ export function buildApp(options: BuildAppOptions) {
       // Off until the accountancy confirms the shape of the record is acceptable, which is a
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
+      if (isFeatureEnabled(featureFlags, "credential_catalog") && options.connectorKeyRing) {
+        const credentialRepository = new PostgresCredentialCatalogRepository(database);
+        const credentialVault = new CredentialCatalogReferenceVault(options.connectorKeyRing);
+        registerCredentialCatalogRoutes({
+          ...context,
+          credentials: new CredentialCatalogService(credentialRepository, credentialVault, credentialVault)
+        });
+      }
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
       if (isFeatureEnabled(featureFlags, "usage_costs"))
         registerUsageRoutes({ ...context, usage: new UsageService(new PostgresUsageRepository(database)) });

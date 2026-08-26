@@ -123,8 +123,12 @@ Aquest bloc no completa el gestor de contrasenyes humanes. La guia
 cataleg tenant-scoped, la navegacio segura a Bitwarden Password Manager, el desplegament aillat
 inicial a la mateixa VPS i la migracio posterior a una VPS dedicada. S7 ja ha fixat el contracte
 aprovat a `docs/specifications/credential-catalog.md`, el threat model i els gates de pla i
-llicencia; el seguent increment es S8, domini, persistencia i permisos. Control Hub no llegeix ni
-mostra valors del vault.
+llicencia. S8 afegeix domini, permisos, casos d'us, envelope AES-GCM de proposit separat i la
+migracio `0058_credential_catalog.sql`, amb RLS, FKs tenant-scoped i events append-only. El
+S9 ja publica l'API del cataleg sota la flag `credential_catalog`, amb OpenAPI, reautenticacio,
+MFA, RBAC, validacio de deep links, open intents `no-store`, rate limit i auditoria allowlisted. El
+seguent increment es S10, la UI del cataleg. Control Hub no llegeix ni mostra valors
+del vault.
 
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E

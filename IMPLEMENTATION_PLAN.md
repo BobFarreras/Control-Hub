@@ -695,8 +695,8 @@ al contingut.
 
 ## Fase 12 - Gestio externa de secrets i credencials
 
-**Estat: secrets de plataforma S1-S6 i especificacio S7 implementats; cataleg de credencials
-S8-S12 pendent d'implementacio.**
+**Estat: secrets de plataforma S1-S6 i cataleg S7-S9 implementats; S10-S12 pendents
+d'implementacio.**
 
 **Guia:** `docs/development/phase-12-secrets-management-guide.md`.
 

@@ -14,6 +14,8 @@ export * from "./connector-repository.js";
 export * from "./connector-oauth-repository.js";
 export * from "./connector-action-repository.js";
 export * from "./credential-vault.js";
+export * from "./credential-catalog-repository.js";
+export * from "./credential-catalog-vault.js";
 export * from "./crm-repository.js";
 export * from "./identity-repository.js";
 export * from "./infrastructure-repository.js";
