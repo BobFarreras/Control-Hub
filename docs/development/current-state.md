@@ -96,9 +96,14 @@ o sigui que un rollback que ningu ha exercitat es una sensacio i no una propieta
 
 El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/installation.md` ja
 descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
-ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de
-descarregar-los. Tampoc hi ha **cap `APP_VERSION` enlloc del codi**: una instancia no sap quina
-versio es a si mateixa, i per aixo el primer increment es aquest i no l'empaquetat.
+ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de descarregar-los.
+
+La versio si que existeix, i val la pena saber-ho abans de tocar-hi: `apps/api/src/version.ts`
+l'estampa al bundle amb tsup i la serveix a `/health/live`, i els quatre paquets comparteixen numero,
+o sigui que el que diu l'API es el de la release. El que hi falta es que la vegi una persona i que
+**distingeixi dos builds del mateix numero** --sense identificador de construccio, tot el que surti
+de `develop` entre dues etiquetes dira `0.3.0`. Per aixo el primer increment es aquest i no
+l'empaquetat.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

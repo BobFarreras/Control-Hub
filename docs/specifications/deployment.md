@@ -23,7 +23,7 @@ existeix per fer-los possibles.
 | «Descarregar imatges OCI per digest, mai `latest`» | `compose.yaml` no dona `image:` a cap servei nostre: nomes `build:`. Una instal·lacio **compila el codi al servidor**. |
 | «Configurar domini, TLS» | No hi ha cap reverse proxy al repositori. Tots els ports publicats son `127.0.0.1`. |
 | «el job OCI equivalent» per al primer Owner | Nomes existeix `pnpm bootstrap:owner`, que vol el codi font i pnpm. |
-| Actualitzacio com a llista de set passos manuals | Res dins el producte diu que n'hi hagi una de disponible. No hi ha **cap** `APP_VERSION` ni `BUILD_SHA` enlloc del codi: una instancia no sap quina versio es a si mateixa. |
+| Actualitzacio com a llista de set passos manuals | Res dins el producte diu que n'hi hagi una de disponible. La versio si que existeix --`apps/api/src/version.ts` l'estampa al bundle i la serveix a `/health/live`--, pero no la veu cap persona i no distingeix dos builds del mateix numero. |
 
 La release `v0.3.0` del 24 d'agost es codi versionat i etiquetat, no una instal·lacio: **no s'ha
 desplegat mai res enlloc**.
@@ -146,10 +146,23 @@ Un fitxer `release.env` al directori d'instal·lacio, amb els quatre digests i l
 Un overlay `compose.release.yaml` dona `image:` a cada servei llegint-ne els valors, i **no dona
 `build:`**, de manera que una instal·lacio de produccio no te ni pot tenir el codi font.
 
-La versio llegible arriba a l'aplicacio com a `APP_VERSION`. Avui no existeix cap variable
-d'aquestes: s'ha d'afegir, exposar-la a `GET /health/ready` i ensenyar-la a la pantalla de
-seguretat. Sense aixo, una instancia no pot dir que es, i tot el que ve despres no te sobre que
-comparar.
+La meitat d'aixo ja existeix i s'ha de reaprofitar en comptes de duplicar-la. `apps/api/src/version.ts`
+ja resol el problema dificil --el runtime no te `package.json` al costat, aixi que tsup hi estampa
+un literal a la construccio i el manifest nomes es llegeix quan no hi ha bundle-- i `/health/live`
+ja publica el numero. Els quatre paquets comparteixen versio, o sigui que el numero que diu l'API es
+el de la release.
+
+Hi falten dues coses, i la segona es la que importa per a `edge`:
+
+1. **Ningu la veu.** Es a una ruta de salut que consulten les sondes, no una persona. Ha d'arribar a
+   la pantalla de seguretat, al costat de la resta d'informacio d'instal·lacio.
+2. **No distingeix dos builds del mateix numero.** Tot el que surti de `develop` entre dues
+   etiquetes dira `0.3.0`, i com que D3 publica precisament una imatge per commit, dues `edge`
+   diferents son indistingibles. Cal un identificador de construccio --commit i data-- al costat del
+   numero, estampat pel mateix cami que ja funciona.
+
+Sense la segona, «tens l'ultima versio» es una frase que no es pot comprovar en el moment que mes
+falta: quan alguna cosa va malament en una imatge de proves.
 
 ## Avis d'actualitzacio
 
@@ -213,8 +226,8 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 
 ## Increments
 
-- **P1** — `APP_VERSION`, exposada a readiness i visible a la pantalla de seguretat. Va primer
-  perque tot el que ve despres compara contra ella.
+- **P1** — Identificador de construccio al costat de la versio que ja existeix, i la versio visible
+  a la pantalla de seguretat. Va primer perque tot el que ve despres compara contra ella.
 - **P2** — El workflow de publicacio: imatges, firma, SBOM i manifest de release. Verificable
   descarregant les imatges publicades i aixecant l'stack sense el codi font.
 - **P3** — `compose.release.yaml` i `release.env`: una instal·lacio que fa `pull` i no `build`.
