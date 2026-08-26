@@ -317,7 +317,9 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 - **P4** — *Fet, i deliberadament de dues meitats.* La prova de compatibilitat N-1: la suite de
   l'ultima etiqueta contra una base migrada a HEAD, mes una comprovacio estatica de les migracions
   noves. La dinamica sola te un forat mesurat --veure mes avall--, i per aixo no va sola.
-- **P5** — El comandament d'actualitzacio, amb backup, migracions i rollback.
+- **P5** — *Fet.* El comandament d'actualitzacio: valida la release, fa el backup, descarrega per
+  digest, migra, i nomes despres reemplaca. POSIX sh i docker, res mes --una instal·lacio de client
+  no te repositori ni Node, i aquest no es el fitxer que ha de comencar a demanar-ne.
 - **P6** — El banner i la comprovacio diaria del worker.
 - **P7** — L'instal·lador interactiu.
 
@@ -384,6 +386,44 @@ fallada, o sigui que un job amb `if:` que es saltes bloquejaria totes les releas
 deixar-les passar. Per aixo el job corre sempre i el cami rapid --sense etiqueta previa, o sense
 migracions noves-- es *dins* del job. `release.test.mjs` ho subjecta: si algu hi afegeix un `if:` o
 un `needs:`, la suite es posa vermella.
+
+
+### El que P5 en va concretar
+
+`deploy/update.sh`, POSIX sh i docker i res mes. La decisio que ho va determinar tot: **una
+instal·lacio de client no te repositori, ni Node, ni cap eina de construccio**, que era tot el sentit
+de P3. Un actualitzador que en demanes una hi torna a posar l'arbre de codi per la porta del darrere.
+
+Per aixo la release publica ara **`release.env` al costat de `release.json`**. El manifest segueix
+sent la font --el genera i el valida `release-env.mjs` a CI, on hi ha proves-- pero el que
+l'actualitzador descarrega ja es la forma que Compose llegeix. L'alternativa era parsejar JSON amb
+expressions regulars dins d'un script de shell, que hauria estat la peca fragil de tota
+l'actualitzacio.
+
+**L'ordre es la promesa sencera**: valida, fa el backup, descarrega, migra, i nomes despres
+reemplaca. Si les migracions fallen, no s'ha tocat res del que corre --les imatges noves s'han
+descarregat pero no s'han arrencat mai-- i el comandament diu que conserva: el backup, el
+`release.env` que encara anomena la versio en marxa, i les imatges velles. No hi ha rollback perque
+no hi ha hagut canvi.
+
+**El backup es comprova, no es dona per fet.** Un `pg_dump` que ha petat a mig canonada deixa un
+fitxer, i un fitxer sense comprovar es indistingible d'un backup fins al dia que algu el necessita.
+Es verifica que es llegible (`gzip -t`) i que no es ridiculament petit. La contrasenya no surt mai
+del contenidor: es llegeix de l'entorn que `postgres` ja te, o sigui que no passa ni per la linia de
+comandes ni per cap historial.
+
+**Validar la release es assumir que ve d'internet.** El que importa no es un fitxer malformat --es
+un de plausible. Dues propietats aguanten el pes: totes les imatges van per digest, i **les quatre
+comparteixen espai de noms**. Quatre referencies que semblen correctes pero venen de dos registres
+no es una forma que una release pugui tenir, i es exactament la forma que tindria una imatge
+substituida. Tambe es rebutja qualsevol linia de mes: `release.env` el llegeix Compose com a entorn,
+o sigui que el que s'hi coli arriba als contenidors.
+
+Les proves executen l'script de debo --`--check` arriba a la descarrega, la validacio i la
+comparacio i s'atura abans de necessitar docker--, i les set mutacions que l'afluixen el posen
+vermell: acceptar una etiqueta en comptes d'un digest, acceptar dos registres, acceptar linies de
+mes, saltar-se la versio, deixar de verificar el backup, acceptar-ne un de buit, i reemplacar abans
+de migrar.
 
 
 **El rollback nomes existeix si les migracions el permeten.** Es el risc mes facil de creure resolt

@@ -228,6 +228,12 @@ jobs:
             --digests "$digests" \
             --out release.json
           cat release.json
+          # The same content in the form an installation can consume without a JSON parser. The
+          # update command is POSIX sh on a customer's server -- no repository, no Node -- and
+          # parsing JSON with regular expressions there would be the fragile part of the whole
+          # update. Generating it here means the validation happens where the tests are.
+          node scripts/release-env.mjs --manifest release.json --out release.env
+          cat release.env
 
       - name: Attach the manifest to the release
         if: needs.gate.outputs.channel == 'release'
@@ -236,13 +242,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # An installation reads this at a URL that never changes:
+          # An installation reads these at URLs that never change:
           #   https://github.com/$GITHUB_REPOSITORY/releases/latest/download/release.json
-          # which is why the asset name is fixed and why the manifest belongs on the release rather
-          # than somewhere a version number has to be substituted in.
+          #   https://github.com/$GITHUB_REPOSITORY/releases/latest/download/release.env
+          # which is why the asset names are fixed and why they belong on the release rather than
+          # somewhere a version number has to be substituted in.
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" release.json --clobber
+          # `update.sh` ships with the release it updates *from*, not the one it updates to: an
+          # installation running 1.0.0 uses the copy it already has to reach 1.1.0. Publishing it
+          # every time is what lets an old installation fetch a newer command by hand when the one
+          # it has cannot cope.
+          gh release upload "$GITHUB_REF_NAME" release.json release.env deploy/update.sh --clobber
 
       - name: Say what was published
         shell: bash

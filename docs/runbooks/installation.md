@@ -131,13 +131,31 @@ migracions i inicia l'aplicacio.
 
 ## Actualitzacio
 
-1. Llegir release notes i comprovar compatibilitat.
-2. Fer i verificar un backup extern.
-3. Descarregar imatges per digest.
-4. Executar migracions expand/contract.
-5. Fer rolling restart quan la topologia ho permeti.
-6. Validar healthchecks i fluxos critics.
-7. Conservar imatges i configuracio anteriors durant la finestra de rollback.
+Un comandament al directori d'instal·lacio:
+
+```sh
+./update.sh --check   # que hi ha de nou, sense tocar res
+./update.sh           # actualitza
+```
+
+Fa, en aquest ordre: llegeix la release nova i la valida, **fa el backup**, descarrega les imatges
+per digest, executa el job de migracions, i **nomes si aixo acaba be** reemplaca els serveis.
+
+Si les migracions fallen s'atura alli. L'stack anterior segueix dret --no se n'ha tocat res-- i el
+comandament diu que ha fet i que conserva: el backup, el `release.env` que encara anomena la versio
+que corre, i les imatges velles, que no s'esborren. No cal desfer res perque no s'ha fet res.
+
+Aixo son els set passos manuals que aquest runbook demanava abans. El que hi guanyem no es comoditat:
+una llista de set passos es una llista que algu executa a les 23:00 amb alguna cosa trencada, i el
+pas 2 --el backup-- es el que se salta, perque els altres sis semblen la feina de debo.
+
+**El que el comandament no fa:** no comprova les firmes de les imatges (D6 diu explicitament que
+verificar no s'exigeix; qui vulgui pot fer-ho a part amb `cosign verify`), i no valida els fluxos
+critics despres d'arrencar --aixo segueix sent feina de qui actualitza.
+
+**Rollback.** Mentre duri la finestra d'una versio: `cp release.env.previous release.env` i tornar a
+aixecar l'stack. Si les migracions ja havien passat, cal restaurar tambe el backup, i el comandament
+imprimeix les tres linies exactes quan aixo passa.
 
 ## Desinstal·lacio i exportacio
 
