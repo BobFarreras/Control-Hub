@@ -324,7 +324,12 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
    * reconfigured, and an agent holding a stale endpoint list for an hour after a rollout is a
    * support ticket nobody can explain.
    */
-  const metadata = { schema: { tags: ["mcp"], summary: "OAuth discovery document" } };
+  const metadata = {
+    // Public, unauthenticated and cached for five minutes, so the budget only has to stop
+    // somebody hammering it rather than ration honest discovery.
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    schema: { tags: ["mcp"], summary: "OAuth discovery document" }
+  };
 
   for (const path of [
     "/.well-known/oauth-protected-resource",
@@ -337,8 +342,6 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
     );
   }
 
-  // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
-  // codeql[js/missing-rate-limiting]
   app.get("/.well-known/oauth-authorization-server", metadata, async (_request, reply) =>
     reply.header("cache-control", "public, max-age=300").send(mcp.authorizationServerMetadata())
   );
@@ -487,9 +490,13 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
 
     scope.post<{ Body: TokenBody }>(
       "/api/v1/mcp/oauth/token",
-      { schema: { tags: ["mcp"], summary: "Exchange a code, a refresh token or a service account secret" } },
-      // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
-      // codeql[js/missing-rate-limiting]
+      {
+        // A credential endpoint reached without a cookie, so the limiter keys it on the
+        // address. Tight enough to matter against a guessed secret, loose enough that an
+        // agent refreshing on schedule never notices it.
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: { tags: ["mcp"], summary: "Exchange a code, a refresh token or a service account secret" }
+      },
       async (request, reply) => {
         const body = request.body ?? {};
         try {
