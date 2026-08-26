@@ -156,6 +156,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
       "The MCP clients registered here",
       "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. A client appears here either because somebody registered it by hand or because it registered itself and a person authorized it, which is the act that claims it for this tenant."
     ),
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request) => {
       const context = await authorise(request, { action: "mcp.clients.list", targetType: "mcp_client" });
       await writeAudit(database, context, request, {
@@ -194,6 +196,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Declares a client, its exact redirect addresses and the scopes it will be allowed to ask for. A confidential client is handed a secret here and only here: the store keeps its hash, so a secret that is lost is rotated rather than looked up."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, { action: "mcp.client.register", targetType: "mcp_client" });
       const { client, secret } = await mcp.registerClient(context, request.body);
@@ -220,6 +224,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Removes a client so it can start no further authorizations. Consents already granted through it are withdrawn separately, and deliberately: forgetting the client is not the same decision as ending what it was allowed to do."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.client.delete",
@@ -245,6 +251,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
       "The consents this tenant has given",
       "Every grant an agent is acting under, who approved it, what it may reach, when it lapses and when it was last used. A consent nobody exercises is visible as such, which is what makes the list worth reading."
     ),
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request) => {
       const context = await authorise(request, { action: "mcp.grants.list", targetType: "mcp_grant" });
       await writeAudit(database, context, request, {
@@ -266,6 +274,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Ends a grant and every token issued under it, at once. Access tokens here are references rather than signed claims, so there is no window to wait out: the next call the agent makes is refused."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.grant.revoke",
@@ -289,6 +299,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
       "The agents that log in without a browser",
       "Service accounts, their scopes, the permissions those scopes are capped by, and when each secret expires. The secret itself was shown once when it was minted and is not readable from here."
     ),
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request) => {
       const context = await authorise(request, {
         action: "mcp.service-accounts.list",
@@ -319,6 +331,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Creates an agent that authenticates with a secret instead of a browser. Its permissions are capped by those of the person creating it, so nobody can leave behind an agent that reaches further than they do. The secret is returned here and nowhere else."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.service-account.create",
@@ -350,6 +364,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Mints a new secret and leaves the previous one working for a day, so the agent can be redeployed without an outage. When the old secret is known to be compromised the operation is `retire-previous-secret`, which ends that window now."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.service-account.rotate",
@@ -377,6 +393,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Stops the previous secret from working immediately, for the case where it is known to be compromised. Separate from rotation because it answers a different question: rotation is routine and wants the overlap, this is the emergency and waiting a day would be the wrong answer to it."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.service-account.retire-previous-secret",
@@ -404,6 +422,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
           "Disables the account rather than deleting it. Its grants and its audit trail stay readable, which is what an investigation needs; what stops is that the secret no longer authenticates."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const context = await authorise(request, {
         action: "mcp.service-account.disable",

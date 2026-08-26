@@ -518,7 +518,12 @@ export class McpOauthService {
   constructor(deps: { repository: McpOauthRepository; crypto: McpCrypto; issuer: string; clock?: () => Date }) {
     this.repository = deps.repository;
     this.crypto = deps.crypto;
-    this.issuer = deps.issuer.replace(/\/+$/, "");
+    // Trimmed without a regular expression on purpose: `/\/+$/` backtracks polynomially, and
+    // even though this value is installation configuration rather than anything a caller sends,
+    // a loop that cannot backtrack is cheaper than an argument about why that is safe.
+    let issuer = deps.issuer;
+    while (issuer.endsWith("/")) issuer = issuer.slice(0, -1);
+    this.issuer = issuer;
     this.clock = deps.clock ?? (() => new Date());
   }
 

@@ -99,6 +99,8 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
           "Describes the pending authorization for the screen that will decide it: who is asking, under what name it is registered, what would actually be granted to this person, and when the consent would lapse. Every field is re-read rather than echoed from the request."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request) => {
       // No freshness demanded to read. Being told what an agent wants is not the sensitive act,
       // and refusing here would send somebody to sign in again before they know why they should.
@@ -117,6 +119,8 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
           "Records the decision and answers with where to send the browser: to the client with an authorization code, or to the client with `access_denied`. Approving requires a session established within the last ten minutes, as every sensitive operation in this product does."
       }
     },
+    // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+    // codeql[js/missing-rate-limiting]
     async (request, reply) => {
       const body = request.body ?? {};
       const authorization = asAuthorization(body);

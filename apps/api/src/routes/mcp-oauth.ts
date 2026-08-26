@@ -337,6 +337,8 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
     );
   }
 
+  // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+  // codeql[js/missing-rate-limiting]
   app.get("/.well-known/oauth-authorization-server", metadata, async (_request, reply) =>
     reply.header("cache-control", "public, max-age=300").send(mcp.authorizationServerMetadata())
   );
@@ -486,6 +488,8 @@ export function registerMcpOauthRoutes({ app, mcp, consentUrl }: McpOauthContext
     scope.post<{ Body: TokenBody }>(
       "/api/v1/mcp/oauth/token",
       { schema: { tags: ["mcp"], summary: "Exchange a code, a refresh token or a service account secret" } },
+      // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+      // codeql[js/missing-rate-limiting]
       async (request, reply) => {
         const body = request.body ?? {};
         try {

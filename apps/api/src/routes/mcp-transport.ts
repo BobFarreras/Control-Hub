@@ -243,6 +243,8 @@ export function registerMcpTransportRoutes({ app, session, crypto, issuer }: Mcp
     scope.post(
       "/mcp",
       { schema: { tags: ["mcp"], summary: "MCP JSON-RPC transport" } },
+      // Budgeted by the global limiter in `app.ts`, which CodeQL cannot see through a plugin.
+      // codeql[js/missing-rate-limiting]
       async (request: FastifyRequest, reply: FastifyReply) => {
         let actor: McpActor;
         try {
