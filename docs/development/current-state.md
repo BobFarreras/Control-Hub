@@ -72,6 +72,35 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**La Fase X de desenvolupament multi-agent te el primer increment implementat** a la branca
+`chore/phase-x-agent-workspaces`. Separa per tasca la branca, worktree, `.env`, secrets efimers,
+ports, projecte Compose, volums i PostgreSQL; inclou CLI de lifecycle, deteccio de col·lisions,
+Dev Container, ADR, especificacio i guia operativa. Es una iniciativa transversal per als agents
+que modifiquen el repositori, no el runtime empresarial de la Fase 11. Abans d'obrir la 11 o la
+12 amb diversos agents, aquest increment s'ha d'integrar i cada tasca nova ha de neixer amb
+`pnpm agent:workspace create`.
+
+Validacio vista en aquest increment: `pnpm check` passa sencer amb cache Turbo propia --14/14
+typechecks sense cap hit aliè, 24/24 tasques de test i 14/14 builds--, `pnpm test:scripts` passa
+15/15 i les proves noves creen dos worktrees reals, comproven ports diferents, absencia de secrets
+heretats, el refus `SCOPE_COLLISION` i que el web no arrenca sense un port explicit.
+`docker compose config` confirma que el nom es deriva del directori i que tots els ports publicats
+son obligatoris i variables. Les suites PostgreSQL de `pnpm test` es continuen saltant sense
+`TEST_DATABASE_URL`; la Fase X no canvia esquema ni repositoris.
+
+La prova de lifecycle completa tambe s'ha executat sobre un worktree temporal real: instal·lacio
+immutable, tres serveis Compose i volums amb nom propi, totes les migracions sobre PostgreSQL
+buit, web a `3159`, API a `4159`, worker preparat, readiness directa i via proxy en 200, aturada i
+eliminacio de contenidors, xarxes, volums, dependències i worktree. La primera passada va detectar
+i deixar documentats dos casos que les unitàries no veien --allowlist de variables de Turbo i
+paths llargs de pnpm a Windows-- abans de repetir el lifecycle en verd.
+
+**La Fase 12 te guia tecnica proposada** a `docs/development/phase-12-secrets-management-guide.md`.
+No converteix Control Hub en un password manager: passwords humans van al gestor corporatiu,
+secrets bootstrap queden fora del producte i el vault intern conserva nomes credencials
+tenant-scoped. El contracte recomanat es `_FILE`, amb Bitwarden Secrets Manager com a adaptador
+opcional del desplegament. Les cinc decisions de la guia s'han d'aprovar abans d'implementar-la.
+
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E
 autenticat, imatges de contenidor, secrets, dependencies i CodeQL. L'E2E autenticat va passar
@@ -82,6 +111,245 @@ dels connectors que hagin de deixar enrere tokens personals amplis. Despres ve M
 incremental. L'OAuth de connectors fa de Control Hub un client davant el proveidor; l'OAuth 2.1
 de la Fase 10 el fara servidor de recursos per a MCP. Comparteixen primitives, no tokens ni
 audiences.
+
+**La Fase 10 te especificacio aprovada en part i el primer increment implementat** (24 d'agost de
+2026). `docs/specifications/mcp-and-client-portal.md` defineix Control Hub com a resource server
+OAuth 2.1: emissor propi, tokens opacs de referencia revocables a l'instant, audience lligada a
+`APP_ORIGIN` + `/mcp`, scopes de lectura que s'interseccionen amb els permisos, registre manual de
+clients, service accounts i auditoria per tool call. El propietari va aprovar D1, D2, D3 i D6; D4
+(redirects loopback), D5 (vida del token), D7 (bearer o DPoP) i D8 (portal) segueixen obertes i
+bloquegen exactament la part que en depen.
+
+De la 10.1 hi ha aquests increments. L'**increment A** son les regles d'autoritat a
+`packages/domain/src/mcp.ts` amb 23 proves, que decideixen qui pot cridar que --issuer, audience,
+expiracio, revocacio, tenant, scope i permis, en aquest ordre-- i la flag `mcp` registrada i
+apagada. L'**increment B1** es el cataleg de `packages/application/src/mcp.ts`: quatre tools de
+lectura de CRM i suport, cadascuna lligada a un cas d'us que ja existeix, amb esquema d'entrada
+tancat, projeccio que retorna menys que la pantalla i una prova d'arquitectura que li prohibeix
+importar repositoris. Encara no hi ha res que li pregunti: cap ruta, cap migracio, cap token.
+L'**increment B2** hi afegeix els dos resums, `infrastructure.status.summary` i `usage.summary`,
+compostos de lectures que ja existien --`readInventory`, `listAlerts` i `listSources`-- sense cap
+metode nou de repositori: el de la flota retorna recomptes i cap hostname ni cap adreca, i el d'us
+retorna salut de col·lectors i cap import. L'**increment C** es l'esquema: la migracio `0049`
+--la `0048` ja era de la 7B-- amb les sis taules d'OAuth, RLS `force` una per una i les cinc
+funcions `security definer` que resolen client, token i codi abans que se sapiga el tenant, mes
+les tres columnes additives de `audit_log`. Els invariants es comproven sobre el fitxer SQL, sense
+base de dades, i la migracio s'ha aplicat i desfet contra el Postgres local per veure que passa
+sencera. L'**increment D** son les regles del flux a `packages/domain/src/mcp-oauth.ts`: vides,
+coincidencia de redirect URI, negociacio d'scopes i veredicte del refresh amb deteccio de reus,
+totes pures i sense hashing. L'**increment E1** es la meitat de resource server de la persistencia:
+el port `McpOauthRepository` i `PostgresMcpOauthRepository`, que resol el bearer per la funcio
+`security definer` --l'unica lectura que no pot estar dins d'un tenant, perque decidir quin es el
+tenant es precisament el que fa-- i que en revocar un grant apaga els seus tokens a la mateixa
+transaccio. L'**increment E2** hi ha afegit la meitat d'authorization server: clients, peticio
+d'autoritzacio, consum del codi, emissio i rotacio de tokens i service accounts. El codi es
+consumeix amb la mateixa sentencia que el llegeix, i la rotacio del refresh gasta l'antic i emet el
+successor a la mateixa transaccio amb `used_at is null` al predicat, de manera que dues peticions
+simultanies donen un successor i un perdedor, mai dues linies vives. Desactivar un service account
+arrossega els seus grants i els seus tokens. Quinze proves d'integracio contra PostgreSQL de debo,
+amb l'aillament entre tenants comprovat i no nomes escrit.
+
+L'**increment F** es el flux com a casos d'us: `McpOauthService` a
+`packages/application/src/mcp-oauth.ts`, amb els dos documents de metadata, l'aprovacio del
+consentiment i l'intercanvi del codi. L'issuer surt de la configuracio validada i **mai d'una
+capcalera**, aixi que un `Host` que tria qui truca no pot decidir per a quina audiencia s'encunya
+un token. El port `McpCrypto` declara encunyar, `sha256`, repte PKCE i comparacio en temps constant,
+i `NodeMcpCrypto` les implementa amb el vector de l'apendix B de la RFC 7636 com a prova. Els
+metodes que toca el token endpoint reben un `McpTenantScope` i no un `TenantContext`: alli no hi ha
+sessio, i inventar rols, permisos i un flag d'MFA que ningu ha concedit seria mentir-li al tipus.
+L'**increment F2** hi afegeix `refresh` i `revokeToken`. El refresc **no crea cap grant** --els
+scopes surten del consentiment que ja existeix-- i la revocacio segueix la RFC 7009: un token
+desconegut es una revocacio correcta, perque respondre altrament faria de l'endpoint un oracle de
+quins tokens existeixen. La migracio `0051` eixampla `lookup_mcp_refresh_token` amb el client i els
+scopes del grant. L'**increment F3** posa prefix a cada credencial (`chm_at_`, `chm_rt_`, `chm_sa_`,
+`chm_ac_`), de manera que un token enganxat a un commit fa saltar gitleaks, i fa **obligatori** el
+`resource` de la RFC 8707 a `/authorize`, a `/token` i al refresc.
+
+L'**increment F3b** son els service accounts i el registre de clients: la via d'entrada sense
+navegador. Un service account canvia el seu secret per **un sol access token i cap refresh token**
+--pot tornar a presentar el secret quan vulgui, aixi que un refresh token seria una segona
+credencial de llarga vida per guardar, rotar i perdre-- i els seus scopes es tornen a negociar a
+cada login contra els permisos del compte. La **rotacio mante dues claus vives durant un dia**
+(migracio `0052`): substituir el secret de cop trenca tots els qui el fan servir a l'instant exacte
+de la rotacio, i una rotacio que provoca una caiguda es una rotacio que ningu no fa. La resposta diu
+`usedPreviousSecret` quan el que s'ha presentat era el que s'esta retirant, i quan el secret vell es
+sap compromes l'operacio es `retirePreviousSecret`, que tanca la finestra ara mateix. La migracio
+`0053` fa `client_id` nul·lable a `mcp_grants` i el lliga al tipus d'actor: un grant d'usuari sempre
+nomena el client que ho va demanar i un de service account no en nomena cap, cosa que es **mes
+estricta** que el `not null` que substitueix.
+
+L'**increment F4** posa l'authorization server al fil: els dos documents de descobriment,
+`/api/v1/mcp/oauth/token` amb els tres grants i `/api/v1/mcp/oauth/revoke`, a
+`apps/api/src/routes/mcp-oauth.ts`, ja registrats al composition root des d'`apps/api/src/mcp.ts`.
+Aquestes rutes responen amb **el sobre d'OAuth** i no amb problem details: qui truca es un client
+que no hem escrit nosaltres i decideix mirant el camp `error`. La taula de refusos es un `Record`
+sobre la unio de codis del domini, aixi que un codi nou sense traduccio no compila. `Cache-Control:
+no-store` hi es **tambe als refusos**, el parser de formulari viu dins d'un plugin encapsulat
+--la resta de l'API continua refusant aquell tipus de contingut-- i un service account presenta
+nomes el seu secret, perque un `client_id` seria dir que es un client registrat.
+
+Configuracio nova amb la F4: **`MCP_ISSUER`**, l'origen public d'aquesta API. No pot ser
+`APP_ORIGIN` (es el web) ni `API_INTERNAL_URL` (nomes des de dins del desplegament), i no es dedueix
+de la capcalera `Host` a proposit. Amb la flag `mcp` encesa i sense `MCP_ISSUER`, el boot ho diu i
+les rutes **no** es declaren. Comprovat contra l'app composada de debo: els dos `.well-known`
+responen 200, el token endpoint respon `unsupported_grant_type` en el sobre correcte, i sense
+issuer tot plegat es un 404.
+
+L'**increment G1** es la sessio: `McpSessionService` a `packages/application/src/mcp-session.ts` i
+`PostgresMcpSessionRepository` a `packages/persistence/src/mcp-session-repository.ts`. Hi viu tot el
+que passa entre un bearer que arriba i un cas d'us que corre --autenticar, llistar i cridar-- i
+deliberadament no al transport, perque una regla que viu en una ruta nomes es pot comprovar per un
+socket. Els permisos **es resolen a cada crida** i no es porten dins del token: res no revoca un
+token en el moment en que algu surt d'un tenant, aixi que aquest es el lloc on s'ha de notar. Un
+service account rep **els seus permisos i cap rol**. Absent, desconegut i revocat responen igual;
+nomes el caducat es distingeix, perque nomes sobre aquest un client pot actuar. El llistat de tools
+reutilitza la decisio de la crida, de manera que el cataleg no pot discrepar del que passa en
+invocar. I **cada crida deixa una fila a `audit_log`** --exit, refus o fallada-- amb el recompte i
+mai la carrega ni el missatge de l'error, marcada `source = 'mcp'`. Vint proves d'unitat i set
+d'integracio contra PostgreSQL de debo.
+
+L'**increment G2** es el transport: `POST /mcp` a `apps/api/src/routes/mcp-transport.ts` amb
+`initialize`, `tools/list` i `tools/call` sobre JSON-RPC 2.0, i la composicio sencera a
+`apps/api/src/mcp.ts`. El repartiment de sobres es la decisio de l'increment: **el problema del
+token es respon a la capa HTTP** amb problem details i el `WWW-Authenticate` que nomena el document
+de metadata --es el senyal sobre el qual el client actua sol per anar a autoritzar-se-- i **la
+resta viatja dins del JSON-RPC** amb 200, perque un permis que falta no s'arregla tornant a
+autoritzar i respondre-ho al transport faria que el client tanques la sessio. El `Mcp-Session-Id`
+**es deriva del grant** i no es desa enlloc: tot el que una sessio guardaria es torna a llegir del
+token a cada peticio, aixi que no hi ha taula, ni memoria que creix, ni estat per replicar.
+`GET` i `DELETE` responen 405: no hi ha stream ni sessio que tancar.
+
+Provat de punta a punta contra PostgreSQL real amb un service account creat a ma --secret, token,
+`initialize`, `tools/list`, `tools/call` amb dades del tenant, refus fora d'scope, 404 de sessio
+aliena i les dues files d'auditoria. Aquella passada va destapar dos defectes que cap prova veia i
+que van amb aquest increment: `lookup_mcp_access_token` unia `mcp_clients` amb un join intern, de
+manera que **cap token de service account resolia** des de la `0053` (arreglat per la `0056`, amb
+`clientStatus` ara `"active" | "suspended" | null`), i el token endpoint responia en la nostra
+nomenclatura en comptes de la de la RFC 6749 seccio 5.1, que cap biblioteca d'OAuth sap llegir.
+
+L'**increment H1** son les rutes de gestio, a `apps/api/src/routes/mcp-management.ts`: clients,
+consentiments i service accounts, deu rutes que nomes arriben a casos d'us que ja existien --al
+servei nomes hi faltaven `listGrants` i `revokeGrant`. Tres regles hi valen per a totes: **un secret
+es torna dues vegades i mai mes** (en crear i en rotar), **s'audita tot, refusos i lectures
+incloses**, i **`security:manage` es exigeix fins i tot per llegir**, perque saber quins agents hi ha
+i que poden llegir ja es la part sensible. El sobre es problem details i la frontera amb l'OAuth es
+dibuixa per ruta: `usesProblemDetails` cobreix `/api/v1/mcp/` excepte `/api/v1/mcp/oauth`, que
+continua parlant RFC 6749. S'hi afegeix `POST /api/v1/mcp/service-accounts/:id/retire-previous-secret`,
+que la llista d'API no tenia i sense la qual el cas d'us de tancar la finestra de rotacio no es
+podia arribar a executar. Amb H1 es declara tambe l'etiqueta `mcp` de l'OpenAPI a
+`apps/api/src/app.ts`, que era l'unica linia pendent de coordinacio amb l'altra sessio.
+
+L'**increment H2** es `/authorize` i la pantalla de consentiment, l'unic tram del flux que necessita
+una persona. `GET /api/v1/mcp/oauth/authorize` valida i redirigeix al panell, i les dues crides que
+la pantalla fa despres viuen a `apps/api/src/routes/mcp-consent.ts` amb el sobre de problem details,
+perque parlen amb el nostre panell i no amb un client OAuth generic. **No hi ha taula de peticions
+pendents**: els parametres viatgen per la query string, pero cap fet que la pantalla ensenya en surt
+--nom del client, scopes que realment es concedirien i data de caducitat es tornen a llegir amb
+`describeAuthorization`, que comparteix `checkAuthorization` amb l'aprovacio perque el que es mostra
+i el que es faria no puguin divergir. A `/authorize` hi ha dos sobres d'error segons qui el pot
+rebre: el que no es pot redirigir --client desconegut, adreca no registrada-- s'atura a la pantalla,
+i la resta torna a l'adreca ja comprovada amb els noms de la RFC 6749 seccio 4.1.2.1 i l'`state` que
+el client va enviar. **Aprovar exigeix una sessio de menys de deu minuts** --`sessionFreshAge`, la
+mateixa finestra que better-auth fa servir per canviar la contrasenya-- i **refusar no**, perque
+demanar un login nou per dir que no es com un «no» acaba sent una pestanya abandonada. La migracio
+`0057` afegeix `name` a `lookup_mcp_client`: sense el nom registrat la pantalla ensenyaria un
+`client_id` opac alli on una persona espera «Claude Desktop». L'API no coneix la llista d'idiomes;
+redirigeix a `${appOrigin}/mcp/consent` i el panell negocia la llengua, i sense `appOrigin` la ruta
+no es declara.
+
+L'**increment H3** es la pantalla que la persona llegeix. L'API redirigeix a `/mcp/consent` sense
+idioma a l'adreca i `negotiateLocale` en tria un a partir de l'`Accept-Language`; la peticio passa
+sencera i sense tocar a `/{locale}/mcp/consent`, que es **de servidor**: la descripcio es torna a
+llegir per l'API abans de dibuixar res, de manera que la pantalla no es pot renderitzar nomes a
+partir de l'adreca. Qui hi arriba sense sessio no perd la peticio --`requireSession` accepta un
+`returnTo` i el formulari d'inici de sessio l'obeeix--, i la destinacio passa per `internalPath`,
+que nomes accepta camins dins del panell: es l'unica pantalla del producte que s'obre des d'un
+enllac escrit per algu altre, i una destinacio treta d'una adreca es com es construeix un open
+redirect. Les frases son a `getMcpDictionary` en tres idiomes, i `mcpScopeLabel` i `mcpErrorMessage`
+viuen al costat de les paraules perque la derivacio de la clau i la prova que la comprova no
+divergeixin en silenci. Comprovat contra la pila de verificacio al port 3002: un navegador en
+espanyol acaba a `/es/mcp/consent`, un en alemany a `/ca/...`, i sense sessio a
+`/es/login?next=...` amb la peticio sencera dins.
+
+L'**increment H4** es la seccio d'agents de la pantalla de seguretat: els clients registrats, els
+consentiments donats i les service accounts, contra les rutes de gestio de la H1. Si aquesta seccio
+existeix o no ho decideix l'API i no el component: si el primer llistat respon 404 --la superficie
+no esta muntada-- o 403 --qui mira no l'administra-- no es dibuixa res, perque un panell buit
+titulat "agents registrats" diu que no n'hi ha cap, que es una frase diferent i falsa. La flag es
+llegeix de l'entorn i un component `"use client"` no la pot veure, aixi que preguntar-ho a l'API es
+alhora l'unica manera i la correcta.
+
+Els dos vocabularis que els formularis ofereixen tambe venen de l'API: `GET /mcp/clients` afegeix
+`scopes` --els ambits que poden formar un sostre, sense `mcp:tools.list`, que no es nega mai-- i
+`GET /mcp/service-accounts` afegeix `grantableScopes`, els que qui mira pot sostenir de veritat. Son
+llistes tancades del domini, que `apps/web` no importa, i una copia al navegador envelliria oferint
+menys opcions de les que existeixen sense que res falles. Pel mateix motiu el formulari de service
+account no envia permisos: `createServiceAccount` els dedueix dels ambits triats i els segueix
+capant pels de qui la crea, de manera que la comoditat no obre cap via per sobre la regla.
+
+Un secret es mostra al panell que l'ha encunyat i un refus al panell que l'ha provocat, no en un sol
+lloc compartit: una resposta a "retira aquest consentiment" sota un formulari a mig omplir es llegeix
+com si fos d'aquell formulari, i un secret sota el titol equivocat es un secret que algu desa malament.
+
+L'**increment H5** treu els agents de la pantalla de seguretat i els posa a `/{locale}/mcp`, amb
+«Configuracio» convertida en grup del menu --Seguretat i Agents MCP-- perque connectar un assistent
+i donar-se d'alta un segon factor son feines diferents del mateix dia diferent. A sobre hi ha el
+panell **Connectar un assistent**: l'adreca del servidor, que ve del `resource` de l'API i no es
+compon a la pantalla --una adreca muntada aqui pot no coincidir amb l'audience contra la qual es
+valida el token, i el desajust apareix molt despres i dins del client d'algu altre--, i la
+configuracio per a Claude Code, Claude d'escriptori, OpenAI i OpenCode, cadascuna amb la linia que
+diu on va. Els fragments son dades a `apps/web/src/lib/mcp-connection.ts` i es proven: son cadenes
+que algu enganxara a un fitxer de configuracio, i una que sigui subtilment falsa costa una tarda.
+
+Cap fragment porta identificador de client, perque cap d'aquests assistents n'accepta un d'escrit a
+ma: se'l treuen registrant-se sols. El panell ho diu tal com es en comptes d'ensenyar nomes el cami
+felic, i mostra l'identificador de l'agent triat al costat, per als clients que si que el demanen. El
+Claude d'escriptori i claude.ai hi afegeixen una segona condicio, que no es nostra: exigeixen una
+adreca https publica i rebutgen localhost. Claude Code accepta http a localhost i es la via per
+provar-ho.
+
+L'**increment H6** es el registre dinamic, RFC 7591, i es el que treu «cap assistent no s'hi pot
+connectar d'una tacada» de la llista. `POST /api/v1/mcp/oauth/register` es obert i sense autenticar
+--l'unica escriptura sense autenticar de l'API-- i s'anuncia com a `registration_endpoint` a
+`/.well-known/oauth-authorization-server`. Amplia la decisio **D3**, que queda: registre manual pel
+propietari **i** registre dinamic per a l'assistent, tots dos acabant a la mateixa pantalla de
+consentiment.
+
+El xoc que calia resoldre es que una fila de client pertany a un tenant i un registre arriba abans
+que ningu hagi iniciat sessio. **La fila s'escriu sense tenant, i la reclama la primera persona que
+l'autoritza.** Mentre no te tenant no es de ningu, i aixo s'imposa en comptes de prometre's: la
+politica d'aillament compara `tenant_id` amb el de la sessio i un null no s'iguala a res, o sigui que
+una fila sense reclamar es invisible a qualsevol consulta amb tenant --el llistat de gestio inclos--
+i no s'hi pot consentir, perque un grant referencia `(tenant_id, id)`. La reclamacio es un `update`
+condicionat a `tenant_id is null`: si dos tenants autoritzen el mateix registre alhora nomes en
+guanya un, i el que perd es troba mirant el client d'un altre. El client es public i sense secret per
+constraint (`mcp_clients_unclaimed_is_public`), els redirect URIs passen la mateixa regla que els
+manuals, i les files que ningu no reclama en 24 hores les escombra el registre seguent, sense cap
+tasca programada. La migracio es la `0058_mcp_dynamic_registration.sql`, amb dues funcions
+`security definer` --`register_mcp_client` i `claim_mcp_client`-- perque una escriptura sense tenant
+no pot passar per la politica d'aillament.
+
+Dues coses que no s'han negociat per fer-ho funcionar. **El nom del client es obligatori**, encara
+que la RFC el faci opcional: es l'unic lloc on som mes estrictes que l'especificacio, i el motiu es
+que demanar a algu que aprovi un client sense nom es allotjar-li una pagina de phishing. I la
+pantalla de consentiment **avisa** quan el client s'ha registrat sol, perque autoritzar-lo es alhora
+el consentiment i l'acte que el lliga al tenant. El registre mateix no es pot auditar --passa sense
+sessio, i una fila d'auditoria pertany a un tenant--, o sigui que el que queda al rastre es
+l'aprovacio, amb `selfRegistered` a les metadades.
+
+Amb aixo la **10.1 queda tancada de punta a punta**: autoritat, transport, consentiment, gestio i
+registre.
+
+El propietari va tancar **les quatre decisions que quedaven obertes** el 24 d'agost de 2026:
+redirects loopback permesos (D4), access token de 30 minuts (D5), bearer amb el risc residual
+declarat i DPoP mes endavant (D7), i el portal de client fora d'aquesta fase (D8). D4 i D7 es van
+decidir mirant el cas d'us real: els clients MCP d'avui --Claude Desktop, Claude Code, Codex,
+OpenCode-- redirigeixen a `127.0.0.1` i parlen bearer, i una regla que els deixi tots fora no
+protegeix ningu perque no hi ha ningu a dins. **Ja no queda cap decisio que bloquegi la 10.1.**
+
+Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **numeros de migracio**,
+que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio
+additiva de `TenantContext` amb un `actor`, perque un service account no te `userId`.
 
 **El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9.** La Fase 9 es
 empaquetat i distribucio —imatges OCI, instal·lador, Ansible, SBOM, signatura— i nomes es paga quan
@@ -624,8 +892,49 @@ loopback anterior queda com a fallback. El runbook es `docs/runbooks/connect-ope
 Passen lint, typecheck dels 14 paquets, 24 tasques de proves, migracions PostgreSQL, build dels 14
 paquets i l'E2E autenticat d'Integracions (3/3). La suite E2E global conserva dos errors aliens a
 U7: una assercio de text d'Infraestructura i la ruta Usage sense el feature flag del runner.
-El punt de continuacio aprovat es la base OAuth2 de la 7B; un cop disponible, la Fase 8 continua
-amb M1: IMAP entrant incremental.
+**M1, M2, M3 i M4 estan implementats a la branca compartida.** IMAP, Gmail i Microsoft Graph projecten
+correu entrant incremental a `support_inbound_messages`, de forma idempotent i amb remitents
+desconeguts en estat `pending`. Gmail i Graph usen OAuth delegat de nomes lectura: `state` d'un sol
+us, PKCE S256, tokens xifrats amb context de proposit, jobs sense secrets i renovacio concurrent
+protegida per lease i compare-and-swap. Els clients OAuth es configuren per instal·lacio segons
+`docs/runbooks/connect-mail.md`; la fitxa inicia el consentiment i mostra nomes metadades. El
+`M3` afegeix resposta sortint des del detall del ticket amb Gmail o Microsoft Graph, confirmacio
+explicita vinculada al contingut, MFA i `tickets:manage`, idempotencia persistent, transactional
+outbox, execucio al worker i estats `succeeded`, `failed` o `unknown`. Un timeout de transport no
+es reintenta cegament perquè el proveidor podria haver acceptat el correu. La migracio es
+`0054_connector_actions_mail.sql`, la flag es `connector_actions` i les integracions OAuth
+existents s'han de reautoritzar per obtenir `gmail.send` o `Mail.Send`. `M4` afegeix la safata
+`/support/mail`: suggereix client per adreca sense classificar automaticament, permet crear un
+ticket amb l'SLA vigent, vincular el correu a un ticket obert del mateix client o descartar-lo.
+La classificacio bloqueja la fila i importa o crea el ticket dins una sola transaccio; l'auditoria
+no copia cos, assumpte ni remitent. El detall del ticket mostra tambe l'estat persistent de
+lliurament de cada resposta. El contracte es `docs/specifications/support-mailbox.md` i la UI/API
+nomes existeixen amb la flag `mail`.
+
+La UI d'M4 es una safata de dues columnes: resum de remitents i assumptes a l'esquerra i lector
+amb classificacio a la dreta. Els pendents tenen seleccio multiple i descart massiu de fins a
+100 files, atomic i auditat. El selector de correu sortint ja no depen del cataleg general
+d'Integracions: `/api/v1/support/mail-senders` retorna nomes Gmail/Graph habilitats amb grant OAuth
+actiu, sota `tickets:read`, sense exposar configuracio ni credencials.
+El lector i la llista tenen alcada lligada al viewport i scroll independent; suggeriment, client,
+desti, prioritat o ticket, classificacio i descart comparteixen una sola linia a la barra superior
+de la safata. La resposta externa conserva la confirmacio obligatoria d'M3, pero ara
+la presenta en un dialeg modal: "Revisar" nomes prepara i "Confirmar i enviar" crea la peticio
+persistent. Un intent de revisio no es mostra com un enviament.
+
+Validacio M4 observada: typecheck d'application, persistence, API, i18n i web; 7/7 proves unitaries
+de la bustia i proves d'integracio PostgreSQL de deduplicacio, tenancy, classificacio atomica i
+descart massiu. L'E2E autenticat no ha arribat a M4 perquè el setup local no ha mostrat el repte
+TOTP; continua sent porta de CI abans de considerar l'increment publicable.
+
+La migracio `0055_connector_oauth_redirect_path_constraint.sql` corregeix la restriccio de
+`redirect_path` publicada a `0050`: PostgreSQL no admetia el quantificador `{1,500}` i impedia
+crear qualsevol intent OAuth. La longitud queda separada en `char_length` i la regex conserva
+l'allowlist de caracters.
+
+Els relays OAuth i d'accions utilitzen IDs BullMQ `oauth-<uuid>` i `action-<uuid>`. BullMQ refusa
+els dos punts als custom job IDs; el format anterior deixava l'intent en `received` amb l'outbox
+pendent encara que el consentiment del proveidor hagués acabat correctament.
 
 **Redisseny de Jornada integrat a `develop`.** L'arquitectura d'informacio
 aprovada separa quatre subseccions a la sidebar: Resum, Calendari, Registre i Equip. Resum es la

@@ -49,6 +49,8 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`PRODUCT_REQUIREMENTS.md`](PRODUCT_REQUIREMENTS.md): visio, Release 1.0, usuaris, moduls i connectors.
 - [`docs/README.md`](docs/README.md): index d'ADR, especificacions, seguretat, runbooks i plantilles.
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): requisits, ordres, URLs i arrencada local.
+- [`docs/development/agent-workspaces.md`](docs/development/agent-workspaces.md): treball simultani
+  amb una branca, entorn, serveis i base de dades independents per tasca.
 - [`docs/development/current-state.md`](docs/development/current-state.md): estat implementat i punt de continuacio.
 - [`docs/development/troubleshooting.md`](docs/development/troubleshooting.md): fallades ja diagnosticades, amb causa i solucio.
 - [`docs/development/writing-a-connector.md`](docs/development/writing-a-connector.md): afegir un proveidor nou implementant el contracte de connector.

@@ -40,6 +40,7 @@ import type {
   ConnectorDiagnosisResponse,
   ConnectorDiagnosisStatus,
   ConnectorDiagnosisStep,
+  ConnectorOAuthAuthorizationResponse,
   ConnectorRun,
   ConnectorRunsResponse,
   CreatedConnectorEndpointResponse,
@@ -144,6 +145,19 @@ export function IntegrationDetailScreen({
     // The API answers with a path, because it does not know its own public address. The browser
     // does: it is talking to it.
     setMinted({ url: webhookUrl(window.location.origin, result.data.path), secret: result.data.secret });
+  }
+
+  async function connectOAuth() {
+    setBusy(true);
+    const result = await request<ConnectorOAuthAuthorizationResponse>(
+      `/api/v1/integrations/${instance.id}/oauth/authorizations`,
+      { method: "POST", headers: jsonHeaders, body: JSON.stringify({ locale }) }
+    );
+    if (!result.ok) {
+      setBusy(false);
+      return fail(result);
+    }
+    window.location.assign(result.data.authorizationUrl);
   }
 
   /**
@@ -280,6 +294,39 @@ export function IntegrationDetailScreen({
           <DiagnosisPanel instanceId={instance.id} form={configForm} labels={t} />
         )}
 
+        {entry?.capabilities.oauth && detail.vaultAvailable && (
+          <article className="detail-panel">
+            <h2>{t.oauthTitle}</h2>
+            <p className="field-help">{t.oauthDescription}</p>
+            {detail.oauthGrant ? (
+              <>
+                <div className="detail-row">
+                  <span>{t.oauthStatus}</span>
+                  <StatusPill
+                    tone={detail.oauthGrant.status === "active" ? "active" : "danger"}
+                    label={t[`oauthStatus_${detail.oauthGrant.status}`] ?? detail.oauthGrant.status}
+                  />
+                </div>
+                <div className="detail-row">
+                  <span>{t.oauthScopes}</span>
+                  <strong>{detail.oauthGrant.scopes.join(", ")}</strong>
+                </div>
+                <div className="detail-row">
+                  <span>{t.oauthLastRefresh}</span>
+                  <strong>{moment(detail.oauthGrant.lastRefreshedAt, locale, t.never ?? "")}</strong>
+                </div>
+              </>
+            ) : (
+              <p className="crm-empty">{t.oauthNotConnected}</p>
+            )}
+            {canManage && (
+              <button className="primary-button" disabled={busy} onClick={eventHandler(connectOAuth, crashed)}>
+                {entry.capabilities.oauth.provider === "google" ? t.oauthConnectGoogle : t.oauthConnectMicrosoft}
+              </button>
+            )}
+          </article>
+        )}
+
         {entry?.capabilities.ingress && detail.vaultAvailable && (
           <article className="detail-panel">
             <h2>{t.endpoints}</h2>
@@ -404,7 +451,7 @@ export function IntegrationDetailScreen({
             )}
             {/* Writing needs `credentials:rotate`, which is not the permission that manages an
                 integration: whoever may change a base URL may not thereby hold its token. */}
-            {canRotate && entry && entry.credentialKinds.length > 0 && (
+            {canRotate && entry && !entry.capabilities.oauth && entry.credentialKinds.length > 0 && (
               <CredentialForm
                 instanceId={instance.id}
                 type={instance.connectorType}

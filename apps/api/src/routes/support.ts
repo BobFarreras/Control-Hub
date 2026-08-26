@@ -36,7 +36,165 @@ const normalizeListQuery = (query: ListQuery): TicketListQuery => ({
 });
 
 /** Tickets, their conversation and the state of their service level targets. */
-export function registerSupportRoutes({ app, database, auth, support }: SupportContext) {
+export function registerSupportRoutes({ app, database, auth, support, mailbox }: SupportContext) {
+  app.get("/api/v1/support/mail-senders", async (request) => {
+    const context = await resolveTenantContext(auth, database, request);
+    requirePermission(context, "tickets:read");
+    return { integrations: await support.listOutboundMailInstances(context) };
+  });
+
+  if (mailbox) {
+    app.get<{
+      Querystring: {
+        status?: "pending" | "classified" | "discarded";
+        search?: string;
+        page?: number;
+        pageSize?: number;
+      };
+    }>(
+      "/api/v1/support/mailbox",
+      {
+        schema: {
+          querystring: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["pending", "classified", "discarded"], default: "pending" },
+              search: { type: "string", maxLength: 160 },
+              page: { type: "integer", minimum: 1, default: 1 },
+              pageSize: { type: "integer", minimum: 1, maximum: 100, default: 25 }
+            }
+          }
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        requirePermission(context, "tickets:read");
+        return mailbox.list(context, {
+          status: request.query.status ?? "pending",
+          page: request.query.page ?? 1,
+          pageSize: request.query.pageSize ?? 25,
+          ...(request.query.search ? { search: request.query.search } : {})
+        });
+      }
+    );
+
+    app.get<{ Querystring: { customerId?: string } }>(
+      "/api/v1/support/mailbox/tickets",
+      {
+        schema: {
+          querystring: {
+            type: "object",
+            additionalProperties: false,
+            properties: { customerId: { type: "string", format: "uuid" } }
+          }
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        requirePermission(context, "tickets:read");
+        return { tickets: await mailbox.listTicketOptions(context, request.query.customerId) };
+      }
+    );
+
+    app.post<{
+      Params: { messageId: string };
+      Body: { customerId: string; ticketId?: string; priority?: TicketPriority };
+    }>(
+      "/api/v1/support/mailbox/:messageId/classify",
+      {
+        schema: {
+          params: {
+            type: "object",
+            required: ["messageId"],
+            properties: { messageId: { type: "string", format: "uuid" } }
+          },
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["customerId"],
+            properties: {
+              customerId: { type: "string", format: "uuid" },
+              ticketId: { type: "string", format: "uuid" },
+              priority: { type: "string", enum: ticketPriorities }
+            }
+          }
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        requirePermission(context, "tickets:manage");
+        const result = await mailbox.classify(context, { messageId: request.params.messageId, ...request.body });
+        await writeAudit(database, context, request, {
+          action: "support.mail.classified",
+          targetType: "support_inbound_message",
+          targetId: request.params.messageId,
+          outcome: "success",
+          metadata: { ticketId: result.ticketId, createdTicket: !request.body.ticketId }
+        });
+        return { result };
+      }
+    );
+
+    app.post<{ Params: { messageId: string } }>(
+      "/api/v1/support/mailbox/:messageId/discard",
+      {
+        schema: {
+          params: {
+            type: "object",
+            required: ["messageId"],
+            properties: { messageId: { type: "string", format: "uuid" } }
+          }
+        }
+      },
+      async (request, reply) => {
+        const context = await resolveTenantContext(auth, database, request);
+        requirePermission(context, "tickets:manage");
+        await mailbox.discard(context, request.params.messageId);
+        await writeAudit(database, context, request, {
+          action: "support.mail.discarded",
+          targetType: "support_inbound_message",
+          targetId: request.params.messageId,
+          outcome: "success"
+        });
+        return reply.code(204).send();
+      }
+    );
+
+    app.post<{ Body: { messageIds: string[] } }>(
+      "/api/v1/support/mailbox/discard",
+      {
+        schema: {
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["messageIds"],
+            properties: {
+              messageIds: {
+                type: "array",
+                minItems: 1,
+                maxItems: 100,
+                uniqueItems: true,
+                items: { type: "string", format: "uuid" }
+              }
+            }
+          }
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        requirePermission(context, "tickets:manage");
+        const discarded = await mailbox.discardMany(context, request.body.messageIds);
+        await writeAudit(database, context, request, {
+          action: "support.mail.bulk_discarded",
+          targetType: "support_inbound_message_batch",
+          outcome: "success",
+          metadata: { discarded }
+        });
+        return { discarded };
+      }
+    );
+  }
   app.get<{ Querystring: ListQuery }>("/api/v1/support/tickets", { schema: listSchema }, async (request) => {
     const context = await resolveTenantContext(auth, database, request);
     requirePermission(context, "tickets:read");

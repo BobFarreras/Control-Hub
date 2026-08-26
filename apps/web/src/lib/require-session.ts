@@ -1,6 +1,7 @@
 import type { Locale } from "@control-hub/i18n";
 import { redirect } from "next/navigation";
 import { apiFetch, hasSessionCookie } from "./api";
+import { internalPath } from "./internal-path";
 
 /**
  * Three answers, not two.
@@ -23,8 +24,21 @@ export class ApiUnreachableError extends Error {
   }
 }
 
-export async function requireSession(locale: Locale) {
-  if (!(await hasSessionCookie())) redirect(`/${locale}/login`);
+/**
+ * `returnTo` is where the sign-in form sends the person afterwards, when landing here at all was
+ * not their idea.
+ *
+ * Every screen in the panel is reached from the panel, so for all of them the dashboard is the
+ * right place to arrive. The consent screen is the exception: it is opened from a link an agent
+ * composed, and dropping somebody on the dashboard after they authenticate loses the request they
+ * were answering. It is validated as a path inside this panel and refused otherwise, because a
+ * destination taken from an address is exactly how an open redirect is built.
+ */
+export async function requireSession(locale: Locale, returnTo?: string) {
+  const next = internalPath(returnTo);
+  const loginUrl = `/${locale}/login${next === null ? "" : `?next=${encodeURIComponent(next)}`}`;
+
+  if (!(await hasSessionCookie())) redirect(loginUrl);
 
   let response: Response;
   try {
@@ -48,5 +62,5 @@ export async function requireSession(locale: Locale) {
 
   // Outside the try on purpose: redirect() signals by throwing, and a catch around it would
   // swallow that signal.
-  if (!authenticated) redirect(`/${locale}/login`);
+  if (!authenticated) redirect(loginUrl);
 }

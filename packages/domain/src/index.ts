@@ -236,4 +236,6 @@ export * from "./egress.js";
 export * from "./infrastructure.js";
 export * from "./connector-diagnosis.js";
 export * from "./usage.js";
+export * from "./mcp.js";
+export * from "./mcp-oauth.js";
 export { localDay, localParts, type LocalParts } from "./tenant-clock.js";

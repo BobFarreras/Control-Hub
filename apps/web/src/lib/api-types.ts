@@ -174,9 +174,36 @@ export type TicketDetail = {
   sla: { firstResponse: SlaTargetState; resolution: SlaTargetState };
   inboxSla: { firstResponse: InboxSlaDetail; resolution: InboxSlaDetail };
   assignableMembers: AssignableMember[];
+  deliveries: {
+    ticketMessageId: string;
+    status: "queued" | "running" | "succeeded" | "failed" | "unknown" | "canceled";
+    errorCode: string | null;
+    externalId: string | null;
+    createdAt: string;
+    finishedAt: string | null;
+  }[];
 };
 
 export type InboxPage = { items: InboxTicket[]; total: number; page: number; pageSize: TablePreference["pageSize"] };
+
+export type InboundMessage = {
+  id: string;
+  instanceName: string;
+  senderAddress: string;
+  senderName: string | null;
+  subject: string | null;
+  preview: string | null;
+  receivedAt: string;
+  status: "pending" | "classified" | "discarded";
+  customerId: string | null;
+  customerName: string | null;
+  ticketId: string | null;
+  ticketNumber: number | null;
+  suggestedCustomerId: string | null;
+  suggestedCustomerName: string | null;
+};
+export type InboundMessagePage = { items: InboundMessage[]; total: number; page: number; pageSize: number };
+export type MailboxTicketOption = { id: string; ticketNumber: number; subject: string; customerId: string };
 
 export type ProjectRow = {
   id: string;
@@ -672,7 +699,9 @@ export type ConnectorCatalogueEntry = {
   capabilities: {
     egress: { schemes: string[]; destination: string } | null;
     operations: string[];
+    actions?: string[];
     ingress: boolean;
+    oauth: { provider: "google" | "microsoft" } | null;
   };
 };
 
@@ -714,6 +743,16 @@ export type ConnectorRunsResponse = { runs: ConnectorRun[]; total: number; page:
 /** The only response that carries an address and a secret, and only the once. */
 export type CreatedConnectorEndpointResponse = { endpoint: ConnectorEndpoint; path: string; secret: string };
 
+export type ConnectorOAuthGrant = {
+  provider: "google" | "microsoft";
+  scopes: string[];
+  status: "active" | "reauthorization_required" | "revoked";
+  accessExpiresAt: string | null;
+  lastRefreshedAt: string | null;
+};
+export type ConnectorOAuthGrantResponse = { grant: ConnectorOAuthGrant | null };
+export type ConnectorOAuthAuthorizationResponse = { authorizationUrl: string; expiresAt: string };
+
 /** Everything the screen shows about one integration, loaded together by the page that selects it. */
 export type IntegrationDetail = {
   instance: ConnectorInstance;
@@ -730,6 +769,7 @@ export type IntegrationDetail = {
    * on an installation that cannot seal one is offering an operation that always fails.
    */
   vaultAvailable: boolean;
+  oauthGrant: ConnectorOAuthGrant | null;
 };
 
 /**
@@ -1018,3 +1058,84 @@ export type DiscoveredService = {
 };
 
 export type ConnectorServicesResponse = { services: DiscoveredService[] };
+
+/**
+ * What an agent is asking for, as the API resolved it.
+ *
+ * Every field here is the API's answer and not the query string the browser arrived with: the name
+ * is the registered one, the scopes are the ones this reader could actually back, and the address
+ * is the one already matched against the client's registrations. The screen renders this and never
+ * the request, which is what keeps a composed URL from describing itself generously.
+ */
+export type McpConsentRequest = {
+  clientId: string;
+  clientName: string;
+  clientKind: "public" | "confidential";
+  redirectUri: string;
+  scopes: string[];
+  resource: string;
+  /** ISO 8601. When the consent would lapse if it is given now. */
+  grantExpiresAt: string;
+  /** True when the client registered itself and this approval is what claims it for the tenant. */
+  unclaimed: boolean;
+};
+
+/** Where to send the browser once the decision is recorded: to the client, either way. */
+export type McpConsentDecisionResponse = { redirectTo: string };
+
+/**
+ * A registered client, as the security screen lists it.
+ *
+ * The secret is absent in every shape here and not by omission: a confidential client is handed
+ * one when it is registered and never again, so a listing that carried it would be a listing worth
+ * stealing.
+ */
+export type McpClientRow = {
+  id: string;
+  clientId: string;
+  name: string;
+  kind: "public" | "confidential";
+  redirectUris: string[];
+  maxScopes: string[];
+  status: "active" | "suspended";
+  createdAt: string;
+};
+
+/**
+ * The clients, plus the two facts the panel must not work out for itself: the vocabulary a
+ * ceiling may be drawn from, and the address an agent is pointed at.
+ */
+export type McpClientsResponse = { clients: McpClientRow[]; scopes: string[]; resource: string };
+
+export type McpGrantRow = {
+  id: string;
+  clientId: string | null;
+  clientName: string | null;
+  actorType: "user" | "service_account";
+  actorMembershipId: string | null;
+  actorServiceAccountId: string | null;
+  scopes: string[];
+  status: "active" | "revoked" | "expired" | "suspended";
+  consentedAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  /** Null until an agent uses it. The field that tells a stale consent from a working one. */
+  lastUsedAt: string | null;
+};
+
+export type McpGrantsResponse = { grants: McpGrantRow[] };
+
+export type McpServiceAccountRow = {
+  id: string;
+  name: string;
+  ownerMembershipId: string;
+  scopes: string[];
+  permissions: string[];
+  expiresAt: string;
+  disabledAt: string | null;
+  secretRotatedAt: string | null;
+  createdAt: string;
+};
+
+/** The accounts, plus the scopes this reader could actually back -- not the whole vocabulary. */
+export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow[]; grantableScopes: string[] };

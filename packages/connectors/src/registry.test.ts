@@ -41,6 +41,9 @@ describe("what this installation ships", () => {
     expect(connectorRegistry.types()).toEqual([
       "anthropic",
       "generic-webhook",
+      "gmail",
+      "imap",
+      "microsoft_graph_mail",
       "n8n",
       "openai",
       "opencode",

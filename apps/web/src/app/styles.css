@@ -3672,6 +3672,28 @@ main {
   align-items: flex-end;
   justify-content: space-between;
 }
+.ticket-mail-confirmation {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: 0.55rem;
+  background: var(--surface);
+}
+.ticket-mail-confirmation > p {
+  margin: 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ticket-mail-confirmation > p:last-of-type {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  color: var(--text);
+}
 
 /* ── Mobile: single column ──────────────────────────────────────────── */
 @media (max-width: 760px) {
@@ -6664,4 +6686,598 @@ main {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 0.8rem;
   word-break: break-all;
+}
+.mailbox-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.mailbox-tabs a {
+  color: var(--text-muted);
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.mailbox-tabs a.active {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.mailbox-shell {
+  overflow: visible;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.mailbox-toolbar {
+  position: relative;
+  z-index: 50;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow: visible;
+}
+.mailbox-icon-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mailbox-icon-button:hover,
+.mailbox-icon-button:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.mailbox-icon-button.danger {
+  margin-left: auto;
+  color: var(--danger);
+}
+.mailbox-confirm {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mailbox-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 36%) minmax(0, 1fr);
+  height: clamp(520px, calc(100dvh - 250px), 820px);
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+.mailbox-message-list {
+  overflow: auto;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+.mailbox-list-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: start;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.mailbox-list-row.active {
+  background: var(--surface-hover);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.mailbox-list-row > input {
+  margin: 5px 0 0;
+  accent-color: var(--accent);
+}
+.mailbox-list-row > button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mailbox-row-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mailbox-row-top strong,
+.mailbox-row-subject,
+.mailbox-row-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mailbox-row-top time,
+.mailbox-row-preview {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.mailbox-row-subject {
+  margin-top: 3px;
+  font-weight: 650;
+}
+.mailbox-row-preview {
+  margin-top: 2px;
+}
+.mailbox-reader {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.mailbox-reader-header {
+  order: 1;
+  display: flex;
+  gap: 14px;
+  padding: 26px 28px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.mailbox-reader-header h2,
+.mailbox-reader-header p {
+  margin: 0 0 5px;
+  overflow-wrap: anywhere;
+}
+.mailbox-reader-header small {
+  color: var(--text-muted);
+}
+.mailbox-avatar {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+.mailbox-reader-body {
+  order: 2;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.mailbox-classifier {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+}
+.mailbox-suggestion {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.mailbox-classifier .select-shell {
+  width: 150px;
+}
+.mailbox-classifier .select-dropdown {
+  z-index: 80;
+}
+.mailbox-linked {
+  order: 3;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 28px 28px;
+  padding: 12px;
+  background: var(--surface-hover);
+  border-radius: var(--radius-sm);
+}
+.mailbox-global-error {
+  margin: 10px 12px;
+}
+.mailbox-empty {
+  min-height: 300px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  color: var(--text-muted);
+}
+.ticket-mail-dialog-body {
+  padding: 20px;
+}
+.ticket-mail-preview {
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+.ticket-mail-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 20px 20px;
+}
+@media (max-width: 720px) {
+  .mailbox-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .mailbox-classifier {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .mailbox-classifier .select-shell {
+    width: min(100%, 220px);
+  }
+  .mailbox-layout {
+    grid-template-columns: 1fr;
+  }
+  .mailbox-message-list {
+    max-height: 320px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mailbox-reader-header,
+  .mailbox-reader-body {
+    padding: 18px;
+  }
+  .mailbox-confirm span {
+    display: none;
+  }
+}
+
+/*
+ * The consent screen.
+ *
+ * A single card on an otherwise empty page, because this is the one screen in the product with
+ * exactly one thing to do on it: there is no navigation, no sidebar and nothing else to look at
+ * while deciding. The two buttons carry the same weight -- refusing is not a secondary action --
+ * and the facts sit above them in a list rather than in a paragraph, so that the address a
+ * browser will be sent to is read rather than skimmed.
+ */
+.consent-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 5vw, 64px);
+  background: var(--surface-subtle);
+}
+.consent-card {
+  width: min(560px, 100%);
+  padding: clamp(24px, 4vw, 40px);
+  display: grid;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.consent-card > svg {
+  color: var(--brand);
+}
+.consent-card h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.15;
+}
+.consent-eyebrow {
+  color: var(--brand);
+  font: 500 11px/1 "JetBrains Mono";
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.consent-subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+.consent-facts {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.consent-facts > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.consent-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.consent-facts dd {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.consent-facts dd small {
+  color: var(--muted);
+}
+.consent-facts code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.consent-scopes h2 {
+  margin: 6px 0 4px;
+  font-size: 17px;
+}
+.consent-scopes > p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.consent-scopes ul {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+.consent-scopes li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+.consent-scopes li > svg {
+  color: var(--brand);
+}
+.consent-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.consent-actions {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.consent-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.consent-card-refused > svg {
+  color: var(--danger);
+}
+.consent-card-refused .secondary-button {
+  justify-self: start;
+  margin-top: 8px;
+}
+@media (max-width: 520px) {
+  .consent-facts > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .consent-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The agents section of the security screen. Three panels the width of the grid, because a
+   redirect address and a client identifier are long strings that read badly in a half column. */
+.agents-panel {
+  grid-column: 1 / -1;
+}
+/* "Nothing here yet" is a line of text inside a panel, not a section of its own: the 72px
+   `.crm-empty` reserves is the table on a full-width screen and a hole under one sentence here. */
+.agents-panel .crm-empty {
+  padding: 4px 0 0;
+  text-align: start;
+}
+.agent-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 220px;
+  gap: 14px;
+  align-items: start;
+}
+.agent-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-form label.agent-wide {
+  grid-column: 1 / -1;
+}
+.agent-form input,
+.agent-form textarea {
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+.agent-form input {
+  height: 46px;
+  padding: 0 12px;
+}
+.agent-form textarea {
+  resize: vertical;
+  /* An address per line, so the field has to show more than one without being scrolled. */
+  min-height: 84px;
+  font-family: "JetBrains Mono";
+  font-size: 13px;
+}
+.agent-form small {
+  font-weight: 500;
+}
+.agent-form > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.agent-scopes {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.agent-scopes legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-scopes > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.agent-scopes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.agent-scopes small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.agent-scope-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+@media (max-width: 760px) {
+  .agent-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Connecting an assistant is copy-and-paste work, so every string somebody needs sits in its own
+   row with the button that copies it, rather than inside a paragraph they have to select by hand. */
+.connect-address {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.connect-address span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.connect-address code {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.connect-pick {
+  display: grid;
+  gap: 8px;
+  max-width: 340px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+/* An explanation of how registration works, not a warning about it: bordered like the rest of the
+   panel rather than in the warning colour, which is reserved for what somebody has to act on. */
+.connect-notice {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 13px;
+}
+.connect-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--muted);
+}
+/* The consent screen's one warning, and the only place on it painted in the warning colour: this
+   client introduced itself a moment ago and approving it is what lets it in. */
+.consent-warning {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  background: var(--warning-subtle);
+  color: var(--text);
+  font-size: 13px;
+  text-align: start;
+}
+.consent-warning svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.connect-recipes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.connect-recipes h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.connect-recipes p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.connect-snippet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.connect-snippet pre {
+  margin: 0;
+  overflow-x: auto;
+}
+.connect-snippet code {
+  font-family: "JetBrains Mono";
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
 }

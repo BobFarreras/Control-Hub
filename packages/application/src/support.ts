@@ -50,6 +50,15 @@ export type TicketMessageRecord = {
   visibility: "internal" | "customer";
   createdAt: Date;
 };
+export type MailDeliveryRecord = {
+  ticketMessageId: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "unknown" | "canceled";
+  errorCode: string | null;
+  externalId: string | null;
+  createdAt: Date;
+  finishedAt: Date | null;
+};
+export type OutboundMailInstance = { id: string; name: string };
 
 export type CreateTicketInput = {
   customerId: string;
@@ -84,6 +93,7 @@ export type TicketDetail = {
   sla: SlaState;
   inboxSla: InboxSlaInfo;
   assignableMembers: AssignableMember[];
+  deliveries: MailDeliveryRecord[];
 };
 
 /** Which of a ticket's two targets is being spoken about. */
@@ -138,6 +148,8 @@ export type SupportRepository = {
   listMessages(context: TenantContext, ticketId: string): Promise<TicketMessageRecord[]>;
   getTicketWithNames(context: TenantContext, ticketId: string): Promise<TicketDetail["ticket"] | null>;
   listAssignableMembers(context: TenantContext): Promise<AssignableMember[]>;
+  listMailDeliveries?(context: TenantContext, ticketId: string): Promise<MailDeliveryRecord[]>;
+  listOutboundMailInstances?(context: TenantContext): Promise<OutboundMailInstance[]>;
   markFirstResponse(context: TenantContext, ticketId: string, at: Date): Promise<void>;
   listPauses(context: TenantContext, ticketId: string): Promise<SlaPause[]>;
   listPausesForTickets(context: TenantContext, ticketIds: readonly string[]): Promise<Record<string, SlaPause[]>>;
@@ -190,6 +202,10 @@ export class SupportService {
 
   listTickets(context: TenantContext, query: TicketListQuery): Promise<TicketPage> {
     return this.repository.listTickets(context, query);
+  }
+
+  listOutboundMailInstances(context: TenantContext): Promise<OutboundMailInstance[]> {
+    return this.repository.listOutboundMailInstances?.(context) ?? Promise.resolve([]);
   }
 
   /**
@@ -370,11 +386,12 @@ export class SupportService {
     const ticket = await this.repository.getTicketWithNames(context, ticketId);
     if (!ticket) throw new SupportError("TICKET_NOT_FOUND");
 
-    const [messages, calendar, pauses, assignableMembers] = await Promise.all([
+    const [messages, calendar, pauses, assignableMembers, deliveries] = await Promise.all([
       this.repository.listMessages(context, ticketId),
       this.repository.loadCalendar(context),
       this.repository.listPauses(context, ticketId),
-      this.repository.listAssignableMembers(context)
+      this.repository.listAssignableMembers(context),
+      this.repository.listMailDeliveries?.(context, ticketId) ?? Promise.resolve([])
     ]);
 
     const sla = slaState({
@@ -392,6 +409,7 @@ export class SupportService {
       ticket,
       messages,
       assignableMembers,
+      deliveries,
       sla,
       inboxSla: inboxSlaInfo(
         sla.firstResponse,

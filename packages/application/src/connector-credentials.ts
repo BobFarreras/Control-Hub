@@ -64,6 +64,12 @@ function aadFor(context: TenantContext, instanceId: string): CredentialAad {
   return { tenantId: context.tenantId, instanceId };
 }
 
+function credentialAad(context: TenantContext, instanceId: string, kind: string): CredentialAad {
+  return kind.startsWith("oauth_")
+    ? { tenantId: context.tenantId, instanceId, purpose: kind }
+    : aadFor(context, instanceId);
+}
+
 export class ConnectorCredentialService {
   constructor(
     private readonly repository: ConnectorRepository,
@@ -83,6 +89,9 @@ export class ConnectorCredentialService {
 
     const kind = input.kind.trim();
     if (!kindPattern.test(kind)) throw new ConnectorCredentialError("INVALID_KIND");
+    // OAuth material is minted and rotated by the authorization flow. Accepting it here would
+    // bypass PKCE, state binding and the purpose-specific vault context.
+    if (kind.startsWith("oauth_")) throw new ConnectorCredentialError("INVALID_KIND");
     if (input.secret.length < shortestAcceptableSecret) throw new ConnectorCredentialError("SECRET_TOO_SHORT");
     if (Buffer.byteLength(input.secret, "utf8") > longestAcceptableSecretBytes) {
       throw new ConnectorCredentialError("SECRET_TOO_LONG");
@@ -184,7 +193,7 @@ export class ConnectorSecretReader {
     const live = await this.repository.readSealedCredentials(context, instanceId, kind);
     const primary = live.find((credential) => credential.slot === "primary");
     if (!primary) return null;
-    const secret = this.sealer.open(primary, aadFor(context, instanceId));
+    const secret = this.sealer.open(primary, credentialAad(context, instanceId, kind));
     await this.repository.markCredentialUsed(context, primary.id);
     return secret;
   }
@@ -199,8 +208,10 @@ export class ConnectorSecretReader {
    */
   async openAll(context: TenantContext, instanceId: string, kind: string): Promise<{ id: string; secret: string }[]> {
     const live = await this.repository.readSealedCredentials(context, instanceId, kind);
-    const aad = aadFor(context, instanceId);
-    return live.map((credential) => ({ id: credential.id, secret: this.sealer.open(credential, aad) }));
+    return live.map((credential) => ({
+      id: credential.id,
+      secret: this.sealer.open(credential, credentialAad(context, instanceId, kind))
+    }));
   }
 
   markUsed(context: TenantContext, credentialId: string): Promise<void> {

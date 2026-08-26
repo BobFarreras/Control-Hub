@@ -676,3 +676,79 @@ docker exec control-hub-valkey-1 valkey-cli hget "bull:control-hub-connectors:<i
 **La regla.** Un limit de llargada sobre un valor que composa una llibreria de tercers es un limit
 sobre alguna altra cosa que ningu ha escrit. Si el capem, que sigui amb marge i amb el motiu al
 costat.
+# OAuth torna a Integracions pero continua desconnectat
+
+**Simptoma:** el proveidor torna amb `?oauth=connected`, l'intent queda `received`, no apareix cap
+grant i l'outbox conserva `published_at = null`. Els jobs `connector-oauth-outbox` fallen amb
+`Custom Id cannot contain :`.
+
+**Causa:** BullMQ reserva `:` dins dels identificadors. El relay construia `oauth:<uuid>`; el
+mateix defecte existia preventivament a `action:<uuid>`.
+
+**Solucio:** utilitzar `oauth-<uuid>` i `action-<uuid>`. No s'ha de marcar l'outbox com publicada
+abans que `Queue.add` acabi; així una passada posterior recupera automàticament els intents.
+
+### La UI nova continua executant una consulta o un cataleg antics
+
+**Simptoma.** La safata de correu falla amb una relacio que ja s'ha corregit al codi, o el detall
+del ticket diu que no hi ha Gmail tot i que la instancia i el grant OAuth son actius.
+
+**Causa.** API i web estaven aixecats abans d'integrar M3/M4. La base conserva l'error real
+(`customer_contacts` en comptes de `contacts`) i el Server Component conserva el contracte antic
+del cataleg fins que els processos de desenvolupament recompilen.
+
+**Solucio.** Comprovar el proces viu, no nomes el fitxer: les rutes M4 han de respondre 401 sense
+sessio —404 significa que el servidor encara no les te— i la consulta tenant-scoped de remitents
+ha de trobar el Gmail habilitat amb grant actiu. Reiniciar API/web/worker si el watcher no ho ha
+fet. El detall del ticket usa `/api/v1/support/mail-senders`, no el cataleg general d'Integracions.
+
+### Una resposta externa desapareix en recarregar el ticket
+
+**Simptoma.** Despres de premer `Revisar enviament` sembla que la resposta s'ha enviat, pero en
+recarregar no hi ha missatge ni estat de lliurament.
+
+**Causa.** La primera accio nomes encunya la confirmacio d'un sol us; no crea ni request, ni
+delivery, ni outbox. Si `connector_action_confirmations.consumed_at` es nul i no existeix cap fila
+a `connector_action_requests`, no hi ha hagut cap intent d'enviament.
+
+**Solucio.** La UI mostra la segona decisio en un dialeg modal inequívoc. Nomes `Confirmar i
+enviar` consumeix la confirmacio i crea request, missatge, delivery i outbox en una transaccio.
+
+### Turbo reutilitza cache i logs d'un altre worktree
+
+**Simptoma.** `turbo typecheck` diu `cache hit` en un worktree acabat de crear i els logs
+reproduits contenen paths absoluts del checkout principal.
+
+**Causa.** Turbo resol el directori Git comu dels worktrees i pot reutilitzar la seva cache. El
+filesystem del codi es diferent, pero la cache per defecte no queda aillada de manera fiable.
+
+**Solucio.** Les ordres arrel passen `--cache-dir=.turbo-workspace`. Aquest directori existeix
+dins de cada worktree i esta ignorat per Git. No es retira l'opcio per estalviar temps: una cache
+compartida invalida l'evidencia de quina revisio s'ha comprovat i pot filtrar paths o logs entre
+tasques.
+
+### El workspace assigna ports nous pero el web prova d'obrir 3001
+
+**Simptoma.** El manifest i `.env` indiquen un port propi, pero `pnpm dev` falla amb
+`EADDRINUSE 127.0.0.1:3001`. El worker pot fallar alhora perquè una credencial OAuth opcional es
+una cadena buida.
+
+**Causa.** Turbo funciona en mode estricte: una variable al `.env` que no sigui a `globalEnv` no
+arriba al procés fill. D'altra banda, `KEY=` no es una variable absent; Zod rep una cadena buida i
+la refusa si el camp opcional exigeix longitud quan existeix.
+
+**Solucio.** `WEB_PORT` i `VERIFY_WEB_PORT` formen part de `globalEnv`. El generador de workspace
+omet completament les credencials opcionals no configurades; no les escriu com a valors buits.
+
+### Windows deixa el directori del worktree despres del cleanup
+
+**Simptoma.** Contenidors i volums desapareixen, pero `git worktree remove` acaba amb
+`Filename too long` i queda un directori orfe amb `node_modules`.
+
+**Causa.** pnpm pot crear paths que superen el tractament historic de `MAX_PATH` de Git for
+Windows. Git retira el registre del worktree abans d'acabar de suprimir tots els fitxers.
+
+**Solucio.** El CLI recorre el target ja validat i elimina nomes una allowlist d'arbres generats:
+`node_modules`, `.next*`, `.turbo*`, `dist`, coverage i reports. Tambe retira el `.env` i el
+manifest `.agent` locals. Git continua sent qui elimina tot el codi versionat. No s'utilitza un
+glob ni es toca cap directori pare.
