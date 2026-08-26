@@ -24,7 +24,8 @@ const description = {
   redirectUri,
   scopes: ["mcp:tools.list", "crm.read"] as const,
   audience,
-  grantExpiresAt: new Date("2026-11-23T10:00:00.000Z")
+  grantExpiresAt: new Date("2026-11-23T10:00:00.000Z"),
+  unclaimed: false
 };
 
 type Audit = { action: unknown; targetType: unknown; targetId: unknown; outcome: unknown; metadata: unknown };
@@ -130,8 +131,24 @@ const post = (body: Record<string, string>) => ({
 describe("what the consent screen is told", () => {
   it("names every field the screen renders, and no code among them", () => {
     expect(Object.keys(mcpConsentResponse(description)).sort()).toEqual(
-      ["clientId", "clientName", "clientKind", "redirectUri", "scopes", "resource", "grantExpiresAt"].sort()
+      [
+        "clientId",
+        "clientName",
+        "clientKind",
+        "redirectUri",
+        "scopes",
+        "resource",
+        "grantExpiresAt",
+        "unclaimed"
+      ].sort()
     );
+  });
+
+  it("tells the screen when the client registered itself and nobody has claimed it", async () => {
+    // The screen warns on this, and it can only come from the store: a client that introduced
+    // itself a moment ago looks exactly like one an administrator set up, in the request.
+    const { app } = await boot({ service: { describeAuthorization: { ...description, unclaimed: true } } });
+    expect((await app.inject(get(asked()))).json<{ unclaimed: boolean }>().unclaimed).toBe(true);
   });
 
   it("answers with what the service resolved, not with what the request said", async () => {
@@ -273,7 +290,7 @@ describe("what the decision leaves behind", () => {
         targetType: "mcp_client",
         targetId: "client-1",
         outcome: "success",
-        metadata: { clientName: "Claude Desktop", scopes: "mcp:tools.list crm.read" }
+        metadata: { clientName: "Claude Desktop", scopes: "mcp:tools.list crm.read", selfRegistered: "false" }
       }
     ]);
   });
@@ -283,6 +300,25 @@ describe("what the decision leaves behind", () => {
     await app.inject(post({ ...asked(), decision: "deny" }));
 
     expect(audits[0]).toMatchObject({ action: "mcp.consent.denied", outcome: "denied" });
+  });
+
+  it("records that the approval was what let a self-registered client in", async () => {
+    // The registration itself cannot be audited -- it happens with nobody signed in, and an audit
+    // row belongs to a tenant. This is the only place the fact can be written down.
+    const { app, audits } = await boot({ service: { describeAuthorization: { ...description, unclaimed: true } } });
+    await app.inject(post({ ...asked(), decision: "approve" }));
+
+    expect(audits[0]).toMatchObject({
+      action: "mcp.consent.approved",
+      metadata: { clientName: "Claude Desktop", selfRegistered: "true" }
+    });
+  });
+
+  it("says so when the client was one somebody registered by hand", async () => {
+    const { app, audits } = await boot();
+    await app.inject(post({ ...asked(), decision: "approve" }));
+
+    expect(audits[0]).toMatchObject({ metadata: { selfRegistered: "false" } });
   });
 
   it("keeps the authorization code out of the trail entirely", async () => {

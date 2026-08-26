@@ -39,6 +39,17 @@ export const mcpScopes = [
 export type McpScope = (typeof mcpScopes)[number];
 
 /**
+ * The scopes a client may record as its ceiling, which is every one that can be asked for.
+ *
+ * `mcp:tools.list` is not among them because it is never negotiated: `negotiateMcpScopes` grants it
+ * to everyone, so recording it as a ceiling would suggest it could be withheld, and offering it on
+ * a registration form would ask somebody to decide something that is not theirs to decide. Both
+ * the management screen and dynamic registration read this list rather than keeping a copy, so a
+ * scope added above cannot be offered in one place and forgotten in the other.
+ */
+export const registrableMcpScopes: readonly McpScope[] = mcpScopes.filter((scope) => scope !== "mcp:tools.list");
+
+/**
  * What a scope is worth: the permissions an actor must already hold for it to mean anything.
  *
  * `mcp:tools.list` requires none, because listing what you may call reveals only what you may

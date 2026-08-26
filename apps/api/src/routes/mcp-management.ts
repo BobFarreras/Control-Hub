@@ -5,7 +5,7 @@ import type {
   McpServiceAccountRecord
 } from "@control-hub/application";
 import type { DatabaseClient } from "@control-hub/database";
-import { grantableMcpScopes, mcpScopes, type TenantContext } from "@control-hub/domain";
+import { grantableMcpScopes, registrableMcpScopes, type TenantContext } from "@control-hub/domain";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ControlHubAuth } from "../auth.js";
 import { problemContentType, problemDetails } from "../problem.js";
@@ -93,16 +93,6 @@ export function mcpServiceAccountResponse(account: McpServiceAccountRecord) {
   };
 }
 
-/**
- * The scopes a client may be given as its ceiling.
- *
- * It travels with the listing so the screen that offers them does not carry a second copy of a
- * closed vocabulary -- a copy that would go stale the day a scope is added and be wrong in the
- * quietest way, by offering fewer choices than exist. `mcp:tools.list` is left out because a
- * ceiling records what may be withheld, and listing what you may call is never withheld.
- */
-const registrableScopes = mcpScopes.filter((scope) => scope !== "mcp:tools.list");
-
 export type McpManagementContext = {
   app: ControlHubApp;
   database: DatabaseClient;
@@ -135,10 +125,6 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
     return context;
   }
 
-  const listing = (summary: string, description: string) => ({
-    schema: { tags: ["mcp"], summary, description }
-  });
-
   /**
    * The one shape a "there was nothing there" answer takes on this surface.
    *
@@ -162,10 +148,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/clients",
-    listing(
-      "The MCP clients registered here",
-      "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. Registration is manual: nothing self-registers, so this list is exactly what somebody decided to add."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The MCP clients registered here",
+        description:
+          "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. A client appears here either because somebody registered it by hand or because it registered itself and a person authorized it, which is the act that claims it for this tenant."
+      }
+    },
     async (request) => {
       const context = await authorise(request, { action: "mcp.clients.list", targetType: "mcp_client" });
       await writeAudit(database, context, request, {
@@ -175,7 +167,10 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
       });
       return {
         clients: (await mcp.listClients(context)).map(mcpClientResponse),
-        scopes: registrableScopes,
+        // The vocabulary travels with the listing so the screen that offers it does not keep a
+        // second copy of a closed list -- a copy that would go stale the day a scope is added, and
+        // be wrong in the quietest way possible, by offering fewer choices than exist.
+        scopes: registrableMcpScopes,
         // The address an agent is pointed at, taken from the same service that mints the tokens
         // rather than composed on a screen. A panel that guessed it would hand somebody an address
         // whose audience check fails, and the failure would arrive much later and read as a bug.
@@ -194,6 +189,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   }>(
     "/api/v1/mcp/clients",
     {
+      // Registering by hand is a deliberate act, and a burst of them is not.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Register an MCP client",
@@ -220,6 +217,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.delete<{ Params: { clientId: string } }>(
     "/api/v1/mcp/clients/:clientId",
     {
+      // Same for removing one.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Remove an MCP client",
@@ -248,10 +247,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/grants",
-    listing(
-      "The consents this tenant has given",
-      "Every grant an agent is acting under, who approved it, what it may reach, when it lapses and when it was last used. A consent nobody exercises is visible as such, which is what makes the list worth reading."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The consents this tenant has given",
+        description:
+          "Every grant an agent is acting under, who approved it, what it may reach, when it lapses and when it was last used. A consent nobody exercises is visible as such, which is what makes the list worth reading."
+      }
+    },
     async (request) => {
       const context = await authorise(request, { action: "mcp.grants.list", targetType: "mcp_grant" });
       await writeAudit(database, context, request, {
@@ -266,6 +271,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.delete<{ Params: { grantId: string } }>(
     "/api/v1/mcp/grants/:grantId",
     {
+      // Withdrawing is deliberate too, and must never be the slow path.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Withdraw a consent",
@@ -292,10 +299,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/service-accounts",
-    listing(
-      "The agents that log in without a browser",
-      "Service accounts, their scopes, the permissions those scopes are capped by, and when each secret expires. The secret itself was shown once when it was minted and is not readable from here."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The agents that log in without a browser",
+        description:
+          "Service accounts, their scopes, the permissions those scopes are capped by, and when each secret expires. The secret itself was shown once when it was minted and is not readable from here."
+      }
+    },
     async (request) => {
       const context = await authorise(request, {
         action: "mcp.service-accounts.list",
@@ -319,6 +332,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.post<{ Body: { name: string; scopes: string[]; permissions: string[] } }>(
     "/api/v1/mcp/service-accounts",
     {
+      // This mints a secret. Ten a minute is already more than anyone needs.
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Create a service account",
@@ -350,6 +365,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.post<{ Params: { serviceAccountId: string } }>(
     "/api/v1/mcp/service-accounts/:serviceAccountId/rotate",
     {
+      // So does this, and rotation is rarer still.
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Rotate a service account secret",
@@ -377,6 +394,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.post<{ Params: { serviceAccountId: string } }>(
     "/api/v1/mcp/service-accounts/:serviceAccountId/retire-previous-secret",
     {
+      // Ends a window early; cheap, but nobody does it in bulk.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "End the rotation window now",
@@ -404,6 +423,8 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
   app.delete<{ Params: { serviceAccountId: string } }>(
     "/api/v1/mcp/service-accounts/:serviceAccountId",
     {
+      // Turning one off is a single decision.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Disable a service account",

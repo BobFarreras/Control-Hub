@@ -168,6 +168,12 @@ jobs:
     name: End to end
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # `scripts/run-web.mjs` refuses to start without an explicit port and has no default,
+      # because isolated agent workspaces each get their own and a hardcoded one would have put
+      # two of them on the same socket. Every workspace carries it in `.env` -- which is exactly
+      # why this went unseen: CI has no `.env`, so the web server never started here at all.
+      WEB_PORT: 3001
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -262,6 +268,9 @@ jobs:
       # fails every PATCH in the suite with ORIGIN_DENIED.
       APP_ORIGIN: http://127.0.0.1:3001
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
+      # The port the web server is actually started on, and it has to agree with the two URLs
+      # above. There is no default for it; see the note in the `end-to-end` job.
+      WEB_PORT: 3001
       WEBAUTHN_RP_ID: 127.0.0.1
       WEBAUTHN_ORIGIN: http://127.0.0.1:3001
       E2E_OWNER_EMAIL: e2e-owner@controlhub.test
@@ -273,7 +282,19 @@ jobs:
       # so it exercises the deployment that cannot hold a secret.
       # `infrastructure` opens the module infrastructure.authenticated.spec.ts drives; with it
       # closed there is no route, no menu entry and no screen, which is the point of the flag.
-      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs
+      # `mcp` opens the agent surface. Without it there is no discovery document, no
+      # registration endpoint and no consent screen, and mcp-consent.authenticated.spec.ts
+      # skips itself rather than failing about a flag -- which is a suite that says nothing
+      # about the one flow in this product a person walks with an agent on the other side.
+      # `mail` declares the mailbox routes. It was never the reason
+      # support-mailbox.authenticated.spec.ts failed, but with it off that spec drives a screen
+      # whose three fetches all come back refused, and it would pass on the empty fallback --
+      # green while proving nothing.
+      CONTROL_HUB_FLAGS: projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,mcp
+      # The bare origin an MCP client reaches this API at, and so the issuer it announces. Not
+      # APP_ORIGIN, which is the web app, and never with a path: a client compares this string
+      # to the one in the discovery document.
+      MCP_ISSUER: http://127.0.0.1:4000
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -361,6 +382,16 @@ jobs:
       POSTGRES_ADMIN_PASSWORD: ci_admin_only
       POSTGRES_APP_PASSWORD: ci_app_only
       BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
+      # Every published port is declared with the `:?` form too, so the file does not
+      # interpolate without them -- which is why `build`, `logs` and `down` all failed
+      # together on `WEB_PORT` rather than on anything about an image. The two the health
+      # checks below reach have to keep these values; the rest only have to be free.
+      WEB_PORT: 3001
+      API_PORT: 4000
+      POSTGRES_PORT: 5432
+      REDIS_PORT: 6379
+      MAILPIT_SMTP_PORT: 1025
+      MAILPIT_UI_PORT: 8025
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -140,6 +140,16 @@ const stub = (overrides: Partial<Record<string, unknown>> = {}) => {
       }
     ),
     revokeToken: record("revokeToken", overrides.revokeToken ?? undefined),
+    selfRegisterClient: record(
+      "selfRegisterClient",
+      overrides.selfRegisterClient ?? {
+        clientId: "self-registered-1",
+        clientName: "Claude Code",
+        redirectUris: ["http://127.0.0.1:51763/callback"],
+        scopes: ["crm.read"],
+        issuedAt: new Date("2026-08-25T10:00:00.000Z")
+      }
+    ),
     // Not built through `record`: this one takes two arguments, and flattening them into a single
     // `input` would make the test that checks the address was the one submitted unreadable.
     audience,
@@ -501,6 +511,99 @@ describe("the authorization endpoint on the wire", () => {
     // no interactive authorization, and can say so.
     const { app } = await boot({}, null);
     const response = await app.inject({ method: "GET", url: authorize(wellFormed()) });
+    expect(response.statusCode).toBe(404);
+  });
+});
+
+describe("the registration endpoint on the wire", () => {
+  const register = (payload: unknown) => ({
+    method: "POST" as const,
+    url: "/api/v1/mcp/oauth/register",
+    headers: { "content-type": "application/json" },
+    payload: JSON.stringify(payload)
+  });
+
+  const wellFormed = { client_name: "Claude Code", redirect_uris: ["http://127.0.0.1:51763/callback"] };
+
+  it("answers 201 in RFC 7591's names, and hands out no secret", async () => {
+    const { app, calls } = await boot();
+    const response = await app.inject(register({ ...wellFormed, scope: "crm.read" }));
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json<Record<string, unknown>>()).toEqual({
+      client_id: "self-registered-1",
+      client_id_issued_at: 1787652000,
+      client_name: "Claude Code",
+      redirect_uris: ["http://127.0.0.1:51763/callback"],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+      scope: "crm.read"
+    });
+    // A registered client is public by construction. `client_secret` appearing here would mean a
+    // credential had been minted for a caller nobody authenticated.
+    expect(response.body).not.toContain("client_secret");
+    expect(calls[0]).toMatchObject({
+      method: "selfRegisterClient",
+      input: { clientName: "Claude Code", scopes: ["crm.read"] }
+    });
+  });
+
+  it("passes no scopes at all when the request named none", async () => {
+    // Absent is not empty. RFC 6749 section 3.3 lets a client ask for nothing in particular, and
+    // an empty list handed to the service would read as a client that may ask for nothing.
+    const { app, calls } = await boot();
+    await app.inject(register(wellFormed));
+    expect(calls[0]!.input).not.toHaveProperty("scopes");
+  });
+
+  it("keeps the answer out of every cache on the way back", async () => {
+    const { app } = await boot();
+    const response = await app.inject(register(wellFormed));
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("names a bad address with the error RFC 7591 registered for it", async () => {
+    // `invalid_request` would send a client looking for a syntax error. What it has to fix is the
+    // address it sent, and `invalid_redirect_uri` is the name that says so.
+    const { app } = await boot({ selfRegisterClient: new McpOauthError("MCP_REDIRECT_URI_MISMATCH") });
+    const response = await app.inject(register({ ...wellFormed, redirect_uris: ["http://agent.example.com/cb"] }));
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: string }>().error).toBe("invalid_redirect_uri");
+  });
+
+  it("names a missing client_name as bad metadata rather than a bad request", async () => {
+    const { app } = await boot({ selfRegisterClient: new McpOauthError("MCP_REQUEST_INVALID") });
+    const response = await app.inject(register({ redirect_uris: ["http://127.0.0.1/cb"] }));
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: string }>().error).toBe("invalid_client_metadata");
+  });
+
+  it("uses only error names an RFC registered, here as everywhere else", async () => {
+    const { app } = await boot({ selfRegisterClient: new McpOauthError("MCP_SCOPE_UNAVAILABLE") });
+    const response = await app.inject(register({ ...wellFormed, scope: "billing.write" }));
+    expect(registeredOauthErrors).toContain(response.json<{ error: string }>().error);
+  });
+
+  it("drops anything in redirect_uris that is not a string, rather than trusting the shape", async () => {
+    // The body comes from software nobody here wrote. A number in that array would reach the
+    // redirect rule as something it never expected to be handed.
+    const { app, calls } = await boot();
+    await app.inject(register({ ...wellFormed, redirect_uris: ["https://a.test/cb", 7, null] }));
+    expect(calls[0]).toMatchObject({ input: { redirectUris: ["https://a.test/cb"] } });
+  });
+
+  it("treats a redirect_uris that is not a list as no addresses at all", async () => {
+    const { app, calls } = await boot();
+    await app.inject(register({ ...wellFormed, redirect_uris: "https://a.test/cb" }));
+    expect(calls[0]).toMatchObject({ input: { redirectUris: [] } });
+  });
+
+  it("is not declared on an installation with no panel to hand over to", async () => {
+    // Registering into a flow that can never be finished is a worse answer than not being there:
+    // the client would succeed here and fail at the one step that needs a person.
+    const { app } = await boot({}, null);
+    const response = await app.inject(register(wellFormed));
     expect(response.statusCode).toBe(404);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { getMcpDictionary, type Locale } from "@control-hub/i18n";
-import { Check, Copy, Link2, TriangleAlert } from "lucide-react";
+import { Check, Copy, Info, Link2 } from "lucide-react";
 import { useState } from "react";
 import { SelectControl } from "@/components/form-field";
 import type { McpClientRow } from "@/lib/api-types";
@@ -15,10 +15,11 @@ import { connectionRecipes } from "@/lib/mcp-connection";
  * checked against, and the mismatch surfaces much later, inside somebody else's client, reading
  * like a bug in the server.
  *
- * The warning about manual registration is not a caveat added for completeness. Most assistants
- * register themselves through RFC 7591, which decision D3 leaves out of 10.1, so the honest
- * instruction is: register the agent here first and use its identifier where the client asks for
- * one. A panel that showed only the happy path would send somebody into a silent failure.
+ * The notice about registration is not a caveat added for completeness. Assistants obtain their
+ * identifier by registering themselves through RFC 7591, so nothing here has one to show until a
+ * connection has been authorized -- and a panel that offered a field for it would be inviting
+ * somebody to paste a value the assistant has nowhere to put. The selector below is for the other
+ * case: clients that do ask a person for an identifier, which take one from an agent already here.
  */
 export function McpConnection({
   locale,
@@ -78,9 +79,9 @@ export function McpConnection({
       )}
       {clientId !== "" && address(t.agentClientId, clientId, "clientId")}
 
-      <p className="connect-warning">
-        <TriangleAlert size={16} />
-        {t.connectManualNotice}
+      <p className="connect-notice">
+        <Info size={16} />
+        {t.connectRegistrationNotice}
       </p>
 
       <div className="connect-recipes">

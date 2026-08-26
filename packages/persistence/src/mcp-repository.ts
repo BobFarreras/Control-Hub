@@ -138,7 +138,8 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
     const [row] = await this.database<
       Array<{
         id: string;
-        tenantId: string;
+        // Null for a client that registered itself and has not been claimed by a tenant yet.
+        tenantId: string | null;
         name: string;
         kind: string;
         secretHash: string | null;
@@ -161,6 +162,57 @@ export class PostgresMcpOauthRepository implements McpOauthRepository {
       maxScopes: row.maxScopes as McpScope[],
       status: row.status as "active" | "suspended"
     };
+  }
+
+  /**
+   * A client registering itself, before anybody has signed in (RFC 7591).
+   *
+   * Outside `withTenant` because there is no tenant to be inside: the row is written with none,
+   * and the isolation policy would refuse an insert whose `tenant_id` does not match a session
+   * that does not exist. `register_mcp_client` is the definer function of migration `0058`, which
+   * is what lets the application role write a row nobody owns -- and, on its way in, sweep the
+   * unclaimed rows older than a day.
+   *
+   * Both identifiers are minted here rather than in the database for the same reason `createClient`
+   * mints them: the public one is quoted back at `/authorize` and must say nothing about anyone.
+   *
+   * The arrays are written as plain JavaScript arrays with an explicit `::text[]`, and not with
+   * `database.array()` as everywhere else in this file, because this is the one statement that can
+   * be the first thing a connection ever sends. `database.array()` reads the array type out of a
+   * catalogue the driver fetches while it is connecting, and a statement that arrives before that
+   * fetch lands is sent with no array type at all: the elements go out joined by commas, and
+   * Postgres answers that no `register_mcp_client(..., text, text)` exists. That is one 500 for the
+   * first assistant to register after a deploy, and none after it. Every other array here is inside
+   * `withTenant`, which awaits a `set_config` first and so is never the first statement. A plain
+   * array is serialised by the driver as an array literal whatever it knows, and the cast says what
+   * it is, so the answer no longer depends on what arrived first.
+   */
+  async registerSelfClient(input: {
+    name: string;
+    redirectUris: readonly string[];
+    maxScopes: readonly McpScope[];
+  }): Promise<{ id: string; clientId: string }> {
+    const id = randomUUID();
+    const clientId = randomUUID();
+    await this.database`
+      select register_mcp_client(
+        ${id}, ${clientId}, ${input.name},
+        ${[...input.redirectUris]}::text[], ${[...input.maxScopes]}::text[]
+      )`;
+    return { id, clientId };
+  }
+
+  /**
+   * The first tenant to authorize an unclaimed client takes it.
+   *
+   * False means it was not this call's to take: either it never existed, or somebody else claimed
+   * it first. The caller decides which, by looking again -- this method deliberately does not, so
+   * that the answer it gives is only ever about what this statement did.
+   */
+  async claimClient(clientId: string, tenantId: string): Promise<boolean> {
+    const [row] = await this.database<Array<{ claimed: boolean }>>`
+      select claim_mcp_client(${clientId}, ${tenantId}) as claimed`;
+    return row?.claimed === true;
   }
 
   async resolveRefreshToken(tokenHash: string): Promise<McpRefreshResolution | null> {

@@ -5492,6 +5492,8 @@ const mcpDictionaries = {
     scope_commerce_read: "Catàleg, comandes i facturació",
     scope_infrastructure_read: "Estat de la flota i alertes",
     scope_usage_read: "Consum i cobertura de les fonts",
+    selfRegisteredWarning:
+      "Aquesta aplicació s'ha registrat sola i ningú de l'organització no l'ha revisada. Autoritzar-la és el que la lliga a aquest espai: si no acabes d'engegar tu aquest assistent, rebutja-la.",
     approve: "Autoritza",
     deny: "Rebutja",
     deciding: "Un moment…",
@@ -5521,8 +5523,8 @@ const mcpDictionaries = {
     connectUrl: "Adreca del servidor",
     connectPickAgent: "Agent registrat",
     connectPickHint: "Tria'n un per veure'n l'identificador",
-    connectManualNotice:
-      "El registre aqui es manual: aquest servidor encara no fa Dynamic Client Registration (RFC 7591). Els assistents que s'inscriuen sols no es podran connectar fins que s'implementi; els que et deixen enganxar un identificador, fes-hi servir el de l'agent registrat aqui sota.",
+    connectRegistrationNotice:
+      "Els assistents s'inscriuen sols: en apuntar-los a aquesta adreça demanen un identificador al servidor, i apareixen a la llista d'aquí sota quan n'autoritzes la connexió. Si l'assistent te'n demana un a mà, fes servir el de l'agent registrat aquí sota.",
     connectClaudeCode: "Claude Code",
     connectClaudeCodeHint:
       "Al terminal, dins del projecte. Accepta http a localhost, o sigui que serveix per provar-ho ara mateix.",
@@ -5601,6 +5603,8 @@ const mcpDictionaries = {
     scope_commerce_read: "Catálogo, pedidos y facturación",
     scope_infrastructure_read: "Estado de la flota y alertas",
     scope_usage_read: "Consumo y cobertura de las fuentes",
+    selfRegisteredWarning:
+      "Esta aplicación se ha registrado sola y nadie de la organización la ha revisado. Autorizarla es lo que la vincula a este espacio: si no acabas de poner en marcha tú este asistente, recházala.",
     approve: "Autorizar",
     deny: "Rechazar",
     deciding: "Un momento…",
@@ -5630,8 +5634,8 @@ const mcpDictionaries = {
     connectUrl: "Direccion del servidor",
     connectPickAgent: "Agente registrado",
     connectPickHint: "Elige uno para ver su identificador",
-    connectManualNotice:
-      "El registro aqui es manual: este servidor todavia no hace Dynamic Client Registration (RFC 7591). Los asistentes que se inscriben solos no podran conectarse hasta que se implemente; en los que te dejan pegar un identificador, usa el del agente registrado aqui debajo.",
+    connectRegistrationNotice:
+      "Los asistentes se registran solos: al apuntarlos a esta dirección piden un identificador al servidor, y aparecen en la lista de aquí debajo cuando autorizas la conexión. Si el asistente te pide uno a mano, usa el del agente registrado aquí debajo.",
     connectClaudeCode: "Claude Code",
     connectClaudeCodeHint:
       "En el terminal, dentro del proyecto. Acepta http en localhost, asi que sirve para probarlo ahora mismo.",
@@ -5710,6 +5714,8 @@ const mcpDictionaries = {
     scope_commerce_read: "Catalogue, orders and invoicing",
     scope_infrastructure_read: "Fleet status and alerts",
     scope_usage_read: "Usage and source coverage",
+    selfRegisteredWarning:
+      "This application registered itself and nobody in the organisation has reviewed it. Allowing it is what binds it to this workspace: if you did not just start this assistant yourself, refuse.",
     approve: "Allow",
     deny: "Refuse",
     deciding: "One moment…",
@@ -5739,8 +5745,8 @@ const mcpDictionaries = {
     connectUrl: "Server address",
     connectPickAgent: "Registered agent",
     connectPickHint: "Pick one to see its identifier",
-    connectManualNotice:
-      "Registration here is manual: this server does not do Dynamic Client Registration (RFC 7591) yet. Assistants that enrol themselves cannot connect until it does; where a client lets you paste an identifier, use the one from an agent registered below.",
+    connectRegistrationNotice:
+      "Assistants register themselves: pointed at this address they ask the server for an identifier, and they appear in the list below once you authorize the connection. Where an assistant asks you for one by hand, use the identifier of a registered agent below.",
     connectClaudeCode: "Claude Code",
     connectClaudeCodeHint:
       "In the terminal, inside the project. It accepts http on localhost, so it works for trying this out now.",

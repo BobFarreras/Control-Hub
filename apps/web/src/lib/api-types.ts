@@ -1076,6 +1076,8 @@ export type McpConsentRequest = {
   resource: string;
   /** ISO 8601. When the consent would lapse if it is given now. */
   grantExpiresAt: string;
+  /** True when the client registered itself and this approval is what claims it for the tenant. */
+  unclaimed: boolean;
 };
 
 /** Where to send the browser once the decision is recorded: to the client, either way. */

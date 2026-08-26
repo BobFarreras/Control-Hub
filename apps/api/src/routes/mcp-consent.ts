@@ -48,7 +48,11 @@ export function mcpConsentResponse(description: McpAuthorizationDescription) {
     redirectUri: description.redirectUri,
     scopes: description.scopes,
     resource: description.audience,
-    grantExpiresAt: description.grantExpiresAt
+    grantExpiresAt: description.grantExpiresAt,
+    // The screen warns when nobody in the organisation has ever seen this client before. It is the
+    // difference between approving something an administrator set up and approving something that
+    // introduced itself a moment ago, and only the store knows which of the two this is.
+    unclaimed: description.unclaimed
   };
 }
 
@@ -88,6 +92,9 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
   app.get<{ Querystring: ConsentRequest }>(
     "/api/v1/mcp/consent",
     {
+      // Reading what is being asked is not the sensitive act, so the budget is the one a
+      // person reloading a screen would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "What a client is asking for",
@@ -106,6 +113,8 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
   app.post<{ Body: ConsentRequest & { decision?: string } }>(
     "/api/v1/mcp/consent",
     {
+      // Deciding is. A person clicks this once; anything faster is not a person.
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       schema: {
         tags: ["mcp"],
         summary: "Approve or refuse an authorization",
@@ -168,7 +177,15 @@ export function registerMcpConsentRoutes({ app, database, auth, mcp }: McpConsen
       targetType: "mcp_client",
       targetId: description.clientId,
       outcome: decision === "approved" ? "success" : "denied",
-      metadata: { clientName: description.clientName, scopes: description.scopes.join(" ") }
+      metadata: {
+        clientName: description.clientName,
+        scopes: description.scopes.join(" "),
+        // The registration itself cannot be audited: it happens with nobody signed in, and an
+        // audit row belongs to a tenant. This is where it becomes visible instead -- approving an
+        // unclaimed client is the act that brought it into this tenant, and the trail should say
+        // that the client was one that introduced itself rather than one somebody registered.
+        selfRegistered: String(description.unclaimed)
+      }
     });
   }
 }
