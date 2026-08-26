@@ -125,12 +125,6 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
     return context;
   }
 
-  const listing = (summary: string, description: string) => ({
-    // The three reads share one budget shaped for a screen, not for a scraper.
-    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
-    schema: { tags: ["mcp"], summary, description }
-  });
-
   /**
    * The one shape a "there was nothing there" answer takes on this surface.
    *
@@ -154,10 +148,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/clients",
-    listing(
-      "The MCP clients registered here",
-      "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. A client appears here either because somebody registered it by hand or because it registered itself and a person authorized it, which is the act that claims it for this tenant."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The MCP clients registered here",
+        description:
+          "Every client that may start an authorization on this installation, with the scopes it is allowed to ask for. A client appears here either because somebody registered it by hand or because it registered itself and a person authorized it, which is the act that claims it for this tenant."
+      }
+    },
     async (request) => {
       const context = await authorise(request, { action: "mcp.clients.list", targetType: "mcp_client" });
       await writeAudit(database, context, request, {
@@ -247,10 +247,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/grants",
-    listing(
-      "The consents this tenant has given",
-      "Every grant an agent is acting under, who approved it, what it may reach, when it lapses and when it was last used. A consent nobody exercises is visible as such, which is what makes the list worth reading."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The consents this tenant has given",
+        description:
+          "Every grant an agent is acting under, who approved it, what it may reach, when it lapses and when it was last used. A consent nobody exercises is visible as such, which is what makes the list worth reading."
+      }
+    },
     async (request) => {
       const context = await authorise(request, { action: "mcp.grants.list", targetType: "mcp_grant" });
       await writeAudit(database, context, request, {
@@ -293,10 +299,16 @@ export function registerMcpManagementRoutes({ app, database, auth, mcp }: McpMan
 
   app.get(
     "/api/v1/mcp/service-accounts",
-    listing(
-      "The agents that log in without a browser",
-      "Service accounts, their scopes, the permissions those scopes are capped by, and when each secret expires. The secret itself was shown once when it was minted and is not readable from here."
-    ),
+    {
+      // A read a screen makes, so the budget is the one somebody reloading a page would want.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["mcp"],
+        summary: "The agents that log in without a browser",
+        description:
+          "Service accounts, their scopes, the permissions those scopes are capped by, and when each secret expires. The secret itself was shown once when it was minted and is not readable from here."
+      }
+    },
     async (request) => {
       const context = await authorise(request, {
         action: "mcp.service-accounts.list",
