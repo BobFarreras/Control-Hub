@@ -109,8 +109,30 @@ l'identificador viu a `GET /api/v1/settings/installation`, amb sessio i rol `Own
 `Administrator`, perque publicar-lo permetria lligar una instal·lacio a un defecte conegut amb una
 peticio anonima. La pantalla de **Seguretat** mostra les dues, amb claus `ca`/`es`/`en`.
 
-**El seguent increment es P2**: el workflow de publicacio --imatges, firma, SBOM i manifest--,
-verificable descarregant les imatges i aixecant l'stack sense el codi font.
+**P2 esta escrit i no s'ha exercitat mai** (mateixa branca). `.github/workflows/release.yml`
+construeix les quatre imatges per a `amd64` i `arm64`, les puja a `ghcr.io/bobfarreras`, les firma
+sense claus per OIDC amb SBOM i provinenca, i escriu el manifest de release. Una etiqueta `v*` fa
+tot aixo; un commit a `develop` nomes construeix i puja, amb l'etiqueta `edge`.
+
+Tres coses que P2 va haver de concretar i que ara manen:
+
+- **El manifest es llegeix a** `https://github.com/BobFarreras/Control-Hub/releases/latest/download/release.json`,
+  una adreca que no canvia mai. Porta versio, instant, commit, els quatre digests i un apartat
+  `work` amb el que el banner de P6 necessita: quantes migracions noves i si `.env.example` s'ha
+  mogut. Es calcula al publicar, perque alli hi ha les dues versions i a la instal·lacio cap.
+- **Les nou portes s'exigeixen sobre el commit**, no sobre la referencia, que es el que fa que
+  funcioni per a una etiqueta: `ci.yml` no corre en fer push d'una etiqueta, pero el commit ja hi
+  ha passat a `main`. `skipped` i `cancelled` compten com a fracas.
+- **Res es firma per etiqueta, nomes per digest.** Una firma sobre una etiqueta continua verificant
+  quan l'etiqueta ja assenyala uns altres bytes.
+
+El que li falta es una execucio. Les proves cobreixen el mecanisme --`scripts/release.test.mjs`,
+deu casos-- pero cap imatge s'ha publicat mai. **Fusionar aixo a `develop` publica la primera imatge
+`edge` publica pel sol fet de fusionar-ho**, i val la pena saber-ho abans i no despres.
+
+**El seguent increment es P3**: `compose.release.yaml` i `release.env`, una instal·lacio que fa
+`pull` i no `build`. Es tambe el que fa verificable P2, perque nomes llavors es pot aixecar l'stack
+des de les imatges publicades i sense el codi font.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre
