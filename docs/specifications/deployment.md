@@ -175,6 +175,49 @@ Un fitxer `release.env` al directori d'instal·lacio, amb els quatre digests i l
 Un overlay `compose.release.yaml` dona `image:` a cada servei llegint-ne els valors, i **no dona
 `build:`**, de manera que una instal·lacio de produccio no te ni pot tenir el codi font.
 
+### El que P3 en va concretar
+
+Dos fitxers i no un, i la separacio es la part que val: **una actualitzacio reescriu `release.env`
+sencer i no toca mai `.env`**. El primer el genera `scripts/release-env.mjs` a partir del manifest;
+el segon es de qui administra. Res del que hagi configurat a ma corre perill en actualitzar, i cap
+variable d'una versio anterior sobreviu a la seguent --que es el residu perillos, perque una
+referencia d'imatge caducada encara funciona: descarrega, arrenca, i executa codi vell amb el numero
+de versio nou.
+
+`build: !reset null`, no simplement ometre'l. Compose fusiona per defecte, aixi que sense el reset
+el servei portaria imatge i definicio de construccio alhora, i un `docker compose up --build`
+--que es el que algu escriu per costum quan un contenidor fa coses rares-- tornaria a compilar
+d'un arbre de codi que alli no hi es.
+
+Llegir el manifest es validar-lo. Ve d'internet, aixi que `parseManifest` no se'n creu cap camp:
+en separa les peces, les torna a passar pel mateix constructor que el va produir, i compara. La
+comprovacio que importa es que **les quatre imatges comparteixin espai de noms** --quatre
+referencies que cadascuna sembla correcta pero venen de dos registres diferents no es una forma que
+una release pugui tenir, i es exactament la forma que tindria una imatge substituida.
+
+El limit d'aixo, dit i no insinuat: un manifest **no esta firmat**, o sigui que un valor editat de
+manera coherent hi passa. El que no pot fer es que una instal·lacio descarregui res que no siguin
+els quatre digests que anomena --i aquests si que estan firmats (D6), i un digest que ningu ha
+publicat no es pot descarregar. El manifest diu que hi ha una versio nova; no es el que fa que les
+imatges siguin de fiar.
+
+### Tres buits que P3 va destapar i que no resol
+
+1. **Les imatges de tercers van per etiqueta, no per digest.** `postgres:17-alpine`,
+   `valkey/valkey:8-alpine` i `axllent/mailpit:v1.27` es resolen al que aquella etiqueta vulgui dir
+   el dia de la instal·lacio, de manera que dues instal·lacions de la *mateixa* versio de Control
+   Hub poden no portar el mateix PostgreSQL. L'invariant de descarregar per digest, doncs, avui
+   nomes es cert per a les nostres quatre. Fixar-les vol dir que el manifest les reculli, o sigui
+   tocar P2 un altre cop.
+2. **Mailpit arrenca en una instal·lacio de produccio.** Es un caca-correus de desenvolupament amb
+   `MP_SMTP_AUTH_ACCEPT_ANY`, i encara que nomes publiqui a `127.0.0.1`, no te res a fer en un
+   servidor de client. Treure'l demana perfils de Compose, cosa que canvia com arrenca l'stack de
+   desenvolupament i de CI: no es una linia i no es feina de P3.
+3. **El directori d'instal·lacio necessita mes que els fitxers de Compose.** `compose.yaml` munta
+   `deploy/postgres/init-app-user.sh` des del host, o sigui que el paquet que es descarrega ha de
+   portar-lo. No es codi font de l'aplicacio i no contradiu l'invariant, pero si que vol dir que la
+   release ha d'incloure un petit arbre de fitxers i no nomes YAML. Es feina de P7.
+
 La meitat d'aixo ja existeix i s'ha de reaprofitar en comptes de duplicar-la. `apps/api/src/version.ts`
 ja resol el problema dificil --el runtime no te `package.json` al costat, aixi que tsup hi estampa
 un literal a la construccio i el manifest nomes es llegeix quan no hi ha bundle-- i `/health/live`
@@ -268,7 +311,9 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
   release. El mecanisme te proves; el que encara no te es una execucio. La verificacio de debo
   --descarregar les imatges publicades i aixecar l'stack sense el codi font-- necessita P3, i abans
   necessita que algu publiqui, que es un acte deliberat i no una consequencia d'aquest increment.
-- **P3** — `compose.release.yaml` i `release.env`: una instal·lacio que fa `pull` i no `build`.
+- **P3** — *Fet, amb tres buits anotats.* `compose.release.yaml` i `release.env`: una instal·lacio
+  que fa `pull` i no `build`. Comprovat component els fitxers de debo: la definicio resultant no te
+  cap `build:` i les quatre imatges hi son per digest.
 - **P4** — La prova de compatibilitat N-1: arrencar la versio anterior contra una base migrada a la
   nova. Va **abans** del comandament d'actualitzar, perque es el que fa que el rollback de D4
   existeixi de debo en comptes de constar en un document.

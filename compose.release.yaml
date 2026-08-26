@@ -1,0 +1,41 @@
+# The overlay that turns the stack from something a machine builds into something it downloads.
+#
+# `compose.yaml` gives every service of ours a `build:` and no `image:`, which means an installation
+# compiles Control Hub on the customer's server -- it needs the source, a toolchain, and enough
+# memory to run four builds, and what it ends up running is whatever that machine happened to
+# produce. Here each service gets an `image:` pinned by digest and its `build:` removed outright, so
+# there is nothing to compile and nothing that could compile differently.
+#
+# The digests are not written here. They come from `release.env`, which is generated from the
+# release manifest and replaced wholesale on every update -- see `scripts/release-env.mjs`. Two
+# files, on purpose: an update rewrites `release.env` and never touches `.env`, so nothing an
+# operator configured by hand is ever at risk from an upgrade.
+#
+# Composes with the other overlays rather than replacing them. The full production command is:
+#
+#   docker compose --env-file .env --env-file release.env \
+#     -f compose.yaml -f compose.release.yaml -f compose.production.yaml up -d
+#
+# `compose.production.yaml` still owns the secrets and this file still owns the images; neither
+# knows about the other.
+
+services:
+  web:
+    # `!reset null` rather than leaving `build:` in place. Compose merges by default, so without the
+    # reset the service would carry both an image and a build definition, and `docker compose up
+    # --build` -- which an operator types out of habit when something looks wrong -- would quietly
+    # go back to compiling from a source tree that is not there.
+    build: !reset null
+    image: ${CONTROL_HUB_WEB_IMAGE:?CONTROL_HUB_WEB_IMAGE is required; generate release.env from the release manifest}
+
+  api:
+    build: !reset null
+    image: ${CONTROL_HUB_API_IMAGE:?CONTROL_HUB_API_IMAGE is required; generate release.env from the release manifest}
+
+  worker:
+    build: !reset null
+    image: ${CONTROL_HUB_WORKER_IMAGE:?CONTROL_HUB_WORKER_IMAGE is required; generate release.env from the release manifest}
+
+  migrate:
+    build: !reset null
+    image: ${CONTROL_HUB_MIGRATE_IMAGE:?CONTROL_HUB_MIGRATE_IMAGE is required; generate release.env from the release manifest}

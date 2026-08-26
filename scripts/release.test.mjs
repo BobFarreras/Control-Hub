@@ -1,12 +1,28 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { releaseEnvironment } from "./release-env.mjs";
 import { evaluateChecks, requiredChecks } from "./release-gate.mjs";
-import { buildManifest, manifestSchema, releaseServices, releaseWork } from "./release-manifest.mjs";
+import {
+  buildManifest,
+  manifestEnvironment,
+  manifestSchema,
+  parseManifest,
+  releaseServices,
+  releaseWork
+} from "./release-manifest.mjs";
 
-const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-const dockerfile = readFileSync(new URL("../deploy/Dockerfile", import.meta.url), "utf8");
+// Normalised, because these files are checked out with whatever line endings the machine uses and
+// half of them are CRLF here. A pattern that anchors on `\n` after a colon then matches nothing at
+// all, and a test that matches nothing passes every assertion it never reaches.
+const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+
+const workflow = read(".github/workflows/release.yml");
+const ci = read(".github/workflows/ci.yml");
+const dockerfile = read("deploy/Dockerfile");
+const compose = read("compose.yaml");
+const release = read("compose.release.yaml");
+const ignored = read(".gitignore");
 
 const digest = (byte) => `sha256:${byte.repeat(64)}`;
 const valid = {
@@ -162,6 +178,98 @@ test("no workflow expression is substituted into a shell script", () => {
     if (opens) indent = opens[1].length + 2;
   }
   assert.deepEqual(offenders, []);
+});
+
+test("reading a manifest back means validating it, not trusting it", () => {
+  const manifest = buildManifest(valid);
+  const text = JSON.stringify(manifest);
+  assert.deepEqual(parseManifest(text), manifest);
+
+  const rejects = (mutate, because) => {
+    const broken = JSON.parse(text);
+    mutate(broken);
+    assert.throws(() => parseManifest(JSON.stringify(broken)), /RELEASE_MANIFEST_INVALID/, because);
+  };
+
+  assert.throws(() => parseManifest("{"), /RELEASE_MANIFEST_INVALID/, "not JSON");
+  rejects((m) => (m.schema = 2), "a shape this code does not know is not one to guess at");
+  rejects((m) => delete m.images.web, "three images are not a release");
+  rejects((m) => (m.images.web = "ghcr.io/bobfarreras/control-hub-web:1.1.0"), "a tag is not a digest");
+  // The one that matters. Four references that each look fine but do not share a namespace is not a
+  // shape a release can have, and is exactly the shape a substituted image would have.
+  rejects((m) => (m.images.web = `ghcr.io/somebody-else/control-hub-web@${digest("4")}`), "second registry");
+  rejects((m) => (m.images.web = `ghcr.io/bobfarreras/control-hub-webb@${digest("4")}`), "renamed repository");
+  // Rebuilding rather than checking field by field is what catches the fields nobody thought to
+  // check -- anything added, removed or reordered fails the comparison.
+  rejects((m) => (m.extra = "surprise"), "a field this code does not know about");
+
+  // And the limit of it, worth stating rather than implying: a value edited coherently survives.
+  // Changing the version to 9.9.9 parses, because the parser has nothing to compare the claim
+  // against. What a manifest cannot do is make an installation pull anything other than the four
+  // digests it names -- those are signed (D6), and a digest that was never published cannot be
+  // pulled at all. The manifest tells you a version is out; it is not what makes the images
+  // trustworthy.
+  const relabelled = JSON.parse(text);
+  relabelled.version = "9.9.9";
+  assert.equal(parseManifest(JSON.stringify(relabelled)).images.api, manifest.images.api);
+});
+
+test("the generated environment is exactly what the overlay reads", () => {
+  // The pairing that would otherwise drift silently: rename a variable in the generator and the
+  // overlay keeps asking for the old name, which fails at `docker compose up` on somebody's server
+  // rather than here.
+  const manifest = buildManifest(valid);
+  const generated = manifestEnvironment(manifest);
+  const defined = generated.map((line) => line.split("=")[0]);
+  const wanted = [...release.matchAll(/\$\{(CONTROL_HUB_[A-Z_]+):\?/g)].map(([, name]) => name);
+
+  assert.ok(wanted.length > 0, "the overlay reads no image variables at all");
+  for (const name of wanted) assert.ok(defined.includes(name), `the overlay reads ${name}, which nothing generates`);
+  for (const line of generated) assert.match(line, /^CONTROL_HUB_[A-Z_]+=\S+$/);
+  assert.equal(generated[0], "CONTROL_HUB_VERSION=1.1.0");
+  assert.ok(generated.includes(`CONTROL_HUB_API_IMAGE=ghcr.io/bobfarreras/control-hub-api@${digest("1")}`));
+
+  // And the files the generator writes must be ignored by git. They are written into an
+  // installation directory, but the generator runs wherever somebody points it, and a digest file
+  // committed by accident is a version pin nobody meant to publish.
+  for (const name of ["release.env", "release.json"])
+    assert.match(ignored, new RegExp(`^${name.replace(".", "\\.")}$`, "m"), `${name} is not ignored`);
+
+  const file = releaseEnvironment(JSON.stringify(manifest));
+  assert.match(file, /^# Generated by scripts\/release-env\.mjs/);
+  assert.match(file, /\n$/);
+  // Every variable it reads must be pinned. A generated file that could name a tag would make the
+  // digest discipline optional, and optional is how it stops happening.
+  for (const line of file.split("\n").filter((l) => l.startsWith("CONTROL_HUB_") && l.includes("_IMAGE=")))
+    assert.match(line, /@sha256:[0-9a-f]{64}$/);
+});
+
+test("the release overlay leaves nothing that could still be built", () => {
+  // Every service `compose.yaml` builds has to appear here with its build removed. A service that
+  // kept its `build:` would carry both, and `docker compose up --build` -- which is what somebody
+  // types out of habit when a container misbehaves -- would compile from a source tree that a
+  // production installation does not have.
+  const builds = [...compose.matchAll(/^ {2}([a-z]+):\n {4}build:/gm)].map(([, service]) => service);
+  assert.deepEqual([...builds].sort(), [...releaseServices].sort());
+  // Split rather than matched. A lazy `[\s\S]*?` up to `$` under the `m` flag stops at the first
+  // line ending, so the block is one line long and every assertion about its contents passes by
+  // never seeing them -- which is how this test first went green against an overlay that was wrong.
+  const blocks = new Map(
+    release
+      .split(/^ {2}(?=[a-z]+:$)/m)
+      .slice(1)
+      .map((chunk) => [chunk.match(/^([a-z]+):/)[1], chunk])
+  );
+  for (const service of builds) {
+    const block = blocks.get(service);
+    assert.ok(block, `${service} is missing from the release overlay`);
+    assert.match(block, /^ {4}build: !reset null$/m, `${service} keeps a build definition`);
+    assert.match(block, /^ {4}image: \$\{CONTROL_HUB_[A-Z_]+_IMAGE:\?/m, `${service} has no pinned image`);
+  }
+  // And no digest written into the overlay itself: they belong in the generated file, where an
+  // update replaces them all at once.
+  assert.doesNotMatch(release, /sha256:/);
+  assert.doesNotMatch(release, /:latest/);
 });
 
 test("the build identifier the workflow stamps is the one the Dockerfile accepts", () => {

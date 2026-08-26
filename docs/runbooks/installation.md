@@ -1,9 +1,10 @@
 # Runbook d'instal·lacio de Control Hub
 
-> Alguns passos d'aquest runbook descriuen coses que **encara no es poden fer**: no hi ha registre
-> d'imatges, ni manifest de versions, ni cap reverse proxy al repositori, i `compose.yaml` compila
-> els serveis en comptes de descarregar-los. `docs/specifications/deployment.md` diu quins son i que
-> ha d'existir perque aquest document sigui executable de punta a punta.
+> Alguns passos d'aquest runbook descriuen coses que **encara no es poden fer**. El que ja existeix:
+> `compose.release.yaml` deixa l'stack descarregar les imatges en comptes de compilar-les, i el
+> workflow de publicacio produeix imatges firmades i un manifest de release. El que falta: **ningu
+> ha publicat encara cap versio**, no hi ha cap reverse proxy al repositori, i el primer `Owner`
+> segueix demanant el codi font. `docs/specifications/deployment.md` diu quins son i en quin ordre.
 
 ## Model d'alta
 
@@ -59,7 +60,8 @@ Arrencada del nucli:
 
 ```bash
 SECRETS_DIRECTORY=/etc/control-hub/secrets docker compose \
-  -f compose.yaml -f compose.production.yaml up -d --wait
+  --env-file .env --env-file release.env \
+  -f compose.yaml -f compose.release.yaml -f compose.production.yaml up -d --wait
 ```
 
 Amb el vault de connectors, afegir `-f compose.production.connectors.yaml`. Per Gmail, afegir
@@ -74,7 +76,9 @@ de retirar la release anterior.
 
 ### 3. Arrencada i migracions
 
-1. Descarregar imatges OCI per digest, mai `latest`.
+1. Descarregar imatges OCI per digest, mai `latest`. Ho fa `compose.release.yaml` sol: llegeix els
+   quatre digests de `release.env` i cap servei nostre hi conserva `build:`, o sigui que no hi ha
+   res que pugui compilar-se ni per equivocacio amb `up --build`.
 2. Executar el job de migracions amb credencials administratives temporals.
 3. Arrencar API, worker i web amb el rol runtime de minim privilegi.
 4. Verificar healthchecks, logs redaccionats i connectivitat SMTP.
