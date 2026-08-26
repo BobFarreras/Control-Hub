@@ -72,13 +72,31 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**La Fase X de desenvolupament multi-agent te el primer increment implementat** a la branca
-`chore/phase-x-agent-workspaces`. Separa per tasca la branca, worktree, `.env`, secrets efimers,
-ports, projecte Compose, volums i PostgreSQL; inclou CLI de lifecycle, deteccio de col·lisions,
-Dev Container, ADR, especificacio i guia operativa. Es una iniciativa transversal per als agents
-que modifiquen el repositori, no el runtime empresarial de la Fase 11. Abans d'obrir la 11 o la
-12 amb diversos agents, aquest increment s'ha d'integrar i cada tasca nova ha de neixer amb
-`pnpm agent:workspace create`.
+**El seguent pas es desplegar Control Hub a la VPS**, decidit el 26 d'agost de 2026 i despres de
+fusionar la Fase 10 i la Fase 12 a `develop` el mateix dia (PR #43 i PR #44, `develop` a `2197c06`).
+Aixo **reverteix en part la decisio del 23 d'agost** que ajornava la Fase 9 fins que una tercera
+empresa instal·les el producte: el motiu per avancar-la no es aquella tercera empresa, es que el
+propietari vol la seva propia instal·lacio en peu --entre altres coses perque un client MCP real
+demana HTTPS i cap workspace local el pot donar. El que la decisio del 23 deia sobre el cost segueix
+sent cert; el que ha canviat es qui el paga i per que.
+
+Del que aixo comporta **encara no hi ha res decidit**: com s'empaqueta i es publica la imatge, com
+s'actualitza una instal·lacio existent, i quina forma te l'instal·lador. Les preguntes es van
+plantejar el 26 d'agost i el propietari no les va respondre, o sigui que segueixen obertes i cap
+implementacio hauria de comencar suposant-ne una.
+
+**S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
+VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre
+de restauracio i el runbook per moure'l a una VPS dedicada. El disseny pren els secrets com a
+fitxers muntats, i Bitwarden es una manera de produir-los i no una dependencia, aixi que van
+despres del desplegament i no abans.
+
+**La Fase X de desenvolupament multi-agent esta fusionada a `develop`.** Separa per tasca la
+branca, worktree, `.env`, secrets efimers, ports, projecte Compose, volums i PostgreSQL; inclou CLI
+de lifecycle, deteccio de col·lisions, Dev Container, ADR, especificacio i guia operativa. Es una
+iniciativa transversal per als agents que modifiquen el repositori, no el runtime empresarial de la
+Fase 11. **Cada tasca nova neix amb `pnpm agent:workspace create`**, i la 10 i la 12 ja s'han fet
+aixi --dos agents alhora sobre worktrees separats, que es el que la fase existia per permetre.
 
 Validacio vista en aquest increment: `pnpm check` passa sencer amb cache Turbo propia --14/14
 typechecks sense cap hit aliè, 24/24 tasques de test i 14/14 builds--, `pnpm test:scripts` passa
@@ -95,8 +113,9 @@ eliminacio de contenidors, xarxes, volums, dependències i worktree. La primera 
 i deixar documentats dos casos que les unitàries no veien --allowlist de variables de Turbo i
 paths llargs de pnpm a Windows-- abans de repetir el lifecycle en verd.
 
-**La infraestructura de secrets de plataforma de la Fase 12 te S1-S6 implementats** a la branca
-`agent/codex/ch-012-phase-12-secrets`. L'ADR 0010 fixa el model hibrid: Control Hub governa
+**La Fase 12 te S1-S10 implementats i fusionats a `develop`** el 26 d'agost de 2026 (PR #44). La
+part que no hi es, S11 i S12, es la que no es codi, i esta explicada a dalt. L'ADR 0010 fixa el
+model hibrid: Control Hub governa
 metadata, permisos i auditoria; Bitwarden Password Manager custodia credencials humanes;
 Secrets Manager es un adaptador opcional; el vault intern continua amb credencials tenant-scoped.
 `docs/security/secrets-inventory.json` classifica les variables sensibles amb consumidor, owner,
@@ -143,8 +162,9 @@ incremental. L'OAuth de connectors fa de Control Hub un client davant el proveid
 de la Fase 10 el fara servidor de recursos per a MCP. Comparteixen primitives, no tokens ni
 audiences.
 
-**La Fase 10 te especificacio aprovada en part i el primer increment implementat** (24 d'agost de
-2026). `docs/specifications/mcp-and-client-portal.md` defineix Control Hub com a resource server
+**La Fase 10 esta tancada i fusionada a `develop`** el 26 d'agost de 2026 (PR #43), amb totes les
+decisions preses i els nou checks en verd. El relat dels increments es mante avall perque explica
+per que cada peca es com es. `docs/specifications/mcp-and-client-portal.md` defineix Control Hub com a resource server
 OAuth 2.1: emissor propi, tokens opacs de referencia revocables a l'instant, audience lligada a
 `APP_ORIGIN` + `/mcp`, scopes de lectura que s'interseccionen amb els permisos, registre manual de
 clients, service accounts i auditoria per tool call. El propietari va aprovar D1, D2, D3 i D6; D4
@@ -382,7 +402,10 @@ Dues coses que la Fase 10 haura de coordinar amb la 7B quan hi arribi: els **num
 que es prenen mirant el directori en aquell moment i no els que diu cap especificacio, i l'ampliacio
 additiva de `TenantContext` amb un `actor`, perque un service account no te `userId`.
 
-**El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9.** La Fase 9 es
+**El que ve despres, decidit el 23 d'agost de 2026: mes connectors, no la Fase 9** --i **revisat el
+26 d'agost**, quan el desplegament passa al davant pel motiu que hi ha a l'apartat de dalt. El que
+segueix es la decisio tal com es va prendre, i el raonament de per que la Fase 9 no es gratis
+continua valent. La Fase 9 es
 empaquetat i distribucio —imatges OCI, instal·lador, Ansible, SBOM, signatura— i nomes es paga quan
 una tercera empresa instal·la Control Hub, que avui no es el cas; a mes, els builds de Docker estan
 bloquejats en aquesta maquina. En canvi la plataforma de connectors ja esta pagada i sense
@@ -1131,11 +1154,12 @@ viatja en crear-lo.
 `connector_operation_state`: no es un valor que es pugui escriure a la base, es l'absencia d'una
 passada. Es l'unica manera que la pantalla ensenyi les tres respostes alhora.
 
-**El seguent pas es tancar la 7.2 i fusionar-la.** Falta la porta que no s'ha pogut passar en
-aquesta sessio: `pnpm check:e2e` sobre base `_e2e` neta i sembrada, que ara hauria de ser **28/28**
-—la prova nova de les tres respostes—, perque aquesta sessio no te la pila de verificacio en peu.
-La resta de `pnpm check` si que esta passada sobre els tretze paquets: `lint`, `format:check`,
-`typecheck`, `test` i `build`. Despres, fusionar `claude/prometheus-connector-b1-qi1uvt` a
+**El que en aquell moment faltava per tancar la 7.2**, que ja esta fusionada com diu l'apartat de
+mes amunt: aixo es el registre d'aquella sessio, no feina pendent. Faltava la porta que aquella
+sessio no havia pogut passar, `pnpm check:e2e` sobre base `_e2e` neta i sembrada, que havia de ser
+**28/28** —la prova nova de les tres respostes— perque no tenia la pila de verificacio en peu. La
+resta de `pnpm check` si que estava passada sobre els tretze paquets: `lint`, `format:check`,
+`typecheck`, `test` i `build`. I despres, fusionar `claude/prometheus-connector-b1-qi1uvt` a
 `develop` amb `--no-ff`, per no aixafar els quatre increments en un de sol.
 
 **El que queda per cablejar la instancia de debo, i no es codi.** El `hostname` d'un host declarat
