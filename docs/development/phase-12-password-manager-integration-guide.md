@@ -210,7 +210,11 @@ auditen exclusivament identificadors i resultats, mai URLs ni referencies.
 
 ### S10 — UI del cataleg
 
-Llistat, detall, alta, edicio, revisio i navegacio segura amb i18n, accessibilitat i E2E.
+**Implementat** a **Seguretat > Contrasenyes** amb llistat filtrable i paginat, detall, alta
+guiada, configuracio Owner de Bitwarden, revisio, revocacio, arxiu/restauracio i navegacio amb
+`noopener`, `noreferrer` i validacio defensiva de l'origen. La UI no te cap camp de password ni
+cap accio de copiar valors; inclou `ca`, `es`, `en`, teclat, focus, responsive, dark mode i
+reduced motion.
 
 ### S11 — Bitwarden a la mateixa VPS
 

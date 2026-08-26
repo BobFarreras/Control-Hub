@@ -356,6 +356,8 @@ export class CredentialCatalogService {
     if (!hasPermission(context, "credentials:open")) throw new CredentialCatalogError("FORBIDDEN");
     if (!this.reader) throw new CredentialCatalogError("INVALID_INPUT");
     const entry = await this.getEntry(context, entryId);
+    if (entry.status === "revoked" || entry.status === "archived")
+      throw new CredentialCatalogError("CREDENTIAL_ENTRY_INVALID_TRANSITION");
     const [installation, envelope] = await Promise.all([
       this.repository.getInstallation(context, entry.installationId),
       this.repository.readReference(context, entryId)

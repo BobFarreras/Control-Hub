@@ -361,5 +361,9 @@ describe("credential catalog service", () => {
     const result = await service.openEntry(context(["credentials:read", "credentials:open"], ["technical"]), "entry-a");
     expect(result.destination).toBe(`https://vault.test/#/vault?itemId=${id}`);
     expect(repository.opens).toBe(1);
+    repository.entries[0] = { ...repository.entries[0]!, status: "revoked" };
+    await expect(
+      service.openEntry(context(["credentials:read", "credentials:open"], ["technical"]), "entry-a")
+    ).rejects.toMatchObject({ code: "CREDENTIAL_ENTRY_INVALID_TRANSITION" });
   });
 });

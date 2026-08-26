@@ -127,8 +127,10 @@ llicencia. S8 afegeix domini, permisos, casos d'us, envelope AES-GCM de proposit
 migracio `0058_credential_catalog.sql`, amb RLS, FKs tenant-scoped i events append-only. El
 S9 ja publica l'API del cataleg sota la flag `credential_catalog`, amb OpenAPI, reautenticacio,
 MFA, RBAC, validacio de deep links, open intents `no-store`, rate limit i auditoria allowlisted. El
-seguent increment es S10, la UI del cataleg. Control Hub no llegeix ni mostra valors
-del vault.
+S10 afegeix **Seguretat > Contrasenyes** amb cerca, filtres, paginacio, detall, alta guiada,
+configuracio Bitwarden per Owner, revisio, revocacio, arxiu i navegacio externa segura. El
+seguent increment es S11, el stack Bitwarden independent a la mateixa VPS. Control Hub no
+llegeix ni mostra valors del vault.
 
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E

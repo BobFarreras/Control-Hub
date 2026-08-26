@@ -48,6 +48,7 @@ type Labels = {
   settings: string;
   settingsSecurity: string;
   settingsSecrets: string;
+  settingsPasswords: string;
   settingsMcp: string;
 };
 
@@ -63,6 +64,7 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const usageEnabled = useFeature("usage_costs");
   const mailEnabled = useFeature("mail");
   const mcpEnabled = useFeature("mcp");
+  const credentialCatalogEnabled = useFeature("credential_catalog");
   const attendanceStatus = useAttendanceStatus();
   const [isOwner, setIsOwner] = useState(false);
   useEffect(() => {
@@ -205,6 +207,8 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           <div>
             {item(`/${locale}/security`, labels.settingsSecurity, undefined, true)}
             {isOwner && item(`/${locale}/security/secrets`, labels.settingsSecrets, undefined, true)}
+            {credentialCatalogEnabled &&
+              item(`/${locale}/security/passwords`, labels.settingsPasswords, undefined, true)}
             {mcpEnabled && item(`/${locale}/mcp`, labels.settingsMcp, undefined, true)}
           </div>
         </details>

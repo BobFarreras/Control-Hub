@@ -1155,3 +1155,34 @@ export type SecretMetadataResponse = {
     health: "available" | "warning" | "not_observed" | "not_applicable";
   }>;
 };
+
+export type PasswordManagerInstallation = {
+  id: string;
+  displayName: string;
+  provider: "bitwarden";
+  baseUrl: string;
+  deploymentMode: "cloud" | "self_hosted_shared_vps" | "self_hosted_dedicated_vps";
+  status: "active" | "degraded" | "disabled";
+  lastReviewedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CredentialCatalogEntry = {
+  id: string;
+  installationId: string;
+  clientId: string | null;
+  companySubscriptionId: string | null;
+  applicationName: string;
+  category: "hosting" | "email" | "domain" | "website_admin" | "billing" | "social" | "infrastructure" | "other";
+  environment: "production" | "staging" | "development" | "other";
+  accountLabel: string | null;
+  ownerMembershipId: string;
+  status: "active" | "review_due" | "revoked" | "archived";
+  reviewDueAt: string | null;
+  lastReviewedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
