@@ -86,7 +86,12 @@ services:
       dockerfile: deploy/Dockerfile
       target: migrate
     environment:
-      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
+      # `MIGRATION_DATABASE_URL`, not `DATABASE_URL`, because the image no longer starts node
+      # directly: it starts `load-secret-and-exec MIGRATION_DATABASE_URL`, which exits before node
+      # runs unless that exact name carries a value or a `_FILE` companion. `migrate.js` does fall
+      # back to `DATABASE_URL`, so the fallback reads as if it covers this -- it does not, because
+      # the entrypoint never gets far enough to hand over.
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
     depends_on:
       postgres:
         condition: service_healthy

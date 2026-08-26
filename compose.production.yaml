@@ -35,7 +35,9 @@ services:
 
   migrate:
     environment:
-      DATABASE_URL: !reset null
+      # The reset has to name the same variable the base file sets, or both a direct value and a
+      # file reach the entrypoint and it refuses the pair as `SECRET_SOURCE_CONFLICT`.
+      MIGRATION_DATABASE_URL: !reset null
       MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
     secrets:
       - source: migration_database_url

@@ -374,18 +374,21 @@ jobs:
     name: Container image
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Job wide, not on the step that starts the stack. `compose.yaml` declares these with the
-    # `:?` form, so Compose refuses to interpolate the file at all without them, and that
-    # happens on every command that reads it: `build`, `logs` and `down` too. Scoping them to
-    # one step left the other three failing on a missing value instead of on anything real.
+    # Job wide, not on the step that starts the stack: every command that reads `compose.yaml`
+    # interpolates the whole file, `build`, `logs` and `down` included, so scoping these to one
+    # step left the other three failing on a missing value instead of on anything real.
     env:
+      # These three now carry `:-` rather than `:?` in `compose.yaml`, because production supplies
+      # them as mounted files and `:?` would abort the deployment that has no environment value to
+      # give. They are still required here: an empty password does not make a working stack, it
+      # makes Postgres refuse to initialise several seconds later and with a worse explanation.
       POSTGRES_ADMIN_PASSWORD: ci_admin_only
       POSTGRES_APP_PASSWORD: ci_app_only
       BETTER_AUTH_SECRET: ci_secret_that_is_long_enough_for_validation
-      # Every published port is declared with the `:?` form too, so the file does not
-      # interpolate without them -- which is why `build`, `logs` and `down` all failed
-      # together on `WEB_PORT` rather than on anything about an image. The two the health
-      # checks below reach have to keep these values; the rest only have to be free.
+      # The published ports do still use `:?`, so the file does not interpolate without them --
+      # which is why `build`, `logs` and `down` all failed together on `WEB_PORT` rather than on
+      # anything about an image. The two the health checks below reach have to keep these values;
+      # the rest only have to be free.
       WEB_PORT: 3001
       API_PORT: 4000
       POSTGRES_PORT: 5432

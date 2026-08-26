@@ -31,10 +31,36 @@ test("production grants each runtime only the secret files it consumes", () => {
   assert.match(worker, /DATABASE_URL_FILE: \/run\/secrets\/database_url/);
   assert.doesNotMatch(worker, /better_auth_secret|migration_database_url|postgres_admin_password/);
   assert.match(migrate, /MIGRATION_DATABASE_URL_FILE: \/run\/secrets\/migration_database_url/);
-  assert.doesNotMatch(migrate, /^\s+DATABASE_URL_FILE:|better_auth_secret|connector_key_ring/m);
+  // Two separate claims, kept apart. Written as one alternation the leading `^\s+` bound only
+  // the first branch, so the other two searched the whole block while looking anchored -- and a
+  // failure named the regex rather than which of the three things went wrong.
+  assert.doesNotMatch(migrate, /^\s+DATABASE_URL_FILE:/m);
+  assert.doesNotMatch(migrate, /better_auth_secret|connector_key_ring/);
   for (const variable of ["DATABASE_URL", "BETTER_AUTH_SECRET", "POSTGRES_PASSWORD", "POSTGRES_APP_PASSWORD"]) {
     assert.match(production, new RegExp(`${variable}: !reset null`));
   }
+});
+
+test("every file supplies the migration variable the entrypoint actually demands", () => {
+  // The image stopped starting node directly and started `load-secret-and-exec` in front of it,
+  // which exits 1 unless one exact variable name carries a value. The base file still named the
+  // old one, so `docker compose up` never migrated -- and nothing said so until a container was
+  // built and run, two minutes into a job, because no test compared the two files.
+  //
+  // Reading the name out of the CMD rather than writing it here is the point: pinning the string
+  // in the test only moves the disagreement, since a rename would then have to be made in three
+  // places instead of two and the test would still pass with the compose file stale.
+  const [, variable] = dockerfile.match(/CMD \["load-secret-and-exec", "([A-Z_]+)"/) ?? [];
+  assert.ok(variable, "the migrate image no longer starts through load-secret-and-exec");
+
+  const base = serviceBlock(compose, "migrate", "postgres");
+  assert.match(base, new RegExp(`^\\s+${variable}: \\S`, "m"));
+
+  // And production has to reset that same name before mounting the file, or the entrypoint sees a
+  // direct value and a file at once and refuses the pair.
+  const overlay = serviceBlock(production, "migrate", "postgres");
+  assert.match(overlay, new RegExp(`^\\s+${variable}: !reset null$`, "m"));
+  assert.match(overlay, new RegExp(`^\\s+${variable}_FILE: `, "m"));
 });
 
 test("connector and provider overlays grant only the selected integration", () => {

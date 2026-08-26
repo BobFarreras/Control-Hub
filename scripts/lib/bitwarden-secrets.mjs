@@ -4,6 +4,7 @@ import {
   chmodSync,
   chownSync,
   closeSync,
+  constants,
   existsSync,
   fstatSync,
   lstatSync,
@@ -50,18 +51,22 @@ function fail(code) {
 
 function safeJsonFile(path, maxBytes = 64 * 1024) {
   if (!isAbsolute(path)) fail("MANIFEST_PATH_INVALID");
-  let before;
+  // Opened before anything is asked about the name, so there is no interval between judging the
+  // file acceptable and reading it -- the previous shape stat'ed the path first and compared
+  // device and inode numbers afterwards to catch a swap, which worked but left a window that had
+  // to be argued about rather than removed. `O_NOFOLLOW` refuses a symlink at the syscall, and
+  // `parseManifest` has already refused any path whose realpath differs from the path itself,
+  // which is what covers Windows, where the flag does not exist.
+  let descriptor;
   try {
-    before = lstatSync(path);
+    const noFollow = process.platform === "win32" ? 0 : (constants.O_NOFOLLOW ?? 0);
+    descriptor = openSync(path, constants.O_RDONLY | noFollow);
   } catch {
     fail("MANIFEST_UNREADABLE");
   }
-  if (before.isSymbolicLink() || !before.isFile() || before.size > maxBytes) fail("MANIFEST_UNREADABLE");
-  const descriptor = openSync(path, "r");
   try {
-    const after = fstatSync(descriptor);
-    if (!after.isFile() || (process.platform !== "win32" && (before.dev !== after.dev || before.ino !== after.ino)))
-      fail("MANIFEST_CHANGED");
+    const stats = fstatSync(descriptor);
+    if (!stats.isFile() || stats.size > maxBytes) fail("MANIFEST_UNREADABLE");
     return JSON.parse(readFileSync(descriptor, "utf8"));
   } catch (error) {
     if (error instanceof BitwardenDeployError) throw error;

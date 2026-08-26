@@ -7,7 +7,10 @@ export const secretFileErrorCodes = [
   "SECRET_FILE_NOT_FOUND",
   "SECRET_FILE_SYMLINK",
   "SECRET_FILE_NOT_REGULAR",
-  "SECRET_FILE_CHANGED",
+  // No `SECRET_FILE_CHANGED`: it reported that the path pointed somewhere else by the time the
+  // file was opened, and nothing opens a path twice any more, so it could only ever be raised by
+  // a check that no longer exists. A code in this list that cannot be produced reads like a case
+  // somebody has to handle.
   "SECRET_FILE_TOO_LARGE",
   "SECRET_FILE_EMPTY",
   "SECRET_FILE_PERMISSIONS",
@@ -49,34 +52,46 @@ function fail(code: SecretFileErrorCode, variable: string): never {
   throw new SecretFileError(code, variable);
 }
 
+/**
+ * Opens the path and reports why it could not be opened, without asking anything about the path
+ * first. `O_NOFOLLOW` turns a symlink into `ELOOP` at the syscall itself, which is the whole
+ * reason the refusal can happen here rather than in a check somebody has to trust.
+ */
+function openSecretFile(variable: string, filePath: string, platform: NodeJS.Platform): number {
+  const noFollow = platform === "win32" ? 0 : (constants.O_NOFOLLOW ?? 0);
+  try {
+    return openSync(filePath, constants.O_RDONLY | noFollow);
+  } catch (error) {
+    const errno = (error as NodeJS.ErrnoException).code;
+    if (errno === "ELOOP") fail("SECRET_FILE_SYMLINK", variable);
+    if (errno === "ENOENT" || errno === "ENOTDIR") fail("SECRET_FILE_NOT_FOUND", variable);
+    if (errno === "EISDIR") fail("SECRET_FILE_NOT_REGULAR", variable);
+    return fail("SECRET_FILE_UNREADABLE", variable);
+  }
+}
+
 function readSecretFile(variable: string, filePath: string, options: ResolveSecretFileOptions): string {
   const maxBytes = options.maxBytes ?? 64 * 1024;
   const platform = options.platform ?? process.platform;
   if (!isAbsolute(filePath) || filePath.includes("\0")) fail("SECRET_FILE_PATH_INVALID", variable);
 
-  let before;
+  // Every decision below is taken from the open descriptor and none from the path. The shape
+  // before this one asked the path first, opened it, and then compared device and inode numbers
+  // to catch a swap in between -- which did work, but it meant the code carried a window it had
+  // to keep proving harmless, and that proof lives in a reader's head rather than in the file.
+  // Opening first has no window: whatever the name points at afterwards, the bytes read here come
+  // from the object the kernel already handed over.
+  const descriptor = openSecretFile(variable, filePath, platform);
   try {
-    before = lstatSync(filePath);
-  } catch {
-    fail("SECRET_FILE_NOT_FOUND", variable);
-  }
-  if (before.isSymbolicLink()) fail("SECRET_FILE_SYMLINK", variable);
-  if (!before.isFile()) fail("SECRET_FILE_NOT_REGULAR", variable);
-  if (before.size > maxBytes) fail("SECRET_FILE_TOO_LARGE", variable);
-  if (options.environment === "production" && platform !== "win32" && (before.mode & 0o077) !== 0)
-    fail("SECRET_FILE_PERMISSIONS", variable);
-
-  let descriptor: number | undefined;
-  try {
-    const noFollow = platform === "win32" ? 0 : (constants.O_NOFOLLOW ?? 0);
-    descriptor = openSync(filePath, constants.O_RDONLY | noFollow);
-    const after = fstatSync(descriptor);
-    if (!after.isFile()) fail("SECRET_FILE_NOT_REGULAR", variable);
-    if (platform !== "win32" && (before.dev !== after.dev || before.ino !== after.ino))
-      fail("SECRET_FILE_CHANGED", variable);
-    if (options.environment === "production" && platform !== "win32" && (after.mode & 0o077) !== 0)
+    const stats = fstatSync(descriptor);
+    // Windows has no `O_NOFOLLOW`, so a symlink opens there and is caught after the fact. The
+    // path is asked about only once the descriptor is held and is never opened again, so this is
+    // a diagnostic on a decision already made, not a check anything can race.
+    if (platform === "win32" && lstatSync(filePath).isSymbolicLink()) fail("SECRET_FILE_SYMLINK", variable);
+    if (!stats.isFile()) fail("SECRET_FILE_NOT_REGULAR", variable);
+    if (options.environment === "production" && platform !== "win32" && (stats.mode & 0o077) !== 0)
       fail("SECRET_FILE_PERMISSIONS", variable);
-    if (after.size > maxBytes) fail("SECRET_FILE_TOO_LARGE", variable);
+    if (stats.size > maxBytes) fail("SECRET_FILE_TOO_LARGE", variable);
     const value = readFileSync(descriptor, "utf8").replace(/\r?\n$/, "");
     if (Buffer.byteLength(value, "utf8") > maxBytes) fail("SECRET_FILE_TOO_LARGE", variable);
     if (value.length === 0 || value.includes("\0")) fail("SECRET_FILE_EMPTY", variable);
@@ -85,7 +100,7 @@ function readSecretFile(variable: string, filePath: string, options: ResolveSecr
     if (error instanceof SecretFileError) throw error;
     return fail("SECRET_FILE_UNREADABLE", variable);
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
+    closeSync(descriptor);
   }
 }
 
