@@ -130,9 +130,11 @@ test("the required list holds every gate ci.yml declares", () => {
   for (const name of declared) {
     assert.ok(requiredChecks.includes(name), `ci.yml declares "${name}", which the release does not require`);
   }
-  // And nothing required that CI does not produce, except the one GitHub's default setup reports.
+  // And nothing required that CI does not produce. There is no exception any more: the one that
+  // used to be here -- CodeQL -- is what taught the lesson. It reports on pull request commits and
+  // not on a push to `develop`, so requiring it hung every publish waiting for a check that was
+  // never coming. A gate the release cannot observe is not a gate.
   for (const name of requiredChecks) {
-    if (name === "CodeQL") continue;
     assert.ok(declared.includes(name), `the release requires "${name}", which ci.yml no longer declares`);
   }
 });

@@ -314,9 +314,9 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 - **P3** — *Fet, amb tres buits anotats.* `compose.release.yaml` i `release.env`: una instal·lacio
   que fa `pull` i no `build`. Comprovat component els fitxers de debo: la definicio resultant no te
   cap `build:` i les quatre imatges hi son per digest.
-- **P4** — La prova de compatibilitat N-1: arrencar la versio anterior contra una base migrada a la
-  nova. Va **abans** del comandament d'actualitzar, perque es el que fa que el rollback de D4
-  existeixi de debo en comptes de constar en un document.
+- **P4** — *Fet, i deliberadament de dues meitats.* La prova de compatibilitat N-1: la suite de
+  l'ultima etiqueta contra una base migrada a HEAD, mes una comprovacio estatica de les migracions
+  noves. La dinamica sola te un forat mesurat --veure mes avall--, i per aixo no va sola.
 - **P5** — El comandament d'actualitzacio, amb backup, migracions i rollback.
 - **P6** — El banner i la comprovacio diaria del worker.
 - **P7** — L'instal·lador interactiu.
@@ -353,6 +353,38 @@ existeix per decidir quant val aquest compromis abans de fer-lo, no despres.
 instal·lacio descarregui una imatge que no es la nostra. Publicar-lo a la release de GitHub el posa
 darrere el mateix control d'acces que el repositori, i la firma de D6 permet comprovar-ho a part; el
 que no fa cap de les dues coses es protegir de que el compte de GitHub quedi compromes.
+
+### El que P4 en va concretar
+
+El gate `Previous version` de `ci.yml` te dues meitats, i cap de les dues sola no n'hi ha prou.
+
+**La dinamica** es la prova de debo: migra la base a HEAD, treu un `worktree` de l'ultima etiqueta
+`v*.*.*` i executa la seva suite d'integracio contra aquella base. Es exactament el que passa a una
+instal·lacio que torna enrere: el codi vell contra l'esquema nou. El runner de migracions es
+idempotent, per tant la versio anterior no aplica res --nomes funciona o no funciona.
+
+**L'estatica** llegeix nomes les migracions afegides des de l'ultima etiqueta i rebutja `drop
+column`, `drop table`, `drop type`, canvis de nom, canvis de tipus i columnes `not null` sense
+valor per defecte, si no hi ha un `-- n-1-safe: <per que>` sobre la sentencia. No li cal base de
+dades.
+
+**Per que calen les dues, mesurat i no suposat.** Amb la base a la migracio 0059, els 602 tests de
+`v0.3.0` passen. Eliminant `tenants.slug` es tornen vermells de seguida --quatre fitxers, `column
+"slug" of relation "tenants" does not exist`. Pero eliminant `tenants.status` **es queden verds**:
+els tests vells nomes insereixen `(id, slug, name)` i ningu no llegeix aquella columna. La suite
+demostra compatibilitat per a tot el que el codi vell exercita i no diu res de la resta, que es
+justament la part que ningu no recorda comprovar. La meitat estatica cobreix aquesta banda.
+
+L'escapatoria es un comentari a la migracio i no una llista d'excepcions en un fitxer a part: una
+llista es un lloc on les entrades s'acumulen i ningu no les torna a llegir, mentre que una frase al
+costat de la sentencia la llegeix qui revisa la migracio, que es qui encara pot dir que no.
+
+**El gate no se salta mai sol.** `scripts/release-gate.mjs` compta un check `skipped` com una
+fallada, o sigui que un job amb `if:` que es saltes bloquejaria totes les releases en comptes de
+deixar-les passar. Per aixo el job corre sempre i el cami rapid --sense etiqueta previa, o sense
+migracions noves-- es *dins* del job. `release.test.mjs` ho subjecta: si algu hi afegeix un `if:` o
+un `needs:`, la suite es posa vermella.
+
 
 **El rollback nomes existeix si les migracions el permeten.** Es el risc mes facil de creure resolt
 sense estar-ho: el `compose` amb el digest antic torna enrere en segons i dona la sensacio que el
