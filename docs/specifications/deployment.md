@@ -140,6 +140,35 @@ Cap imatge es publica sense que les nou portes de `ci.yml` hagin passat sobre el
 porta `Container image` ja construeix i aixeca l'stack; publicar es el pas seguent d'aquell cami, no
 un de paral·lel.
 
+### El que P2 en va concretar
+
+`.github/workflows/release.yml`, i tres coses que l'especificacio deixava obertes:
+
+**On es llegeix el manifest.** A
+`https://github.com/BobFarreras/Control-Hub/releases/latest/download/release.json`, una URL que no
+canvia mai: GitHub la resol sempre a l'ultima release publicada. Per aixo el fitxer adjunt es diu
+sempre igual i el numero de versio no surt enlloc de l'adreca --si hi sortis, una instal·lacio hauria
+de saber quina versio demanar abans de poder-ho preguntar, que es exactament el que no sap.
+
+**Que hi ha a dins.** Versio, instant, commit, els quatre digests, i un apartat `work` amb les dues
+dades que el banner necessita per dir **quina feina representa** l'actualitzacio: quantes migracions
+noves porta i si la configuracio ha canviat. Les dues es calculen al moment de publicar, comparant
+amb l'etiqueta anterior --les migracions, comptant fitxers nous a `packages/database/migrations`, que
+equival a comptar-ne els canviats nomes perque `AGENTS.md` prohibeix editar-ne una de publicada; la
+configuracio, mirant si `.env.example` s'ha mogut. Es calculen alli i no a la instal·lacio perque
+alli hi ha els dos commits, i a la instal·lacio no n'hi ha cap dels dos.
+
+**Com s'exigeixen les nou portes.** Un job previ consulta els *check runs* del commit i es nega si en
+falta cap. Funciona per a una etiqueta perque els resultats pengen del commit i no de la referencia:
+`ci.yml` no s'executa en fer push d'una etiqueta, pero el commit que l'etiqueta assenyala ja hi ha
+passat a `main`. A `develop` el workflow arrenca del mateix push que la CI, aixi que esperar es el
+cas normal i no un error --espera fins a 45 minuts i despres es nega. `skipped` i `cancelled` compten
+com a fracas: una porta que no s'ha executat no ha passat.
+
+Una consequencia que val la pena tenir present abans de fusionar res: **el primer commit a `develop`
+amb aquest workflow a dins publica la primera imatge `edge` publica**. No cal fer res mes perque
+passi.
+
 ## Com una instal·lacio nomena la seva versio
 
 Un fitxer `release.env` al directori d'instal·lacio, amb els quatre digests i la versio llegible.
@@ -235,8 +264,10 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 
 - **P1** — *Fet.* Identificador de construccio al costat de la versio que ja existeix, i les dues
   visibles a la pantalla de seguretat. Va primer perque tot el que ve despres compara contra elles.
-- **P2** — El workflow de publicacio: imatges, firma, SBOM i manifest de release. Verificable
-  descarregant les imatges publicades i aixecant l'stack sense el codi font.
+- **P2** — *Escrit, no exercitat.* El workflow de publicacio: imatges, firma, SBOM i manifest de
+  release. El mecanisme te proves; el que encara no te es una execucio. La verificacio de debo
+  --descarregar les imatges publicades i aixecar l'stack sense el codi font-- necessita P3, i abans
+  necessita que algu publiqui, que es un acte deliberat i no una consequencia d'aquest increment.
 - **P3** — `compose.release.yaml` i `release.env`: una instal·lacio que fa `pull` i no `build`.
 - **P4** — La prova de compatibilitat N-1: arrencar la versio anterior contra una base migrada a la
   nova. Va **abans** del comandament d'actualitzar, perque es el que fa que el rollback de D4
