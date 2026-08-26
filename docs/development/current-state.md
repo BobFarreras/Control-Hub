@@ -168,8 +168,26 @@ la comprovacio estatica cobreix la resta.
 El job corre sempre i el cami rapid es a dins, perque `release-gate.mjs` compta un check `skipped`
 com una fallada i un job que es saltes bloquejaria totes les releases.
 
-**El seguent increment es P5**: el comandament d'actualitzacio, amb backup, migracions i rollback.
-Ara ja es pot escriure, perque el rollback que promet te qui el comprovi.
+**P5 esta fet** (mateixa branca). `deploy/update.sh` es el comandament d'actualitzacio: valida la
+release, fa el backup, descarrega per digest, executa les migracions, i **nomes si aixo acaba be**
+reemplaca els serveis. Si les migracions fallen s'atura alli, l'stack anterior segueix dret i diu
+que conserva. Son els set passos manuals del runbook convertits en un comandament.
+
+POSIX sh i docker i res mes, i aquesta va ser la decisio que ho va determinar tot: **una
+instal·lacio de client no te repositori ni Node**, que era tot el sentit de P3. Per aixo la release
+ara publica `release.env` al costat de `release.json` --el manifest segueix sent la font i es valida
+a CI, pero el que baixa l'actualitzador ja es la forma que Compose llegeix. L'alternativa era
+parsejar JSON amb expressions regulars dins d'un script de shell.
+
+Les proves executen l'script de debo amb `--check`, i les set mutacions que l'afluixen el posen
+vermell.
+
+**Les quatre imatges `edge` ja son publiques.** Comprovat amb una peticio anonima de debo, no
+llegint una pantalla de configuracio: `ghcr.io/bobfarreras/control-hub-{api,worker,migrate,web}`
+responen HTTP 200 sense credencials.
+
+**El seguent increment es P6**: el banner d'avis i la comprovacio diaria del worker. Ara te sentit,
+perque el comandament que el banner dira que s'executi ja existeix.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre
