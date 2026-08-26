@@ -47,8 +47,9 @@ substitueix el vault de connectors: el worker necessita accés just-in-time sens
 ## Secrets de maquina
 
 Les variables sensibles actuals, els consumidors, l'owner, els entorns i la rotacio son al JSON
-adjacent. El futur `BWS_ACCESS_TOKEN` queda inventariat com a `planned`: autentica exclusivament
-la machine account del pipeline i mai entra al web, API, PostgreSQL o UI.
+adjacent. `BWS_ACCESS_TOKEN` autentica exclusivament la machine account de nomes lectura del
+pipeline. L'adaptador S4 l'elimina de l'entorn abans de cridar Compose i mai entra al web, API,
+worker, PostgreSQL o UI.
 
 ## Regla d'alta
 
@@ -58,3 +59,7 @@ Compose, workflows i usos de `process.env`; un nom nou sense classificacio falla
 
 L'inventari no autoritza una variable. Afegir-la continua exigint model d'amenaces, minim
 privilegi, canal d'injeccio, redaccio de logs, rotacio, rollback i actualitzacio del consumidor.
+
+S2 ha activat `*_FILE` per `DATABASE_URL`, `REDIS_URL`, `BETTER_AUTH_SECRET`,
+`CONNECTOR_KEY_RING` i els client secrets OAuth de Google i Microsoft. El camp `fileVariable`
+del JSON vincula cada path amb el secret que materialitza; el path no es una segona credencial.

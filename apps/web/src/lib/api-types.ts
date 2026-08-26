@@ -1137,3 +1137,21 @@ export type McpServiceAccountRow = {
 
 /** The accounts, plus the scopes this reader could actually back -- not the whole vocabulary. */
 export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow[]; grantableScopes: string[] };
+
+export type SecretMetadataResponse = {
+  provider: {
+    kind: "environment" | "runtime_files" | "bitwarden";
+    health: "available" | "warning" | "not_observed" | "not_applicable";
+    checkedAt: string;
+  };
+  secrets: Array<{
+    name: string;
+    source: "environment" | "file" | "external_manager" | "not_observed" | "not_applicable";
+    configured: boolean | null;
+    consumers: string[];
+    loadedAt: string | null;
+    lastRotatedAt: string | null;
+    version: string | null;
+    health: "available" | "warning" | "not_observed" | "not_applicable";
+  }>;
+};

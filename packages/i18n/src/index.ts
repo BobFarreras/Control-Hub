@@ -31,6 +31,7 @@ const dictionaries = {
       usageBudgets: "Pressupostos",
       settings: "Configuracio",
       settingsSecurity: "Seguretat",
+      settingsSecrets: "Secrets",
       settingsMcp: "Agents MCP"
     },
     header: {
@@ -190,6 +191,7 @@ const dictionaries = {
       usageBudgets: "Presupuestos",
       settings: "Configuracion",
       settingsSecurity: "Seguridad",
+      settingsSecrets: "Secretos",
       settingsMcp: "Agentes MCP"
     },
     header: {
@@ -349,6 +351,7 @@ const dictionaries = {
       usageBudgets: "Budgets",
       settings: "Settings",
       settingsSecurity: "Security",
+      settingsSecrets: "Secrets",
       settingsMcp: "MCP agents"
     },
     header: {
@@ -487,6 +490,121 @@ export function isLocale(value: string): value is Locale {
 }
 export function getDictionary(locale: Locale) {
   return dictionaries[locale];
+}
+
+const secretsDictionaries = {
+  ca: {
+    eyebrow: "CUSTODIA OPERATIVA",
+    title: "Configuracio de secrets",
+    description: "Estat i origen dels secrets de plataforma, sense exposar-ne cap valor.",
+    provider: "Proveidor de secrets",
+    provider_environment: "Variables d'entorn",
+    provider_runtime_files: "Fitxers del runtime",
+    provider_bitwarden: "Bitwarden Secrets Manager",
+    health_available: "Disponible",
+    health_warning: "Revisio necessaria",
+    health_not_observed: "Fora del runtime",
+    health_not_applicable: "No aplicable",
+    externalHint:
+      "Bitwarden s'executa al host de desplegament. L'API confirma la carrega, pero no rep el token ni consulta el proveidor.",
+    environmentHint: "Compatible amb desenvolupament. Produccio ha d'utilitzar fitxers read-only o un gestor extern.",
+    inventory: "Inventari carregat",
+    inventoryDescription: "Metadata capturada una vegada durant l'arrencada de l'API.",
+    configured: "Configurat",
+    notConfigured: "No configurat",
+    unknown: "No observable",
+    source: "Origen",
+    source_environment: "Entorn",
+    source_file: "Fitxer read-only",
+    source_external_manager: "Gestor extern",
+    source_not_observed: "No observable",
+    source_not_applicable: "No aplicable",
+    consumers: "Consumidors",
+    loaded: "Ultima carrega",
+    rotated: "Ultima rotacio",
+    version: "Versio segura",
+    never: "Sense evidencia",
+    noVersion: "No publicada",
+    smtpHint: "L'SMTP actual no utilitza autenticacio; els tickets amb Gmail/Microsoft funcionen per OAuth.",
+    ownerOnly: "Nomes l'Owner pot consultar aquesta configuracio.",
+    loadError: "No s'ha pogut carregar la metadata de secrets."
+  },
+  es: {
+    eyebrow: "CUSTODIA OPERATIVA",
+    title: "Configuracion de secretos",
+    description: "Estado y origen de los secretos de plataforma, sin exponer ningun valor.",
+    provider: "Proveedor de secretos",
+    provider_environment: "Variables de entorno",
+    provider_runtime_files: "Archivos del runtime",
+    provider_bitwarden: "Bitwarden Secrets Manager",
+    health_available: "Disponible",
+    health_warning: "Requiere revision",
+    health_not_observed: "Fuera del runtime",
+    health_not_applicable: "No aplicable",
+    externalHint:
+      "Bitwarden se ejecuta en el host de despliegue. La API confirma la carga, pero no recibe el token ni consulta el proveedor.",
+    environmentHint: "Compatible con desarrollo. Produccion debe usar archivos de solo lectura o un gestor externo.",
+    inventory: "Inventario cargado",
+    inventoryDescription: "Metadata capturada una vez durante el arranque de la API.",
+    configured: "Configurado",
+    notConfigured: "No configurado",
+    unknown: "No observable",
+    source: "Origen",
+    source_environment: "Entorno",
+    source_file: "Archivo de solo lectura",
+    source_external_manager: "Gestor externo",
+    source_not_observed: "No observable",
+    source_not_applicable: "No aplicable",
+    consumers: "Consumidores",
+    loaded: "Ultima carga",
+    rotated: "Ultima rotacion",
+    version: "Version segura",
+    never: "Sin evidencia",
+    noVersion: "No publicada",
+    smtpHint: "El SMTP actual no utiliza autenticacion; los tickets con Gmail/Microsoft funcionan mediante OAuth.",
+    ownerOnly: "Solo el Owner puede consultar esta configuracion.",
+    loadError: "No se ha podido cargar la metadata de secretos."
+  },
+  en: {
+    eyebrow: "OPERATIONAL CUSTODY",
+    title: "Secret configuration",
+    description: "Platform-secret status and source without exposing any value.",
+    provider: "Secret provider",
+    provider_environment: "Environment variables",
+    provider_runtime_files: "Runtime files",
+    provider_bitwarden: "Bitwarden Secrets Manager",
+    health_available: "Available",
+    health_warning: "Review required",
+    health_not_observed: "Outside runtime",
+    health_not_applicable: "Not applicable",
+    externalHint:
+      "Bitwarden runs on the deployment host. The API confirms loading but never receives the token or queries the provider.",
+    environmentHint: "Supported for development. Production should use read-only files or an external manager.",
+    inventory: "Loaded inventory",
+    inventoryDescription: "Metadata captured once when the API started.",
+    configured: "Configured",
+    notConfigured: "Not configured",
+    unknown: "Not observable",
+    source: "Source",
+    source_environment: "Environment",
+    source_file: "Read-only file",
+    source_external_manager: "External manager",
+    source_not_observed: "Not observable",
+    source_not_applicable: "Not applicable",
+    consumers: "Consumers",
+    loaded: "Last loaded",
+    rotated: "Last rotated",
+    version: "Safe version",
+    never: "No evidence",
+    noVersion: "Not published",
+    smtpHint: "Current SMTP has no authentication; Gmail/Microsoft tickets are sent through OAuth.",
+    ownerOnly: "Only the Owner can read this configuration.",
+    loadError: "Secret metadata could not be loaded."
+  }
+} as const;
+
+export function getSecretsDictionary(locale: Locale) {
+  return secretsDictionaries[locale];
 }
 
 const crmDetailDictionaries = {

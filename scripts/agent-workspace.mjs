@@ -316,7 +316,12 @@ function validateWorkspace(root = repositoryRoot(), data = metadata(root)) {
   if (resolve(root) !== resolve(data.path)) failures.push("el manifest pertany a un altre filesystem");
   if (!existsSync(join(root, ".env"))) failures.push("falta .env local");
   const status = git(["status", "--porcelain"], { cwd: root });
-  if (status.split(/\r?\n/).some((line) => /(^|\s)\.env(?:\.|$)/.test(line)))
+  if (
+    status
+      .split(/\r?\n/)
+      .map((line) => line.slice(3).trim())
+      .some((path) => /^\.env(?:\..+)?$/.test(path) && path !== ".env.example")
+  )
     failures.push("un fitxer .env apareix a git status");
   const currentScope = new Set(data.scope ?? []);
   for (const other of activeWorkspaceMetadata(root)) {

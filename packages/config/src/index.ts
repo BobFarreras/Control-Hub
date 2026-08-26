@@ -2,6 +2,14 @@ import { z } from "zod";
 import { parseEgressAllowlist, type AllowedDestination } from "./egress-allowlist.js";
 import { isFeatureEnabled, parseFeatureFlags } from "./flags.js";
 import { parseKeyRing, type KeyRing } from "./key-ring.js";
+import { resolveSecretFiles } from "./secret-file.js";
+
+const apiSecretVariables = ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET", "CONNECTOR_KEY_RING"] as const;
+const workerSecretVariables = [
+  ...apiSecretVariables,
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "MICROSOFT_OAUTH_CLIENT_SECRET"
+] as const;
 
 const baseSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -14,6 +22,7 @@ const baseSchema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_FROM: z.email().default("control-hub@localhost.test"),
+  SECRETS_PROVIDER: z.enum(["environment", "runtime_files", "bitwarden"]).default("environment"),
   WEBAUTHN_RP_ID: z.string().min(1).default("localhost"),
   WEBAUTHN_ORIGIN: z.url().default("http://localhost:3001"),
   // Comma-separated names from the registry in ./flags.ts. Empty means every flag is off.
@@ -92,6 +101,18 @@ export type ApiEnvironment = Omit<z.infer<typeof apiEnvironmentSchema>, "CONNECT
 export type WorkerEnvironment = Omit<z.infer<typeof workerEnvironmentSchema>, "CONNECTOR_KEY_RING" | OAuthRawKeys> &
   ConnectorEnvironment & { oauthClients: OAuthClients };
 
+function hideProperties<T extends object>(target: T, properties: readonly (keyof T)[]): T {
+  for (const property of properties) {
+    const value = target[property];
+    Object.defineProperty(target, property, { configurable: false, enumerable: false, value, writable: false });
+  }
+  return target;
+}
+
+function oauthClient(clientId: string, clientSecret: string): { clientId: string; clientSecret: string } {
+  return hideProperties({ clientId, clientSecret }, ["clientSecret"]);
+}
+
 function resolveConnectorKeyRing(source: { CONNECTOR_KEY_RING?: string | undefined }): KeyRing | null {
   const raw = source.CONNECTOR_KEY_RING?.trim();
   return raw ? parseKeyRing(raw) : null;
@@ -135,16 +156,19 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
     MICROSOFT_OAUTH_CLIENT_ID,
     MICROSOFT_OAUTH_CLIENT_SECRET: _microsoftSecret,
     ...environment
-  } = apiEnvironmentSchema.parse(source);
-  return {
-    ...environment,
-    connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
-    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
-    oauthClientIds: {
-      ...(GOOGLE_OAUTH_CLIENT_ID ? { google: GOOGLE_OAUTH_CLIENT_ID } : {}),
-      ...(MICROSOFT_OAUTH_CLIENT_ID ? { microsoft: MICROSOFT_OAUTH_CLIENT_ID } : {})
-    }
-  };
+  } = apiEnvironmentSchema.parse(resolveSecretFiles(source, apiSecretVariables, { environment: source.NODE_ENV }));
+  return hideProperties(
+    {
+      ...environment,
+      connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
+      connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
+      oauthClientIds: {
+        ...(GOOGLE_OAUTH_CLIENT_ID ? { google: GOOGLE_OAUTH_CLIENT_ID } : {}),
+        ...(MICROSOFT_OAUTH_CLIENT_ID ? { microsoft: MICROSOFT_OAUTH_CLIENT_ID } : {})
+      }
+    },
+    ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"]
+  );
 }
 
 export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnvironment {
@@ -155,28 +179,34 @@ export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnviron
     MICROSOFT_OAUTH_CLIENT_ID,
     MICROSOFT_OAUTH_CLIENT_SECRET,
     ...environment
-  } = workerEnvironmentSchema.parse(source);
+  } = workerEnvironmentSchema.parse(
+    resolveSecretFiles(source, workerSecretVariables, { environment: source.NODE_ENV })
+  );
   if (Boolean(GOOGLE_OAUTH_CLIENT_ID) !== Boolean(GOOGLE_OAUTH_CLIENT_SECRET)) {
     throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
   }
   if (Boolean(MICROSOFT_OAUTH_CLIENT_ID) !== Boolean(MICROSOFT_OAUTH_CLIENT_SECRET)) {
     throw new Error("MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET must be configured together");
   }
-  return {
-    ...environment,
-    connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
-    connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
-    oauthClients: {
-      ...(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET
-        ? { google: { clientId: GOOGLE_OAUTH_CLIENT_ID, clientSecret: GOOGLE_OAUTH_CLIENT_SECRET } }
-        : {}),
-      ...(MICROSOFT_OAUTH_CLIENT_ID && MICROSOFT_OAUTH_CLIENT_SECRET
-        ? { microsoft: { clientId: MICROSOFT_OAUTH_CLIENT_ID, clientSecret: MICROSOFT_OAUTH_CLIENT_SECRET } }
-        : {})
-    }
-  };
+  return hideProperties(
+    {
+      ...environment,
+      connectorKeyRing: resolveConnectorKeyRing({ CONNECTOR_KEY_RING }),
+      connectorEgressAllowlist: parseEgressAllowlist(environment.CONNECTOR_INTERNAL_ALLOWLIST),
+      oauthClients: {
+        ...(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET
+          ? { google: oauthClient(GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET) }
+          : {}),
+        ...(MICROSOFT_OAUTH_CLIENT_ID && MICROSOFT_OAUTH_CLIENT_SECRET
+          ? { microsoft: oauthClient(MICROSOFT_OAUTH_CLIENT_ID, MICROSOFT_OAUTH_CLIENT_SECRET) }
+          : {})
+      }
+    },
+    ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"]
+  );
 }
 
 export * from "./egress-allowlist.js";
 export * from "./flags.js";
 export * from "./key-ring.js";
+export * from "./secret-file.js";

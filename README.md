@@ -41,6 +41,7 @@ n8n es una aplicacio externa: Control Hub en consulta l'estat mitjancant APIs, w
 - [`BRANCHING.md`](BRANCHING.md): branques, pull requests, releases i hotfixes.
 - [`docs/runbooks/installation.md`](docs/runbooks/installation.md): instal·lacio, primer Owner, membres i actualitzacions.
 - [`docs/runbooks/connector-key-rotation.md`](docs/runbooks/connector-key-rotation.md): rotar l'anell de claus que segella les credencials dels connectors.
+- [`docs/runbooks/platform-secret-rotation.md`](docs/runbooks/platform-secret-rotation.md): rotar i recuperar secrets bootstrap sense exposar-ne els valors.
 - [`docs/runbooks/n8n-error-workflow.md`](docs/runbooks/n8n-error-workflow.md): muntar a n8n el workflow que ens empeny una execucio fallida, signada.
 - [`docs/runbooks/connect-a-vps.md`](docs/runbooks/connect-a-vps.md): preparar una VPS perque el Control Hub en llegeixi l'estat, i el prompt per a l'agent que l'administra.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): convencions per contribuir.

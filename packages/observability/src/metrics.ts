@@ -1,4 +1,4 @@
-import { collectDefaultMetrics, Counter, Histogram, Registry } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
 
 /**
  * Numbers a scrape can read, alongside the logs.
@@ -16,6 +16,9 @@ export type ServiceMetrics = {
   registry: Registry;
   httpRequests: Counter<"method" | "route" | "status">;
   httpDuration: Histogram<"method" | "route" | "status">;
+  secretConfigured: Gauge<"secret" | "source" | "health">;
+  secretLoadedTimestamp: Gauge<"secret">;
+  secretRotatedTimestamp: Gauge<"secret">;
 };
 
 export function createMetrics(service: string): ServiceMetrics {
@@ -40,5 +43,31 @@ export function createMetrics(service: string): ServiceMetrics {
     registers: [registry]
   });
 
-  return { registry, httpRequests, httpDuration };
+  const secretConfigured = new Gauge({
+    name: "platform_secret_configured",
+    help: "Whether a fixed platform-secret class was observed as configured at API boot.",
+    labelNames: ["secret", "source", "health"] as const,
+    registers: [registry]
+  });
+  const secretLoadedTimestamp = new Gauge({
+    name: "platform_secret_last_loaded_timestamp_seconds",
+    help: "Unix timestamp when a fixed platform-secret class was last loaded by the API.",
+    labelNames: ["secret"] as const,
+    registers: [registry]
+  });
+  const secretRotatedTimestamp = new Gauge({
+    name: "platform_secret_last_rotated_timestamp_seconds",
+    help: "Unix timestamp of the last evidenced rotation; absent when no safe evidence is available.",
+    labelNames: ["secret"] as const,
+    registers: [registry]
+  });
+
+  return {
+    registry,
+    httpRequests,
+    httpDuration,
+    secretConfigured,
+    secretLoadedTimestamp,
+    secretRotatedTimestamp
+  };
 }

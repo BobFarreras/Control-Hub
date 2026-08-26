@@ -22,7 +22,10 @@
   compte de Vercel amb un token de nomes lectura) i `runbooks/connect-supabase.md` (connectar un
   compte de Supabase amb un Personal Access Token, i el risc que porta) i
   `runbooks/connect-opencode.md` (instal.lar el plugin sanititzat i enviar consum a la
-  VPS) i `runbooks/connect-mail.md` (configurar IMAP, Google o Microsoft per al correu entrant).
+  VPS), `runbooks/connect-mail.md` (configurar IMAP, Google o Microsoft per al correu entrant) i
+  `runbooks/bitwarden-secrets-deployment.md` (materialitzar secrets de maquina per ID immutable i
+  desplegar amb rollback atomic) i `runbooks/platform-secret-rotation.md` (rotar i recuperar les
+  classes de secrets bootstrap amb validacio i revocacio).
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -67,6 +70,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   call. Separada dels grants OAuth de connectors de la Fase 7B.
 - `specifications/agent-platform.md`: proposta de la Fase 11 per governar agents versionats,
   runs, tools, aprovacions, costos i auditoria sobre la Fase 10.
+- `specifications/credential-catalog.md`: cataleg tenant-scoped de credencials humanes i
+  navegacio segura a Bitwarden Password Manager, aprovat com a S7 de la Fase 12.
 - `specifications/multi-agent-development.md`: Fase X transversal per aillar els agents que
   desenvolupen Control Hub; no es el runtime de producte de la Fase 11.
 - `development/agent-workspaces.md`: crear, validar, entregar i destruir un workspace per tasca.
@@ -74,8 +79,12 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   implementar la Fase 8 sense acoblar el core als proveidors.
 - `development/phase-12-secrets-management-guide.md`: frontera entre passwords, secrets de
   desplegament i credencials tenant-scoped, amb `_FILE`, rotacio i Bitwarden opcional.
+- `development/phase-12-password-manager-integration-guide.md`: cataleg de credencials humanes,
+  integracio segura amb Bitwarden Password Manager i evolucio de VPS compartida a dedicada.
 - `security/secrets-inventory.md`: classificacio canonica de variables sensibles, credencials
   humanes i credencials tenant-scoped, sense cap valor real.
+- `security/credential-catalog-threat-model.md`: amenaces, controls, casos d'abus i risc residual
+  de la integracio amb Bitwarden Password Manager.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

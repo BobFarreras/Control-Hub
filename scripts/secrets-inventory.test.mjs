@@ -8,7 +8,7 @@ const inventory = JSON.parse(readFileSync(new URL("docs/security/secrets-invento
 const allowedClassifications = new Set(inventory.classifications);
 const entries = new Map(inventory.variables.map((entry) => [entry.name, entry]));
 
-const sensitiveName = /(?:PASSWORD|SECRET|TOKEN|KEY_RING|DATABASE_URL|REDIS_URL|CREDENTIALS_FILE)$/;
+const sensitiveName = /(?:PASSWORD|SECRET|TOKEN|KEY_RING|DATABASE_URL|REDIS_URL|CREDENTIALS_FILE|_FILE)$/;
 
 function collect(pattern, content, names) {
   for (const match of content.matchAll(pattern)) names.add(match[1]);
@@ -54,6 +54,11 @@ test("the inventory has one complete record per variable", () => {
 });
 
 test("every sensitive variable used by the repository is classified", () => {
-  const missing = discoveredSensitiveVariables().filter((name) => !entries.has(name));
+  const missing = discoveredSensitiveVariables().filter((name) => {
+    if (entries.has(name)) return false;
+    if (!name.endsWith("_FILE")) return true;
+    const entry = entries.get(name.slice(0, -"_FILE".length));
+    return entry?.fileVariable !== name;
+  });
   assert.deepEqual(missing, [], `unclassified sensitive variables: ${missing.join(", ")}`);
 });

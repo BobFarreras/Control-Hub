@@ -66,6 +66,13 @@ Sortida: `docs/security/secrets-inventory.md`, sense valors reals.
 
 ## S2 — Resolucio segura de configuracio
 
+**Implementat** a `packages/config/src/secret-file.ts` per als secrets consumits per API i worker.
+El resolver es sincron i d'un sol us a l'arrencada, exigeix path absolut, no segueix symlinks,
+comprova que el descriptor continua sent el mateix fitxer, limita a 64 KiB i en produccio refusa
+permisos de grup o altres. Els errors nomes porten variable i codi estable. Les propietats
+sensibles continuen accessibles al composition root, pero son no enumerables: JSON i object spread
+no propaguen el valor.
+
 `packages/config` accepta per cada secret una sola font:
 
 ```text
@@ -80,7 +87,17 @@ GOOGLE_OAUTH_CLIENT_SECRET_FILE=/run/secrets/google_oauth_client_secret
 
 En desenvolupament es conserva `.env`; produccio prefereix `_FILE`.
 
+Cobertura actual: `DATABASE_URL`, `REDIS_URL`, `BETTER_AUTH_SECRET`, `CONNECTOR_KEY_RING`,
+`GOOGLE_OAUTH_CLIENT_SECRET` i `MICROSOFT_OAUTH_CLIENT_SECRET`. Les credencials d'un sol us del
+migrador i bootstrap s'injectaran com mounts a S3, sense ampliar l'objecte runtime d'API/worker.
+
 ## S3 — Empaquetat i desplegament
+
+**Implementat** amb `compose.production.yaml` per al nucli,
+`compose.production.connectors.yaml` per al vault opcional i overlays independents
+`compose.production.google.yaml` i `compose.production.microsoft.yaml`. Una instal·lacio sense
+connectors, o que nomes usa un proveidor, no proporciona secrets ficticis. Tots consumeixen
+fitxers sota `SECRETS_DIRECTORY`; dins dels contenidors nomes apareixen a `/run/secrets`.
 
 - Muntar secrets a `/run/secrets` com fitxers read-only, un per secret.
 - API rep secrets que necessita per iniciar OAuth; worker rep els necessaris per exchange/refresh.
@@ -89,7 +106,26 @@ En desenvolupament es conserva `.env`; produccio prefereix `_FILE`.
 - Contenidors `read_only`, usuari no-root i cap secret dins la imatge, layer o build arg.
 - Backup inclou dades xifrades; el key ring es copia per un canal separat i provat.
 
+El migrador usa un entrypoint minim que carrega el mount, elimina la variable `_FILE` i fa
+`exec` de Node; en acabar el job desapareixen proces, entorn i mount. PostgreSQL usa els
+contractes `_FILE` de la imatge oficial i l'usuari runtime es crea des d'un mount separat.
+`scripts/container-secrets.test.mjs` fixa la matriu de concessio, l'absencia de secrets al web i
+als build args, i els controls no-root/read-only.
+
+Els valors directes del Compose base es retiren amb `!reset null`. Un `null` YAML ordinari no es
+segur en un override: Compose interpreta una variable sense valor com una peticio d'importar-la
+de l'entorn del host. La verificacio de S3 inspecciona el model JSON ja fusionat per impedir que
+un `.env` local reaparegui dins del contenidor de produccio.
+
+S4 consumeix aquests mounts sense canviar el contracte de S3.
+
 ## S4 — Integracio Bitwarden
+
+**Implementat** com a adaptador host-side a `scripts/deploy-with-bitwarden.mjs`, sense SDK ni
+dependencia runtime. El manifest fixa versio de `bws`, projecte i mappings per UUID; el manifest
+real queda fora de Git. L'adaptador valida identitat i revisio de cada resposta, materialitza en
+un staging del mateix filesystem, activa per `rename`, saneja completament l'entorn que rep
+Compose i registra metadata sense valors. Un lock impedeix deploys concurrents.
 
 La primera integracio utilitza `bws` fora dels contenidors de Control Hub:
 
@@ -104,20 +140,38 @@ La primera integracio utilitza `bws` fora dels contenidors de Control Hub:
 Fallada de Bitwarden durant un restart no ha de destruir els secrets vius. Un deploy nou falla
 tancat i conserva la release anterior. No es fa fallback silencios a un `.env` antic.
 
+Una fallada del command de deploy restaura `current` i repeteix el mateix command amb els mounts
+anteriors, perquè restaurar el nom del directori no canvia els inodes que un contenidor ja ha
+muntat. El runbook complet es `docs/runbooks/bitwarden-secrets-deployment.md`. El seguent increment
+es S5, rotacio i recuperacio de cada classe.
+
 ## S5 — Rotacio i recuperacio
 
-- `BETTER_AUTH_SECRET`: procediment compatible amb sessions i finestra definida.
-- `CONNECTOR_KEY_RING`: rotacio per addicio, re-encriptacio verificada i retirada posterior segons
-  l'ADR 0008.
+**Implementat** a `docs/runbooks/platform-secret-rotation.md`, amb precondicions, backup,
+validacio, rollback, recuperacio i evidencia d'auditoria per cada classe. El runbook fa explicit
+que no totes les classes poden tenir solapament: Better Auth admet una sola clau i la rotacio
+invalida artefactes anteriors dins d'una finestra anunciada; PostgreSQL conserva connexions vives
+nomes fins que es reciclen.
+
+- `BETTER_AUTH_SECRET`: procediment amb invalidacio de sessions i finestra definida.
+- `CONNECTOR_KEY_RING`: rotacio additiva i retirada posterior segons l'ADR 0008. Una rotacio
+  preventiva no re-xifra files; el resegellat nomes forma part de la resposta a una fuga.
 - OAuth client secret: solapament si el proveidor ho permet; prova d'exchange abans de retirar.
 - Database/SMTP: credencial nova, rollout, comprovacio i revocacio de l'antiga.
 - Machine account: dos tokens durant una finestra curta, prova i revocacio.
 
-Cada runbook inclou precondicions, backup, validacio, rollback i evidencia d'auditoria.
+SMTP autenticat encara no forma part del contracte de configuracio actual. S5 no simula una
+rotacio inexistent: fixa la porta d'entrada a inventari, `_FILE` i contract tests abans que es
+pugui activar el procediment.
 
 ## S6 — UI i observabilitat
 
-Una pagina Owner **Configuracio de secrets** pot mostrar exclusivament:
+**Implementat** a `/{locale}/security/secrets` i `GET /api/v1/settings/secrets`. La ruta API
+comprova el rol `owner` al backend —tenir `security:manage` com a administrador no es suficient— i
+la navegacio nomes mostra l'entrada a un Owner. La resposta es un snapshot immutable creat en
+l'arrencada; no hi ha cap endpoint de mutacio ni de lectura de valors.
+
+La pagina Owner **Configuracio de secrets** mostra exclusivament:
 
 - font (`file`, `external_manager`, `environment`);
 - configurat/no configurat;
@@ -125,12 +179,20 @@ Una pagina Owner **Configuracio de secrets** pot mostrar exclusivament:
 - ultima càrrega, ultima rotacio i consumidor;
 - health del proveidor sense revelar paths interns ni IDs sensibles.
 
-No hi ha camps password, botons de copiar, exports ni API de lectura. Les mutacions de secrets
+No hi ha camps password, botons de copiar, exports ni API de lectura de valors. Les mutacions de secrets
 bootstrap continuen al canal d'operacions; la UI pot generar una instruccio o job d'aprovacio,
 pero no transportar el valor.
 
-Metriques i logs: disponibilitat del resolver, edat de rotacio i resultat; mai valors, headers,
-paths amb identificadors o tokens.
+`SECRETS_PROVIDER` distingeix desenvolupament amb entorn, mounts del runtime i Bitwarden. Quan el
+proveidor es Bitwarden, la UI diu deliberadament que la seva salut es fora del runtime: l'adaptador
+host-side no dona el token a l'API. El que l'API si prova es la carrega dels seus mounts. Secrets
+nomes consumits pel worker es marquen no observables quan el composition root no en te evidencia.
+
+Les metriques `platform_secret_configured`, `platform_secret_last_loaded_timestamp_seconds` i
+`platform_secret_last_rotated_timestamp_seconds` usen un cataleg fix de baixa cardinalitat. La
+tercera serie nomes existeix quan hi ha evidencia segura de rotacio; `null` no es converteix en una
+data inventada. El log d'arrencada porta proveidor i recomptes, mai valors, headers, paths, IDs ni
+tokens.
 
 ## Threat model minim
 

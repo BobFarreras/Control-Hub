@@ -1,5 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runtimeSecretVariables, secretFileVariable } from "./secret-file.js";
 import {
   apiEnvironmentSchema,
   connectorKeyRingWarning,
@@ -78,6 +82,34 @@ describe("parseApiEnvironment", () => {
     expect(JSON.stringify(environment)).not.toContain(secret);
   });
 
+  it("loads a secret file without retaining its path or serializing sensitive configuration", async () => {
+    const directory = join(tmpdir(), `control-hub-config-${randomUUID()}`);
+    await mkdir(directory, { mode: 0o700 });
+    const databaseFile = join(directory, "database");
+    await writeFile(databaseFile, "postgres://user:file-password@localhost/db\n", { mode: 0o600 });
+    await chmod(databaseFile, 0o600);
+
+    const environment = parseApiEnvironment({
+      DATABASE_URL_FILE: databaseFile,
+      REDIS_URL: base.REDIS_URL,
+      BETTER_AUTH_SECRET: base.BETTER_AUTH_SECRET
+    });
+    expect(environment.DATABASE_URL).toContain("file-password");
+    expect(JSON.stringify(environment)).not.toContain("file-password");
+    expect(JSON.stringify(environment)).not.toContain(databaseFile);
+  });
+
+  it("keeps worker OAuth secrets callable but non-enumerable", () => {
+    const secret = "microsoft-secret-value";
+    const environment = parseWorkerEnvironment({
+      ...base,
+      MICROSOFT_OAUTH_CLIENT_ID: "microsoft-client",
+      MICROSOFT_OAUTH_CLIENT_SECRET: secret
+    });
+    expect(environment.oauthClients.microsoft?.clientSecret).toBe(secret);
+    expect(JSON.stringify(environment)).not.toContain(secret);
+  });
+
   it("requires complete provider credential pairs in the worker", () => {
     expect(() => parseWorkerEnvironment({ ...base, GOOGLE_OAUTH_CLIENT_ID: "google-client" })).toThrow(
       "GOOGLE_OAUTH_CLIENT_ID"
@@ -121,8 +153,9 @@ describe("the variables the task runner has to carry", () => {
     };
     const declared = new Set(turbo.globalEnv);
     const read = [...Object.keys(apiEnvironmentSchema.shape), ...Object.keys(workerEnvironmentSchema.shape)];
+    const secretFiles = runtimeSecretVariables.map(secretFileVariable);
 
-    expect(read.filter((name) => !declared.has(name))).toEqual([]);
+    expect([...read, ...secretFiles].filter((name) => !declared.has(name))).toEqual([]);
   });
 });
 

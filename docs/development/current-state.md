@@ -95,13 +95,36 @@ eliminacio de contenidors, xarxes, volums, dependències i worktree. La primera 
 i deixar documentats dos casos que les unitàries no veien --allowlist de variables de Turbo i
 paths llargs de pnpm a Windows-- abans de repetir el lifecycle en verd.
 
-**La Fase 12 esta aprovada i S1 implementat** a la branca
+**La infraestructura de secrets de plataforma de la Fase 12 te S1-S6 implementats** a la branca
 `agent/codex/ch-012-phase-12-secrets`. L'ADR 0010 fixa el model hibrid: Control Hub governa
 metadata, permisos i auditoria; Bitwarden Password Manager custodia credencials humanes;
 Secrets Manager es un adaptador opcional; el vault intern continua amb credencials tenant-scoped.
 `docs/security/secrets-inventory.json` classifica les variables sensibles amb consumidor, owner,
 entorn i rotacio, i `scripts/secrets-inventory.test.mjs` impedeix afegir-ne una de nova sense
-inventariar-la. El seguent increment es S2, el resolver generic `_FILE` de `packages/config`.
+inventariar-la. `packages/config` resol sis secrets runtime amb `*_FILE`, exclusio de font, paths
+absoluts, no-symlink, limits, permisos de produccio i errors redactats. Els valors necessaris al
+composition root son no enumerables. S3 afegeix overlays Compose separats per al nucli i els
+connectors opcionals, mounts `0400` de minim privilegi, un migrador efimer i una comprovacio del
+model fusionat que demostra que els secrets directes del `.env` no reapareixen als contenidors.
+El web no rep cap secret. S4 afegeix l'adaptador host-side de Bitwarden per ID immutable: versio
+de CLI fixada, machine account read-only, timeout, projecte validat, staging atomic, permisos per
+UID consumidor, entorn sanejat i rollback que reconcilia Compose amb els mounts anteriors. El
+token de maquina no entra a cap contenidor. S5 afegeix el runbook de rotacio i recuperacio per
+identitat, anell de connectors, OAuth, PostgreSQL i machine account, amb precondicions, prova,
+rollback, revocacio i evidencia sense valors. Documenta dues limitacions reals: Better Auth no
+admet dues claus simultanies i SMTP autenticat encara no forma part de la configuracio. Un test de
+contracte evita que aquestes classes o la distincio entre rotacio preventiva i fuga desapareguin
+del procediment. S6 tanca la fase amb `/{locale}/security/secrets`, visible i llegible nomes per
+l'Owner: font, configuracio, consumidors, carrega, evidencia de rotacio, versio segura i salut,
+mai valors, paths o IDs externs. La metadata es captura a l'arrencada, Bitwarden continua fora del
+runtime i tres gauges Prometheus publiquen configuracio i timestamps sense cardinalitat lliure.
+Aquest bloc no completa el gestor de contrasenyes humanes. La guia
+`docs/development/phase-12-password-manager-integration-guide.md` defineix S7-S12 per crear el
+cataleg tenant-scoped, la navegacio segura a Bitwarden Password Manager, el desplegament aillat
+inicial a la mateixa VPS i la migracio posterior a una VPS dedicada. S7 ja ha fixat el contracte
+aprovat a `docs/specifications/credential-catalog.md`, el threat model i els gates de pla i
+llicencia; el seguent increment es S8, domini, persistencia i permisos. Control Hub no llegeix ni
+mostra valors del vault.
 
 **La 7.3 i la primera entrega de la Fase 8 son a `develop` i verificades.** El 24 d'agost de 2026,
 la CI del commit `266c9a2` va passar les vuit portes: repositori, aplicacio, E2E public, E2E

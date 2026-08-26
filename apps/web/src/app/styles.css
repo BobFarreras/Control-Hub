@@ -657,6 +657,162 @@ main {
     animation-iteration-count: 1 !important;
   }
 }
+
+.secrets-settings-page {
+  min-height: calc(100vh - 64px);
+  padding: 24px;
+  background: var(--surface-subtle);
+}
+.secrets-notice,
+.secrets-provider-panel,
+.secrets-inventory {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.secrets-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px;
+  color: var(--danger);
+}
+.secrets-provider-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.secrets-provider-icon,
+.secret-metadata-icon {
+  display: grid;
+  place-items: center;
+  color: var(--brand);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.secrets-provider-icon {
+  width: 46px;
+  height: 46px;
+}
+.secrets-provider-panel span,
+.secrets-inventory header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.secrets-provider-panel h2,
+.secrets-inventory h2 {
+  margin: 3px 0;
+  font-size: 19px;
+}
+.secrets-provider-panel p,
+.secrets-inventory header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.secrets-inventory {
+  padding: 20px;
+}
+.secrets-inventory > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.secrets-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.secret-metadata-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.secret-metadata-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.secret-metadata-icon {
+  width: 36px;
+  height: 36px;
+}
+.secret-metadata-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.secret-metadata-heading code {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+.secret-metadata-heading strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+.secret-metadata-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.secret-metadata-card dl div {
+  min-width: 0;
+}
+.secret-metadata-card dt {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.secret-metadata-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+.secret-card-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+@media (max-width: 900px) {
+  .secrets-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .secrets-settings-page {
+    padding: 16px;
+  }
+  .secrets-provider-panel {
+    grid-template-columns: auto 1fr;
+  }
+  .secrets-provider-panel > .status-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .secrets-inventory > header {
+    align-items: start;
+    flex-direction: column;
+  }
+  .secret-metadata-card dl {
+    grid-template-columns: 1fr;
+  }
+}
 .auth-loading {
   min-height: 100vh;
   display: grid;

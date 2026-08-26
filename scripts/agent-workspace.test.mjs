@@ -60,6 +60,11 @@ test("create provisions an isolated branch, environment and workspace manifest",
     assert.doesNotMatch(env, /GOOGLE_OAUTH_CLIENT_SECRET=/);
     assert.doesNotMatch(command("git", ["status", "--short"], workspace), /\.env|\.agent/);
     assert.match(command(process.execPath, ["scripts/agent-workspace.mjs", "validate"], workspace), /Workspace valid/);
+    writeFileSync(
+      join(workspace, ".env.example"),
+      `${readFileSync(join(workspace, ".env.example"), "utf8")}NEW_KEY=\n`
+    );
+    assert.match(command(process.execPath, ["scripts/agent-workspace.mjs", "validate"], workspace), /Workspace valid/);
 
     command(process.execPath, ["scripts/agent-workspace.mjs", "create", "CH-124", "claude", "tickets"], repository);
     const secondWorkspace = join(dirname(repository), "Control-Hub-ch-124-tickets");
