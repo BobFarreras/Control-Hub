@@ -39,6 +39,10 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 | `usage:read` | X | X | X |
 | `usage:manage` | X |  |  |
 | `budgets:manage` | X | X |  |
+| `credentials:read` | X | X | X |
+| `credentials:open` | X | X | X |
+| `credentials:manage` | X | X |  |
+| `vault:manage` | X |  |  |
 | `security:manage` | X |  | X |
 
 ## Regles
@@ -48,6 +52,9 @@ Accions comunes: `read`, `create`, `update`, `delete`, `manage`, `export`, `oper
 - El frontend pot ocultar accions, pero l'API sempre valida.
 - Service accounts tenen scopes explicits, no rols humans.
 - Canvis de rol, secrets i operacions d'infraestructura generen auditoria.
+- `credentials:read` i `credentials:open` nomes donen als Technical visibilitat sobre les
+  entrades assignades. Bitwarden torna a aplicar els seus permisos abans de mostrar cap valor.
+- `vault:manage` configura la instal·lacio externa i es Owner-only; no permet llegir items.
 - L'Owner no pot eliminar accidentalment l'ultima membership Owner activa.
 - `time:log` permet crear i editar **les propies** imputacions; per tocar les d'una altra
   persona cal `time:manage`. La comprovacio de propietat viu al servei, no a la ruta: es una

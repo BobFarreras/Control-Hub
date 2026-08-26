@@ -657,6 +657,423 @@ main {
     animation-iteration-count: 1 !important;
   }
 }
+
+.secrets-settings-page {
+  min-height: calc(100vh - 64px);
+  padding: 24px;
+  background: var(--surface-subtle);
+}
+.credential-catalog-page {
+  min-height: calc(100vh - 64px);
+  padding: 24px;
+  background: var(--surface-subtle);
+}
+.credential-top-actions,
+.credential-toolbar,
+.credential-detail footer,
+.credential-dialog footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.credential-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 8px;
+  background: var(--surface);
+}
+.credential-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 220px auto;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.credential-toolbar input,
+.credential-dialog input {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.credential-toolbar > span {
+  min-width: 38px;
+  color: var(--muted);
+  text-align: center;
+}
+.credential-master-detail {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(440px, 1.22fr);
+  min-height: min(680px, calc(100vh - 210px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.credential-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.credential-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 14px;
+  color: var(--text);
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+.credential-row:hover,
+.credential-row.selected {
+  background: var(--surface-subtle);
+}
+.credential-row.selected {
+  box-shadow: inset 3px 0 var(--brand);
+}
+.credential-row-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: var(--brand);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.credential-row > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.credential-row strong,
+.credential-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.credential-row small,
+.credential-detail header span,
+.credential-detail header p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.credential-active {
+  color: var(--success);
+}
+.credential-review_due {
+  color: var(--warning);
+}
+.credential-revoked {
+  color: var(--danger);
+}
+.credential-archived {
+  color: var(--muted);
+}
+.credential-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: auto;
+  padding: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.credential-empty {
+  margin: auto;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+.credential-detail {
+  min-width: 0;
+  padding: clamp(20px, 3vw, 34px);
+}
+.credential-detail > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.credential-detail h2 {
+  margin: 5px 0;
+  font-size: 25px;
+}
+.credential-detail header p {
+  margin: 0;
+}
+.credential-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 24px 0;
+}
+.credential-detail dt {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.credential-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.credential-security-note {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  margin: 24px 0;
+  padding: 14px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+.credential-security-note svg {
+  flex: 0 0 auto;
+  color: var(--brand);
+}
+.credential-security-note p {
+  margin: 0;
+  font-size: 13px;
+}
+.credential-detail footer {
+  flex-wrap: wrap;
+}
+.credential-dialog {
+  width: min(700px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.credential-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.credential-dialog h2 {
+  margin: 0;
+}
+.credential-dialog form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.credential-dialog label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.credential-dialog label.wide,
+.credential-dialog footer {
+  grid-column: 1 / -1;
+}
+.credential-dialog label small {
+  color: var(--muted);
+}
+.credential-dialog footer {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+@media (max-width: 850px) {
+  .credential-master-detail {
+    grid-template-columns: 1fr;
+  }
+  .credential-list {
+    min-height: 300px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+@media (max-width: 620px) {
+  .credential-catalog-page {
+    padding: 14px;
+  }
+  .credential-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .credential-detail dl,
+  .credential-dialog form {
+    grid-template-columns: 1fr;
+  }
+  .credential-top-actions {
+    flex-wrap: wrap;
+  }
+}
+.secrets-notice,
+.secrets-provider-panel,
+.secrets-inventory {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.secrets-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px;
+  color: var(--danger);
+}
+.secrets-provider-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.secrets-provider-icon,
+.secret-metadata-icon {
+  display: grid;
+  place-items: center;
+  color: var(--brand);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.secrets-provider-icon {
+  width: 46px;
+  height: 46px;
+}
+.secrets-provider-panel span,
+.secrets-inventory header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.secrets-provider-panel h2,
+.secrets-inventory h2 {
+  margin: 3px 0;
+  font-size: 19px;
+}
+.secrets-provider-panel p,
+.secrets-inventory header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.secrets-inventory {
+  padding: 20px;
+}
+.secrets-inventory > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.secrets-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.secret-metadata-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.secret-metadata-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.secret-metadata-icon {
+  width: 36px;
+  height: 36px;
+}
+.secret-metadata-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.secret-metadata-heading code {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+.secret-metadata-heading strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+.secret-metadata-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.secret-metadata-card dl div {
+  min-width: 0;
+}
+.secret-metadata-card dt {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.secret-metadata-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+.secret-card-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+@media (max-width: 900px) {
+  .secrets-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .secrets-settings-page {
+    padding: 16px;
+  }
+  .secrets-provider-panel {
+    grid-template-columns: auto 1fr;
+  }
+  .secrets-provider-panel > .status-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .secrets-inventory > header {
+    align-items: start;
+    flex-direction: column;
+  }
+  .secret-metadata-card dl {
+    grid-template-columns: 1fr;
+  }
+}
 .auth-loading {
   min-height: 100vh;
   display: grid;

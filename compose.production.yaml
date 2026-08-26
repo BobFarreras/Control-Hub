@@ -1,0 +1,73 @@
+services:
+  web:
+    # The web tier deliberately has no secret mounts.
+    secrets: []
+
+  api:
+    environment:
+      SECRETS_PROVIDER: ${SECRETS_PROVIDER:-runtime_files}
+      DATABASE_URL: !reset null
+      DATABASE_URL_FILE: /run/secrets/database_url
+      BETTER_AUTH_SECRET: !reset null
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+    secrets:
+      - source: database_url
+        target: database_url
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: better_auth_secret
+        target: better_auth_secret
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+  worker:
+    environment:
+      DATABASE_URL: !reset null
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets:
+      - source: database_url
+        target: database_url
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+  migrate:
+    environment:
+      # The reset has to name the same variable the base file sets, or both a direct value and a
+      # file reach the entrypoint and it refuses the pair as `SECRET_SOURCE_CONFLICT`.
+      MIGRATION_DATABASE_URL: !reset null
+      MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
+    secrets:
+      - source: migration_database_url
+        target: migration_database_url
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: !reset null
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_APP_PASSWORD: !reset null
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+    secrets:
+      - source: postgres_admin_password
+        target: postgres_admin_password
+        mode: 0400
+      - source: postgres_app_password
+        target: postgres_app_password
+        mode: 0400
+
+secrets:
+  database_url:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/database_url
+  migration_database_url:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/migration_database_url
+  better_auth_secret:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/better_auth_secret
+  postgres_admin_password:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/postgres_admin_password
+  postgres_app_password:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/postgres_app_password

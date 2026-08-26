@@ -30,14 +30,14 @@ services:
       API_PORT: 4000
       LOG_LEVEL: info
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3001}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
-      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     ports:
       - "127.0.0.1:${API_PORT:?API_PORT is required}:4000"
@@ -66,7 +66,7 @@ services:
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
-      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     depends_on:
       migrate:
@@ -86,7 +86,12 @@ services:
       dockerfile: deploy/Dockerfile
       target: migrate
     environment:
-      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}@postgres:5432/control_hub
+      # `MIGRATION_DATABASE_URL`, not `DATABASE_URL`, because the image no longer starts node
+      # directly: it starts `load-secret-and-exec MIGRATION_DATABASE_URL`, which exits before node
+      # runs unless that exact name carries a value or a `_FILE` companion. `migrate.js` does fall
+      # back to `DATABASE_URL`, so the fallback reads as if it covers this -- it does not, because
+      # the entrypoint never gets far enough to hand over.
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,8 +107,8 @@ services:
     environment:
       POSTGRES_DB: control_hub
       POSTGRES_USER: control_hub_admin
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
-      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:?POSTGRES_PORT is required}:5432"
     volumes:

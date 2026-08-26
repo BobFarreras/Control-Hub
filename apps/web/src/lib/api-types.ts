@@ -1139,3 +1139,52 @@ export type McpServiceAccountRow = {
 
 /** The accounts, plus the scopes this reader could actually back -- not the whole vocabulary. */
 export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow[]; grantableScopes: string[] };
+
+export type SecretMetadataResponse = {
+  provider: {
+    kind: "environment" | "runtime_files" | "bitwarden";
+    health: "available" | "warning" | "not_observed" | "not_applicable";
+    checkedAt: string;
+  };
+  secrets: Array<{
+    name: string;
+    source: "environment" | "file" | "external_manager" | "not_observed" | "not_applicable";
+    configured: boolean | null;
+    consumers: string[];
+    loadedAt: string | null;
+    lastRotatedAt: string | null;
+    version: string | null;
+    health: "available" | "warning" | "not_observed" | "not_applicable";
+  }>;
+};
+
+export type PasswordManagerInstallation = {
+  id: string;
+  displayName: string;
+  provider: "bitwarden";
+  baseUrl: string;
+  deploymentMode: "cloud" | "self_hosted_shared_vps" | "self_hosted_dedicated_vps";
+  status: "active" | "degraded" | "disabled";
+  lastReviewedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CredentialCatalogEntry = {
+  id: string;
+  installationId: string;
+  clientId: string | null;
+  companySubscriptionId: string | null;
+  applicationName: string;
+  category: "hosting" | "email" | "domain" | "website_admin" | "billing" | "social" | "infrastructure" | "other";
+  environment: "production" | "staging" | "development" | "other";
+  accountLabel: string | null;
+  ownerMembershipId: string;
+  status: "active" | "review_due" | "revoked" | "archived";
+  reviewDueAt: string | null;
+  lastReviewedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};

@@ -1,0 +1,20 @@
+services:
+  api:
+    environment:
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID is required}
+
+  worker:
+    environment:
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID is required}
+      GOOGLE_OAUTH_CLIENT_SECRET: !reset null
+      GOOGLE_OAUTH_CLIENT_SECRET_FILE: /run/secrets/google_oauth_client_secret
+    secrets:
+      - source: google_oauth_client_secret
+        target: google_oauth_client_secret
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+secrets:
+  google_oauth_client_secret:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/google_oauth_client_secret

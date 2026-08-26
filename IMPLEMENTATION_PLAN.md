@@ -695,9 +695,14 @@ al contingut.
 
 ## Fase 12 - Gestio externa de secrets i credencials
 
-**Estat: proposta tecnica pendent d'aprovacio.**
+**Estat: secrets de plataforma S1-S6 i cataleg S7-S10 implementats; S11-S12 pendents
+d'implementacio.**
 
 **Guia:** `docs/development/phase-12-secrets-management-guide.md`.
+
+**Ampliacio funcional:** `docs/development/phase-12-password-manager-integration-guide.md`.
+
+**Especificacio:** `docs/specifications/credential-catalog.md`.
 
 **Objectiu:** separar passwords humans, secrets bootstrap de la instal·lacio i credencials
 tenant-scoped, amb fitxers `_FILE` com a contracte base i un gestor extern opcional com Bitwarden
@@ -711,11 +716,17 @@ Secrets Manager.
 - Adaptador Bitwarden fora del core amb machine account de minim privilegi.
 - Runbooks de rotacio, backup, restauracio i break-glass.
 - UI limitada a metadata i salut, sense lectura ni copia de secrets.
+- Cataleg de contrasenyes humanes amb context de client, aplicacio, responsable, revisio i
+  referencia opaca a Bitwarden Password Manager.
+- Desplegament Bitwarden independent, inicialment compatible amb la mateixa VPS i preparat per
+  migrar a una VPS dedicada sense canviar el domini de Control Hub.
 
 ### Criteri de sortida
 
 Una instal·lacio es pot desplegar, rotar i restaurar sense secrets versionats ni exposats per API,
-UI, logs o jobs, i el vault intern continua contenint nomes credencials tenant-scoped.
+UI, logs o jobs, i el vault intern continua contenint nomes credencials tenant-scoped. Una persona
+autoritzada pot localitzar una credencial humana a Control Hub i obrir-la a Bitwarden, mentre cap
+valor ni master password travessa Control Hub.
 
 ## Fase X - Plataforma de desenvolupament multi-agent
 

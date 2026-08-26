@@ -5,6 +5,7 @@ import {
   ConnectorServiceError,
   ConnectorStorageError,
   InfrastructureServiceError,
+  CredentialCatalogError,
   McpOauthError
 } from "@control-hub/application";
 import { ApiSecurityError } from "./security.js";
@@ -121,6 +122,10 @@ const titles: Record<string, string> = {
   INVALID_HOSTNAME: "Invalid host label",
   INVALID_MATCH_KEY: "Invalid match key",
   REFERENCE_NOT_FOUND: "Refers to something that does not exist",
+  CREDENTIAL_ENTRY_NOT_FOUND: "Credential entry not found",
+  PASSWORD_MANAGER_INSTALLATION_NOT_FOUND: "Password manager installation not found",
+  CREDENTIAL_ENTRY_INVALID_TRANSITION: "Credential entry cannot make that transition",
+  CREDENTIAL_ENTRY_CONFLICT: "Credential entry changed concurrently",
   INTERNAL_ERROR: "Unexpected error"
 };
 
@@ -136,6 +141,8 @@ export function usesProblemDetails(url: string): boolean {
     url.startsWith("/api/v1/integrations") ||
     url.startsWith("/api/v1/connectors") ||
     url.startsWith("/api/v1/infrastructure") ||
+    url.startsWith("/api/v1/credential-catalog") ||
+    url.startsWith("/api/v1/password-manager") ||
     // The MCP management surface, which was written to the error specification from the start --
     // but not the OAuth endpoints beneath it. Those answer in RFC 6749's own envelope, because
     // what calls them is a generic OAuth client that branches on `error` and has never heard of
@@ -174,6 +181,18 @@ export function describeConnectorError(
   error: unknown
 ): { status: number; code: string; params?: Record<string, unknown> } | null {
   if (error instanceof ApiSecurityError) return { status: error.statusCode, code: error.code };
+
+  if (error instanceof CredentialCatalogError) {
+    const status =
+      error.code === "FORBIDDEN" || error.code === "MFA_REQUIRED"
+        ? 403
+        : error.code.endsWith("NOT_FOUND")
+          ? 404
+          : error.code.endsWith("CONFLICT")
+            ? 409
+            : 422;
+    return { status, code: error.code };
+  }
 
   if (error instanceof ConnectorServiceError) {
     const status = connectorServiceStatus(error.code);

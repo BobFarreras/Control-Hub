@@ -8,8 +8,10 @@ import {
 import { buildApp } from "./app.js";
 import { createAuth } from "./auth.js";
 import { createMailSender } from "./email.js";
+import { platformSecretSnapshot } from "./secret-observability.js";
 
 const environment = parseApiEnvironment(process.env);
+const secretSnapshot = platformSecretSnapshot(process.env, environment);
 const sendMail = createMailSender({
   host: environment.SMTP_HOST,
   port: environment.SMTP_PORT,
@@ -29,8 +31,18 @@ const app = buildApp({
   connectorKeyRing: environment.connectorKeyRing,
   connectorEgressAllowlist: environment.connectorEgressAllowlist,
   oauthClientIds: environment.oauthClientIds,
-  mcpIssuer: environment.MCP_ISSUER
+  mcpIssuer: environment.MCP_ISSUER,
+  secretSnapshot
 });
+app.log.info(
+  {
+    provider: secretSnapshot.provider.kind,
+    providerHealth: secretSnapshot.provider.health,
+    configuredSecrets: secretSnapshot.secrets.filter((secret) => secret.configured === true).length,
+    unobservedSecrets: secretSnapshot.secrets.filter((secret) => secret.configured === null).length
+  },
+  "platform secret metadata loaded"
+);
 
 // A flag name nobody declared is a typo that would otherwise be indistinguishable from a
 // capability that is simply off, and somebody would spend an afternoon on it.

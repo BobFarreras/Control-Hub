@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAttendanceStatus } from "@/components/attendance-provider";
 import { useFeature } from "@/components/feature-provider";
 
@@ -46,6 +47,8 @@ type Labels = {
   usageBudgets: string;
   settings: string;
   settingsSecurity: string;
+  settingsSecrets: string;
+  settingsPasswords: string;
   settingsMcp: string;
 };
 
@@ -61,7 +64,20 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const usageEnabled = useFeature("usage_costs");
   const mailEnabled = useFeature("mail");
   const mcpEnabled = useFeature("mcp");
+  const credentialCatalogEnabled = useFeature("credential_catalog");
   const attendanceStatus = useAttendanceStatus();
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/v1/me", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const payload = (await response.json()) as { context: { roles: string[] } };
+        setIsOwner(payload.context.roles.includes("owner"));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const attendanceMonth = searchParams.get("month");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
     <Link
@@ -190,6 +206,9 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           </summary>
           <div>
             {item(`/${locale}/security`, labels.settingsSecurity, undefined, true)}
+            {isOwner && item(`/${locale}/security/secrets`, labels.settingsSecrets, undefined, true)}
+            {credentialCatalogEnabled &&
+              item(`/${locale}/security/passwords`, labels.settingsPasswords, undefined, true)}
             {mcpEnabled && item(`/${locale}/mcp`, labels.settingsMcp, undefined, true)}
           </div>
         </details>

@@ -45,6 +45,7 @@ Thumbs.db
 
 # Per-workspace identity, generated secrets and lifecycle metadata.
 .agent/
+/deploy/secrets/bitwarden.manifest.json
 
 .next-verify/
 .next-agent/

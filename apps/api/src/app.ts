@@ -5,6 +5,7 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  CredentialCatalogService,
   ConnectorActionService,
   ConnectorCredentialService,
   ConnectorIngressService,
@@ -40,6 +41,7 @@ import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
   CredentialVault,
+  CredentialCatalogReferenceVault,
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
@@ -48,6 +50,7 @@ import {
   PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
+  PostgresCredentialCatalogRepository,
   IdentityInvariantError,
   nodeIngressCrypto,
   InvitationError,
@@ -76,6 +79,7 @@ import { registerAuthProxyRoutes } from "./routes/auth-proxy.js";
 import { registerCommerceRoutes } from "./routes/commerce.js";
 import { registerCompanySubscriptionRoutes } from "./routes/company-subscriptions.js";
 import type { RouteContext } from "./routes/context.js";
+import { registerCredentialCatalogRoutes } from "./routes/credential-catalog.js";
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInfrastructureRoutes } from "./routes/infrastructure.js";
@@ -83,9 +87,11 @@ import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
+import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerSupportRoutes } from "./routes/support.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
+import type { SecretObservation, SecretProviderObservation } from "./secret-observability.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
 import { apiVersion } from "./version.js";
@@ -141,6 +147,7 @@ type BuildAppOptions = {
    * whose audience the caller chooses protects nothing. See @control-hub/config.
    */
   mcpIssuer?: string | undefined;
+  secretSnapshot?: { provider: SecretProviderObservation; secrets: SecretObservation[] };
 };
 
 /**
@@ -228,6 +235,7 @@ export function buildApp(options: BuildAppOptions) {
         { name: "connectors", description: "What this release can connect to at all." },
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
+        { name: "credential-catalog", description: "Non-secret metadata and guarded navigation to Bitwarden." },
         { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
         { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." },
         {
@@ -404,6 +412,13 @@ export function buildApp(options: BuildAppOptions) {
       const context = { app, database, auth: options.auth };
       registerAuthProxyRoutes({ ...context, appOrigin: options.appOrigin });
       registerIdentityRoutes(context);
+      registerSecretRoutes({
+        ...context,
+        secretSnapshot: options.secretSnapshot ?? {
+          provider: { kind: "environment", health: "not_observed", checkedAt: new Date().toISOString() },
+          secrets: []
+        }
+      });
       registerCommerceRoutes({ ...context, commerce, customerServices });
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
@@ -416,6 +431,14 @@ export function buildApp(options: BuildAppOptions) {
       // Off until the accountancy confirms the shape of the record is acceptable, which is a
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
+      if (isFeatureEnabled(featureFlags, "credential_catalog") && options.connectorKeyRing) {
+        const credentialRepository = new PostgresCredentialCatalogRepository(database);
+        const credentialVault = new CredentialCatalogReferenceVault(options.connectorKeyRing);
+        registerCredentialCatalogRoutes({
+          ...context,
+          credentials: new CredentialCatalogService(credentialRepository, credentialVault, credentialVault)
+        });
+      }
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
       if (isFeatureEnabled(featureFlags, "usage_costs"))
         registerUsageRoutes({ ...context, usage: new UsageService(new PostgresUsageRepository(database)) });
@@ -459,6 +482,16 @@ export function buildApp(options: BuildAppOptions) {
   });
 
   const metrics = createMetrics("control-hub-api");
+  for (const secret of options.secretSnapshot?.secrets ?? []) {
+    metrics.secretConfigured.set(
+      { secret: secret.name, source: secret.source, health: secret.health },
+      secret.configured === true ? 1 : 0
+    );
+    if (secret.loadedAt)
+      metrics.secretLoadedTimestamp.set({ secret: secret.name }, new Date(secret.loadedAt).getTime() / 1000);
+    if (secret.lastRotatedAt)
+      metrics.secretRotatedTimestamp.set({ secret: secret.name }, new Date(secret.lastRotatedAt).getTime() / 1000);
+  }
   app.addHook("onResponse", (request, reply, done) => {
     // The route pattern, not request.url: labelling by resolved path would create a new time
     // series for every customer identifier that has ever been fetched.

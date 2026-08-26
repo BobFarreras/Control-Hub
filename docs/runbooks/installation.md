@@ -28,6 +28,45 @@ futura modalitat SaaS sense redissenyar l'autoritzacio.
 4. Validar la configuracio abans d'arrencar contenidors.
 5. No exposar PostgreSQL, Valkey ni ports administratius a Internet.
 
+#### Secrets muntats en produccio
+
+Produccio no passa secrets com a valors d'entorn. Preparar un directori fora del checkout,
+propietat de `root`, i indicar-lo amb `SECRETS_DIRECTORY`. Cada fitxer conte exactament un valor,
+acabat opcionalment amb un salt de linia:
+
+| Fitxer | Lector dins el contenidor |
+|---|---|
+| `database_url` | UID 1000, API i worker |
+| `migration_database_url` | UID 1000, job de migracio |
+| `better_auth_secret` | UID 1000, API |
+| `postgres_admin_password` | UID de PostgreSQL |
+| `postgres_app_password` | UID de PostgreSQL |
+| `connector_key_ring` | UID 1000, API i worker, nomes amb connectors |
+| `google_oauth_client_secret` | UID 1000, worker, nomes si Google esta configurat |
+| `microsoft_oauth_client_secret` | UID 1000, worker, nomes si Microsoft esta configurat |
+
+El directori no pot ser llegible pel grup o altres. Els fitxers d'aplicacio han de ser `0400` i
+llegibles per UID 1000; els dos de PostgreSQL, pel UID de la imatge fixada. Compose declara
+`mode: 0400`, pero amb fonts `file` algunes versions implementen el secret com un bind mount i no
+canvien owner ni mode: s'han de validar al host abans del deploy.
+
+Arrencada del nucli:
+
+```bash
+SECRETS_DIRECTORY=/etc/control-hub/secrets docker compose \
+  -f compose.yaml -f compose.production.yaml up -d --wait
+```
+
+Amb el vault de connectors, afegir `-f compose.production.connectors.yaml`. Per Gmail, afegir
+`-f compose.production.google.yaml`; per Microsoft 365,
+`-f compose.production.microsoft.yaml`. Els overlays de proveidor son independents i nomes
+exigeixen el seu client ID i el seu secret. El key ring entra a API i worker; cada client secret,
+nomes al worker. No muntar mai aquest directori al web.
+
+Quan els fitxers provenen de Bitwarden Secrets Manager, no s'escriuen manualment: seguir
+`docs/runbooks/bitwarden-secrets-deployment.md`, que valida IDs, versio, permisos i rollback abans
+de retirar la release anterior.
+
 ### 3. Arrencada i migracions
 
 1. Descarregar imatges OCI per digest, mai `latest`.

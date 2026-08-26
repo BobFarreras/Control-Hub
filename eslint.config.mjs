@@ -61,6 +61,8 @@ export default tseslint.config(
       // The output of `pnpm dev:verify`, which builds into its own directory so a second dev
       // server can run beside the first. Generated code, same as `.next`.
       "**/.next-verify/**",
+      // Agent workspaces use a dedicated output directory for the same isolation reason.
+      "**/.next-agent/**",
       // Another checkout of this repository, living inside it. Its files belong to whatever branch
       // that worktree has, so linting them here reports problems about code that is not this tree's.
       ".claude/worktrees/**",
