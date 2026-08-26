@@ -27,3 +27,28 @@ export function apiVersion(): string {
   if (!manifest.version) throw new Error("apps/api/package.json declares no version");
   return manifest.version;
 }
+
+/** Replaced with a string literal by tsup, empty unless the build passed one. */
+declare const __API_BUILD__: string | undefined;
+
+/**
+ * Which build this is, for the case where two of them share a version number.
+ *
+ * `develop` publishes an image per commit, so every one between two tags reports the same `0.3.0`.
+ * Without something else to tell them apart, "you are running the latest" is a claim nobody can
+ * check on exactly the images where checking matters — the ones being tested because something
+ * looks wrong.
+ *
+ * Stamped the same way the version is, and for the same reason: the runtime stage carries `dist`
+ * and `node_modules` and nothing else, so there is no git repository to ask and no manifest to
+ * read.
+ *
+ * Outside a release build — a local `pnpm build`, the tests, `tsx` — there is no answer, and this
+ * says so instead of inventing one. `development` is a true statement about where the code came
+ * from; a fabricated hash would be a false one, and this value exists to be trusted when somebody
+ * is comparing two installations.
+ */
+export function apiBuild(): string {
+  if (typeof __API_BUILD__ === "string" && __API_BUILD__.length > 0) return __API_BUILD__;
+  return "development";
+}

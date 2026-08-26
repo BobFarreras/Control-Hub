@@ -83,6 +83,7 @@ import { registerCredentialCatalogRoutes } from "./routes/credential-catalog.js"
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInfrastructureRoutes } from "./routes/infrastructure.js";
+import { registerInstallationRoutes } from "./routes/installation.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
@@ -94,13 +95,16 @@ import { registerWebhookRoutes } from "./routes/webhooks.js";
 import type { SecretObservation, SecretProviderObservation } from "./secret-observability.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
-import { apiVersion } from "./version.js";
+import { apiBuild, apiVersion } from "./version.js";
 
 /**
  * Resolved once, at import. Under the bundler this is a literal and costs nothing; outside it,
  * it is one read of the manifest rather than one per route that mentions a version.
  */
 const packagedVersion = apiVersion();
+
+/** Always a literal, and never overridable: a build identifier somebody can set is not one. */
+const build = apiBuild();
 
 /**
  * BullMQ wants host, port and password rather than a URL, and it opens its own connection: the
@@ -419,6 +423,7 @@ export function buildApp(options: BuildAppOptions) {
           secrets: []
         }
       });
+      registerInstallationRoutes({ ...context, installation: { version: options.version ?? packagedVersion, build } });
       registerCommerceRoutes({ ...context, commerce, customerServices });
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });

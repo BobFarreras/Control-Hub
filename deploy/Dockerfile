@@ -26,6 +26,12 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
+# Which build this is, when several share a version number. Declared here rather than in a runtime
+# stage because it is stamped into the bundle by tsup, not read at boot: the runtime carries no
+# manifest and no git. Absent on a plain `docker compose build`, and `src/version.ts` reports
+# `development` for that rather than guessing.
+ARG CONTROL_HUB_BUILD=""
+ENV CONTROL_HUB_BUILD=$CONTROL_HUB_BUILD
 RUN pnpm build
 # The standalone output expects the static assets beside it rather than in .next.
 RUN cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
