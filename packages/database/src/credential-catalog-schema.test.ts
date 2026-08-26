@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const migrationUrl = new URL("../migrations/0058_credential_catalog.sql", import.meta.url);
+const migrationUrl = new URL("../migrations/0059_credential_catalog.sql", import.meta.url);
 
 describe("credential catalog schema", () => {
   it("forces tenant RLS and composite references on every catalog table", async () => {

@@ -195,7 +195,7 @@ funcions oficials disponibles i deixa cost, pla, termes i regio com a gate expli
 
 **Implementat** amb vocabulari i transicions al domini, els permisos `credentials:read`,
 `credentials:open`, `credentials:manage` i `vault:manage`, casos d'us desacoblats i un repositori
-PostgreSQL. La migracio `0058_credential_catalog.sql` crea instal·lacions, entrades i events amb
+PostgreSQL. La migracio `0059_credential_catalog.sql` crea instal·lacions, entrades i events amb
 RLS forçada, FKs compostes tenant-scoped, concurrencia optimista i historial append-only. Les
 referencies usen AES-256-GCM amb context propi de tenant i entrada; les lectures ordinàries no
 seleccionen cap columna de l'envelope.

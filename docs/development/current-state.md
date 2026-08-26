@@ -124,7 +124,7 @@ cataleg tenant-scoped, la navegacio segura a Bitwarden Password Manager, el desp
 inicial a la mateixa VPS i la migracio posterior a una VPS dedicada. S7 ja ha fixat el contracte
 aprovat a `docs/specifications/credential-catalog.md`, el threat model i els gates de pla i
 llicencia. S8 afegeix domini, permisos, casos d'us, envelope AES-GCM de proposit separat i la
-migracio `0058_credential_catalog.sql`, amb RLS, FKs tenant-scoped i events append-only. El
+migracio `0059_credential_catalog.sql`, amb RLS, FKs tenant-scoped i events append-only. El
 S9 ja publica l'API del cataleg sota la flag `credential_catalog`, amb OpenAPI, reautenticacio,
 MFA, RBAC, validacio de deep links, open intents `no-store`, rate limit i auditoria allowlisted. El
 S10 afegeix **Seguretat > Contrasenyes** amb cerca, filtres, paginacio, detall, alta guiada,
