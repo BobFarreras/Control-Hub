@@ -152,9 +152,24 @@ produccio**, cosa que no hi te res a fer; i el directori d'instal·lacio necessi
 `deploy/postgres/init-app-user.sh` del host, o sigui que el paquet que es descarrega ha de portar un
 arbre petit de fitxers i no nomes YAML.
 
-**El seguent increment es P4**: la prova de compatibilitat N-1 --arrencar la versio anterior contra
-una base migrada a la nova. Va abans del comandament d'actualitzar perque es el que fa que el
-rollback de D4 existeixi de debo en comptes de constar en un document.
+**P4 esta fet** (mateixa branca), i te dues meitats perque una sola no arriba. El gate
+`Previous version` de `ci.yml` migra la base a HEAD, treu un `worktree` de l'ultima etiqueta i hi
+executa la seva suite d'integracio: el codi vell contra l'esquema nou, que es exactament el que
+passa quan algu torna enrere. En paral·lel, `scripts/migration-compatibility.mjs` llegeix les
+migracions afegides des de l'etiqueta i rebutja les que eliminen coses sense un `-- n-1-safe:` que
+digui per que ja no fa mal.
+
+**El motiu de les dues meitats esta mesurat, no suposat.** Amb la base a 0059, els 602 tests de
+`v0.3.0` passen. Eliminant `tenants.slug` es tornen vermells --quatre fitxers, `column slug of
+relation tenants does not exist`. Eliminant `tenants.status` **es queden verds**: els tests vells
+nomes insereixen `(id, slug, name)`. La suite cobreix tot el que el codi vell exercita i res mes;
+la comprovacio estatica cobreix la resta.
+
+El job corre sempre i el cami rapid es a dins, perque `release-gate.mjs` compta un check `skipped`
+com una fallada i un job que es saltes bloquejaria totes les releases.
+
+**El seguent increment es P5**: el comandament d'actualitzacio, amb backup, migracions i rollback.
+Ara ja es pot escriure, perque el rollback que promet te qui el comprovi.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

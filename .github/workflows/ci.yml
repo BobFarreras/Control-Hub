@@ -164,6 +164,142 @@ jobs:
       - name: Build
         run: pnpm build
 
+  previous-version:
+    name: Previous version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # D4 promises that an update can be undone: the previous version has to still work against a
+    # database this one has already migrated. That promise is either exercised or it is decoration,
+    # and the way it fails is quiet -- a column disappears, and the rollback everybody is counting
+    # on stops working months before anybody needs it.
+    #
+    # The job always runs. `scripts/release-gate.mjs` counts a skipped check as a failure, so a
+    # job that conditionally skips itself would block every release; when there is nothing to
+    # compare it takes a fast path inside the job instead.
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: control_hub
+          POSTGRES_USER: control_hub_admin
+          POSTGRES_PASSWORD: ci_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U control_hub_admin -d control_hub"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://control_hub_app:ci_app_only@127.0.0.1:5432/control_hub
+      TEST_DATABASE_ADMIN_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:ci_admin_only@127.0.0.1:5432/control_hub
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Tags, and the history back to the previous one. The default shallow fetch has neither.
+          fetch-depth: 0
+
+      - name: Use the supported Node version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Needs no database and answers the half the suite below cannot: a column the previous
+      # version writes but no test reads can be dropped without turning anything red.
+      - name: Migrations that remove something
+        run: node scripts/migration-compatibility.mjs
+
+      - name: Find the previous version
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
+          # wc -l, not grep -c: grep exits 1 on no match, and the || true that silences that
+          # also silences the script failing, which would leave the count empty and the branch below
+          # deciding on an error message.
+          migrations="$(node scripts/migration-compatibility.mjs --list | wc -l)"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          if [ -z "$previous" ]; then
+            echo "No version tag yet: nothing has been released that this could break." >> "$GITHUB_STEP_SUMMARY"
+            echo "exercise=false" >> "$GITHUB_OUTPUT"
+          elif [ "$migrations" -eq 0 ]; then
+            echo "No migrations since $previous: the schema it runs against is the one it shipped with." >> "$GITHUB_STEP_SUMMARY"
+            echo "exercise=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Running $previous against a database with $migrations new migration(s)." >> "$GITHUB_STEP_SUMMARY"
+            echo "exercise=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the unprivileged runtime role
+        if: steps.scope.outputs.exercise == 'true'
+        shell: bash
+        env:
+          PGPASSWORD: ci_admin_only
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U control_hub_admin -d control_hub -v ON_ERROR_STOP=1 \
+            -c "create role control_hub_app login nosuperuser nocreatedb nocreaterole noinherit password 'ci_app_only';"
+
+      - name: Enable the pinned package manager
+        if: steps.scope.outputs.exercise == 'true'
+        run: corepack enable
+
+      - name: Restore the pnpm store
+        if: steps.scope.outputs.exercise == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pnpm-store
+          # Two lockfiles are installed in this job, so the key covers both.
+          key: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-n1-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-${{ env.NODE_VERSION }}-
+
+      - name: Install dependencies
+        if: steps.scope.outputs.exercise == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # The database ends up where an installation's would be after the update: this version's
+      # schema, with the previous version's code about to be pointed at it.
+      - name: Migrate to this version
+        if: steps.scope.outputs.exercise == 'true'
+        run: pnpm --filter @control-hub/database migrate
+
+      - name: Check out the previous version
+        if: steps.scope.outputs.exercise == 'true'
+        shell: bash
+        # Through the environment rather than into the script text: `${{ }}` is substituted
+        # textually, and a tag name is not something to paste into a shell.
+        env:
+          PREVIOUS: ${{ steps.scope.outputs.previous }}
+        run: |
+          set -euo pipefail
+          # Outside the repository: inside it, pnpm and turbo would treat the second tree as part
+          # of this workspace and install the wrong dependency graph into it.
+          git worktree add --detach "$RUNNER_TEMP/previous" "$PREVIOUS"
+          cd "$RUNNER_TEMP/previous"
+          pnpm install --frozen-lockfile
+
+      # The migration runner is idempotent, so this is the rollback rehearsal in full: the old code
+      # starts against the new schema, applies nothing, and either works or does not.
+      - name: Run the previous version against this schema
+        if: steps.scope.outputs.exercise == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/previous"
+          pnpm test:integration
+
   end-to-end:
     name: End to end
     runs-on: ubuntu-latest

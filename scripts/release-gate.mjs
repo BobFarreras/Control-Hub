@@ -28,6 +28,7 @@ import { pathToFileURL } from "node:url";
 export const requiredChecks = [
   "Repository standards",
   "Application checks",
+  "Previous version",
   "End to end",
   "Authenticated end to end",
   "Container image",

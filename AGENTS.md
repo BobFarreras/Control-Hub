@@ -85,6 +85,12 @@ Despres, el marc:
 - Migracions versionades, deterministes i compatibles amb desplegament gradual.
 - No editar una migracio ja publicada; crear-ne una de nova.
 - Canvis destructius exigeixen backup, pla de migracio i rollback documentat.
+- **Cap migracio elimina res que la versio anterior encara faci servir.** S'afegeix en una versio,
+  es deixa de fer servir a la seguent i s'elimina a la tercera. El gate `Previous version` de CI ho
+  comprova per les dues bandes: executa la suite d'integracio de l'ultima etiqueta contra la base
+  migrada a HEAD, i rebutja `drop column`, `drop table`, `drop type`, canvis de nom, canvis de tipus
+  i columnes `not null` sense valor per defecte a les migracions noves. Si l'objecte ja no el fa
+  servir ningu, digues-ho sobre la sentencia: `-- n-1-safe: <per que>`.
 - Afegir claus foranes, uniques i indexos que protegeixin invariants reals.
 
 ## Codi i qualitat
