@@ -80,10 +80,30 @@ propietari vol la seva propia instal·lacio en peu --entre altres coses perque u
 demana HTTPS i cap workspace local el pot donar. El que la decisio del 23 deia sobre el cost segueix
 sent cert; el que ha canviat es qui el paga i per que.
 
-Del que aixo comporta **encara no hi ha res decidit**: com s'empaqueta i es publica la imatge, com
-s'actualitza una instal·lacio existent, i quina forma te l'instal·lador. Les preguntes es van
-plantejar el 26 d'agost i el propietari no les va respondre, o sigui que segueixen obertes i cap
-implementacio hauria de comencar suposant-ne una.
+**L'especificacio es `docs/specifications/deployment.md`**, aprovada el 26 d'agost, i **ja no hi ha
+cap decisio oberta**. El propietari va prendre D1 --imatges publiques a GHCR-- i D2 --primera
+instal·lacio a la VPS actual darrere el Traefik que ja hi corre--, i va delegar les altres cinc, que
+queden escrites amb el raonament: publica una etiqueta i `develop` nomes una imatge `edge` (D3);
+suport nomes de l'ultima versio i finestra de rollback d'una, sostinguda per migracions que no
+eliminen res que la versio anterior faci servir (D4); la instancia consulta un fitxer estatic un cop
+al dia des del worker i **no envia res** (D5); es firma i es publica SBOM des de la primera versio,
+pero verificar-ho no s'exigeix (D6); i l'instal·lador es un script del repositori, mai `curl | sh`
+(D7).
+
+L'ordre dels increments te una cosa que val la pena no perdre: la prova de compatibilitat N-1 va
+**abans** del comandament d'actualitzar. Les imatges tornen enrere de franc i la base de dades no,
+o sigui que un rollback que ningu ha exercitat es una sensacio i no una propietat.
+
+El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/installation.md` ja
+descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
+ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de descarregar-los.
+
+La versio si que existeix, i val la pena saber-ho abans de tocar-hi: `apps/api/src/version.ts`
+l'estampa al bundle amb tsup i la serveix a `/health/live`, i els quatre paquets comparteixen numero,
+o sigui que el que diu l'API es el de la release. El que hi falta es que la vegi una persona i que
+**distingeixi dos builds del mateix numero** --sense identificador de construccio, tot el que surti
+de `develop` entre dues etiquetes dira `0.3.0`. Per aixo el primer increment es aquest i no
+l'empaquetat.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

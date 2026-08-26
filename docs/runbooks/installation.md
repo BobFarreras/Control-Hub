@@ -1,5 +1,10 @@
 # Runbook d'instal·lacio de Control Hub
 
+> Alguns passos d'aquest runbook descriuen coses que **encara no es poden fer**: no hi ha registre
+> d'imatges, ni manifest de versions, ni cap reverse proxy al repositori, i `compose.yaml` compila
+> els serveis en comptes de descarregar-los. `docs/specifications/deployment.md` diu quins son i que
+> ha d'existir perque aquest document sigui executable de punta a punta.
+
 ## Model d'alta
 
 Control Hub no ofereix registre public. Cada instal·lacio crea un tenant i un primer

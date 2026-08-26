@@ -74,6 +74,9 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   navegacio segura a Bitwarden Password Manager, aprovat com a S7 de la Fase 12.
 - `specifications/multi-agent-development.md`: Fase X transversal per aillar els agents que
   desenvolupen Control Hub; no es el runtime de producte de la Fase 11.
+- `specifications/deployment.md`: proposta de la Fase 9 -- publicar imatges, nomenar una versio per
+  digest, avisar que n'hi ha una de nova sense actualitzar sola, i instal·lar sense compilar res.
+  Diu tambe quins passos de `runbooks/installation.md` encara no es poden fer.
 - `development/agent-workspaces.md`: crear, validar, entregar i destruir un workspace per tasca.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
