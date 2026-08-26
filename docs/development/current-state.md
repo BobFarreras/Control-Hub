@@ -126,13 +126,35 @@ Tres coses que P2 va haver de concretar i que ara manen:
 - **Res es firma per etiqueta, nomes per digest.** Una firma sobre una etiqueta continua verificant
   quan l'etiqueta ja assenyala uns altres bytes.
 
-El que li falta es una execucio. Les proves cobreixen el mecanisme --`scripts/release.test.mjs`,
-deu casos-- pero cap imatge s'ha publicat mai. **Fusionar aixo a `develop` publica la primera imatge
-`edge` publica pel sol fet de fusionar-ho**, i val la pena saber-ho abans i no despres.
+Es va fusionar a develop el 26 d'agost i **el workflow es va disparar tot sol**, que era exactament
+el que havia de passar: el primer commit a develop amb aquest fitxer a dins publica la primera
+imatge edge publica pel sol fet d'arribar-hi. Les proves cobreixen el mecanisme
+--`scripts/release.test.mjs`-- pero fins aquella execucio cap imatge s'havia publicat mai.
 
-**El seguent increment es P3**: `compose.release.yaml` i `release.env`, una instal·lacio que fa
-`pull` i no `build`. Es tambe el que fa verificable P2, perque nomes llavors es pot aixecar l'stack
-des de les imatges publicades i sense el codi font.
+**P3 esta fet** (mateixa branca). `compose.release.yaml` dona `image:` per digest als quatre
+serveis nostres i els treu el `build:` amb `!reset null` --no ometent-lo, perque Compose fusiona i
+un `up --build` per costum tornaria a compilar d'un arbre de codi que a produccio no hi es.
+`scripts/release-env.mjs` genera `release.env` a partir del manifest.
+
+Dos fitxers d'entorn i no un, i aixo es la part que val: **una actualitzacio reescriu `release.env`
+sencer i no toca mai `.env`**. Res configurat a ma corre perill en actualitzar, i cap variable de la
+versio anterior sobreviu --que es el residu perillos, perque una referencia d'imatge caducada encara
+descarrega i arrenca, i executa codi vell amb el numero de versio nou.
+
+Comprovat component els fitxers de debo amb `docker compose config`, no argumentat: la definicio
+resultant no te cap `build:` i les quatre imatges hi son per digest. Sense `release.env`, Compose es
+nega i el missatge diu que cal generar-lo.
+
+**Tres buits que P3 va destapar i no resol**, anotats a l'especificacio: les imatges de tercers
+(`postgres`, `valkey`, `mailpit`) van per etiqueta i no per digest, o sigui que dues instal·lacions
+de la mateixa versio poden no portar el mateix PostgreSQL; **Mailpit arrenca en una instal·lacio de
+produccio**, cosa que no hi te res a fer; i el directori d'instal·lacio necessita
+`deploy/postgres/init-app-user.sh` del host, o sigui que el paquet que es descarrega ha de portar un
+arbre petit de fitxers i no nomes YAML.
+
+**El seguent increment es P4**: la prova de compatibilitat N-1 --arrencar la versio anterior contra
+una base migrada a la nova. Va abans del comandament d'actualitzar perque es el que fa que el
+rollback de D4 existeixi de debo en comptes de constar en un document.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

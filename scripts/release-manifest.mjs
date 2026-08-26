@@ -91,6 +91,68 @@ export function buildManifest({ version, commit, released, registry, digests, wo
   };
 }
 
+/**
+ * Reads a manifest back, and validates it by rebuilding it.
+ *
+ * This is the direction that matters for safety. Writing a manifest happens once, inside a workflow
+ * we control; reading one happens on every installation, from a file fetched over the network. So
+ * the parse does not trust any field: it pulls the pieces apart, hands them to the same builder that
+ * produced them, and compares. Anything that does not survive the round trip was not a manifest this
+ * project wrote.
+ *
+ * The registry check is the point of the exercise. Four images that each look plausible but do not
+ * share a namespace is not a shape a release can have and is exactly the shape a substituted image
+ * would have.
+ */
+export function parseManifest(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    reject("not JSON");
+  }
+  if (parsed?.schema !== manifestSchema) reject(`unknown schema ${JSON.stringify(parsed?.schema)}`);
+
+  const digests = {};
+  const registries = new Set();
+  for (const service of releaseServices) {
+    const reference = parsed.images?.[service];
+    if (typeof reference !== "string") reject(`no image for ${service}`);
+    const separator = reference.lastIndexOf("@");
+    if (separator === -1) reject(`image for ${service} is not pinned by digest`);
+    const repository = reference.slice(0, separator);
+    if (!repository.endsWith(`/control-hub-${service}`)) reject(`image for ${service} is named ${repository}`);
+    registries.add(repository.slice(0, -`/control-hub-${service}`.length));
+    digests[service] = reference.slice(separator + 1);
+  }
+  if (registries.size !== 1) reject(`images come from ${registries.size} registries`);
+
+  const rebuilt = buildManifest({
+    version: parsed.version,
+    commit: parsed.commit,
+    released: parsed.released,
+    registry: [...registries][0],
+    digests,
+    work: parsed.work
+  });
+  if (JSON.stringify(rebuilt) !== JSON.stringify(parsed)) reject("does not survive being rebuilt");
+  return rebuilt;
+}
+
+/**
+ * The manifest as the variables `compose.release.yaml` reads.
+ *
+ * Generated rather than written by hand for the usual reason -- a digest nobody can read is a digest
+ * nobody can proofread -- and regenerated whole on every update, so a variable left over from a
+ * previous version cannot survive into the next one.
+ */
+export function manifestEnvironment(manifest) {
+  return [
+    `CONTROL_HUB_VERSION=${manifest.version}`,
+    ...releaseServices.map((service) => `CONTROL_HUB_${service.toUpperCase()}_IMAGE=${manifest.images[service]}`)
+  ];
+}
+
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
 }
