@@ -1,6 +1,9 @@
 # Especificacio de la Fase 9: empaquetat, publicacio i instal·lacio
 
-**Estat:** proposada. D1 i D2 decidides pel propietari el 26 d'agost de 2026; D3 a D7 obertes.
+**Estat:** aprovada. D1 i D2 les va decidir el propietari el 26 d'agost de 2026. D3 a D7 les va
+delegar el mateix dia --«et deixo el teu criteri professional»--, de manera que hi son com a
+decisions preses i amb el raonament escrit, no com a preferencies. Delegar no es igual que no
+decidir: qualsevol es pot revisar, pero cap increment ha d'esperar-la.
 
 ## Objectiu
 
@@ -53,21 +56,67 @@ assumia per a S11, i desbloqueja el motiu concret per desplegar ara: un client M
 cap workspace local l'hi pot donar. El risc acceptat es la veinatge amb l'n8n de produccio dels
 clients; l'apartat de limits el tracta.
 
-**D3 — Que dispara una publicacio: una etiqueta, o cada commit a `develop`?** Oberta.
+**D3 — Publica una etiqueta de versio. `develop` publica una imatge `edge`.** Cada commit publicat
+es una promesa: algu se'l pot descarregar i dependre'n sense que ningu hagi decidit que aquell
+commit valgues res. Una etiqueta es un acte deliberat i vol dir «aixo ho mantinc». `edge` no vol dir
+res, i per aixo es pot trencar: existeix per provar la instal·lacio contra el que hi ha ara, no per
+instal·lar-hi res de debo.
 
-**D4 — Quant dura el suport d'una versio, i quantes enrere es pot fer rollback?** Oberta. Determina
-quantes imatges es conserven al registre i quina finestra promet el runbook.
+**D4 — Suport nomes de l'ultima versio; finestra de rollback d'una.** Son dues coses diferents amb
+respostes oposades, i confondre-les es el que fa que la pregunta sembli dificil.
 
-**D5 — L'avis d'actualitzacio consulta la xarxa des de la instancia, o no consulta res?** Oberta.
-Una comprovacio periodica contra GitHub es comoda i es una connexio sortint que l'administrador no
-ha demanat. L'alternativa es que nomes ho digui qui executa el comandament d'actualitzar.
+Arreglar defectes de versions velles: **cap**. Una persona sola que promet mantenir tres versions
+promet temps que no te, i la promesa es trenca el primer mes. «Actualitza a l'ultima» es el que fan
+els productes autoallotjats petits i es honest.
 
-**D6 — Firma i SBOM: ara o mes tard?** Oberta. La Fase 9 original els incloia. Signar amb cosign i
-publicar un SBOM no es car, pero verificar-ho a l'instal·lador si que afegeix una dependencia mes a
-la maquina de qui instal·la.
+Poder tornar enrere: **una versio**, i aixo no es una promesa sino una propietat que s'ha de
+construir. Les imatges tornen enrere de franc; la base de dades no. Si la migracio ja ha corregut i
+ha eliminat una columna, la versio anterior ja no arrenca contra aquella base, per molt digest antic
+que es posi al `compose`. Per tant la regla operativa no es quantes imatges es guarden, es aquesta:
 
-**D7 — L'instal·lador es un script del repositori o un binari descarregable?** Oberta. Un `curl |
-sh` es el que fa tothom i es exactament el patro que no volem ensenyar a normalitzar.
+> **Cap migracio elimina res que la versio anterior encara faci servir.** S'afegeix en una versio,
+> es deixa de fer servir a la seguent, i s'elimina a la tercera.
+
+`AGENTS.md` ja demana migracions «compatibles amb desplegament gradual». El que falta es una prova
+que ho **verifiqui** --arrencar la versio N-1 contra una base migrada a N--, perque sense
+exercitar-ho la compatibilitat es una intencio i no un fet. Al registre s'hi conserven deu digests.
+
+**D5 — La instancia consulta, pero no informa.** Un `GET` a un fitxer estatic, un cop al dia, i la
+comparacio es fa aqui. No s'envia versio, ni nombre d'usuaris, ni identificador, ni res.
+
+Tres condicions que fan que aixo sigui acceptable, i cap es opcional:
+
+1. **Ho fa el worker, mai el navegador.** Amb el navegador, cada persona que obre Control Hub li
+   dona la seva IP a GitHub sense saber-ho. No es un detall d'implementacio: es la diferencia entre
+   consultar tu i consultar en nom dels teus usuaris.
+2. **No s'envia res.** El que igualment es revela es la IP del servidor i que existeix, cosa que no
+   es pot evitar consultant --i per aixo cal la tercera condicio.
+3. **Es pot apagar** amb una variable documentada, i el runbook diu exactament que surt i cap on.
+
+L'alternativa, que nomes ho digui qui executa el comandament, s'ha descartat pel motiu que la fa
+temptadora: no demana res a ningu, i per aixo no avisa mai. El banner existeix per als dies que
+ningu pensa en Control Hub, que son la majoria i son quan surt una actualitzacio de seguretat.
+
+**D6 — Es firma i es publica SBOM des de la primera versio; verificar-ho no s'exigeix.** El passat
+no es pot firmar: ajornar-ho un any deixa un any de versions sense firmar per sempre, i la resposta
+a «com se que aquesta imatge es teva» passa a ser «des de la 1.2 endavant» en comptes de «sempre».
+Avui costa poc, perque la firma sense claus per OIDC no obliga a custodiar cap clau privada --que
+era exactament el motiu pel qual ningu firmava res.
+
+Exigir la verificacio a l'instal·lador es una decisio diferent i es respon que no: afegeix una
+dependencia a la maquina de qui instal·la per protegir d'un atac que avui no te ningu al davant. Es
+publica la firma, es documenta el comandament per verificar-la, i qui vulgui que ho faci. Produir-ho
+es barat i irreversible cap enrere; exigir-ho es car i sempre s'hi es a temps.
+
+**D7 — Un script al repositori, executat despres de descarregar una release.** No `curl | sh`, que
+demana confiar en un servidor just en el moment en que no es pot inspeccionar que envia; que ho faci
+tothom no el fa millor. I un binari no compra res: el desti es un servidor Linux que ja te Docker
+--si no el te, l'instal·lador tampoc serveix--, aixi que compilar i firmar per a tres plataformes
+per estalviar un `tar -xzf` es feina que no es paga.
+
+Queda anotada una tercera via per mes endavant: **l'instal·lador com a contenidor**, sense cap
+dependencia mes enlla del Docker que ja hi ha. Te complicacions reals amb el TTY i amb els permisos
+dels fitxers que escriu al host, i per aixo no es la primera versio.
 
 ## Publicacio
 
@@ -77,8 +126,12 @@ Un workflow nou, separat de `ci.yml` perque el seu error mode es diferent: la CI
 1. Construeix les quatre imatges des de `deploy/Dockerfile` --`api`, `worker`, `migrate`, `web`--
    per a `linux/amd64` i `linux/arm64`.
 2. Les puja a `ghcr.io/bobfarreras/control-hub-{servei}`.
-3. Escriu un **manifest de release**: versio, data, commit, i el digest de cadascuna de les quatre.
-4. Adjunta el manifest a la release de GitHub.
+3. Les **firma** sense claus, per OIDC, i hi adjunta **SBOM i provinenca**.
+4. Escriu un **manifest de release**: versio, data, commit, i el digest de cadascuna de les quatre.
+5. Adjunta el manifest a la release de GitHub.
+
+Una etiqueta `v*` fa tot aixo. Un commit a `develop` fa nomes 1 i 2, amb l'etiqueta `edge` i sense
+manifest: no es una release i no ha de tenir-ne la forma.
 
 El manifest es l'unic artefacte que una instal·lacio llegeix. No conte cap URL a on connectar-se ni
 res sobre qui l'ha instal·lat.
@@ -107,7 +160,8 @@ nomes diu «hi ha una versio nova» trasllada la feina de decidir sense donar re
 El banner no te cap boto que actualitzi. Te l'enllac a les notes de la versio i el comandament a
 copiar. Aixo no es prudencia: es l'invariant 2, i l'alternativa demana el socket de Docker.
 
-Com se n'assabenta la instancia depen de D5.
+Se n'assabenta pel cami de D5: el worker demana el manifest un cop al dia, sense enviar res, i la
+comparacio es fa a la instancia. Ni una linia d'aixo passa pel navegador.
 
 ## L'actualitzacio
 
@@ -161,15 +215,34 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 
 - **P1** — `APP_VERSION`, exposada a readiness i visible a la pantalla de seguretat. Va primer
   perque tot el que ve despres compara contra ella.
-- **P2** — El workflow de publicacio i el manifest de release. Verificable descarregant les imatges
-  publicades i aixecant l'stack sense el codi font.
+- **P2** — El workflow de publicacio: imatges, firma, SBOM i manifest de release. Verificable
+  descarregant les imatges publicades i aixecant l'stack sense el codi font.
 - **P3** — `compose.release.yaml` i `release.env`: una instal·lacio que fa `pull` i no `build`.
-- **P4** — El comandament d'actualitzacio, amb backup, migracions i rollback.
-- **P5** — El banner, un cop D5 estigui decidida.
-- **P6** — L'instal·lador interactiu.
+- **P4** — La prova de compatibilitat N-1: arrencar la versio anterior contra una base migrada a la
+  nova. Va **abans** del comandament d'actualitzar, perque es el que fa que el rollback de D4
+  existeixi de debo en comptes de constar en un document.
+- **P5** — El comandament d'actualitzacio, amb backup, migracions i rollback.
+- **P6** — El banner i la comprovacio diaria del worker.
+- **P7** — L'instal·lador interactiu.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
 algu pot provar a ma.
+
+## Disciplina operativa
+
+Tres coses que no son codi i que son on falla la gent que si que te el codi be.
+
+**Un backup que no s'ha restaurat mai no es un backup.** `installation.md` ja ho demana a la
+validacio d'acceptacio. La disciplina es fer-ho de debo un cop, i tornar-ho a fer cada vegada que
+l'esquema canvii prou.
+
+**La primera actualitzacio es la prova de veritat, no la instal·lacio.** Instal·lar de zero
+funciona sempre; el que trenca es passar de la v1 a la v2 amb dades a dins. Per aixo la primera
+actualitzacio s'ha de fer a proposit i aviat, amb una versio que no canvii res, nomes per exercitar
+el cami mentre no hi ha res a perdre.
+
+**Una segona instancia, encara que estigui apagada gairebe sempre.** No cal un entorn de staging
+permanent; cal poder aixecar-ne un amb dades falses davant d'una actualitzacio que fa respecte.
 
 ## Riscos
 
@@ -182,4 +255,10 @@ existeix per decidir quant val aquest compromis abans de fer-lo, no despres.
 
 **El manifest de release es un artefacte de confianca.** Si algu el pot canviar, pot fer que una
 instal·lacio descarregui una imatge que no es la nostra. Publicar-lo a la release de GitHub el posa
-darrere el mateix control d'acces que el repositori; D6 decideix si aixo n'hi ha prou.
+darrere el mateix control d'acces que el repositori, i la firma de D6 permet comprovar-ho a part; el
+que no fa cap de les dues coses es protegir de que el compte de GitHub quedi compromes.
+
+**El rollback nomes existeix si les migracions el permeten.** Es el risc mes facil de creure resolt
+sense estar-ho: el `compose` amb el digest antic torna enrere en segons i dona la sensacio que el
+rollback funciona, fins al dia que la migracio hagi eliminat alguna cosa i la versio anterior no
+arrenqui. P4 existeix nomes per aixo, i va abans del comandament que la gent fara servir.

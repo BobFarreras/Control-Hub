@@ -80,12 +80,19 @@ propietari vol la seva propia instal·lacio en peu --entre altres coses perque u
 demana HTTPS i cap workspace local el pot donar. El que la decisio del 23 deia sobre el cost segueix
 sent cert; el que ha canviat es qui el paga i per que.
 
-**L'especificacio es `docs/specifications/deployment.md`**, escrita el 26 d'agost. Recull dues
-decisions ja preses --imatges publiques a GHCR (D1) i primera instal·lacio a la VPS actual darrere
-el Traefik que ja hi corre (D2)-- i en deixa cinc d'obertes que bloquegen exactament la part que en
-depen: que dispara una publicacio, quantes versions enrere es suporten, si la instancia consulta la
-xarxa per saber que n'hi ha una de nova, si es firma i s'hi publica SBOM, i quina forma te
-l'instal·lador. Cap increment hauria de comencar suposant-ne una.
+**L'especificacio es `docs/specifications/deployment.md`**, aprovada el 26 d'agost, i **ja no hi ha
+cap decisio oberta**. El propietari va prendre D1 --imatges publiques a GHCR-- i D2 --primera
+instal·lacio a la VPS actual darrere el Traefik que ja hi corre--, i va delegar les altres cinc, que
+queden escrites amb el raonament: publica una etiqueta i `develop` nomes una imatge `edge` (D3);
+suport nomes de l'ultima versio i finestra de rollback d'una, sostinguda per migracions que no
+eliminen res que la versio anterior faci servir (D4); la instancia consulta un fitxer estatic un cop
+al dia des del worker i **no envia res** (D5); es firma i es publica SBOM des de la primera versio,
+pero verificar-ho no s'exigeix (D6); i l'instal·lador es un script del repositori, mai `curl | sh`
+(D7).
+
+L'ordre dels increments te una cosa que val la pena no perdre: la prova de compatibilitat N-1 va
+**abans** del comandament d'actualitzar. Les imatges tornen enrere de franc i la base de dades no,
+o sigui que un rollback que ningu ha exercitat es una sensacio i no una propietat.
 
 El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/installation.md` ja
 descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
