@@ -23,7 +23,7 @@ existeix per fer-los possibles.
 | «Descarregar imatges OCI per digest, mai `latest`» | `compose.yaml` no dona `image:` a cap servei nostre: nomes `build:`. Una instal·lacio **compila el codi al servidor**. |
 | «Configurar domini, TLS» | No hi ha cap reverse proxy al repositori. Tots els ports publicats son `127.0.0.1`. |
 | «el job OCI equivalent» per al primer Owner | Nomes existeix `pnpm bootstrap:owner`, que vol el codi font i pnpm. |
-| Actualitzacio com a llista de set passos manuals | Res dins el producte diu que n'hi hagi una de disponible. La versio si que existeix --`apps/api/src/version.ts` l'estampa al bundle i la serveix a `/health/live`--, pero no la veu cap persona i no distingeix dos builds del mateix numero. |
+| Actualitzacio com a llista de set passos manuals | Res dins el producte diu que n'hi hagi una de disponible. ~~La versio no la veu cap persona i no distingeix dos builds del mateix numero.~~ Resolt per P1: versio i identificador de construccio, visibles a **Seguretat**. |
 
 La release `v0.3.0` del 24 d'agost es codi versionat i etiquetat, no una instal·lacio: **no s'ha
 desplegat mai res enlloc**.
@@ -164,6 +164,13 @@ Hi falten dues coses, i la segona es la que importa per a `edge`:
 Sense la segona, «tens l'ultima versio» es una frase que no es pot comprovar en el moment que mes
 falta: quan alguna cosa va malament en una imatge de proves.
 
+Les dues no van al mateix lloc, i la diferencia es deliberada. El **numero** es queda a
+`/health/live`, que es public perque el web hi fa de proxy i les sondes l'han de poder consultar
+sense credencials. L'**identificador de construccio** no hi va: amb ell, una sola peticio anonima
+lliga una instal·lacio a un commit concret i, per tant, a qualsevol defecte conegut d'aquell commit.
+Viu a `GET /api/v1/settings/installation`, que demana sessio i rol `Owner` o `Administrator` --els
+dos que poden actuar sobre una actualitzacio-- i es el que llegeix la pantalla de seguretat.
+
 ## Avis d'actualitzacio
 
 Un banner, per a `Owner` i `Administrator` nomes, que diu que hi ha una versio nova i **quina feina
@@ -226,8 +233,8 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 
 ## Increments
 
-- **P1** — Identificador de construccio al costat de la versio que ja existeix, i la versio visible
-  a la pantalla de seguretat. Va primer perque tot el que ve despres compara contra ella.
+- **P1** — *Fet.* Identificador de construccio al costat de la versio que ja existeix, i les dues
+  visibles a la pantalla de seguretat. Va primer perque tot el que ve despres compara contra elles.
 - **P2** — El workflow de publicacio: imatges, firma, SBOM i manifest de release. Verificable
   descarregant les imatges publicades i aixecant l'stack sense el codi font.
 - **P3** — `compose.release.yaml` i `release.env`: una instal·lacio que fa `pull` i no `build`.

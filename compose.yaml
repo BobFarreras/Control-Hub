@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: web
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
@@ -24,6 +26,8 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: api
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       API_HOST: 0.0.0.0
@@ -63,6 +67,8 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: worker
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
@@ -85,6 +91,8 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: migrate
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       # `MIGRATION_DATABASE_URL`, not `DATABASE_URL`, because the image no longer starts node
       # directly: it starts `load-secret-and-exec MIGRATION_DATABASE_URL`, which exits before node

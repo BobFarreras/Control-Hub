@@ -530,7 +530,11 @@ const secretsDictionaries = {
     noVersion: "No publicada",
     smtpHint: "L'SMTP actual no utilitza autenticacio; els tickets amb Gmail/Microsoft funcionen per OAuth.",
     ownerOnly: "Nomes l'Owner pot consultar aquesta configuracio.",
-    loadError: "No s'ha pogut carregar la metadata de secrets."
+    loadError: "No s'ha pogut carregar la metadata de secrets.",
+    installation: "Instal·lacio",
+    installedVersion: "Versio instal·lada",
+    buildIdentifier: "Construccio",
+    buildDevelopment: "Sense identificar: no surt de cap release"
   },
   es: {
     eyebrow: "CUSTODIA OPERATIVA",
@@ -566,7 +570,11 @@ const secretsDictionaries = {
     noVersion: "No publicada",
     smtpHint: "El SMTP actual no utiliza autenticacion; los tickets con Gmail/Microsoft funcionan mediante OAuth.",
     ownerOnly: "Solo el Owner puede consultar esta configuracion.",
-    loadError: "No se ha podido cargar la metadata de secretos."
+    loadError: "No se ha podido cargar la metadata de secretos.",
+    installation: "Instalacion",
+    installedVersion: "Version instalada",
+    buildIdentifier: "Compilacion",
+    buildDevelopment: "Sin identificar: no procede de ninguna release"
   },
   en: {
     eyebrow: "OPERATIONAL CUSTODY",
@@ -602,7 +610,11 @@ const secretsDictionaries = {
     noVersion: "Not published",
     smtpHint: "Current SMTP has no authentication; Gmail/Microsoft tickets are sent through OAuth.",
     ownerOnly: "Only the Owner can read this configuration.",
-    loadError: "Secret metadata could not be loaded."
+    loadError: "Secret metadata could not be loaded.",
+    installation: "Installation",
+    installedVersion: "Installed version",
+    buildIdentifier: "Build",
+    buildDevelopment: "Unidentified: not from a release"
   }
 } as const;
 

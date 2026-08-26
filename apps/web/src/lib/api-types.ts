@@ -1140,6 +1140,12 @@ export type McpServiceAccountRow = {
 /** The accounts, plus the scopes this reader could actually back -- not the whole vocabulary. */
 export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow[]; grantableScopes: string[] };
 
+/**
+ * Which version and which build. `build` is `development` outside a release, which is a statement
+ * about where the code came from rather than a missing value, and the screen says so in words.
+ */
+export type InstallationResponse = { version: string; build: string };
+
 export type SecretMetadataResponse = {
   provider: {
     kind: "environment" | "runtime_files" | "bitwarden";

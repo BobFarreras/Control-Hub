@@ -98,12 +98,19 @@ El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/inst
 descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
 ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de descarregar-los.
 
-La versio si que existeix, i val la pena saber-ho abans de tocar-hi: `apps/api/src/version.ts`
-l'estampa al bundle amb tsup i la serveix a `/health/live`, i els quatre paquets comparteixen numero,
-o sigui que el que diu l'API es el de la release. El que hi falta es que la vegi una persona i que
-**distingeixi dos builds del mateix numero** --sense identificador de construccio, tot el que surti
-de `develop` entre dues etiquetes dira `0.3.0`. Per aixo el primer increment es aquest i no
-l'empaquetat.
+**P1 esta fet** (branca `agent/claude/ch-014-deployment-pipeline`). `apps/api/src/version.ts` ja
+estampava la versio al bundle amb tsup i la serveix a `/health/live`; ara pel mateix cami hi ha un
+identificador de construccio, `CONTROL_HUB_BUILD`, que passa de l'ARG del `deploy/Dockerfile` als
+quatre serveis del `compose.yaml`. Sense valor el bundle diu `development`, que es cert, en comptes
+d'inventar-se un hash.
+
+Les dues dades **no surten pel mateix lloc**. El numero es queda a `/health/live`, que es public;
+l'identificador viu a `GET /api/v1/settings/installation`, amb sessio i rol `Owner` o
+`Administrator`, perque publicar-lo permetria lligar una instal·lacio a un defecte conegut amb una
+peticio anonima. La pantalla de **Seguretat** mostra les dues, amb claus `ca`/`es`/`en`.
+
+**El seguent increment es P2**: el workflow de publicacio --imatges, firma, SBOM i manifest--,
+verificable descarregant les imatges i aixecant l'stack sense el codi font.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

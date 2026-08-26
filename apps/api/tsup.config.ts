@@ -27,6 +27,12 @@ export default defineConfig({
   define: {
     __API_VERSION__: JSON.stringify(
       (JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8")) as { version: string }).version
-    )
+    ),
+    // Empty on every build that does not pass one, which is every build outside the release
+    // workflow. `src/version.ts` turns that into `development` rather than shelling out to git:
+    // the builder stage does have a checkout, but a value meant to identify an image has to be
+    // decided by whoever is producing the image, not inferred from whatever source tree is lying
+    // around when the bundler runs.
+    __API_BUILD__: JSON.stringify(process.env.CONTROL_HUB_BUILD ?? "")
   }
 });

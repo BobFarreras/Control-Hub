@@ -63,6 +63,26 @@ test("every file supplies the migration variable the entrypoint actually demands
   assert.match(overlay, new RegExp(`^\\s+${variable}_FILE: `, "m"));
 });
 
+test("the build identifier reaches every image the same way", () => {
+  // Same shape of defect as the migration variable above, and worth refusing for the same reason:
+  // the Dockerfile and the compose file each read correctly on their own, and only disagree when
+  // something builds. Here the disagreement would be quieter still -- nothing fails, the images
+  // are simply built without an identifier and every one of them reports `development`, which is
+  // indistinguishable from a build that was never meant to have one.
+  const [, argument] = dockerfile.match(/^ARG (CONTROL_HUB_[A-Z_]+)=/m) ?? [];
+  assert.ok(argument, "the builder stage declares no build identifier");
+  assert.match(dockerfile, new RegExp(`^ENV ${argument}=\\$${argument}$`, "m"));
+
+  // All four, not just the API. Only the API bundle carries the value today, but the builder stage
+  // is shared, and a service that omits the argument builds that stage with a different value and
+  // silently loses the layer cache for every other one.
+  for (const service of ["web", "api", "worker", "migrate"]) {
+    const next = { web: "api", api: "worker", worker: "migrate", migrate: "postgres" }[service];
+    const block = serviceBlock(compose, service, next);
+    assert.match(block, new RegExp(`^\\s+${argument}: \\S`, "m"), `${service} passes no ${argument}`);
+  }
+});
+
 test("connector and provider overlays grant only the selected integration", () => {
   const api = serviceBlock(connectors, "api", "worker");
   const worker = serviceBlock(connectors, "worker");

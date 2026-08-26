@@ -1,12 +1,12 @@
 "use client";
 
 import { getDictionary, getSecretsDictionary, isLocale } from "@control-hub/i18n";
-import { CircleAlert, Database, KeyRound, LockKeyhole, ServerCog } from "lucide-react";
+import { CircleAlert, Database, KeyRound, LockKeyhole, Package, ServerCog } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageTopbar } from "@/components/page-topbar";
-import type { SecretMetadataResponse } from "@/lib/api-types";
+import type { InstallationResponse, SecretMetadataResponse } from "@/lib/api-types";
 
 const healthTone = {
   available: "tone-active",
@@ -21,6 +21,7 @@ export default function SecretsPage() {
   const common = getDictionary(locale);
   const t = getSecretsDictionary(locale);
   const [snapshot, setSnapshot] = useState<SecretMetadataResponse | null>(null);
+  const [installation, setInstallation] = useState<InstallationResponse | null>(null);
   const [error, setError] = useState<"forbidden" | "failed" | null>(null);
 
   useEffect(() => {
@@ -34,6 +35,14 @@ export default function SecretsPage() {
       .catch((cause: unknown) => {
         if (!(cause instanceof DOMException && cause.name === "AbortError")) setError("failed");
       });
+    // Separate from the snapshot, and quiet when it fails. An Administrator is allowed to read
+    // this and not the secrets, so one request answering 403 says nothing about the other -- and
+    // failing to name the version is not worth an error banner over a page about something else.
+    void fetch("/api/v1/settings/installation", { signal: controller.signal })
+      .then(async (response) => {
+        if (response.ok) setInstallation((await response.json()) as InstallationResponse);
+      })
+      .catch(() => undefined);
     return () => controller.abort();
   }, []);
 
@@ -55,6 +64,23 @@ export default function SecretsPage() {
             <section className="secrets-notice" role="alert">
               <CircleAlert size={20} />
               <span>{error === "forbidden" ? t.ownerOnly : t.loadError}</span>
+            </section>
+          )}
+          {installation && (
+            <section className="secrets-provider-panel" aria-labelledby="secrets-installation-title">
+              <div className="secrets-provider-icon">
+                <Package size={24} />
+              </div>
+              <div>
+                <span>{t.installation}</span>
+                <h2 id="secrets-installation-title">
+                  {t.installedVersion} {installation.version}
+                </h2>
+                <p>
+                  {t.buildIdentifier}:{" "}
+                  {installation.build === "development" ? t.buildDevelopment : <code>{installation.build}</code>}
+                </p>
+              </div>
             </section>
           )}
           {snapshot && (
