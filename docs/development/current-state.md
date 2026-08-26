@@ -80,10 +80,18 @@ propietari vol la seva propia instal·lacio en peu --entre altres coses perque u
 demana HTTPS i cap workspace local el pot donar. El que la decisio del 23 deia sobre el cost segueix
 sent cert; el que ha canviat es qui el paga i per que.
 
-Del que aixo comporta **encara no hi ha res decidit**: com s'empaqueta i es publica la imatge, com
-s'actualitza una instal·lacio existent, i quina forma te l'instal·lador. Les preguntes es van
-plantejar el 26 d'agost i el propietari no les va respondre, o sigui que segueixen obertes i cap
-implementacio hauria de comencar suposant-ne una.
+**L'especificacio es `docs/specifications/deployment.md`**, escrita el 26 d'agost. Recull dues
+decisions ja preses --imatges publiques a GHCR (D1) i primera instal·lacio a la VPS actual darrere
+el Traefik que ja hi corre (D2)-- i en deixa cinc d'obertes que bloquegen exactament la part que en
+depen: que dispara una publicacio, quantes versions enrere es suporten, si la instancia consulta la
+xarxa per saber que n'hi ha una de nova, si es firma i s'hi publica SBOM, i quina forma te
+l'instal·lador. Cap increment hauria de comencar suposant-ne una.
+
+El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/installation.md` ja
+descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
+ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de
+descarregar-los. Tampoc hi ha **cap `APP_VERSION` enlloc del codi**: una instancia no sap quina
+versio es a si mateixa, i per aixo el primer increment es aquest i no l'empaquetat.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre
