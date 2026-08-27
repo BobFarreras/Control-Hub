@@ -49,6 +49,13 @@ overlays="-f compose.yaml -f compose.release.yaml"
 smtp_user=$(sed -n 's/^SMTP_USER=//p' .env | head -1)
 [ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
 
+# The routing, where install.sh could read the proxy well enough to write it. Presence is the signal
+# for this one, and it can be: nothing ships it, so it exists only where it was generated. Leaving it
+# out would take the installation off the proxy on the first update, silently -- the containers would
+# come back up without the labels Traefik routes by, and the address would stop answering with
+# nothing in any log to say why.
+[ -f compose.proxy.yaml ] && overlays="$overlays -f compose.proxy.yaml"
+
 # --- reading the new release ---------------------------------------------------------------------
 
 download() {

@@ -68,11 +68,43 @@ de la maquina.
 
 #### El domini i el TLS
 
-L'instal·lador no instal·la cap reverse proxy i no n'edita cap. A la VPS que D2 descriu, Traefik ja
-hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi la configuracio viva
-es com una instal·lacio en tomba una altra. El que fa es escriure `traefik-control-hub.yaml` al
-directori d'instal·lacio, i copiar-lo al directori de configuracio dinamica de Traefik i recarregar
-es una passa manual i deliberada. **Fins que no es faci, res no es accessible des de fora.**
+L'instal·lador no instal·la cap reverse proxy i **no n'edita cap**. A la VPS que D2 descriu, Traefik
+ja hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi la configuracio
+viva es com una instal·lacio en tomba una altra.
+
+Pero mirar no es intervenir. Abans, escrivia sempre el mateix `traefik-control-hub.yaml`, amb
+`certResolver: letsencrypt` i un servei a `http://127.0.0.1:3001`. A la maquina de D2 les dues coses
+son falses --el resolver es diu una altra cosa, i `127.0.0.1` dins del contenidor de Traefik es el
+propi Traefik-- i aquell Traefik ni tan sols llegeix fitxers: corre amb `--providers.docker`. O
+sigui que el fitxer no tenia on anar. Escrivia una cosa que semblava correcta, que es la pitjor de
+les tres maneres de fallar.
+
+Ara inspecciona el proxy que ja corre i fa una de tres coses:
+
+| El que troba | El que fa |
+| --- | --- |
+| Traefik amb `--providers.docker`, i en pot llegir xarxa, entrypoint i resolver | Escriu `compose.proxy.yaml` amb les etiquetes del seu propi servei `web`. **No s'ha de copiar res**: es carrega amb la resta de la pila i Traefik el troba sol. |
+| Traefik amb un provider de fitxers | Escriu `traefik-control-hub.yaml` amb el resolver i l'entrypoint reals. Copiar-lo al directori dinamic i recarregar. |
+| Res, o no prou per estar-ne segur | Escriu `traefik-control-hub.yaml` generic, **diu quins valors son una suposicio** i quins ha pogut llegir. |
+
+El resolver i l'entrypoint els busca primer als arguments del mateix Traefik
+(`--certificatesresolvers.<nom>.acme...`, `--entrypoints.<nom>.address=:443`) i, si alli no hi son
+--es habitual tenir-los en un fitxer estatic--, a les etiquetes dels contenidors que aquell Traefik
+ja encamina. Llegir-ho d'un vei segueix sent llegir aquesta maquina. **El que no fa mai es
+inventar-se un nom**: un resolver inventat es una configuracio que sembla acabada i no treu mai cap
+certificat, i per aixo, quan no el sap, no escriu les etiquetes.
+
+A `compose.proxy.yaml` el port del `loadbalancer` es el **3001, el de dins del contenidor**, i no el
+que s'ha publicat a `127.0.0.1`: Traefik arriba al web per la xarxa compartida, on el port publicat
+no existeix. I el servei `web` es queda a les dues xarxes (`application` i la del proxy) perque una
+llista en un overlay substitueix en comptes de fusionar-se, i deixar-hi nomes la del proxy seria un
+web que Traefik veu i que no arriba a la seva propia API.
+
+`update.sh` carrega `compose.proxy.yaml` si hi es. Sense aixo, la primera actualitzacio tornaria a
+aixecar els contenidors sense les etiquetes i l'adreça deixaria de respondre sense res a cap log.
+
+**Si s'ha escrit el fitxer i no les etiquetes, fins que no es copii res no es accessible des de
+fora.**
 
 #### Els ports de 127.0.0.1
 

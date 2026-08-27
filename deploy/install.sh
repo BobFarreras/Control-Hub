@@ -455,28 +455,128 @@ EOF
 chmod 0600 .env
 say "  .env written, mode 0600."
 
-# The reverse proxy is neither installed nor owned by this script. On the machine D2 describes,
-# Traefik is already running and is shared with other people's services, so the installer writes
-# the routing beside the installation and says where to copy it. An installer that edits a shared
-# proxy's live configuration is how one installation takes another one down.
-cat > "$TRAEFIK_FILE" <<EOF
+# --- the reverse proxy ----------------------------------------------------------------------------
+
+# The rule from D2 does not change: this installer does not edit a shared proxy's configuration.
+# But looking is not intervening, and the file it used to write was written blind. It always said
+# `certResolver: letsencrypt` and always pointed a service at `http://127.0.0.1:3001`, and on the
+# machine D2 describes both are false -- the resolver is called something else, and 127.0.0.1
+# inside the Traefik container is Traefik. Worse, that Traefik runs with `--providers.docker` and
+# no file provider at all, so the file had nowhere to go. It wrote something that looked correct,
+# which is the worst of the three ways to fail.
+
+proxy_mode=unknown
+proxy_network=""
+proxy_resolver=""
+proxy_entrypoint=""
+
+if command -v docker > /dev/null 2>&1; then
+  # By image name, because that is the only thing a proxy container reliably has in common with
+  # another one. Names are chosen by whoever wrote the compose file.
+  proxy_id=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep -i traefik | head -1 | cut -d' ' -f1 || true)
+  if [ -n "$proxy_id" ]; then
+    # Entrypoint and command together: an image can carry the flags in either, and which one it
+    # uses is a packaging decision that has nothing to do with how Traefik is configured.
+    proxy_flags=$(docker inspect --format '{{range .Config.Entrypoint}}{{.}} {{end}}{{range .Config.Cmd}}{{.}} {{end}}' "$proxy_id" 2>/dev/null || true)
+    proxy_words=$(printf '%s' "$proxy_flags" | tr ' ' '\n')
+
+    # File first, labels second, so that a Traefik running both ends up on labels. Labels are the
+    # mode where nothing of the proxy's has to be touched at all: the routing is a property of
+    # this installation's own container, and Traefik was already told to read those.
+    case "$proxy_flags" in *--providers.file*) proxy_mode=file ;; esac
+    case "$proxy_flags" in *--providers.docker*) proxy_mode=labels ;; esac
+
+    proxy_resolver=$(printf '%s\n' "$proxy_words" | sed -n 's/^--certificatesresolvers\.\([A-Za-z0-9_-][A-Za-z0-9_-]*\)\..*$/\1/p' | head -1)
+    proxy_entrypoint=$(printf '%s\n' "$proxy_words" | sed -n 's/^--entrypoints\.\([A-Za-z0-9_-][A-Za-z0-9_-]*\)\.address=:443.*$/\1/p' | head -1)
+    # The network Traefik shares with the services it routes to. `bridge`, `host` and `none` are
+    # Docker's own and are never that network.
+    proxy_network=$(docker inspect --format '{{range $name, $config := .NetworkSettings.Networks}}{{$name}} {{end}}' "$proxy_id" 2>/dev/null | tr ' ' '\n' | grep -vxE 'bridge|host|none|' | head -1 || true)
+
+    # Traefik can declare its resolvers and entrypoints in a static file rather than on the command
+    # line, and then the only place those names appear is on the containers already routed by it.
+    # Reading one off a neighbour is still reading this machine; the alternative is a guess, and a
+    # guessed resolver name is a configuration that looks finished and never gets a certificate.
+    if [ -z "$proxy_resolver" ] || [ -z "$proxy_entrypoint" ]; then
+      neighbour_labels=$(
+        docker ps -q 2>/dev/null | while read -r id; do
+          docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
+{{end}}' "$id" 2>/dev/null || true
+        done
+      )
+      [ -n "$proxy_resolver" ] ||
+        proxy_resolver=$(printf '%s\n' "$neighbour_labels" | sed -n 's/^traefik\.http\.routers\..*\.tls\.certresolver=\(.*\)$/\1/p' | head -1)
+      [ -n "$proxy_entrypoint" ] ||
+        proxy_entrypoint=$(printf '%s\n' "$neighbour_labels" | sed -n 's/^traefik\.http\.routers\..*\.entrypoints=\([A-Za-z0-9_-]*\).*$/\1/p' | head -1)
+    fi
+  fi
+fi
+
+say ""
+say "Reverse proxy"
+rm -f compose.proxy.yaml
+if [ "$proxy_mode" = labels ] && [ -n "$proxy_network" ] && [ -n "$proxy_resolver" ] && [ -n "$proxy_entrypoint" ]; then
+  # The port here is 3001, the port inside the container, and not the one on 127.0.0.1 that the
+  # rest of this file chose. Traefik reaches the web service across the shared network, where the
+  # published port does not exist and never did.
+  cat > compose.proxy.yaml <<EOF
+# Routing for this installation, written by install.sh from the Traefik running on this machine.
+#
+# That Traefik reads Docker labels, so this file is this installation describing its own web
+# service to it. Nothing of the proxy's is touched: a label belongs to this container, and Traefik
+# was already told to read labels.
+services:
+  web:
+    networks: [application, $proxy_network]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "$proxy_network"
+      traefik.http.routers.control-hub.rule: "Host(\`$domain\`)"
+      traefik.http.routers.control-hub.entrypoints: "$proxy_entrypoint"
+      traefik.http.routers.control-hub.tls.certresolver: "$proxy_resolver"
+      traefik.http.services.control-hub.loadbalancer.server.port: "3001"
+
+networks:
+  $proxy_network:
+    external: true
+EOF
+  say "  Traefik here reads labels. compose.proxy.yaml written:"
+  say "    network $proxy_network, entrypoint $proxy_entrypoint, resolver $proxy_resolver."
+  say "  Nothing to copy anywhere; it is loaded with the rest of the stack."
+else
+  # Everything else writes the file, and says plainly which parts of it were read off this machine
+  # and which are a guess. A resolver name this script invented would be a configuration that
+  # looks finished and produces no certificate.
+  resolver=${proxy_resolver:-letsencrypt}
+  entrypoint=${proxy_entrypoint:-websecure}
+  cat > "$TRAEFIK_FILE" <<EOF
 # Routing for this installation, for the Traefik already running on this machine.
 # Copy it into Traefik's dynamic configuration directory; it is not read from here.
 http:
   routers:
     control-hub:
       rule: "Host(\`$domain\`)"
-      entryPoints: [websecure]
+      entryPoints: [$entrypoint]
       service: control-hub
       tls:
-        certResolver: letsencrypt
+        certResolver: $resolver
   services:
     control-hub:
       loadBalancer:
         servers:
           - url: "http://127.0.0.1:$web_port"
 EOF
-say "  $TRAEFIK_FILE written."
+  say "  $TRAEFIK_FILE written."
+  if [ "$proxy_mode" = file ]; then
+    say "  Traefik here reads a file provider. Copy it into that directory and reload."
+  elif [ "$proxy_mode" = labels ]; then
+    say "  Traefik here reads labels, but not everything needed for them could be read off it:"
+    say "    network «${proxy_network:-unknown}», entrypoint «${proxy_entrypoint:-unknown}», resolver «${proxy_resolver:-unknown}»."
+    say "  Nothing was invented. Fill the gaps in by hand, or use the file above."
+  else
+    say "  No Traefik was found running here, so nothing about it could be read."
+  fi
+  [ -n "$proxy_resolver" ] || say "  «$resolver» is a guess: check what the certificate resolver is really called."
+fi
 
 # --- the release ----------------------------------------------------------------------------------
 
@@ -541,6 +641,9 @@ fi
 # not is an installation that silently loses a mount on its first update.
 overlays="-f compose.yaml -f compose.release.yaml -f compose.production.yaml"
 [ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+# Presence is the signal for this one, and it can be: it is written by this script rather than
+# shipped, so it exists only where the proxy was read successfully.
+[ -f compose.proxy.yaml ] && overlays="$overlays -f compose.proxy.yaml"
 
 compose() {
   docker compose --env-file .env --env-file release.env $overlays "$@"
@@ -575,7 +678,11 @@ fi
 say ""
 say "Control Hub $version is running."
 say ""
-say "  Address:       https://$domain, once $TRAEFIK_FILE reaches Traefik"
+if [ -f compose.proxy.yaml ]; then
+  say "  Address:       https://$domain, as soon as Traefik notices the labels"
+else
+  say "  Address:       https://$domain, once $TRAEFIK_FILE reaches Traefik"
+fi
 say "  Owner:         $owner_email, $owner_state"
 say "  Configuration: .env, here in $(pwd)"
 say "  Secrets:       $SECRETS_DIRECTORY, mode 0400, owned by root"
@@ -583,8 +690,13 @@ say "  Release:       release.env names $version"
 say ""
 say "What this installer did not do:"
 say ""
-say "  - It did not touch Traefik. Copy $TRAEFIK_FILE into its dynamic configuration"
-say "    directory and reload it; nothing is reachable from outside until you do."
+if [ -f compose.proxy.yaml ]; then
+  say "  - It did not touch Traefik. compose.proxy.yaml gives this installation the labels"
+  say "    that Traefik already reads, and nothing of the proxy's own was changed."
+else
+  say "  - It did not touch Traefik. Copy $TRAEFIK_FILE into its dynamic configuration"
+  say "    directory and reload it; nothing is reachable from outside until you do."
+fi
 say "  - Modules that are off: everything not in «${flags:-none}». Turn one on by editing"
 say "    CONTROL_HUB_FLAGS in .env and starting the stack again."
 say "  - No connector is configured. Mail, calendar and the rest are set up from the panel by"

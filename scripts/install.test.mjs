@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createServer } from "node:net";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -114,7 +114,53 @@ function packageDirectory() {
     writeFileSync(join(directory, file), "# fixture\n");
   }
   writeFileSync(join(directory, "deploy", "postgres", "init-app-user.sh"), "# fixture\n");
+  fakeDocker(directory, "");
   return directory;
+}
+
+/**
+ * A `docker` on PATH that answers whatever a test needs it to.
+ *
+ * The installer looks at the running Traefik to decide how to publish itself, and a test that let
+ * it look at the real daemon would assert something about whichever containers happen to be up on
+ * the machine running the suite. Every package directory gets one of these reporting an empty
+ * daemon, so the default is «no proxy found» everywhere; the proxy tests replace it.
+ *
+ * `containers` is the `docker ps --format '{{.ID}} {{.Image}}'` output, and `answers` maps a
+ * fragment of an inspect format string to what that inspect should print.
+ */
+function fakeDocker(directory, containers, answers = {}) {
+  const bin = join(directory, "bin");
+  mkdirSync(bin, { recursive: true });
+  const branches = Object.entries(answers)
+    // `%b`, not `%s`: the replies are JSON-quoted into the script, so a newline in one arrives as a
+    // literal backslash-n and only `%b` turns it back into the line break the real format produces.
+    .map(([needle, reply]) => `    *${needle}*) printf '%b\\n' ${JSON.stringify(reply)} ;;`)
+    .join("\n");
+  writeFileSync(
+    join(bin, "docker"),
+    [
+      "#!/bin/sh",
+      'if [ "$1" = ps ]; then',
+      // `%b` here too, and it matters more than it looks: without the real trailing newline a
+      // `while read` over this output assigns the line and then returns non-zero, so the loop body
+      // never runs and the installer sees a daemon with no containers in it.
+      `  printf '%b' ${JSON.stringify(containers)}`,
+      "  exit 0",
+      "fi",
+      'if [ "$1" = inspect ]; then',
+      '  case "$*" in',
+      branches,
+      "    *) : ;;",
+      "  esac",
+      "  exit 0",
+      "fi",
+      "exit 0",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+  return bin;
 }
 
 function run(
@@ -134,6 +180,8 @@ function run(
           .join("\n") + "\n",
       env: {
         ...process.env,
+        // Prepended, so the stub wins over a real docker on the machine running the suite.
+        PATH: `${join(directory, "bin")}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
         SECRETS_DIRECTORY: join(directory, "secrets"),
         // A `file://` URL, which `curl` reads and `wget` does not -- so on a machine with only
         // `wget` nothing downloads and every test that asserts a refusal passes for the wrong
@@ -295,6 +343,122 @@ test("ports already chosen are kept, never probed again", () => {
     assert.ok(again.ok, again.output);
     assert.match(readFileSync(join(directory, ".env"), "utf8"), /^WEB_PORT=3999$/m);
   });
+});
+
+test("it publishes itself the way the Traefik on this machine actually works", () => {
+  // The third of P8's defects, and the one that failed most quietly. The installer always wrote the
+  // same traefik-control-hub.yaml: `certResolver: letsencrypt`, and a service at
+  // `http://127.0.0.1:3001`. On the machine D2 describes the resolver is called `myresolver`,
+  // 127.0.0.1 inside the Traefik container is Traefik itself, and that Traefik runs with
+  // `--providers.docker` and no file provider at all -- so the file had nowhere to go. It produced
+  // something that read as correct, which is worse than producing nothing.
+  cleanly((directory) => {
+    fakeDocker(directory, "abc123 traefik:v3.1\n", {
+      "Config.Cmd":
+        "traefik --providers.docker=true --entrypoints.web.address=:80 " +
+        "--entrypoints.websecure.address=:443 --certificatesresolvers.myresolver.acme.tlschallenge=true ",
+      NetworkSettings: "traefik-public bridge "
+    });
+
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+
+    const proxy = readFileSync(join(directory, "compose.proxy.yaml"), "utf8");
+    assert.match(proxy, /traefik\.http\.routers\.control-hub\.tls\.certresolver: "myresolver"/);
+    assert.match(proxy, /traefik\.http\.routers\.control-hub\.entrypoints: "websecure"/);
+    assert.match(proxy, /traefik\.docker\.network: "traefik-public"/);
+    assert.match(proxy, /traefik\.http\.routers\.control-hub\.rule: "Host\(`hub\.invalid`\)"/);
+    // The web service keeps the network it already had. A list replaces rather than merges, so an
+    // overlay naming only the proxy network would take the web tier off `application` -- and the
+    // symptom would be a site that Traefik reaches and that cannot reach its own API.
+    assert.match(proxy, /networks: \[application, traefik-public\]/);
+    assert.match(proxy, /^ {2}traefik-public:\n {4}external: true$/m);
+    // 3001 is the port inside the container. The published 127.0.0.1 port does not exist on the
+    // network Traefik uses to reach it, and naming it here would route to nothing.
+    assert.match(proxy, /loadbalancer\.server\.port: "3001"/);
+    assert.doesNotMatch(proxy, /127\.0\.0\.1/);
+
+    // Nothing to carry anywhere, so the closing report must not send anybody to copy a file.
+    assert.doesNotMatch(result.output, /Copy traefik-control-hub\.yaml/);
+  });
+});
+
+test("it reads the resolver off a neighbour when Traefik does not name it on the command line", () => {
+  // The arrangement on the machine D2 describes. Traefik is started with `--providers.docker=true`
+  // and its resolvers declared in a static file, so the command line says nothing about them -- and
+  // the only place `myresolver` appears anywhere is on the containers already routed by it.
+  // Reading it off a neighbour is still reading this machine, which is the whole distinction
+  // between looking and inventing.
+  cleanly((directory) => {
+    fakeDocker(directory, "abc123 traefik:v3.1\n", {
+      "Config.Cmd": "traefik --providers.docker=true ",
+      NetworkSettings: "traefik-public bridge ",
+      "Config.Labels":
+        "traefik.enable=true\ntraefik.http.routers.n8n.entrypoints=websecure\n" +
+        "traefik.http.routers.n8n.tls.certresolver=myresolver\ntraefik.docker.network=traefik-public\n"
+    });
+
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    const proxy = readFileSync(join(directory, "compose.proxy.yaml"), "utf8");
+    assert.match(proxy, /certresolver: "myresolver"/);
+    assert.match(proxy, /entrypoints: "websecure"/);
+    assert.doesNotMatch(result.output, /is a guess/);
+  });
+});
+
+test("it invents no resolver name when it cannot read one", () => {
+  // «letsencrypt» is what it used to write on every machine. Keeping that as a fallback is fine as
+  // long as it is labelled as the guess it is: a name this script made up produces a configuration
+  // that looks finished and never obtains a certificate.
+  cleanly((directory) => {
+    fakeDocker(directory, "abc123 traefik:v3.1\n", {
+      "Config.Cmd": "traefik --providers.docker=true ",
+      NetworkSettings: "traefik-public bridge "
+    });
+
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    assert.equal(existsSync(join(directory, "compose.proxy.yaml")), false, "it published itself on a guess");
+    assert.match(result.output, /is a guess/);
+    assert.match(readFileSync(join(directory, "traefik-control-hub.yaml"), "utf8"), /certResolver: letsencrypt/);
+  });
+});
+
+test("a Traefik that reads files is told so, and gets the resolver it really uses", () => {
+  cleanly((directory) => {
+    fakeDocker(directory, "abc123 traefik:v2.11\n", {
+      "Config.Cmd":
+        "traefik --providers.file.directory=/etc/traefik/dynamic " +
+        "--entrypoints.websecure.address=:443 --certificatesresolvers.acmehttp.acme.email=x@y.z ",
+      NetworkSettings: "traefik-public "
+    });
+
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    assert.equal(existsSync(join(directory, "compose.proxy.yaml")), false);
+    const file = readFileSync(join(directory, "traefik-control-hub.yaml"), "utf8");
+    assert.match(file, /certResolver: acmehttp/);
+    assert.doesNotMatch(result.output, /is a guess/);
+    assert.match(result.output, /file provider/);
+  });
+});
+
+test("with no proxy running it says so instead of describing one", () => {
+  cleanly((directory) => {
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    assert.equal(existsSync(join(directory, "compose.proxy.yaml")), false);
+    assert.match(result.output, /No Traefik was found running here/);
+  });
+});
+
+test("the update command loads the routing the installer wrote", () => {
+  // Nothing ships compose.proxy.yaml, so its presence is a fact about this installation. An update
+  // that left it out would bring the containers back without the labels Traefik routes by, and the
+  // address would stop answering with nothing in any log to say why.
+  assert.match(read("deploy/update.sh"), /compose\.proxy\.yaml/, "update.sh drops the routing on the first update");
+  assert.match(install, /compose\.proxy\.yaml/);
 });
 
 test("a relay user with no password is refused rather than half-configured", () => {
@@ -516,7 +680,7 @@ test("it does not write outside the installation directory and the secrets direc
       target.startsWith("$path") ||
         target.startsWith("$SECRETS_DIRECTORY") ||
         target.startsWith("$TRAEFIK_FILE") ||
-        [".env", "release.env.new", "/dev/null"].includes(target),
+        [".env", "compose.proxy.yaml", "release.env.new", "/dev/null"].includes(target),
       `install.sh writes to ${target}`
     );
   }
