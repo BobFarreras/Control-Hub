@@ -4,6 +4,92 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.4.0 - 2026-08-27
+
+Una versio que es publica, s'instal·la i s'actualitza sola, i la frontera per on un agent extern
+entra al producte sense que ningu li doni una clau amb permisos totals.
+
+### Desplegament, instal·lacio i actualitzacions (Fase 9)
+
+- **Cada versio publica quatre imatges** --web, API, worker i migracions-- per a `linux/amd64` i
+  `linux/arm64`, **firmades per digest** amb cosign sense claus, amb SBOM i provinenca. Una
+  instal·lacio aixeca digests, no etiquetes: dues instal·lacions de la mateixa versio corren
+  exactament els mateixos bytes.
+- **`install.sh` fa sis preguntes** --domini, primer Owner, organitzacio, SMTP, moduls i
+  backups--, valida cada resposta alli mateix, genera els sis secrets, els escriu com a fitxers
+  `0400` de `root`, aixeca l'stack i crea el primer Owner. Nomes POSIX sh i docker: cap node, cap
+  pnpm, cap jq, cap openssl.
+- **No pregunta cap contrasenya ni n'imprimeix cap.** El compte del primer Owner es crea amb 32
+  bytes que ningu no veu mai, i l'Owner rep un enllac per posar-se la seva. El preu esta acceptat i
+  dit: aquell correu es l'unic cami cap al compte, o sigui que l'SMTP es prova **abans** de crear
+  res.
+- **Tornar a executar l'instal·lador es el cas normal**, no un accident: les respostes ja donades
+  surten com a valors per defecte i cap secret ja escrit no es regenera.
+- **`update.sh` actualitza en set passos i s'atura on toca.** Fa el bolcat de la base **abans** de
+  descarregar res, i el verifica --un `pg_dump` que mor a mig cami deixa un arxiu valid de 20 bytes
+  que `gzip -t` accepta, i una copia que ningu no pot restaurar es pitjor que cap copia. Si les
+  migracions fallen, la versio anterior segueix corrent intacta. El fitxer que anomena els digests
+  de la versio que funcionava es conserva, perque es tot el que un rollback necessita.
+- **La instal·lacio avisa que hi ha versio nova, i no ho fa el navegador.** Un cop al dia el worker
+  demana el manifest publicat i deixa el resultat a Valkey; la peticio no identifica ningu i no diu
+  ni quina versio corre. `CONTROL_HUB_UPDATE_CHECK=false` **esborra** l'horari, no nomes deixa
+  d'afegir-ne un. L'avis diu quanta feina representa l'actualitzacio i ofereix `./update.sh` per
+  copiar: **no hi ha cap boto que actualitzi**, perque l'alternativa vol el socket de Docker a
+  l'abast d'un navegador.
+- La guia sencera es a `docs/runbooks/installation.md`, i com es publica una versio a
+  `docs/runbooks/release.md`.
+
+### Agents i MCP: OAuth 2.1 davant del producte (Fase 10)
+
+- **Control Hub ja pot ser servidor de recursos.** Un agent o una eina externa s'autoritza amb
+  OAuth 2.1 --emissor propi, PKCE, redirects a `127.0.0.1` per als clients d'escriptori i
+  `resource` obligatori-- i rep un token opac de referencia que viu trenta minuts. El refresh rota
+  i en guarda el llinatge, i revocar-lo talla la branca sencera.
+- **Un cataleg de sis eines de nomes lectura** --llistar i obrir clients, llistar i obrir tickets, i
+  dos resums--, i l'autoritat es decideix al moment de gastar el token, no al moment d'emetre'l:
+  cap agent no hereta mes del que la persona que el va connectar podia veure. Cada projeccio
+  retorna menys del que ensenya la pantalla.
+- **Pantalles noves** per connectar un agent, decidir que pot llegir, administrar-los i rotar-ne les
+  claus sense tallar-li el servei.
+- Amb la flag tancada **no existeix ni `/mcp` ni cap ruta d'OAuth**: no s'emet cap token i no es
+  publica cap cataleg. Purgar codis i tokens caducats, en canvi, no consulta la flag --el que es va
+  escriure mentre era oberta ha de caducar igualment.
+
+### Correu entrant i bustia de suport
+
+- **Connectors de correu entrant** per IMAP, Google i Microsoft. **No es desa MIME cru, ni HTML
+  remot, ni adjunts**: nomes una previsualitzacio normalitzada de fins a 4.000 caracters.
+- **Classificar es un acte d'una persona, no una coincidencia d'adreca.** La UI suggereix un client
+  si el remitent quadra, i un membre amb `tickets:manage` vincula el correu a un ticket obert, en
+  crea un de nou amb els objectius d'SLA vigents, o el descarta. Descartar no elimina res: conserva
+  qui ho ha decidit i quan. Dos operadors no poden classificar el mateix correu.
+- **Les respostes surten pel flux confirmat**, i el ticket mostra l'estat real de l'enviament.
+  `succeeded` vol dir que el proveidor l'ha acceptat --no que ningu l'hagi llegit.
+- **OAuth delegat per als connectors**, amb refresh concurrent, revocacio i tokens segellats al
+  vault.
+
+### Credencials humanes i secrets de plataforma (Fase 12, parcial)
+
+- **Un cataleg per trobar un acces compartit** --de quin client es, quina aplicacio, qui en respon--
+  **sense desar-ne mai el valor**. Obrir-lo porta a Bitwarden, i nomes despres de reautenticar-se,
+  amb MFA, permisos i auditoria. Control Hub no rep, no desa, no revela i no exporta cap password.
+- **Rotar i recuperar els secrets bootstrap sense exposar-ne els valors**, amb el runbook a
+  `docs/runbooks/platform-secret-rotation.md`.
+
+### Desenvolupament
+
+- **De dos a quatre agents poden treballar alhora sobre el repositori** sense compartir directori,
+  branca, processos, secrets locals, ports ni base de dades. Cada tasca te el seu worktree, el seu
+  projecte Compose i les seves credencials generades; cap workspace no rep mai secrets de
+  produccio, i destruir-ne un es nega si hi ha canvis sense commit.
+
+### Nota d'activacio
+
+**Els moduls nous queden darrere la seva feature flag, apagada**: `mcp`, `mail`,
+`connector_oauth`, `connector_actions` i `credential_catalog`. Publicar aquesta versio no
+n'encen cap. L'instal·lador pregunta quins vols i escriu `CONTROL_HUB_FLAGS` a `.env`; el valor per
+defecte es nomes `projects_and_time`, i es pot canviar despres editant aquell fitxer.
+
 ## v0.3.0 - 2026-08-24
 
 Infraestructura operable, connectors de proveidors i control reproduible del consum variable.

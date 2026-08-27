@@ -34,7 +34,7 @@ declare const __API_BUILD__: string | undefined;
 /**
  * Which build this is, for the case where two of them share a version number.
  *
- * `develop` publishes an image per commit, so every one between two tags reports the same `0.3.0`.
+ * `develop` publishes an image per commit, so every one between two tags reports the same version.
  * Without something else to tell them apart, "you are running the latest" is a claim nobody can
  * check on exactly the images where checking matters — the ones being tested because something
  * looks wrong.

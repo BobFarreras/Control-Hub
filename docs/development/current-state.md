@@ -55,11 +55,15 @@ No queda cap proposta de Dependabot oberta.
 `feature/phase-6-connector-platform` i `feature/phase-7-1-infrastructure-n8n` ja no calen per a
 res.
 
-**Release `v0.3.0` preparada el 24 d'agost de 2026** des de `develop`, despres de passar les vuit
-portes de CI. Inclou la 7.3, Vercel, Supabase, consum i costos variables, ingestio d'OpenAI,
-Anthropic i OpenCode, i el plugin d'OpenCode. **Publicar no encen res**: `connectors`,
-`infrastructure` i `usage_costs` segueixen darrere les seves flags. **No s'ha desplegat res
-enlloc**; una release es codi versionat, no una instal·lacio.
+**Release `v0.4.0` preparada el 27 d'agost de 2026** des de `develop`, amb l'especificacio del
+desplegament sencera --P1 a P7--, la Fase 10, la part de la 12 que cataloga credencials, la bustia
+de suport i la Fase X a dins. Es **la primera versio que la canonada publica de debo**: fins ara
+cap release no portava artefactes, o sigui que `releases/latest/download/release.json` responia 404
+i cap instal·lador tenia res a descarregar. **Publicar no encen res**: `connectors`,
+`infrastructure`, `usage_costs`, `connector_oauth`, `connector_actions`, `mail`, `mcp` i
+`credential_catalog` segueixen darrere les seves flags, i l'instal·lador nomes proposa
+`projects_and_time`. La `v0.3.0`, preparada el 24 d'agost, **no es va instal·lar enlloc**; aquesta
+es la que ha d'arribar a la VPS.
 
 La comparacio contra un `main` tan endarrerit va fer que dues portes miressin historial que les
 propostes cap a `develop` no havien mirat mai, i van sortir tres coses. Gitleaks va parar en un
@@ -72,7 +76,14 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El seguent pas es desplegar Control Hub a la VPS**, decidit el 26 d'agost de 2026 i despres de
+**El codi del desplegament esta acabat i etiquetat.** `docs/specifications/deployment.md` es
+sencera --P1 a P7-- i la `v0.4.0` es la primera etiqueta que passa per la canonada. **El seguent
+pas ja no es escriure res: es instal·lar-la a la VPS** darrere el Traefik que ja hi corre, seguint
+`docs/runbooks/installation.md`. Queda obert un buit conegut de P3: les imatges de tercers
+--PostgreSQL, Valkey i Mailpit-- segueixen anant per etiqueta i no per digest, o sigui que dues
+instal·lacions de la mateixa versio poden no portar el mateix PostgreSQL.
+
+**Desplegar a la VPS es va decidir el 26 d'agost de 2026**, despres de
 fusionar la Fase 10 i la Fase 12 a `develop` el mateix dia (PR #43 i PR #44, `develop` a `2197c06`).
 Aixo **reverteix en part la decisio del 23 d'agost** que ajornava la Fase 9 fins que una tercera
 empresa instal·les el producte: el motiu per avancar-la no es aquella tercera empresa, es que el
@@ -248,9 +259,9 @@ sense regenerar res, i refusa les mateixes releases que `update.sh` --la conform
 validadors es una prova i no un comentari. Dotze mutacions sobre `install.sh` posen la suite
 vermella.
 
-**El seguent pas ja no es un increment, es el desplegament**: publicar la primera etiqueta i
+**Amb P7, el seguent pas ja no era un increment sino el desplegament**: publicar la primera etiqueta i
 instal·lar-la a la VPS darrere el Traefik que ja hi corre. Fins que algu no publiqui, no hi ha cap
-`release.json` per llegir i l'instal·lador no te res a descarregar.
+`release.json` per llegir i l'instal·lador no te res a descarregar. La `v0.4.0` es aquella etiqueta.
 
 **Com es publica esta escrit abans de fer-ho, a [`docs/runbooks/release.md`](../runbooks/release.md)**:
 els quatre passos, el commit de versio que altrament s'oblida --i que fa que una instal·lacio nova

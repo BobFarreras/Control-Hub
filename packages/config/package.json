@@ -1,6 +1,6 @@
 {
   "name": "@control-hub/config",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "//": "The flag registry has a subpath of its own so a consumer can take it without the environment schema, and with it zod. The web tier needs the flags and nothing else.",
