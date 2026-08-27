@@ -176,10 +176,13 @@ test("the backup is checked rather than assumed", () => {
 
 test("the release publishes what the update command reads", () => {
   assert.match(workflow, /node scripts\/release-env\.mjs --manifest release\.json --out release\.env/);
-  assert.match(
-    workflow,
-    /gh release upload "\$GITHUB_REF_NAME" release\.json release\.env deploy\/update\.sh --clobber/
-  );
+  // The assets by name rather than the whole command line: the list grew when the installer joined
+  // it, and a test that pins the exact line turns adding an asset into a test failure that says
+  // nothing about whether anything broke.
+  const upload = workflow.slice(workflow.indexOf('gh release upload "$GITHUB_REF_NAME"'));
+  for (const asset of ["release.json", "release.env", "deploy/update.sh"]) {
+    assert.ok(upload.slice(0, 400).includes(asset), `the release does not publish ${asset}`);
+  }
 });
 
 test("the command itself reaches the installations that need it", () => {

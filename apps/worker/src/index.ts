@@ -33,7 +33,9 @@ import { sweepAlertsAcrossTenants } from "./infrastructure/alert-sweep.js";
 import { purgeResolvedAlerts } from "./infrastructure/purge.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
+import { runUpdateCheck, updateCheckJobName, valkeyUpdateStore } from "./update-check.js";
 import { UsageRecordIngestor } from "./usage/ingestion.js";
+import { workerVersion } from "./version.js";
 
 const environment = parseWorkerEnvironment(process.env);
 const logger = createLogger("control-hub-worker", environment.LOG_LEVEL);
@@ -56,6 +58,7 @@ const SCHEDULE_RECONCILE_JOB = "connector-schedule-reconcile";
 const ALERT_SWEEP_JOB = "infrastructure-alert-sweep";
 const OAUTH_OUTBOX_JOB = "connector-oauth-outbox";
 const ACTION_OUTBOX_JOB = "connector-action-outbox";
+const UPDATE_CHECK_JOB = updateCheckJobName;
 
 // Read once at boot, like every other flag decision in a composition root. Turning the phase
 // off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
@@ -65,6 +68,9 @@ const mailEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_F
 const oauthEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_oauth");
 const actionsEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_actions");
 const mailConnectorTypes = new Set(["imap", "gmail", "microsoft_graph_mail"]);
+// Not a feature flag: this is the one thing this process does that leaves the building, so it is
+// its own variable and it is named after what it does. See `docs/runbooks/installation.md`.
+const updateCheckEnabled = environment.CONTROL_HUB_UPDATE_CHECK;
 
 /**
  * One more connection to Valkey, for the circuit breaker.
@@ -127,6 +133,7 @@ const worker = new Worker(
       return { ...records, alerts };
     }
     if (job.name === ALERT_SWEEP_JOB) return sweepAlerts();
+    if (job.name === UPDATE_CHECK_JOB) return checkForUpdate();
     if (job.name === OAUTH_OUTBOX_JOB) return relayOAuthOutbox();
     if (job.name === ACTION_OUTBOX_JOB) return relayActionOutbox();
     if (job.name === ESCALATION_JOB) {
@@ -266,6 +273,28 @@ async function relayActionOutbox() {
 }
 
 /**
+ * The daily look at whether a newer version has been published.
+ *
+ * The store rides on the breaker's connection rather than opening a fifth one. One `GET` and one
+ * `SET` a day do not need a client of their own, and this is the connection that is deliberately
+ * not the one BullMQ blocks on.
+ *
+ * Nothing here throws. A check that cannot reach GitHub is not a failed job -- it is a question
+ * that will be asked again tomorrow -- and a red job on somebody's queue for an unreachable
+ * network is noise that teaches people to ignore red jobs.
+ */
+async function checkForUpdate() {
+  const outcome = await runUpdateCheck({
+    version: workerVersion(),
+    store: valkeyUpdateStore(circuitClient),
+    enabled: updateCheckEnabled
+  });
+  if (outcome.status === "unreachable") logger.warn(outcome, "could not read the published release manifest");
+  if (outcome.status === "available") logger.info(outcome, "a newer version has been published");
+  return outcome;
+}
+
+/**
  * One pass of the alert engine over every tenant.
  *
  * Recomputed rather than accumulated, exactly like the escalation sweep above it: missing a pass
@@ -350,6 +379,28 @@ if (infrastructureEnabled) {
   await queue.removeJobScheduler(ALERT_SWEEP_JOB);
 }
 
+/**
+ * Once a day, and removed outright when the variable says no.
+ *
+ * Removed rather than merely not created, for the same reason as the alert sweep above: a switch
+ * that only stopped new schedules would leave the one the last release installed still making the
+ * request, and this is the request somebody switched off. `CONTROL_HUB_UPDATE_CHECK=false` has to
+ * mean nothing leaves this machine, not «nothing new leaves it».
+ *
+ * The interval is the schedule's part of «once a day». The other part is in `runUpdateCheck`,
+ * which sends no request at all if it finds a recent answer -- so restarts, replicas and manual
+ * triggers cannot add up to more than one look a day between them.
+ */
+if (updateCheckEnabled) {
+  await queue.upsertJobScheduler(
+    UPDATE_CHECK_JOB,
+    { every: 24 * 60 * 60 * 1000 },
+    { name: UPDATE_CHECK_JOB, opts: { removeOnComplete: 7, removeOnFail: 7 } }
+  );
+} else {
+  await queue.removeJobScheduler(UPDATE_CHECK_JOB);
+}
+
 for (const [name, instance] of [
   ["system", worker],
   ["connectors", connectorWorker]
@@ -378,12 +429,16 @@ logger.info(
       SCHEDULE_RECONCILE_JOB,
       OAUTH_OUTBOX_JOB,
       ACTION_OUTBOX_JOB,
-      ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : [])
+      ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : []),
+      ...(updateCheckEnabled ? [UPDATE_CHECK_JOB] : [])
     ],
     infrastructure: infrastructureEnabled,
     mail: mailEnabled,
     oauth: oauthEnabled,
-    actions: actionsEnabled
+    actions: actionsEnabled,
+    // Logged at boot so that «is this installation talking to the internet» is answerable from
+    // the first line of the log rather than by reading the configuration.
+    updateCheck: updateCheckEnabled
   },
   "worker ready"
 );

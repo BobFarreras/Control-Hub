@@ -10,6 +10,15 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       BETTER_AUTH_SECRET: !reset null
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+      # The base file points these at Mailpit, which is right for development and is a catch-all
+      # that accepts anything for anybody. A production installation has to name a real relay, and
+      # `SMTP_HOST` is required rather than defaulted for that reason: a default here would be an
+      # installation that silently keeps delivering the Owner's password-reset link to a container
+      # on the same machine.
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required in production}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: "${SMTP_SECURE:-true}"
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM is required in production}
     secrets:
       - source: database_url
         target: database_url
@@ -45,6 +54,43 @@ services:
         uid: "1000"
         gid: "1000"
         mode: 0400
+
+  # The first Owner, in production. Same job as in the base file, with the credentials arriving as
+  # mounted files instead of environment values -- and the mail settings that decide whether the
+  # only link into that account ever leaves the building.
+  bootstrap:
+    environment:
+      SECRETS_PROVIDER: ${SECRETS_PROVIDER:-runtime_files}
+      DATABASE_URL: !reset null
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
+      MIGRATION_DATABASE_URL: !reset null
+      MIGRATION_DATABASE_URL_FILE: /run/secrets/migration_database_url
+      BETTER_AUTH_SECRET: !reset null
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required in production}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: "${SMTP_SECURE:-true}"
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM is required in production}
+    secrets:
+      - source: migration_database_url
+        target: migration_database_url
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: better_auth_secret
+        target: better_auth_secret
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+  # Mailpit does not run on a customer's server.
+  #
+  # It is a development mail catcher with `MP_SMTP_AUTH_ACCEPT_ANY`, and although it only publishes
+  # on 127.0.0.1 it has no business on a machine that holds a customer's data. A profile is how it
+  # goes away without changing how development or CI start the stack: those never load this file,
+  # so nothing there moves, and here the service becomes one that has to be asked for by name.
+  mailpit:
+    profiles: ["mail-catcher"]
 
   postgres:
     environment:

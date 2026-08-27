@@ -197,6 +197,71 @@ a {
 .workspace {
   min-width: 0;
 }
+/*
+  The update notice, above the topbar of every screen.
+
+  Not sticky, unlike the topbar below it: it is worth seeing and it is not worth a permanent row
+  of the viewport on an installation that has been out of date for a fortnight.
+*/
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  font-size: 13px;
+  background: var(--brand-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.update-banner-icon {
+  display: inline-flex;
+  color: var(--brand);
+}
+.update-banner-body {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.update-banner-body p {
+  margin: 0;
+}
+.update-banner-body strong {
+  color: var(--text);
+}
+.update-banner-body span {
+  color: var(--muted);
+}
+.update-banner-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-banner-command code {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.update-banner-command .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.update-banner-aside {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  text-align: right;
+  color: var(--muted);
+}
+.update-banner-aside a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--brand);
+  font-weight: 600;
+}
 .topbar {
   height: 64px;
   padding: 0 24px;

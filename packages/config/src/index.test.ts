@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { featureFlags } from "./flags.js";
 import { runtimeSecretVariables, secretFileVariable } from "./secret-file.js";
 import {
   apiEnvironmentSchema,
@@ -156,6 +157,21 @@ describe("the variables the task runner has to carry", () => {
     const secretFiles = runtimeSecretVariables.map(secretFileVariable);
 
     expect([...read, ...secretFiles].filter((name) => !declared.has(name))).toEqual([]);
+  });
+
+  it("lists in the installation runbook every module the installer can be asked for", async () => {
+    // `deploy/install.sh` asks which modules to turn on and sends the reader to the runbook for the
+    // list, because a shell script cannot hold one without it drifting from this registry. The
+    // runbook can drift too -- so it does not get to. A flag added here and not written there is a
+    // capability nobody installing can discover exists.
+    const runbook = await readFile(new URL("../../../docs/runbooks/installation.md", import.meta.url), "utf8");
+    const start = runbook.indexOf("#### Moduls");
+    expect(start, "the runbook has no modules section").toBeGreaterThan(-1);
+    const section = runbook.slice(start, runbook.indexOf("####", start + 1));
+    const listed = new Set([...section.matchAll(/^\| `([a-z_]+)` \|/gm)].flatMap(([, name]) => name ?? []));
+
+    expect([...Object.keys(featureFlags)].filter((flag) => !listed.has(flag))).toEqual([]);
+    expect([...listed].filter((name) => !(name in featureFlags))).toEqual([]);
   });
 });
 

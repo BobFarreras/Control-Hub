@@ -1,10 +1,11 @@
 # Runbook d'instal·lacio de Control Hub
 
-> Alguns passos d'aquest runbook descriuen coses que **encara no es poden fer**. El que ja existeix:
-> `compose.release.yaml` deixa l'stack descarregar les imatges en comptes de compilar-les, i el
-> workflow de publicacio produeix imatges firmades i un manifest de release. El que falta: **ningu
-> ha publicat encara cap versio**, no hi ha cap reverse proxy al repositori, i el primer `Owner`
-> segueix demanant el codi font. `docs/specifications/deployment.md` diu quins son i en quin ordre.
+> **El que encara no es pot fer.** Aquest runbook ja no descriu passos inexistents: l'instal·lador,
+> el comandament d'actualitzacio, les imatges per digest i la comprovacio de versions existeixen i
+> tenen proves. El que falta es d'una altra mena: **ningu ha publicat encara cap versio**, o sigui
+> que no hi ha cap `release.json` a llegir, i el reverse proxy no viu en aquest repositori --
+> l'instal·lador escriu la configuracio de Traefik i la copia la persona que instal·la.
+> `docs/specifications/deployment.md` diu per que.
 
 ## Model d'alta
 
@@ -26,13 +27,66 @@ futura modalitat SaaS sense redissenyar l'autoritzacio.
 - Emmagatzematge extern xifrat per backups.
 - Release OCI immutable i manifest de versions verificat.
 
-### 2. Configuracio
+### 2. Instal·lacio
 
-1. Crear el directori d'instal·lacio amb `compose.yaml` i fitxer de release.
-2. Generar secrets unics amb entropia criptografica.
-3. Configurar domini, TLS, SMTP, timezone, locale i retencio.
-4. Validar la configuracio abans d'arrencar contenidors.
-5. No exposar PostgreSQL, Valkey ni ports administratius a Internet.
+Un comandament. Es descarrega el paquet de la release, s'extreu, i s'executa des d'alli:
+
+```sh
+curl -fsSLO https://github.com/BobFarreras/Control-Hub/releases/latest/download/control-hub-install.tar.gz
+mkdir -p /opt/control-hub && tar -xzf control-hub-install.tar.gz -C /opt/control-hub
+cd /opt/control-hub && sudo ./install.sh
+```
+
+Descarregar i despres executar, mai `curl | sh` (D7): entre les dues linies hi ha el moment en que
+algu pot llegir que s'executara. `install.sh` es publica tambe com a fitxer solt de la release,
+precisament per poder-lo llegir abans.
+
+Pregunta sis coses, una per pantalla i amb el que ja s'ha respost a la vista: **domini**, **correu i
+nom del primer Owner**, **organitzacio**, **SMTP**, **quins moduls**, i **on van els backups**. Cada
+resposta es valida alli mateix --el domini ha de resoldre, l'SMTP ha d'acceptar una connexio-- i no
+tres passos mes tard, quan tornar enrere vol dir tornar a fer-ho tot.
+
+**No demana cap contrasenya, ni la de la base de dades ni la de l'Owner.** Genera els sis secrets
+ell mateix amb `/dev/urandom` i els escriu directament a `$SECRETS_DIRECTORY` com a fitxers `0400`
+propietat de `root`: `postgres_admin_password`, `postgres_app_password`, `better_auth_secret`,
+`database_url`, `migration_database_url` i `connector_key_ring`. Cap valor passa per la pantalla ni
+per `.env`. El que no s'escriu no s'enganxa a cap historial.
+
+**Es pot tornar a executar.** Cada resposta ja donada surt com a valor per defecte llegit de `.env`,
+cap secret ja escrit es regenera --refer-lo deixaria PostgreSQL amb el vell, perque el rol es crea
+un sol cop sobre un directori de dades buit-- i una organitzacio que ja existeix no es un error.
+Aturar-se a mitges i tornar-hi es el cas normal d'una primera instal·lacio.
+
+Al final imprimeix on ha deixat cada cosa i, sobretot, **que no ha fet**: no ha tocat Traefik, no ha
+configurat cap connector, no ha fet cap backup, i no hi ha res programat que copii els backups fora
+de la maquina.
+
+#### El domini i el TLS
+
+L'instal·lador no instal·la cap reverse proxy i no n'edita cap. A la VPS que D2 descriu, Traefik ja
+hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi la configuracio viva
+es com una instal·lacio en tomba una altra. El que fa es escriure `traefik-control-hub.yaml` al
+directori d'instal·lacio, i copiar-lo al directori de configuracio dinamica de Traefik i recarregar
+es una passa manual i deliberada. **Fins que no es faci, res no es accessible des de fora.**
+
+#### Moduls
+
+`CONTROL_HUB_FLAGS` a `.env`, separats per comes. Un nom que no sigui d'aquesta llista s'ignora i
+l'API ho diu al log en arrencar. La llista viu a `packages/config/src/flags.ts` i una prova
+comprova que aquesta taula no se n'aparti.
+
+| Modul | Que encen |
+| --- | --- |
+| `projects_and_time` | Projectes, imputacio de temps, barems i rendibilitat. |
+| `attendance` | Registre de jornada, correccions i conciliacio amb les hores imputades. |
+| `connectors` | Contracte de connectors, vault de credencials, sortides i webhooks firmats. |
+| `infrastructure` | Infraestructura i n8n: registres, operacions programades, alertes. |
+| `usage_costs` | Ingesta d'us de proveidors, valoracio reproduible i pressupostos informatius. |
+| `mail` | Importacio de la bustia de suport i respostes confirmades. |
+| `connector_oauth` | OAuth delegat per a connectors: autoritzacio, refresc i revocacio. |
+| `connector_actions` | Accions asincrones confirmades i correu de sortida. |
+| `credential_catalog` | Cataleg de metadades i navegacio guardada cap a credencials a Bitwarden. |
+| `mcp` | Servidor MCP, servidor de recursos OAuth 2.1 i cataleg d'eines de nomes lectura. |
 
 #### Secrets muntats en produccio
 
@@ -86,15 +140,43 @@ de retirar la release anterior.
 Les migracions no formen part de l'arrencada normal de l'API. Una fallada atura el
 desplegament i conserva la versio anterior disponible per rollback.
 
+Aquests quatre passos els fa `install.sh` sol. Queden escrits aqui perque son el que s'ha de
+comprovar quan alguna cosa no ha anat be, i perque una instal·lacio que s'aixeca a ma --per exemple
+despres d'una restauracio-- els segueix igualment.
+
 ### 4. Primer Owner
 
-1. Definir temporalment `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_PASSWORD`,
-   `BOOTSTRAP_OWNER_NAME`, `BOOTSTRAP_TENANT_NAME` i `BOOTSTRAP_TENANT_SLUG`.
-2. Executar `pnpm bootstrap:owner` en desenvolupament o el job OCI equivalent.
-3. El bootstrap es nega a continuar quan el tenant ja existeix.
-4. Eliminar les variables de bootstrap immediatament despres de l'execucio.
-5. Verificar el correu, iniciar sessio i activar TOTP abans d'operar.
-6. Canviar la contrasenya inicial si l'ha proporcionat l'instal·lador.
+L'instal·lador el crea al final, i **ningu no tria cap contrasenya per a ell**. El compte es crea
+amb una contrasenya de 32 bytes que no es mostra, no es guarda i no es recuperable, i tot seguit
+l'Owner rep el correu per posar-se la seva --el mateix circuit que fa servir qualsevol altre membre
+de la instal·lacio, en comptes d'una segona porta que nomes existeix per al primer compte.
+
+De manera que l'unic cami cap a aquell compte es aquell correu, i per aixo l'SMTP es valida abans:
+
+1. L'Owner obre l'enllac, es posa contrasenya i verifica l'adreca.
+2. Activa TOTP abans d'operar. L'MFA es obligatoria i no es negocia.
+3. Des d'alli convida la resta amb rols i permisos explicits.
+
+Si l'SMTP no funcionava, el compte existeix pero l'enllac no ha sortit: es arregla l'SMTP i
+s'utilitza **«he oblidat la contrasenya»** a la pantalla d'entrada. No es torna a executar el
+bootstrap --es nega quan ja hi ha una organitzacio, que es exactament el que fa que tornar a
+executar l'instal·lador sigui segur.
+
+A ma, si cal fer-ho separat de l'instal·lador:
+
+```sh
+docker compose --env-file .env --env-file release.env \
+  -f compose.yaml -f compose.release.yaml -f compose.production.yaml \
+  --profile bootstrap run --rm bootstrap
+```
+
+El servei `bootstrap` viu darrere un perfil de Compose: no arrenca amb cap `up`, no surt a cap `ps`
+i s'ha de demanar pel seu nom. Porta les credencials de migracio i no les d'aplicacio, perque
+`control_hub_app` te `select` sobre `tenants` i res mes --cosa correcta, i precisament el motiu pel
+qual l'API no pot fer aixo ella sola.
+
+En desenvolupament el cami segueix sent `pnpm bootstrap:owner`, que si que accepta
+una contrasenya per `.env` perque alli no hi ha correu que valgui.
 
 ### 5. Membres
 
@@ -128,6 +210,43 @@ release instal·lable a tercers.
 
 `pnpm dev` nomes inicia processos. `pnpm dev:all` prepara infraestructura, aplica
 migracions i inicia l'aplicacio.
+
+## Comprovacio d'actualitzacions
+
+Un cop al dia, **el worker** demana un fitxer i compara aqui. Quan hi ha una versio nova, els rols
+`Owner` i `Administrator` veuen un avis a dalt de qualsevol pantalla que diu **quina feina
+representa** --quantes migracions porta i si canvia configuracio-- amb l'enllac a les notes i el
+comandament a copiar. L'avis no te cap boto que actualitzi: aplicar una actualitzacio vol dir
+substituir contenidors, i una pantalla que ho pogues fer necessitaria el socket de Docker.
+
+**Que surt d'aquesta maquina, exactament:**
+
+| | |
+| --- | --- |
+| Peticio | `GET https://github.com/BobFarreras/Control-Hub/releases/latest/download/release.json` |
+| Cos | cap |
+| Capceleres | nomes `accept: application/json` |
+| Frequencia | una cada 24 hores, com a maxim |
+| Qui la fa | el contenidor `worker`. **Mai el navegador** |
+
+No s'envia la versio instal·lada, ni el nombre d'usuaris, ni cap identificador, ni res que
+distingeixi una instal·lacio d'una altra: el fitxer es el mateix per a tothom i la comparacio es fa
+aqui. El que igualment es revela es la IP del servidor i que existeix, i aixo no es pot evitar
+consultant --per aixo es pot apagar.
+
+**Per apagar-ho**, a `.env`:
+
+```sh
+CONTROL_HUB_UPDATE_CHECK=false
+```
+
+i reiniciar el worker. No vol dir «deixa d'avisar»: vol dir que **no surt res** d'aquesta maquina.
+La comprovacio programada s'esborra en arrencar, de manera que la que hi hagues deixat la versio
+anterior tampoc no queda corrent. Amb aixo apagat, saber que hi ha una versio nova es feina de qui
+la va instal·lar.
+
+El navegador no consulta res, ni amb aixo ences ni amb aixo apagat. Llegeix el que aquesta
+instal·lacio ja sabia.
 
 ## Actualitzacio
 

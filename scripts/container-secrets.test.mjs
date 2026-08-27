@@ -10,18 +10,24 @@ const compose = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8"
 const dockerfile = readFileSync(new URL("../deploy/Dockerfile", import.meta.url), "utf8");
 const migrationEntrypoint = readFileSync(new URL("../deploy/load-secret-and-exec.sh", import.meta.url), "utf8");
 
-function serviceBlock(source, service, nextService) {
-  const end = nextService ? `(?=^  ${nextService}:)` : "(?=^secrets:)";
-  const match = source.match(new RegExp(`^  ${service}:[\\s\\S]*?${end}`, "m"));
-  assert.ok(match, `missing ${service} service block`);
-  return match[0];
+// A service block runs from its own key to the next thing at that level or above -- computed here
+// rather than named by the caller. Naming the following service worked until one was inserted
+// between two others: the block quietly grew to include its neighbour, and an assertion about one
+// service started reading another one's lines.
+function serviceBlock(source, service) {
+  const lines = source.split(/\r?\n/);
+  const start = lines.indexOf(`  ${service}:`);
+  assert.ok(start > -1, `missing ${service} service block`);
+  let end = start + 1;
+  while (end < lines.length && !/^ {2}\S/.test(lines[end]) && !/^\S/.test(lines[end])) end += 1;
+  return lines.slice(start, end).join("\n");
 }
 
 test("production grants each runtime only the secret files it consumes", () => {
-  const web = serviceBlock(production, "web", "api");
-  const api = serviceBlock(production, "api", "worker");
-  const worker = serviceBlock(production, "worker", "migrate");
-  const migrate = serviceBlock(production, "migrate", "postgres");
+  const web = serviceBlock(production, "web");
+  const api = serviceBlock(production, "api");
+  const worker = serviceBlock(production, "worker");
+  const migrate = serviceBlock(production, "migrate");
 
   assert.match(web, /secrets: \[\]/);
   assert.doesNotMatch(web, /_FILE|key_ring|oauth|database_url|better_auth/i);
@@ -39,6 +45,15 @@ test("production grants each runtime only the secret files it consumes", () => {
   for (const variable of ["DATABASE_URL", "BETTER_AUTH_SECRET", "POSTGRES_PASSWORD", "POSTGRES_APP_PASSWORD"]) {
     assert.match(production, new RegExp(`${variable}: !reset null`));
   }
+
+  // The first Owner runs with the migration role, because `control_hub_app` has `select` on
+  // `tenants` and nothing else. That is a wider grant than any long-running service is given, and
+  // what makes it acceptable is that this container is asked for by name, runs once and exits.
+  const bootstrap = serviceBlock(production, "bootstrap");
+  assert.match(bootstrap, /DATABASE_URL_FILE: \/run\/secrets\/migration_database_url/);
+  assert.match(bootstrap, /BETTER_AUTH_SECRET_FILE: \/run\/secrets\/better_auth_secret/);
+  assert.doesNotMatch(bootstrap, /postgres_admin_password|connector_key_ring/);
+  assert.match(serviceBlock(compose, "bootstrap"), /profiles: \["bootstrap"\]/);
 });
 
 test("every file supplies the migration variable the entrypoint actually demands", () => {
@@ -53,12 +68,12 @@ test("every file supplies the migration variable the entrypoint actually demands
   const [, variable] = dockerfile.match(/CMD \["load-secret-and-exec", "([A-Z_]+)"/) ?? [];
   assert.ok(variable, "the migrate image no longer starts through load-secret-and-exec");
 
-  const base = serviceBlock(compose, "migrate", "postgres");
+  const base = serviceBlock(compose, "migrate");
   assert.match(base, new RegExp(`^\\s+${variable}: \\S`, "m"));
 
   // And production has to reset that same name before mounting the file, or the entrypoint sees a
   // direct value and a file at once and refuses the pair.
-  const overlay = serviceBlock(production, "migrate", "postgres");
+  const overlay = serviceBlock(production, "migrate");
   assert.match(overlay, new RegExp(`^\\s+${variable}: !reset null$`, "m"));
   assert.match(overlay, new RegExp(`^\\s+${variable}_FILE: `, "m"));
 });
@@ -73,18 +88,17 @@ test("the build identifier reaches every image the same way", () => {
   assert.ok(argument, "the builder stage declares no build identifier");
   assert.match(dockerfile, new RegExp(`^ENV ${argument}=\\$${argument}$`, "m"));
 
-  // All four, not just the API. Only the API bundle carries the value today, but the builder stage
-  // is shared, and a service that omits the argument builds that stage with a different value and
-  // silently loses the layer cache for every other one.
-  for (const service of ["web", "api", "worker", "migrate"]) {
-    const next = { web: "api", api: "worker", worker: "migrate", migrate: "postgres" }[service];
-    const block = serviceBlock(compose, service, next);
+  // Every service built from the shared stage, not just the API. Only the API bundle carries the
+  // value today, but the builder stage is shared, and a service that omits the argument builds
+  // that stage with a different value and silently loses the layer cache for every other one.
+  for (const service of ["web", "api", "worker", "migrate", "bootstrap"]) {
+    const block = serviceBlock(compose, service);
     assert.match(block, new RegExp(`^\\s+${argument}: \\S`, "m"), `${service} passes no ${argument}`);
   }
 });
 
 test("connector and provider overlays grant only the selected integration", () => {
-  const api = serviceBlock(connectors, "api", "worker");
+  const api = serviceBlock(connectors, "api");
   const worker = serviceBlock(connectors, "worker");
 
   assert.doesNotMatch(connectors, /^ {2}web:/m);
@@ -110,9 +124,8 @@ test("images receive no secret through build arguments or copied environment fil
 });
 
 test("base services retain container hardening", () => {
-  for (const service of ["web", "api", "worker", "migrate"]) {
-    const next = { web: "api", api: "worker", worker: "migrate", migrate: "postgres" }[service];
-    const block = serviceBlock(compose, service, next);
+  for (const service of ["web", "api", "worker", "migrate", "bootstrap"]) {
+    const block = serviceBlock(compose, service);
     assert.match(block, /read_only: true/);
     assert.match(block, /no-new-privileges:true/);
     assert.match(block, /cap_drop: \[ALL\]/);

@@ -37,6 +37,7 @@ import {
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { connectorQueueName } from "@control-hub/contracts/jobs";
+import { parseUpdateCheckState, updateCheckStateKey } from "@control-hub/contracts/release";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
@@ -423,7 +424,23 @@ export function buildApp(options: BuildAppOptions) {
           secrets: []
         }
       });
-      registerInstallationRoutes({ ...context, installation: { version: options.version ?? packagedVersion, build } });
+      registerInstallationRoutes({
+        ...context,
+        installation: { version: options.version ?? packagedVersion, build },
+        // Read on the connection that already exists rather than a fifth one, and quiet when it
+        // is not there: an unreachable Valkey means nobody is told about an update, which is the
+        // right way for this to fail. Nothing on this route is worth a 500.
+        updateCheck: async () => {
+          try {
+            if (redis.status === "wait") await redis.connect();
+            const stored = await redis.get(updateCheckStateKey);
+            return stored === null ? null : parseUpdateCheckState(stored);
+          } catch (error) {
+            app.log.warn({ err: error }, "could not read the update check state");
+            return null;
+          }
+        }
+      });
       registerCommerceRoutes({ ...context, commerce, customerServices });
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });

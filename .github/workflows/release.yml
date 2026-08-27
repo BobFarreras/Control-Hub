@@ -235,6 +235,29 @@ jobs:
           node scripts/release-env.mjs --manifest release.json --out release.env
           cat release.env
 
+      - name: Build the installation package
+        if: needs.gate.outputs.channel == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # What a machine needs on disk to run an installation, and nothing else. It is a tree and
+          # not a single file because `compose.yaml` mounts `deploy/postgres/init-app-user.sh` from
+          # the host -- without it PostgreSQL starts with no application role, and the failure shows
+          # up much later as a permission error nobody connects to a missing file.
+          #
+          # No source code goes in. The whole point of P3 is that a customer's server cannot build
+          # Control Hub, and a package carrying a source tree would quietly make that untrue again.
+          rm -rf package && mkdir -p package/deploy/postgres
+          cp compose.yaml compose.release.yaml compose.production.yaml package/
+          cp compose.production.connectors.yaml compose.production.google.yaml compose.production.microsoft.yaml package/
+          cp deploy/postgres/init-app-user.sh package/deploy/postgres/
+          # The two commands sit at the top so they are `./install.sh` and `./update.sh` from the
+          # directory somebody extracted into, which is what the runbook tells them to type.
+          cp deploy/install.sh deploy/update.sh package/
+          chmod +x package/install.sh package/update.sh
+          tar -czf control-hub-install.tar.gz -C package .
+          tar -tzf control-hub-install.tar.gz
+
       - name: Attach the manifest to the release
         if: needs.gate.outputs.channel == 'release'
         shell: bash
@@ -253,7 +276,12 @@ jobs:
           # installation running 1.0.0 uses the copy it already has to reach 1.1.0. Publishing it
           # every time is what lets an old installation fetch a newer command by hand when the one
           # it has cannot cope.
-          gh release upload "$GITHUB_REF_NAME" release.json release.env deploy/update.sh --clobber
+          #
+          # `install.sh` goes up on its own as well as inside the package, so somebody can read it
+          # before running it. That is the whole of D7: not `curl | sh`, which asks for trust at the
+          # one moment the thing being trusted cannot be inspected.
+          gh release upload "$GITHUB_REF_NAME" \
+            release.json release.env deploy/update.sh deploy/install.sh control-hub-install.tar.gz --clobber
 
       - name: Say what was published
         shell: bash
