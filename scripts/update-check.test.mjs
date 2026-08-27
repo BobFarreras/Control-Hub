@@ -64,10 +64,13 @@ test("the browser is never the one that asks", () => {
   // Control Hub hands their IP to GitHub without knowing. The route that serves the answer reads
   // what the worker stored and reaches nothing.
   assert.doesNotMatch(route, /\bfetch\s*\(/, "the API route fetches something");
-  // A literal search, not a regular expression: the claim is that this text appears nowhere in the
-  // file, and an unanchored host pattern is what CodeQL flags as a host check that matches too much.
-  // It was never a host check -- but the honest way to say «this string is absent» is `includes`.
-  assert.ok(!route.includes("github.com"), "the API route knows an address it has no business knowing");
+  // The host comes out of the address the worker actually uses, rather than being written again as
+  // a second literal. It follows the manifest if that ever moves, and it keeps this from reading
+  // like a check on somebody's URL -- which is what it was mistaken for twice: first as a host
+  // pattern with no anchors, then as an incomplete substring sanitisation. Neither is what it does.
+  // The subject here is the text of a source file, and the claim is that this host is not in it.
+  const host = new URL(manifestUrl).host;
+  assert.ok(!route.includes(host), `the API route knows ${host}, an address it has no business knowing`);
   assert.match(runbook, /Mai el navegador|mai el navegador/, "the runbook does not say who asks");
 });
 
