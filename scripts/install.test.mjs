@@ -25,17 +25,43 @@ const releaseFile = (version, overrides = {}) =>
     ...(overrides.extra ?? [])
   ].join("\n") + "\n";
 
-/** The answers, in the order the installer asks for them. An empty string takes the default. */
+/** Whether `nc` is on this machine, asked of the same shell the installer runs under. */
+const hasNetcat = (() => {
+  try {
+    execFileSync("sh", ["-c", "command -v nc"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+/**
+ * The answers, in the order the installer asks for them. An empty string takes the default.
+ *
+ * A piped answer stream and a conditional question do not mix: where the question is skipped every
+ * answer after it lands on the wrong one, and the failure surfaces several questions later as an
+ * address or a port nobody typed. Two of the installer's questions are conditional, so both are
+ * pinned here instead of being left to the machine.
+ *
+ * Both hosts are `.invalid`, which RFC 6761 reserves so that it can never be installed in the DNS.
+ * That makes «this name does not resolve» true everywhere, so the domain warning always appears and
+ * `nc` always fails at once instead of waiting out its timeout. What the machine still decides is
+ * whether `nc` exists at all -- asked here the same way the installer asks it. With
+ * `hub.example.com` this passed on Windows, which has neither `getent` nor `nc`, and failed in CI,
+ * which has both.
+ */
 const answers = {
-  domain: "hub.example.com",
+  domain: "hub.invalid",
+  domainAnyway: "y",
   ownerEmail: "owner@example.com",
   ownerName: "Ada Lovelace",
   organisation: "Avant Business",
   slug: "",
-  smtpHost: "smtp.example.com",
+  smtpHost: "smtp.invalid",
   smtpPort: "",
   smtpSecure: "",
   from: "",
+  ...(hasNetcat ? { mailAnyway: "y" } : {}),
   modules: "",
   backups: "",
   go: "y"
@@ -74,6 +100,13 @@ function run(
       env: {
         ...process.env,
         SECRETS_DIRECTORY: join(directory, "secrets"),
+        // A `file://` URL, which `curl` reads and `wget` does not -- so on a machine with only
+        // `wget` nothing downloads and every test that asserts a refusal passes for the wrong
+        // reason. What keeps that from being silent is the first test below: it reads the version
+        // out of the release the installer wrote, so a fixture that cannot download is red there
+        // before it is misleading anywhere else. Serving this over HTTP instead is not open, since
+        // the installer is run through `execFileSync` and a server in this process cannot answer
+        // while that call holds the loop.
         CONTROL_HUB_RELEASE_URL: pathToFileURL(source).href
       },
       stdio: ["pipe", "pipe", "pipe"]
@@ -98,12 +131,12 @@ test("it installs from the answers and writes what the stack reads", () => {
     const result = run(directory);
     assert.ok(result.ok, result.output);
     const environment = readFileSync(join(directory, ".env"), "utf8");
-    assert.match(environment, /^APP_ORIGIN=https:\/\/hub\.example\.com$/m);
+    assert.match(environment, /^APP_ORIGIN=https:\/\/hub\.invalid$/m);
     // The domain has to reach all three, and they are three different variables: a passkey
     // registered against the wrong relying party is one nobody can use and nobody can explain.
-    assert.match(environment, /^WEBAUTHN_RP_ID=hub\.example\.com$/m);
-    assert.match(environment, /^WEBAUTHN_ORIGIN=https:\/\/hub\.example\.com$/m);
-    assert.match(environment, /^MCP_ISSUER=https:\/\/hub\.example\.com$/m);
+    assert.match(environment, /^WEBAUTHN_RP_ID=hub\.invalid$/m);
+    assert.match(environment, /^WEBAUTHN_ORIGIN=https:\/\/hub\.invalid$/m);
+    assert.match(environment, /^MCP_ISSUER=https:\/\/hub\.invalid$/m);
     assert.match(environment, /^SECRETS_PROVIDER=runtime_files$/m);
     assert.match(readFileSync(join(directory, "release.env"), "utf8"), /CONTROL_HUB_VERSION=1\.0\.0/);
   });
@@ -165,9 +198,14 @@ test("running it again reproduces the installation instead of a second one", () 
     const first = readFileSync(join(directory, "secrets", "database_url"), "utf8");
     const environment = readFileSync(join(directory, ".env"), "utf8");
 
-    // Every question left blank: the second run has to find all six answers in `.env`.
-    const blank = Object.fromEntries(Object.keys(answers).map((key) => [key, ""]));
-    const again = run(directory, { given: { ...blank, go: "y" } });
+    // Every question left blank: the second run has to find all six answers in `.env`. The
+    // confirmations keep theirs -- they are not questions, and a blank one means «no» and stops.
+    const blank = Object.fromEntries(
+      Object.keys(answers)
+        .filter((key) => !/Anyway$/.test(key) && key !== "go")
+        .map((key) => [key, ""])
+    );
+    const again = run(directory, { given: blank });
     assert.ok(again.ok, again.output);
     assert.equal(readFileSync(join(directory, "secrets", "database_url"), "utf8"), first);
     assert.equal(readFileSync(join(directory, ".env"), "utf8"), environment);
@@ -243,11 +281,33 @@ test("a domain that does not resolve is a question, and one that is not a domain
   // somebody can answer for. A value that is not a domain at all is a typo, and every later step --
   // the certificate, the passkeys, the Owner's link -- inherits it.
   cleanly((directory) => {
-    for (const domain of ["not a domain", "localhost", "hub.example.com/panel", "-hub.example.com."]) {
+    for (const domain of ["not a domain", "localhost", "hub.invalid/panel", "-hub.invalid."]) {
       const result = run(directory, { given: { domain } });
       assert.equal(result.ok, false, `«${domain}» was accepted as a domain`);
     }
   });
+});
+
+test("the resolver's own address is not mistaken for an answer", () => {
+  // `nslookup` is the branch taken by machines without `getent` -- Windows and macOS, which is to
+  // say most of the machines a first installation is prepared from. Reading the `Address:` lines
+  // that sit above `Name:` returned the resolver's own address for every name asked about, so a
+  // domain with a typo in it looked like one that resolves and the warning never appeared. The
+  // check silently did nothing exactly where it was most needed.
+  //
+  // The awk program is read out of the installer rather than written again here: a second copy of
+  // it would only move the disagreement somewhere no test is looking.
+  const [, program] = install.match(/^ *answer='([^']*)'/m) ?? [];
+  assert.ok(program, "the installer no longer reads nslookup through a named awk program");
+  const parse = (output) =>
+    execFileSync("sh", ["-c", 'awk "$1"', "sh", program], { input: output, encoding: "utf8" }).trim();
+
+  const header = "Server:  UnKnown\nAddress:  192.168.1.1\n\n";
+  assert.equal(parse(`${header}*** UnKnown can't find hub.invalid: Non-existent domain\n`), "");
+  assert.equal(parse(`${header}Name:    hub.example.com\nAddress:  93.184.215.14\n`), "93.184.215.14");
+  // Linux separates with tabs and lists every address it has; any one of them is an answer.
+  const several = `${header}Name:\thub.example.com\nAddresses:  2606:2800::1\n          93.184.215.14\n`;
+  assert.equal(parse(several), "2606:2800::1");
 });
 
 test("an address the Owner's link cannot reach is refused before anything is created", () => {

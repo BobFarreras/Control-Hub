@@ -130,7 +130,12 @@ resolved=""
 if command -v getent >/dev/null 2>&1; then
   resolved=$(getent hosts "$domain" 2>/dev/null | awk '{print $1}' | head -1 || true)
 elif command -v nslookup >/dev/null 2>&1; then
-  resolved=$(nslookup "$domain" 2>/dev/null | awk '/^Address: /{print $2}' | head -1 || true)
+  # Only the answer, never the header. The `Address:` lines above `Name:` are the resolver's own,
+  # and reading those made every name look resolvable -- including one that exists nowhere, which
+  # is the single case this check is here for. Machines without `getent` are exactly the ones a
+  # first installation tends to be prepared on, so the wrong answer would have been the usual one.
+  answer='/^Name:/ { seen = 1 } seen && /^Address(es)?:[[:space:]]/ { print $NF; exit }'
+  resolved=$(nslookup "$domain" 2>/dev/null | awk "$answer" || true)
 fi
 say ""
 if [ -z "$resolved" ]; then
