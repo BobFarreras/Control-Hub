@@ -343,6 +343,74 @@ else
   say "  Six files, mode 0400, owned by root."
 fi
 
+# --- ports ----------------------------------------------------------------------------------------
+
+# Which ports this machine already has something listening on. Asked once: `ss` is a process spawn,
+# and asking it per port would run it four times to answer one question.
+#
+# Only the port number is kept. What is listening on 127.0.0.1:5432 and what is listening on
+# 0.0.0.0:5432 are different things to a network engineer and the same thing to `docker compose up`,
+# which refuses the bind either way.
+listening_ports() {
+  if command -v ss > /dev/null 2>&1; then
+    ss -ltn 2>/dev/null | awk 'NR > 1 { print $4 }'
+  elif command -v netstat > /dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk '/^tcp/ { print $4 }'
+  fi
+}
+
+# A machine with neither tool answers «nothing is listening», and the preferred ports are kept. That
+# is the same outcome as before any of this existed, which is the right way to be wrong here: the
+# installation either starts, or fails at `docker compose up` with the error it always gave.
+taken=$(listening_ports | sed 's/.*://' | grep -E '^[0-9]+$' | sort -u || true)
+
+free_port() {
+  candidate=$1
+  attempts=0
+  while printf '%s\n' "$taken" | grep -qx "$candidate"; do
+    candidate=$((candidate + 1))
+    attempts=$((attempts + 1))
+    # A bound, not a policy. A machine with fifty consecutive ports taken from the preferred one has
+    # something wrong with it that a fifty-first port would not fix.
+    [ "$attempts" -lt 50 ] || fail "no free port between $1 and $candidate. Something is very wrong with this machine."
+  done
+  printf '%s' "$candidate"
+}
+
+# What an earlier run chose wins, and is never probed. On a re-run the installation itself is what is
+# holding these ports, so looking would find every one of them busy and walk the configuration off
+# its own ports -- an update that moves the address Traefik was told about.
+choose_port() {
+  chosen=$(existing "$1")
+  [ -n "$chosen" ] || chosen=$(free_port "$2")
+  printf '%s' "$chosen"
+}
+
+# Not questions, deliberately. These are 127.0.0.1 ports nobody has ever typed, and one more
+# conditional question is one more question that does not appear on some machine and shifts every
+# answer after it onto the wrong prompt -- the defect P7 already paid for.
+web_port=$(choose_port WEB_PORT 3001)
+api_port=$(choose_port API_PORT 4000)
+postgres_port=$(choose_port POSTGRES_PORT 5432)
+redis_port=$(choose_port REDIS_PORT 6379)
+
+say ""
+say "Ports"
+moved=no
+for pair in "web 3001 $web_port" "api 4000 $api_port" "postgres 5432 $postgres_port" "redis 6379 $redis_port"; do
+  # Positional, because `set --` inside a function would eat the function's own arguments and this
+  # is the one place three fields have to be read out of one string.
+  name=${pair%% *}
+  rest=${pair#* }
+  wanted=${rest%% *}
+  got=${rest#* }
+  if [ "$wanted" != "$got" ]; then
+    say "  $name: $wanted is taken, using $got."
+    moved=yes
+  fi
+done
+[ "$moved" = yes ] || say "  The usual four are free: $web_port, $api_port, $postgres_port, $redis_port."
+
 # --- configuration ------------------------------------------------------------------------------
 
 # `.env` is what an operator chose; `release.env` is what the release decided. An update rewrites
@@ -358,10 +426,10 @@ NODE_ENV=production
 SECRETS_DIRECTORY=$SECRETS_DIRECTORY
 SECRETS_PROVIDER=runtime_files
 LOG_LEVEL=info
-WEB_PORT=3001
-API_PORT=4000
-POSTGRES_PORT=5432
-REDIS_PORT=6379
+WEB_PORT=$web_port
+API_PORT=$api_port
+POSTGRES_PORT=$postgres_port
+REDIS_PORT=$redis_port
 MAILPIT_SMTP_PORT=1025
 MAILPIT_UI_PORT=8025
 API_HOST=127.0.0.1
@@ -406,7 +474,7 @@ http:
     control-hub:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:3001"
+          - url: "http://127.0.0.1:$web_port"
 EOF
 say "  $TRAEFIK_FILE written."
 

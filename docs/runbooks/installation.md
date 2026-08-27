@@ -74,6 +74,34 @@ es com una instal·lacio en tomba una altra. El que fa es escriure `traefik-cont
 directori d'instal·lacio, i copiar-lo al directori de configuracio dinamica de Traefik i recarregar
 es una passa manual i deliberada. **Fins que no es faci, res no es accessible des de fora.**
 
+#### Els ports de 127.0.0.1
+
+Quatre serveis publiquen un port a `127.0.0.1`: el web, l'API, PostgreSQL i Redis. En una maquina
+compartida no tots quatre estan lliures --a la de D2, el `5432` es del `supabase-pooler` des del
+primer dia-- i abans es donaven per bons: `docker compose up` fallava amb *port is already
+allocated* despres d'haver generat els secrets i escrit la configuracio.
+
+Ara l'instal·lador mira que hi ha escoltant abans d'escriure `.env`, i si el port que voldria esta
+ocupat n'agafa el seguent lliure i ho diu:
+
+```
+Ports
+  web: 3001 is taken, using 3002.
+  postgres: 5432 is taken, using 5433.
+```
+
+**No ho pregunta.** Son ports interns que ningu no teclegia mai, i una pregunta condicional mes es
+una pregunta que en segons quina maquina no surt i desplaça totes les respostes seguents.
+
+**Una segona execucio conserva els que ja hi havia i no torna a mirar**, perque en un re-run qui
+te aquells ports ocupats es la mateixa instal·lacio: mirar-ho la faria fugir dels seus propis
+ports, i amb ells de l'adreça que se li va donar al reverse proxy. Si cal canviar-ne un, s'edita
+`.env` i el valor editat es el que la seguent execucio llegira com a seu.
+
+En una maquina sense `ss` ni un `netstat` POSIX no es pot mirar res: es queden els ports preferits
+i, si un esta ocupat, torna a fallar a `docker compose up` com abans. No hi ha manera de fer-ho
+millor sense demanar-li a la maquina alguna cosa que no te.
+
 #### El relay SMTP i la seva credencial
 
 Gairebe cap relay transaccional accepta una sessio sense autenticar, i el primer missatge que

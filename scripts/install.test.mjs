@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:net";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +31,24 @@ const hasNetcat = (() => {
   try {
     execFileSync("sh", ["-c", "command -v nc"], { stdio: "ignore" });
     return true;
+  } catch {
+    return false;
+  }
+})();
+
+/**
+ * Whether this machine can tell the installer which ports are taken.
+ *
+ * Asked by running the installer's own probe rather than by looking for the binaries: Windows has a
+ * `netstat`, and it rejects `-ltn`. Where the answer is no the installer keeps the preferred ports,
+ * which is the behaviour that existed before any of this -- so the tests below assert that instead
+ * of asserting a port moved on a machine that cannot see that it should.
+ */
+const probesPorts = (() => {
+  try {
+    const probe =
+      "ss -ltn 2>/dev/null | awk 'NR > 1 { print $4 }' || netstat -ltn 2>/dev/null | awk '/^tcp/ { print $4 }'";
+    return /:\d+/.test(execFileSync("sh", ["-c", probe], { encoding: "utf8" }));
   } catch {
     return false;
   }
@@ -225,6 +244,56 @@ test("a relay credential becomes a mounted secret, and a relay without one mount
     // Blank, not absent: the configuration layer reads an empty value as «no credential», and a
     // line that is present is a line somebody can fill in later without knowing the variable exists.
     assert.match(readFileSync(join(directory, ".env"), "utf8"), /^SMTP_USER=$/m);
+  });
+});
+
+test("it writes ports this machine is not already using", async () => {
+  // The second of P8's three defects. `POSTGRES_PORT=5432` was written into `.env` as a constant,
+  // and on the machine D2 describes that port belongs to `supabase-pooler`. The symptom arrived
+  // long after the cause -- «port is already allocated» from `docker compose up`, after the secrets
+  // and the configuration were written -- and it could not be corrected, because `.env` is rewritten
+  // whole on every run, so editing it and re-running undid the edit.
+  const ports = cleanly((directory) => {
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    const environment = readFileSync(join(directory, ".env"), "utf8");
+    return ["WEB_PORT", "API_PORT", "POSTGRES_PORT", "REDIS_PORT"].map((name) => {
+      const [, value] = environment.match(new RegExp(`^${name}=(\\d+)$`, "m")) ?? [];
+      assert.ok(value, `${name} is not a port number`);
+      return Number(value);
+    });
+  });
+
+  for (const [index, preferred] of [3001, 4000, 5432, 6379].entries()) {
+    assert.ok(ports[index] >= preferred, `it moved down from ${preferred} to ${ports[index]}`);
+  }
+
+  if (!probesPorts) return;
+  // And they are free, proved the only way that is not a second reading of the same list: by
+  // binding them. A machine that cannot probe keeps the preferred ports whether or not they are
+  // taken, so this half only runs where the installer could actually have looked.
+  for (const port of ports) {
+    await new Promise((resolve, reject) => {
+      const probe = createServer();
+      probe.once("error", (error) => reject(new Error(`the installer chose ${port}, which is taken: ${error.code}`)));
+      probe.listen(port, "127.0.0.1", () => probe.close(resolve));
+    });
+  }
+});
+
+test("ports already chosen are kept, never probed again", () => {
+  // Invariant 7, and the reason probing is conditional. On a re-run the installation itself is
+  // holding these ports, so an installer that looked would find all four busy and walk the
+  // configuration off its own ports -- which is an update that silently moves the address the
+  // reverse proxy was told to send traffic to.
+  cleanly((directory) => {
+    assert.ok(run(directory).ok);
+    const chosen = readFileSync(join(directory, ".env"), "utf8").replace(/^WEB_PORT=\d+$/m, "WEB_PORT=3999");
+    writeFileSync(join(directory, ".env"), chosen);
+
+    const again = run(directory);
+    assert.ok(again.ok, again.output);
+    assert.match(readFileSync(join(directory, ".env"), "utf8"), /^WEB_PORT=3999$/m);
   });
 });
 
