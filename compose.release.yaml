@@ -39,3 +39,11 @@ services:
   migrate:
     build: !reset null
     image: ${CONTROL_HUB_MIGRATE_IMAGE:?CONTROL_HUB_MIGRATE_IMAGE is required; generate release.env from the release manifest}
+
+  # The one-off that creates the first Owner runs the API image, so it is pinned to the same digest
+  # rather than given an image of its own. It sits behind a profile and starts only when named, but
+  # a service left with a `build:` would still be a service that could compile from a source tree
+  # -- and this is the one that runs against a database nobody has touched yet.
+  bootstrap:
+    build: !reset null
+    image: ${CONTROL_HUB_API_IMAGE:?CONTROL_HUB_API_IMAGE is required; generate release.env from the release manifest}

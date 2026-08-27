@@ -11,7 +11,12 @@ import { defineConfig } from "tsup";
  * boot with "Dynamic require of os is not supported", so this binary had never run.
  */
 export default defineConfig({
-  entry: ["src/server.ts"],
+  // `bootstrap.ts` is bundled too, and not only kept in the checkout, because a production
+  // installation has no source tree: the runbook's «equivalent OCI job» for creating the first
+  // Owner has to be a file that exists inside the image. A second entry rather than a second
+  // image -- it needs the closure the API already carries, and an image whose only job is to run
+  // once is an image somebody has to pull, sign and remember to keep in step.
+  entry: ["src/server.ts", "src/bootstrap.ts"],
   format: ["esm"],
   platform: "node",
   target: "node22",

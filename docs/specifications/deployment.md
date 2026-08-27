@@ -201,7 +201,7 @@ els quatre digests que anomena --i aquests si que estan firmats (D6), i un diges
 publicat no es pot descarregar. El manifest diu que hi ha una versio nova; no es el que fa que les
 imatges siguin de fiar.
 
-### Tres buits que P3 va destapar i que no resol
+### Tres buits que P3 va destapar, dels quals en queda un
 
 1. **Les imatges de tercers van per etiqueta, no per digest.** `postgres:17-alpine`,
    `valkey/valkey:8-alpine` i `axllent/mailpit:v1.27` es resolen al que aquella etiqueta vulgui dir
@@ -209,14 +209,12 @@ imatges siguin de fiar.
    Hub poden no portar el mateix PostgreSQL. L'invariant de descarregar per digest, doncs, avui
    nomes es cert per a les nostres quatre. Fixar-les vol dir que el manifest les reculli, o sigui
    tocar P2 un altre cop.
-2. **Mailpit arrenca en una instal·lacio de produccio.** Es un caca-correus de desenvolupament amb
-   `MP_SMTP_AUTH_ACCEPT_ANY`, i encara que nomes publiqui a `127.0.0.1`, no te res a fer en un
-   servidor de client. Treure'l demana perfils de Compose, cosa que canvia com arrenca l'stack de
-   desenvolupament i de CI: no es una linia i no es feina de P3.
-3. **El directori d'instal·lacio necessita mes que els fitxers de Compose.** `compose.yaml` munta
-   `deploy/postgres/init-app-user.sh` des del host, o sigui que el paquet que es descarrega ha de
-   portar-lo. No es codi font de l'aplicacio i no contradiu l'invariant, pero si que vol dir que la
-   release ha d'incloure un petit arbre de fitxers i no nomes YAML. Es feina de P7.
+2. ~~**Mailpit arrenca en una instal·lacio de produccio.**~~ Resolt per P7, i mes barat del que
+   semblava: el perfil va a l'overlay de produccio, que ni desenvolupament ni la CI carreguen mai,
+   de manera que alli no es mou res.
+3. ~~**El directori d'instal·lacio necessita mes que els fitxers de Compose.**~~ Resolt per P7: la
+   release publica `control-hub-install.tar.gz`, amb els fitxers de Compose, l'script que
+   PostgreSQL munta, i els dos comandaments a l'arrel.
 
 La meitat d'aixo ja existeix i s'ha de reaprofitar en comptes de duplicar-la. `apps/api/src/version.ts`
 ja resol el problema dificil --el runtime no te `package.json` al costat, aixi que tsup hi estampa
@@ -283,6 +281,74 @@ apagats, quins connectors falten per configurar, i quan toca el primer backup.
 Executar-lo dues vegades no ha de trencar res. Detecta el que ja hi es i pregunta nomes el que
 falta.
 
+
+### El que P7 en va concretar
+
+**El primer Owner no te contrasenya que ningu hagi triat.** L'invariant 8 diu que res del que
+l'instal·lador pregunti acaba en un historial, i la contrasenya es la resposta que ho fa dificil:
+escrita es a l'historial, impresa es a l'scrollback, i guardada es al disc mentre duri la
+instal·lacio. Aixi que no la pregunta. El compte es crea amb 32 bytes de `randomBytes` que ningu no
+veu mai i que no son recuperables, i tot seguit l'Owner rep l'enllac per posar-se la seva --el
+mateix circuit que fa servir qualsevol altre membre, en comptes d'una segona porta que nomes
+existeix per al primer compte. El preu esta acceptat i escrit: aquell correu es l'unic cami cap a
+aquell compte, o sigui que si no surt, la instal·lacio no te amo. Per aixo l'SMTP es valida abans i
+per aixo el fracas d'enviar-lo es sorollos.
+
+**El bootstrap ha de viure dins la imatge, i no pot ser la imatge de migracions.** El runbook
+anomenava «el job OCI equivalent» des del principi i no existia: `bootstrap.ts` nomes corria amb el
+codi font. Ara es una segona entrada del bundle de l'API, perque necessita exactament aquell tancat
+--Better Auth, el provisionament-- i una imatge que nomes s'executa un cop es una imatge mes per
+construir, firmar i recordar de mantenir al dia. Corre amb les credencials de **migracio** i no les
+d'aplicacio: `control_hub_app` te `select` sobre `tenants` i res mes, cosa correcta i precisament el
+motiu pel qual l'API no pot fer-ho ella sola. La manera de tenir-ho al `compose.yaml` sense que
+arrenqui mai es un perfil: un servei sota perfil no surt a cap `up`, `pull` ni `ps` que no
+l'anomeni, de manera que es una feina que viu al fitxer en comptes d'un servei que casualment no es
+reinicia.
+
+**Tornar a executar-lo es el cas normal, no el rar.** Una primera instal·lacio s'atura a mitges
+--falta un registre DNS, l'SMTP no respon-- i la sortida es tornar-hi. Cada resposta ja donada surt
+com a valor per defecte llegit de `.env`, i **cap secret ja escrit no es regenera**. Aquesta segona
+part no es comoditat: les contrasenyes dels rols les posa un script que PostgreSQL executa sobre un
+directori de dades buit i mai mes, o sigui que regenerar-les escriuria una configuracio que no pot
+connectar amb la seva propia base, i el simptoma s'assemblaria a un volum corromput i no a una
+segona execucio.
+
+**Dues validacions diferents per a dues coses diferents.** Un domini que encara no resol es l'estat
+normal d'una primera instal·lacio, i darrere NAT o un balancejador l'adreca pertany legitimament a
+una altra maquina: es un avis que algu pot respondre. Un valor que no es un domini es un error de
+teclat, i tot el que ve despres --el certificat, les passkeys, l'enllac de l'Owner-- l'hereta. El
+mateix amb l'SMTP: es comprova que accepti una connexio, i no s'envia res. Un instal·lador que
+demostres que pot enviar correu l'hauria d'enviar a algu, i l'unica adreca que coneix es d'una
+persona a qui ningu no ha avisat que tot aixo estigui passant.
+
+**No toca el reverse proxy.** A la maquina que descriu D2, el Traefik ja hi corre i es compartit amb
+serveis d'altra gent. L'instal·lador escriu `traefik-control-hub.yaml` al seu propi directori i diu
+on copiar-lo; editar la configuracio viva d'un proxy compartit es com una instal·lacio en tomba una
+altra. La consequencia es diu clarament al final: **fins que algu no hi copii el fitxer, res no es
+accessible des de fora**.
+
+**El paquet es un arbre de fitxers, no un YAML.** Es el buit 3 que P3 va destapar: `compose.yaml`
+munta `deploy/postgres/init-app-user.sh` des del host, i sense aquell fitxer PostgreSQL arrenca
+sense rol d'aplicacio i la fallada apareix molt mes tard com un error de permisos. La release
+publica `control-hub-install.tar.gz` amb els sis fitxers de Compose, aquell script, i els dos
+comandaments a l'arrel. `install.sh` es publica tambe solt, per poder-lo llegir abans d'executar-lo
+--que es tot el que vol dir D7.
+
+**I Mailpit ja no arrenca en produccio**, el buit 2. Es un caca-correus amb
+`MP_SMTP_AUTH_ACCEPT_ANY` i no te res a fer en un servidor de client. La solucio va resultar ser
+d'una linia i no la que P3 temia: el perfil va a l'overlay de produccio, que ni desenvolupament ni
+la CI carreguen mai, de manera que alli no es mou res. El mateix overlay fa `SMTP_HOST` obligatori,
+perque un valor per defecte hauria estat una instal·lacio que segueix entregant l'enllac de l'Owner
+a un contenidor de la mateixa maquina, en silenci.
+
+**Que les dues meitats no es desviin, ho subjecten proves i no comentaris.** `install.sh` valida el
+`release.env` igual que `update.sh`, i `scripts/install.test.mjs` passa cada corrupcio pels dos
+scripts en comptes de demanar a qui editi que els mantingui en linia. La llista de moduls que el
+runbook publica es compara amb el registre de `packages/config/src/flags.ts`, perque un script de
+shell no pot contenir aquella llista sense que se n'aparti. Dotze mutacions sobre `install.sh` --el
+`chown`, el mode, la reexecucio, cada peca de la validacio, el domini, l'adreca de l'Owner-- posen
+la suite vermella.
+
 ## Traefik i els limits de compartir maquina
 
 Tots els ports de `compose.yaml` es publiquen a `127.0.0.1`, cosa que ja es la meitat de la feina:
@@ -324,7 +390,10 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
   cop al dia i compara aqui, i `Owner` i `Administrator` veuen quina feina representa
   l'actualitzacio.
   Sense boto, i sense que el navegador consulti res --les tres condicions de D5.
-- **P7** — L'instal·lador interactiu.
+- **P7** — *Fet.* L'instal·lador interactiu: sis preguntes, una per pantalla, validades alli
+  mateix; genera tots els secrets ell mateix i no en demana cap; es pot tornar a executar; i crea el
+  primer Owner sense que ningu no triï cap contrasenya. Tanca dos dels tres buits que P3 va
+  destapar.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
 algu pot provar a ma.

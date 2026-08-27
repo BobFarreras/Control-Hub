@@ -94,9 +94,11 @@ L'ordre dels increments te una cosa que val la pena no perdre: la prova de compa
 **abans** del comandament d'actualitzar. Les imatges tornen enrere de franc i la base de dades no,
 o sigui que un rollback que ningu ha exercitat es una sensacio i no una propietat.
 
-El seu apartat mes util ara mateix es el del que **no existeix**: `runbooks/installation.md` ja
-descriu passos que ningu pot executar, perque no hi ha registre d'imatges, ni manifest de versions,
-ni reverse proxy al repositori, i `compose.yaml` compila els serveis en comptes de descarregar-los.
+**Els set increments estan fets**, i el que `runbooks/installation.md` descriu ja es pot executar:
+imatges per digest, manifest de release, comandament d'actualitzacio, avis de versio nova i
+instal·lador. El que falta no es codi --**ningu ha publicat encara cap etiqueta**, o sigui que no hi
+ha cap `release.json` per llegir ni res per descarregar-- i el reverse proxy segueix sense viure al
+repositori, per decisio: l'instal·lador escriu la configuracio de Traefik i la copia una persona.
 
 **P1 esta fet** (branca `agent/claude/ch-014-deployment-pipeline`). `apps/api/src/version.ts` ja
 estampava la versio al bundle amb tsup i la serveix a `/health/live`; ara pel mateix cami hi ha un
@@ -210,8 +212,45 @@ igualtat, perque `1.10.0` contra `1.9.0` es on una comparacio de cadenes menteix
 menteix un cop es un avis que ningu no torna a llegir; i una fallada de xarxa **no esborra** el que
 se sabia, perque una comprovacio que no ha arribat a GitHub no sap res de nou.
 
-**El seguent increment es P7**: l'instal·lador interactiu, l'ultim de l'especificacio. Despres
-d'aixo, el desplegament a la VPS.
+**P7 esta fet** (mateixa branca), i amb ell **l'especificacio del desplegament esta sencera**.
+`deploy/install.sh` fa sis preguntes, una per pantalla i amb el que ja s'ha respost a la vista:
+domini, primer Owner, organitzacio, SMTP, moduls i backups. Valida cada resposta alli mateix, genera
+els sis secrets ell mateix i els escriu com a fitxers `0400` de `root`, escriu `.env`, aixeca
+l'stack i crea el primer Owner.
+
+**No demana cap contrasenya, i aquesta es la decisio que ho ordena tot.** L'invariant 8 diu que res
+del que pregunti acaba en un historial, i la contrasenya es la resposta que ho fa dificil: escrita
+es a l'historial, impresa es a l'scrollback, guardada es al disc. El compte de l'Owner es crea amb
+32 bytes que ningu no veu mai, i l'Owner rep l'enllac per posar-se la seva. El preu esta acceptat i
+escrit: aquell correu es l'unic cami cap al compte, o sigui que l'SMTP es valida abans i no
+enviar-lo es sorollos.
+
+**El «job OCI equivalent» que el runbook anomenava des del principi ara existeix.** `bootstrap.ts`
+es una segona entrada del bundle de l'API --necessita aquell tancat, i una imatge que s'executa un
+sol cop es una imatge mes per firmar i mantenir-- i viu al `compose.yaml` darrere un perfil, de
+manera que no arrenca amb cap `up` i s'ha de demanar pel nom. Corre amb les credencials de migracio:
+`control_hub_app` te `select` sobre `tenants` i res mes, cosa correcta i el motiu pel qual l'API no
+pot fer-ho ella sola.
+
+**Tornar a executar l'instal·lador es el cas normal.** Les respostes ja donades surten com a valors
+per defecte llegits de `.env` i cap secret ja escrit no es regenera --refer-lo deixaria PostgreSQL
+amb el vell, perque el rol es crea un sol cop sobre un directori de dades buit, i el simptoma
+semblaria un volum corromput.
+
+**Dos dels tres buits de P3 queden tancats.** La release publica `control-hub-install.tar.gz` amb
+els fitxers de Compose, l'script que PostgreSQL munta i els dos comandaments; i Mailpit ja no
+arrenca en produccio, que va resultar ser una linia a l'overlay de produccio en comptes del canvi
+que P3 temia. Queda obert el primer: **les imatges de tercers segueixen anant per etiqueta**, o
+sigui que dues instal·lacions de la mateixa versio poden no portar el mateix PostgreSQL.
+
+Verificat executant l'script de debo amb `--dry-run`, no llegint-lo: instal·la, es torna a executar
+sense regenerar res, i refusa les mateixes releases que `update.sh` --la conformitat entre els dos
+validadors es una prova i no un comentari. Dotze mutacions sobre `install.sh` posen la suite
+vermella.
+
+**El seguent pas ja no es un increment, es el desplegament**: publicar la primera etiqueta i
+instal·lar-la a la VPS darrere el Traefik que ja hi corre. Fins que algu no publiqui, no hi ha cap
+`release.json` per llegir i l'instal·lador no te res a descarregar.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

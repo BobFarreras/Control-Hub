@@ -113,6 +113,60 @@ services:
     networks: [data]
     restart: "no"
 
+  # The tenant and the first Owner, created once and never again.
+  #
+  # `profiles` is what makes it safe to keep here: a service under a profile is invisible to every
+  # `up`, `pull` and `ps` that does not name it, so this is a job that lives in the file rather
+  # than a service that happens not to restart. It is run deliberately, by `deploy/install.sh` or
+  # by hand:
+  #
+  #   docker compose --profile bootstrap run --rm bootstrap
+  #
+  # It reuses the API image because it needs exactly that closure -- Better Auth, the provisioning
+  # code -- and a second image whose only job is to run once is one more thing to build, sign and
+  # keep in step.
+  #
+  # It carries the *migration* credentials, not the application ones. `control_hub_app` has
+  # `select` on `tenants` and nothing else, which is correct and is precisely why the API cannot
+  # do this itself. No `BOOTSTRAP_OWNER_PASSWORD` is passed and none is accepted here: the account
+  # is created with a password nobody sees and the Owner is mailed a link to set their own.
+  bootstrap:
+    profiles: ["bootstrap"]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: api
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
+    command: ["node", "dist/bootstrap.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3001}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
+      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
+      REDIS_URL: redis://valkey:6379
+      BOOTSTRAP_OWNER_EMAIL: ${BOOTSTRAP_OWNER_EMAIL:-}
+      BOOTSTRAP_OWNER_NAME: ${BOOTSTRAP_OWNER_NAME:-}
+      BOOTSTRAP_TENANT_NAME: ${BOOTSTRAP_TENANT_NAME:-}
+      BOOTSTRAP_TENANT_SLUG: ${BOOTSTRAP_TENANT_SLUG:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [application, data]
+    restart: "no"
+
   postgres:
     image: postgres:17-alpine
     environment:
