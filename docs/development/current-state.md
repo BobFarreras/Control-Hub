@@ -252,6 +252,10 @@ vermella.
 instal·lar-la a la VPS darrere el Traefik que ja hi corre. Fins que algu no publiqui, no hi ha cap
 `release.json` per llegir i l'instal·lador no te res a descarregar.
 
+**Com es publica esta escrit abans de fer-ho, a [`docs/runbooks/release.md`](../runbooks/release.md)**:
+els quatre passos, el commit de versio que altrament s'oblida --i que fa que una instal·lacio nova
+es cregui desactualitzada per sempre--, i com comprovar que la release ha quedat sencera.
+
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre
 de restauracio i el runbook per moure'l a una VPS dedicada. El disseny pren els secrets com a

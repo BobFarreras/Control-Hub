@@ -26,6 +26,8 @@
   `runbooks/bitwarden-secrets-deployment.md` (materialitzar secrets de maquina per ID immutable i
   desplegar amb rollback atomic) i `runbooks/platform-secret-rotation.md` (rotar i recuperar les
   classes de secrets bootstrap amb validacio i revocacio).
+  `runbooks/release.md` publica una versio: que fa un push a `develop` i que fa una etiqueta, el
+  commit de versio que ningu no recorda, i com comprovar que la release ha quedat sencera.
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
