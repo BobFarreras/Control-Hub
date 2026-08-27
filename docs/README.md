@@ -22,7 +22,12 @@
   compte de Vercel amb un token de nomes lectura) i `runbooks/connect-supabase.md` (connectar un
   compte de Supabase amb un Personal Access Token, i el risc que porta) i
   `runbooks/connect-opencode.md` (instal.lar el plugin sanititzat i enviar consum a la
-  VPS).
+  VPS), `runbooks/connect-mail.md` (configurar IMAP, Google o Microsoft per al correu entrant) i
+  `runbooks/bitwarden-secrets-deployment.md` (materialitzar secrets de maquina per ID immutable i
+  desplegar amb rollback atomic) i `runbooks/platform-secret-rotation.md` (rotar i recuperar les
+  classes de secrets bootstrap amb validacio i revocacio).
+  `runbooks/release.md` publica una versio: que fa un push a `develop` i que fa una etiqueta, el
+  commit de versio que ningu no recorda, i com comprovar que la release ha quedat sencera.
 - `templates/`: formats obligatoris, i la plantilla de prompt per obrir sessio amb un agent
   (`templates/session-prompt-template.md`).
 
@@ -34,6 +39,8 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
 - `specifications/commerce.md`: productes, plans, preus, subscripcions i metriques.
 - `specifications/support.md`: tickets, SLA amb horari laboral i incidencies. Aprovada,
   correspon a la Fase 5.
+- `specifications/support-mailbox.md`: classificacio manual del correu entrant, import atomic a
+  tickets i estat persistent dels enviaments. Aprovada, M4 de la Fase 8.
 - `specifications/attendance.md`: registre de jornada, correccions i conciliacio contra hores
   imputades. Aprovada, Fase 5C. Requereix confirmacio de la gestoria.
 - `specifications/projects-and-time.md`: entregues per client, imputacio d'hores, barems i
@@ -60,8 +67,29 @@ La documentacio canvia en la mateixa PR que el comportament afectat.
   projeccio de tokens sense prompts, codi ni paths. Aprovada, ampliacio de la Fase 8.1.
 - `specifications/phase-7b-actions-and-oauth.md`: contracte acotat d'OAuth, accions asincrones i
   transport IMAP que necessita la Fase 8. Aprovat.
+- `specifications/mcp-and-client-portal.md`: proposta de la Fase 10 -- Control Hub com a resource
+  server OAuth 2.1, cataleg de tools MCP nomes de lectura, service accounts i auditoria per tool
+  call. Separada dels grants OAuth de connectors de la Fase 7B.
+- `specifications/agent-platform.md`: proposta de la Fase 11 per governar agents versionats,
+  runs, tools, aprovacions, costos i auditoria sobre la Fase 10.
+- `specifications/credential-catalog.md`: cataleg tenant-scoped de credencials humanes i
+  navegacio segura a Bitwarden Password Manager, aprovat com a S7 de la Fase 12.
+- `specifications/multi-agent-development.md`: Fase X transversal per aillar els agents que
+  desenvolupen Control Hub; no es el runtime de producte de la Fase 11.
+- `specifications/deployment.md`: proposta de la Fase 9 -- publicar imatges, nomenar una versio per
+  digest, avisar que n'hi ha una de nova sense actualitzar sola, i instal·lar sense compilar res.
+  Diu tambe quins passos de `runbooks/installation.md` encara no es poden fer.
+- `development/agent-workspaces.md`: crear, validar, entregar i destruir un workspace per tasca.
 - `development/phase-8-implementation-guide.md`: ordre d'increments, portes i checklist per
   implementar la Fase 8 sense acoblar el core als proveidors.
+- `development/phase-12-secrets-management-guide.md`: frontera entre passwords, secrets de
+  desplegament i credencials tenant-scoped, amb `_FILE`, rotacio i Bitwarden opcional.
+- `development/phase-12-password-manager-integration-guide.md`: cataleg de credencials humanes,
+  integracio segura amb Bitwarden Password Manager i evolucio de VPS compartida a dedicada.
+- `security/secrets-inventory.md`: classificacio canonica de variables sensibles, credencials
+  humanes i credencials tenant-scoped, sense cap valor real.
+- `security/credential-catalog-threat-model.md`: amenaces, controls, casos d'abus i risc residual
+  de la integracio amb Bitwarden Password Manager.
 - `development/phase-4-commerce.md`: operacio i validacio local de la Fase 4.
 - `development/smart-data-table.md`: contracte dels llistats operatius reutilitzables.
 - `development/current-state.md`: handoff, estat implementat i punt de continuacio. **El

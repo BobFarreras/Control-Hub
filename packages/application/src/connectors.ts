@@ -93,7 +93,7 @@ export type SealedCredential = CredentialEnvelope & {
  * It rides along as additional authenticated data, which is what makes an envelope copied into
  * another tenant's row fail to open even when the master key is the same one.
  */
-export type CredentialAad = { tenantId: string; instanceId: string };
+export type CredentialAad = { tenantId: string; instanceId: string; purpose?: string };
 
 /**
  * The vault, as the use cases see it.

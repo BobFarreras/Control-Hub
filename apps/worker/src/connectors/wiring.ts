@@ -1,12 +1,14 @@
-import type { ConnectorRepository } from "@control-hub/application";
+import type { ConnectorRepository, SupportMailboxIngestor } from "@control-hub/application";
 import { ConnectorSecretReader } from "@control-hub/application";
 import type { AllowedDestination, KeyRing } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
-import type { HttpPort } from "@control-hub/connectors";
+import type { HttpPort, SecretsPort } from "@control-hub/connectors";
 import { CredentialVault } from "@control-hub/persistence";
 import type { UsageRecordIngestor } from "../usage/ingestion.js";
 import type { CircuitStore } from "./circuit-store.js";
 import { createGuardedHttp } from "./guarded-fetch.js";
+import { createImapMailbox } from "./imap-mailbox.js";
+import type { OAuthTokenProvider } from "./oauth-token-provider.js";
 import { ConnectorRuntime, type RuntimeLogger } from "./runtime.js";
 
 /**
@@ -26,21 +28,46 @@ export type ConnectorWiringOptions = {
   circuits: CircuitStore;
   logger: RuntimeLogger;
   usage?: UsageRecordIngestor;
+  mail?: SupportMailboxIngestor;
+  oauthTokens?: OAuthTokenProvider;
 };
 
 export function createConnectorRuntime(options: ConnectorWiringOptions): ConnectorRuntime | null {
   if (!options.keyRing) return null;
 
   const secrets = new ConnectorSecretReader(options.repository, new CredentialVault(options.keyRing));
+  const runtimeSecrets = options.oauthTokens
+    ? {
+        open: (context: Parameters<ConnectorSecretReader["open"]>[0], instanceId: string, kind: string) =>
+          kind === "oauth_access_token"
+            ? options.oauthTokens!.accessToken(context, instanceId)
+            : secrets.open(context, instanceId, kind)
+      }
+    : secrets;
 
   return new ConnectorRuntime(connectorRegistry, {
     repository: options.repository,
-    secrets,
+    secrets: runtimeSecrets,
     circuits: options.circuits,
     logger: options.logger,
     ...(options.usage ? { usage: options.usage } : {}),
-    http: (instance) => httpFor(instance, options.allowlist)
+    ...(options.mail ? { mail: options.mail } : {}),
+    http: (instance) => httpFor(instance, options.allowlist),
+    mailbox: (instance, instanceSecrets) => mailboxFor(instance, instanceSecrets, options.allowlist)
   });
+}
+
+async function mailboxFor(
+  instance: { connectorType: string; config: unknown },
+  secrets: SecretsPort,
+  allowlist: readonly AllowedDestination[]
+) {
+  if (instance.connectorType !== "imap" || typeof instance.config !== "object" || instance.config === null) {
+    throw new Error("MAILBOX_NOT_DECLARED");
+  }
+  const mailboxUrl = (instance.config as { mailboxUrl?: unknown }).mailboxUrl;
+  if (typeof mailboxUrl !== "string") throw new Error("MAILBOX_CONFIG_INVALID");
+  return createImapMailbox({ mailboxUrl, secrets, allowlist });
 }
 
 /**

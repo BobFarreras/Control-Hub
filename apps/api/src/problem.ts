@@ -1,8 +1,12 @@
 import {
   ConnectorCredentialError,
+  ConnectorActionError,
+  ConnectorOAuthError,
   ConnectorServiceError,
   ConnectorStorageError,
-  InfrastructureServiceError
+  InfrastructureServiceError,
+  CredentialCatalogError,
+  McpOauthError
 } from "@control-hub/application";
 import { ApiSecurityError } from "./security.js";
 
@@ -45,6 +49,7 @@ const titles: Record<string, string> = {
   AUTHENTICATION_REQUIRED: "Authentication required",
   PERMISSION_DENIED: "Permission denied",
   MFA_REQUIRED: "Second factor required",
+  SESSION_NOT_FRESH: "Sign in again to confirm this",
   TENANT_ACCESS_DENIED: "Tenant access denied",
   TENANT_SELECTION_REQUIRED: "Tenant selection required",
   FORBIDDEN: "Permission denied",
@@ -66,6 +71,22 @@ const titles: Record<string, string> = {
   PAYLOAD_TOO_LARGE: "Payload too large",
   UNSUPPORTED_MEDIA_TYPE: "Unsupported content type",
   RATE_LIMITED: "Too many requests",
+  // The MCP surface. A token this server will not accept is one title whatever was wrong with it,
+  // except for expiry, which is the one a client can act on by refreshing.
+  MCP_TOKEN_INVALID: "The token was not accepted",
+  MCP_TOKEN_EXPIRED: "The token has expired",
+  MCP_AUDIENCE_INVALID: "The token was issued for another resource",
+  MCP_SCOPE_INSUFFICIENT: "The token does not carry that scope",
+  MCP_SESSION_UNKNOWN: "No such session",
+  // The management surface. These reach a screen somebody is looking at, not an agent, so they
+  // say which of the three things was not there rather than collapsing into one answer -- the
+  // caller already holds `security:manage` for this tenant and learns nothing by being told.
+  MCP_REQUEST_INVALID: "The request is missing or malformed",
+  MCP_SCOPE_UNAVAILABLE: "That scope cannot be granted here",
+  MCP_REDIRECT_URI_MISMATCH: "The redirect address is not usable",
+  MCP_CLIENT_UNKNOWN: "No such client",
+  MCP_GRANT_UNKNOWN: "No such consent",
+  MCP_SERVICE_ACCOUNT_UNKNOWN: "No such service account",
   DUPLICATE_INSTANCE_NAME: "An integration already uses that name",
   DUPLICATE_ENTRY: "Already exists",
   CREDENTIAL_SLOT_TAKEN: "A rotation is already open",
@@ -74,6 +95,16 @@ const titles: Record<string, string> = {
   SECRET_TOO_SHORT: "Secret too short",
   SECRET_TOO_LONG: "Secret too long",
   ALREADY_EXPIRED: "Expiry is in the past",
+  OAUTH_NOT_DECLARED: "This connector does not use OAuth",
+  OAUTH_PROVIDER_NOT_CONFIGURED: "OAuth provider is not configured",
+  OAUTH_STATE_INVALID: "OAuth state is invalid or expired",
+  ACTION_NOT_DECLARED: "This connector does not declare the action",
+  ACTION_CONFIRMATION_INVALID: "Action confirmation is invalid or expired",
+  ACTION_MFA_REQUIRED: "A recent second factor is required",
+  ACTION_NOT_FOUND: "No such connector action",
+  IDEMPOTENCY_KEY_INVALID: "Idempotency key is invalid",
+  IDEMPOTENCY_KEY_REUSED: "Idempotency key was reused with different content",
+  MAIL_RECIPIENT_MISSING: "The customer has no billing email",
   RULE_NOT_FOUND: "No such alert rule",
   ALERT_NOT_FOUND: "No such alert",
   DUPLICATE_RULE_NAME: "An alert rule already uses that name",
@@ -91,6 +122,10 @@ const titles: Record<string, string> = {
   INVALID_HOSTNAME: "Invalid host label",
   INVALID_MATCH_KEY: "Invalid match key",
   REFERENCE_NOT_FOUND: "Refers to something that does not exist",
+  CREDENTIAL_ENTRY_NOT_FOUND: "Credential entry not found",
+  PASSWORD_MANAGER_INSTALLATION_NOT_FOUND: "Password manager installation not found",
+  CREDENTIAL_ENTRY_INVALID_TRANSITION: "Credential entry cannot make that transition",
+  CREDENTIAL_ENTRY_CONFLICT: "Credential entry changed concurrently",
   INTERNAL_ERROR: "Unexpected error"
 };
 
@@ -105,7 +140,15 @@ export function usesProblemDetails(url: string): boolean {
   return (
     url.startsWith("/api/v1/integrations") ||
     url.startsWith("/api/v1/connectors") ||
-    url.startsWith("/api/v1/infrastructure")
+    url.startsWith("/api/v1/infrastructure") ||
+    url.startsWith("/api/v1/credential-catalog") ||
+    url.startsWith("/api/v1/password-manager") ||
+    // The MCP management surface, which was written to the error specification from the start --
+    // but not the OAuth endpoints beneath it. Those answer in RFC 6749's own envelope, because
+    // what calls them is a generic OAuth client that branches on `error` and has never heard of
+    // problem details. The two live under one prefix and speak two protocols, so the boundary has
+    // to be drawn by path rather than assumed.
+    (url.startsWith("/api/v1/mcp/") && !url.startsWith("/api/v1/mcp/oauth"))
   );
 }
 
@@ -139,6 +182,18 @@ export function describeConnectorError(
 ): { status: number; code: string; params?: Record<string, unknown> } | null {
   if (error instanceof ApiSecurityError) return { status: error.statusCode, code: error.code };
 
+  if (error instanceof CredentialCatalogError) {
+    const status =
+      error.code === "FORBIDDEN" || error.code === "MFA_REQUIRED"
+        ? 403
+        : error.code.endsWith("NOT_FOUND")
+          ? 404
+          : error.code.endsWith("CONFLICT")
+            ? 409
+            : 422;
+    return { status, code: error.code };
+  }
+
   if (error instanceof ConnectorServiceError) {
     const status = connectorServiceStatus(error.code);
     return error.issues.length > 0
@@ -147,6 +202,12 @@ export function describeConnectorError(
   }
 
   if (error instanceof ConnectorCredentialError) return { status: credentialStatus(error.code), code: error.code };
+
+  if (error instanceof ConnectorActionError) return { status: actionStatus(error.code), code: error.code };
+
+  if (error instanceof ConnectorOAuthError) return { status: oauthStatus(error.code), code: error.code };
+
+  if (error instanceof McpOauthError) return { status: mcpManagementStatus(error.code), code: error.code };
 
   if (error instanceof ConnectorStorageError) return { status: storageStatus(error.code), code: error.code };
 
@@ -174,6 +235,35 @@ function credentialStatus(code: string): number {
   if (code === "FORBIDDEN" || code === "MFA_REQUIRED") return 403;
   if (code === "INSTANCE_NOT_FOUND") return 404;
   if (code === "ROTATION_ALREADY_OPEN" || code === "NO_ROTATION_IN_PROGRESS") return 409;
+  return 422;
+}
+
+function oauthStatus(code: string): number {
+  if (code === "FORBIDDEN" || code === "MFA_REQUIRED") return 403;
+  if (code === "INSTANCE_NOT_FOUND") return 404;
+  if (code === "OAUTH_PROVIDER_NOT_CONFIGURED") return 503;
+  if (code === "OAUTH_STATE_INVALID") return 400;
+  return 422;
+}
+
+/**
+ * What a `McpOauthError` means on the management surface.
+ *
+ * Only three of its codes can reach here: the rest belong to the token and authorization endpoints,
+ * which answer in OAuth's envelope and never reach this handler. The split is the one the error
+ * specification draws -- a body that could not be read at all is a 400, a body that was read and
+ * refused by a rule is a 422 -- and the fallback is the second of those, because a code that got
+ * here at all was raised by a service after the request had already parsed.
+ */
+function mcpManagementStatus(code: string): number {
+  if (code === "MCP_REQUEST_INVALID") return 400;
+  return 422;
+}
+
+function actionStatus(code: string): number {
+  if (code === "FORBIDDEN" || code === "ACTION_MFA_REQUIRED") return 403;
+  if (code === "INSTANCE_NOT_FOUND" || code === "ACTION_NOT_FOUND" || code === "TICKET_NOT_FOUND") return 404;
+  if (code === "IDEMPOTENCY_KEY_REUSED") return 409;
   return 422;
 }
 

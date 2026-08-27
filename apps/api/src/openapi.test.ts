@@ -99,6 +99,23 @@ const documentedInfrastructure = [
 const withConnectors = { ...base, featureFlags: new Set(["connectors"] as const), connectorKeyRing: keyRing() };
 const withInfrastructure = { ...base, featureFlags: new Set(["infrastructure"] as const) };
 const withUsage = { ...base, featureFlags: new Set(["usage_costs"] as const) };
+const withCredentialCatalog = {
+  ...base,
+  featureFlags: new Set(["credential_catalog"] as const),
+  connectorKeyRing: keyRing()
+};
+const documentedCredentialCatalog = [
+  ["get", "/api/v1/password-manager/installations"],
+  ["post", "/api/v1/password-manager/installations"],
+  ["patch", "/api/v1/password-manager/installations/{id}"],
+  ["get", "/api/v1/credential-catalog"],
+  ["post", "/api/v1/credential-catalog"],
+  ["get", "/api/v1/credential-catalog/{id}"],
+  ["patch", "/api/v1/credential-catalog/{id}"],
+  ["post", "/api/v1/credential-catalog/{id}/open-intents"],
+  ["post", "/api/v1/credential-catalog/{id}/reviews"],
+  ["post", "/api/v1/credential-catalog/{id}/archive"]
+] as const;
 const documentedUsage = [
   ["get", "/api/v1/usage/sources"],
   ["get", "/api/v1/usage/events"],
@@ -116,6 +133,14 @@ const documentedUsage = [
 ] as const;
 
 describe("openapi document", () => {
+  it("documents the credential catalogue only when both its flag and key ring are present", async () => {
+    const enabled = await documentOf(withCredentialCatalog);
+    expect(documentedCredentialCatalog.filter(([method, path]) => !enabled.paths[path]?.[method]?.summary)).toEqual([]);
+    const withoutRing = await documentOf({ ...base, featureFlags: new Set(["credential_catalog"] as const) });
+    const disabled = await documentOf({ ...base, featureFlags: new Set(), connectorKeyRing: keyRing() });
+    expect(documentedCredentialCatalog.some(([method, path]) => withoutRing.paths[path]?.[method])).toBe(false);
+    expect(documentedCredentialCatalog.some(([method, path]) => disabled.paths[path]?.[method])).toBe(false);
+  });
   it("documents every enabled usage operation with the declared tag and a summary", async () => {
     const document = await documentOf(withUsage);
     const declared = new Set((document.tags ?? []).map((tag) => tag.name));

@@ -16,6 +16,10 @@
 | Registre de jornada | `attendance_events` | El propi sempre; el de tothom, amb `attendance:manage` |
 | Hores imputades a projectes | `time_entries` | Qui te `projects:read`; el cost, nomes amb `financials:read` |
 | Auditoria d'accessos i canvis | `audit_log` | Qui te `audit:read` |
+| Metadata del cataleg de credencials | `credential_catalog_entries` | Segons `credentials:read`; tecnics nomes assignades |
+
+La referencia externa de Bitwarden es metadata sensible xifrada i no forma part de llistats,
+exports, logs ni auditoria. Els valors del vault i la master password no entren a Control Hub.
 
 **El registre de jornada es el mes sensible dels cinc**, i no perque contingui res espectacular:
 un any de fitxatges diu a quina hora arriba i marxa una persona cada dia, i aixo es un patro de

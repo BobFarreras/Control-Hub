@@ -1,16 +1,16 @@
-name: control-hub
-
 services:
   web:
     build:
       context: .
       dockerfile: deploy/Dockerfile
       target: web
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
     ports:
-      - "127.0.0.1:${WEB_PORT:-3001}:3001"
+      - "127.0.0.1:${WEB_PORT:?WEB_PORT is required}:3001"
     depends_on:
       api:
         condition: service_healthy
@@ -26,23 +26,25 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: api
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 4000
       LOG_LEVEL: info
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3001}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
       SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
-      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:${API_PORT:?API_PORT is required}:4000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -65,11 +67,16 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: worker
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
-      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}@postgres:5432/control_hub
+      DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
+      # Named here or the variable never reaches the process, and switching the check off in
+      # .env would change nothing at all. See docs/runbooks/installation.md.
+      CONTROL_HUB_UPDATE_CHECK: ${CONTROL_HUB_UPDATE_CHECK:-true}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -87,8 +94,15 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: migrate
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
     environment:
-      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}@postgres:5432/control_hub
+      # `MIGRATION_DATABASE_URL`, not `DATABASE_URL`, because the image no longer starts node
+      # directly: it starts `load-secret-and-exec MIGRATION_DATABASE_URL`, which exits before node
+      # runs unless that exact name carries a value or a `_FILE` companion. `migrate.js` does fall
+      # back to `DATABASE_URL`, so the fallback reads as if it covers this -- it does not, because
+      # the entrypoint never gets far enough to hand over.
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,15 +113,69 @@ services:
     networks: [data]
     restart: "no"
 
+  # The tenant and the first Owner, created once and never again.
+  #
+  # `profiles` is what makes it safe to keep here: a service under a profile is invisible to every
+  # `up`, `pull` and `ps` that does not name it, so this is a job that lives in the file rather
+  # than a service that happens not to restart. It is run deliberately, by `deploy/install.sh` or
+  # by hand:
+  #
+  #   docker compose --profile bootstrap run --rm bootstrap
+  #
+  # It reuses the API image because it needs exactly that closure -- Better Auth, the provisioning
+  # code -- and a second image whose only job is to run once is one more thing to build, sign and
+  # keep in step.
+  #
+  # It carries the *migration* credentials, not the application ones. `control_hub_app` has
+  # `select` on `tenants` and nothing else, which is correct and is precisely why the API cannot
+  # do this itself. No `BOOTSTRAP_OWNER_PASSWORD` is passed and none is accepted here: the account
+  # is created with a password nobody sees and the Owner is mailed a link to set their own.
+  bootstrap:
+    profiles: ["bootstrap"]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: api
+      args:
+        CONTROL_HUB_BUILD: ${CONTROL_HUB_BUILD:-}
+    command: ["node", "dist/bootstrap.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3001}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      SMTP_FROM: ${SMTP_FROM:-control-hub@localhost.test}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
+      DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
+      MIGRATION_DATABASE_URL: postgres://control_hub_admin:${POSTGRES_ADMIN_PASSWORD:-}@postgres:5432/control_hub
+      REDIS_URL: redis://valkey:6379
+      BOOTSTRAP_OWNER_EMAIL: ${BOOTSTRAP_OWNER_EMAIL:-}
+      BOOTSTRAP_OWNER_NAME: ${BOOTSTRAP_OWNER_NAME:-}
+      BOOTSTRAP_TENANT_NAME: ${BOOTSTRAP_TENANT_NAME:-}
+      BOOTSTRAP_TENANT_SLUG: ${BOOTSTRAP_TENANT_SLUG:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [application, data]
+    restart: "no"
+
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: control_hub
       POSTGRES_USER: control_hub_admin
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
-      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is required}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?POSTGRES_PORT is required}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
@@ -125,7 +193,7 @@ services:
     image: valkey/valkey:8-alpine
     command: ["valkey-server", "--save", "60", "1", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:?REDIS_PORT is required}:6379"
     volumes:
       - valkey-data:/data
     healthcheck:
@@ -141,8 +209,8 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27
     ports:
-      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:?MAILPIT_SMTP_PORT is required}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:?MAILPIT_UI_PORT is required}:8025"
     environment:
       MP_MAX_MESSAGES: 1000
       MP_SMTP_AUTH_ACCEPT_ANY: "1"

@@ -6,8 +6,10 @@ import { AttendanceProvider } from "@/components/attendance-provider";
 import { FeatureProvider } from "@/components/feature-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/toast";
+import { UpdateProvider } from "@/components/update-provider";
 import { currentAttendanceStatus } from "@/lib/attendance-status";
 import { enabledFeatures } from "@/lib/features";
+import { pendingUpdate } from "@/lib/pending-update";
 
 export const metadata: Metadata = { title: "Control Hub", description: "Business operations control center" };
 
@@ -20,15 +22,21 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Resolved here for the same reason as the flags: the clock control sits in the topbar of every
   // screen, and asking for its state from the browser would leave a gap in the first paint of
   // every navigation. Null when there is nothing to show, including on the sign-in page.
-  const attendance = await currentAttendanceStatus();
+  // Both on the server, and both together: two sequential round trips to the API would add the
+  // slower of them to the first paint of every navigation for no reason -- neither depends on the
+  // other. The update is null for everybody who is not Owner or Administrator, which the API
+  // decides; the browser never asks GitHub anything, which is the point of resolving it here.
+  const [attendance, update] = await Promise.all([currentAttendanceStatus(), pendingUpdate()]);
   return (
     <html suppressHydrationWarning>
       <body>
         <FeatureProvider features={enabledFeatures()}>
           <AttendanceProvider status={attendance}>
-            <ThemeProvider>
-              <ToastProvider>{children}</ToastProvider>
-            </ThemeProvider>
+            <UpdateProvider state={update}>
+              <ThemeProvider>
+                <ToastProvider>{children}</ToastProvider>
+              </ThemeProvider>
+            </UpdateProvider>
           </AttendanceProvider>
         </FeatureProvider>
       </body>

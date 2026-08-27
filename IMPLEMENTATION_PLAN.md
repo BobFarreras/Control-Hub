@@ -666,6 +666,99 @@ Una tercera empresa pot instal·lar, operar, actualitzar i recuperar Control Hub
 
 MCP i portal reutilitzen les mateixes regles del core i no obren vies alternatives d'autoritzacio.
 
+## Fase 11 - Plataforma d'agents
+
+**Estat: proposta per a revisio del propietari.**
+
+**Especificacio:** `docs/specifications/agent-platform.md`.
+
+**Objectiu:** convertir Control Hub en el control plane d'agents empresarials versionats,
+multi-tenant, governats per politiques, aprovacio humana, auditoria i pressupostos.
+
+La primera entrega construeix registre, versions immutables, runs asincrons, grants de tools,
+limits i auditoria sobre el stack TypeScript existent. Reutilitza la Fase 10 com a frontera MCP i
+la Fase 8.1 per costos; no introdueix un segon backend ni runtimes de tercers al nucli.
+
+### Entregables inicials
+
+- Registre d'agents i versions immutables.
+- Runtime nadiu darrere ports de model, politiques, tools, consum i auditoria.
+- Runs amb limits de passos, temps, tokens i cost.
+- Permisos `allow | approval_required | deny` per tool.
+- Historial de runs i cua d'aprovacions a la UI.
+
+### Criteri de sortida
+
+Un agent publicat pot executar un cas d'us acotat sense travessar tenants ni permisos, cada tool
+call queda governada i auditada, i qualsevol efecte extern sensible requereix aprovacio vinculada
+al contingut.
+
+## Fase 12 - Gestio externa de secrets i credencials
+
+**Estat: secrets de plataforma S1-S6 i cataleg S7-S10 implementats; S11-S12 pendents
+d'implementacio.**
+
+**Guia:** `docs/development/phase-12-secrets-management-guide.md`.
+
+**Ampliacio funcional:** `docs/development/phase-12-password-manager-integration-guide.md`.
+
+**Especificacio:** `docs/specifications/credential-catalog.md`.
+
+**Objectiu:** separar passwords humans, secrets bootstrap de la instal·lacio i credencials
+tenant-scoped, amb fitxers `_FILE` com a contracte base i un gestor extern opcional com Bitwarden
+Secrets Manager.
+
+### Entregables
+
+- Inventari i classificacio de secrets sense valors.
+- Resolver segur de fitxers de secrets, compatible amb desenvolupament local.
+- Desplegament sense secrets a imatges, build args ni web.
+- Adaptador Bitwarden fora del core amb machine account de minim privilegi.
+- Runbooks de rotacio, backup, restauracio i break-glass.
+- UI limitada a metadata i salut, sense lectura ni copia de secrets.
+- Cataleg de contrasenyes humanes amb context de client, aplicacio, responsable, revisio i
+  referencia opaca a Bitwarden Password Manager.
+- Desplegament Bitwarden independent, inicialment compatible amb la mateixa VPS i preparat per
+  migrar a una VPS dedicada sense canviar el domini de Control Hub.
+
+### Criteri de sortida
+
+Una instal·lacio es pot desplegar, rotar i restaurar sense secrets versionats ni exposats per API,
+UI, logs o jobs, i el vault intern continua contenint nomes credencials tenant-scoped. Una persona
+autoritzada pot localitzar una credencial humana a Control Hub i obrir-la a Bitwarden, mentre cap
+valor ni master password travessa Control Hub.
+
+## Fase X - Plataforma de desenvolupament multi-agent
+
+**Estat: increment local implementat; adaptadors remots diferits.**
+
+**Especificacio:** `docs/specifications/multi-agent-development.md`.
+
+**Objectiu:** separar l'estat mutable dels agents que desenvolupen Control Hub. Es una iniciativa
+transversal amb prioritat abans de les fases 11 i 12; no es la plataforma d'agents que el
+producte ofereix als tenants.
+
+### Implementacio inicial
+
+- Una tasca, branca `agent/*`, Git worktree i manifest local per agent.
+- Ports, `.env`, secrets efimers, projecte Compose, volums i PostgreSQL propis.
+- CLI cross-platform de creacio, provisionament, validacio, inventari i destruccio segura.
+- Deteccio de col·lisions exactes de scope i blocs de ports.
+- Dev Container com a contracte d'eines reproduible.
+- Regles comunes a `AGENTS.md` i guia operativa per al propietari.
+
+### Increments posteriors condicionats a demanda
+
+- `DatabaseWorkspaceProvider` per Supabase Branching o un altre PostgreSQL gestionat.
+- Deployment previews per PR i live previews remotes.
+- Coder o Daytona com a provider de workspaces.
+- Control plane, TTL, quotes i cleanup remot.
+
+### Criteri de sortida inicial
+
+De dos a quatre agents poden treballar alhora sense compartir directori, branca, ports, secrets,
+serveis ni base de dades, i el propietari pot crear i retirar cada entorn amb ordres documentades.
+
 ## Plantilla de revisio de fase
 
 En acabar cada fase s'ha de presentar:

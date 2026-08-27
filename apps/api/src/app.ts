@@ -5,8 +5,11 @@ import {
   CommerceService,
   CompanySubscriptionError,
   CompanySubscriptionService,
+  CredentialCatalogService,
+  ConnectorActionService,
   ConnectorCredentialService,
   ConnectorIngressService,
+  ConnectorOAuthService,
   ConnectorService,
   CustomerServicesError,
   CustomerServicesService,
@@ -17,6 +20,7 @@ import {
   ProjectsError,
   ProjectsService,
   SupportError,
+  SupportMailboxService,
   SupportService,
   UsageService,
   UsageServiceError
@@ -33,22 +37,28 @@ import {
 import { connectorRegistry } from "@control-hub/connectors";
 import type { LiveHealth, ReadyHealth } from "@control-hub/contracts";
 import { connectorQueueName } from "@control-hub/contracts/jobs";
+import { parseUpdateCheckState, updateCheckStateKey } from "@control-hub/contracts/release";
 import { checkDatabase, createDatabaseClient } from "@control-hub/database";
 import { createMetrics } from "@control-hub/observability";
 import {
   CredentialVault,
+  CredentialCatalogReferenceVault,
   PostgresAttendanceRepository,
   PostgresCommerceRepository,
   PostgresCompanySubscriptionRepository,
+  PostgresConnectorActionRepository,
   PostgresConnectorRepository,
+  PostgresConnectorOAuthRepository,
   PostgresCustomerServicesRepository,
   PostgresCrmRepository,
+  PostgresCredentialCatalogRepository,
   IdentityInvariantError,
   nodeIngressCrypto,
   InvitationError,
   PostgresInfrastructureRepository,
   PostgresProjectsRepository,
   PostgresSupportRepository,
+  PostgresSupportMailboxRepository,
   PostgresUsageRepository
 } from "@control-hub/persistence";
 import cors from "@fastify/cors";
@@ -62,6 +72,7 @@ import type { ControlHubAuth } from "./auth.js";
 import { createConnectorHealthCheckQueue } from "./connector-health-queue.js";
 import { createConnectorIngressQueue } from "./connector-ingress-queue.js";
 import type { MailSender } from "./email.js";
+import { registerMcpRoutes } from "./mcp.js";
 import { describeConnectorError, problemContentType, problemDetails, usesProblemDetails } from "./problem.js";
 import { rateLimitKey } from "./rate-limit.js";
 import { registerAttendanceRoutes } from "./routes/attendance.js";
@@ -69,25 +80,32 @@ import { registerAuthProxyRoutes } from "./routes/auth-proxy.js";
 import { registerCommerceRoutes } from "./routes/commerce.js";
 import { registerCompanySubscriptionRoutes } from "./routes/company-subscriptions.js";
 import type { RouteContext } from "./routes/context.js";
+import { registerCredentialCatalogRoutes } from "./routes/credential-catalog.js";
 import { registerCrmRoutes } from "./routes/crm.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerInfrastructureRoutes } from "./routes/infrastructure.js";
+import { registerInstallationRoutes } from "./routes/installation.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerInvitationRoutes } from "./routes/invitations.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerPublicRoutes } from "./routes/public.js";
+import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerSupportRoutes } from "./routes/support.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
+import type { SecretObservation, SecretProviderObservation } from "./secret-observability.js";
 import { ApiSecurityError } from "./security.js";
 import { createServer } from "./server-instance.js";
-import { apiVersion } from "./version.js";
+import { apiBuild, apiVersion } from "./version.js";
 
 /**
  * Resolved once, at import. Under the bundler this is a literal and costs nothing; outside it,
  * it is one read of the manifest rather than one per route that mentions a version.
  */
 const packagedVersion = apiVersion();
+
+/** Always a literal, and never overridable: a build identifier somebody can set is not one. */
+const build = apiBuild();
 
 /**
  * BullMQ wants host, port and password rather than a URL, and it opens its own connection: the
@@ -125,6 +143,16 @@ type BuildAppOptions = {
    * which is why it arrives from the environment and has no route that can write it.
    */
   connectorEgressAllowlist?: readonly AllowedDestination[];
+  oauthClientIds?: Readonly<Partial<Record<"google" | "microsoft", string>>>;
+  /**
+   * The public origin an MCP client reaches this API at, and so the OAuth issuer it announces.
+   *
+   * Absent means the MCP routes are not declared, whatever the flag says. An authorization server
+   * that does not know its own name would have to take one from a request header, and a token
+   * whose audience the caller chooses protects nothing. See @control-hub/config.
+   */
+  mcpIssuer?: string | undefined;
+  secretSnapshot?: { provider: SecretProviderObservation; secrets: SecretObservation[] };
 };
 
 /**
@@ -145,6 +173,9 @@ export function buildApp(options: BuildAppOptions) {
   const projects = new ProjectsService(new PostgresProjectsRepository(database));
   const attendance = new AttendanceService(new PostgresAttendanceRepository(database));
   const featureFlags = options.featureFlags ?? parseFeatureFlags(process.env.CONTROL_HUB_FLAGS);
+  const mailbox = isFeatureEnabled(featureFlags, "mail")
+    ? new SupportMailboxService(new PostgresSupportMailboxRepository(database))
+    : null;
   const egressAllowlist =
     options.connectorEgressAllowlist ?? parseEgressAllowlist(process.env.CONNECTOR_INTERNAL_ALLOWLIST);
   const redis = new Redis(options.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false });
@@ -209,8 +240,14 @@ export function buildApp(options: BuildAppOptions) {
         { name: "connectors", description: "What this release can connect to at all." },
         { name: "integrations", description: "Instances of a connector, their state and their health." },
         { name: "credentials", description: "Sealed values. Metadata comes back; the value never does." },
+        { name: "credential-catalog", description: "Non-secret metadata and guarded navigation to Bitwarden." },
         { name: "endpoints", description: "Inbound addresses. The address and its secret are shown once." },
-        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." }
+        { name: "webhooks", description: "The public ingress. Signed by the provider, never by a session." },
+        {
+          name: "mcp",
+          description:
+            "The agent surface: OAuth discovery, the clients and consents behind it, and the tools an agent may call."
+        }
       ]
     }
   });
@@ -380,11 +417,35 @@ export function buildApp(options: BuildAppOptions) {
       const context = { app, database, auth: options.auth };
       registerAuthProxyRoutes({ ...context, appOrigin: options.appOrigin });
       registerIdentityRoutes(context);
+      registerSecretRoutes({
+        ...context,
+        secretSnapshot: options.secretSnapshot ?? {
+          provider: { kind: "environment", health: "not_observed", checkedAt: new Date().toISOString() },
+          secrets: []
+        }
+      });
+      registerInstallationRoutes({
+        ...context,
+        installation: { version: options.version ?? packagedVersion, build },
+        // Read on the connection that already exists rather than a fifth one, and quiet when it
+        // is not there: an unreachable Valkey means nobody is told about an update, which is the
+        // right way for this to fail. Nothing on this route is worth a 500.
+        updateCheck: async () => {
+          try {
+            if (redis.status === "wait") await redis.connect();
+            const stored = await redis.get(updateCheckStateKey);
+            return stored === null ? null : parseUpdateCheckState(stored);
+          } catch (error) {
+            app.log.warn({ err: error }, "could not read the update check state");
+            return null;
+          }
+        }
+      });
       registerCommerceRoutes({ ...context, commerce, customerServices });
       registerCompanySubscriptionRoutes({ ...context, companySubscriptions });
       registerInvitationRoutes({ ...context, appOrigin: options.appOrigin, sendMail: options.sendMail });
       registerCrmRoutes({ ...context, crm });
-      registerSupportRoutes({ ...context, support });
+      registerSupportRoutes({ ...context, support, mailbox });
       // Behind a flag so the schema can be deployed before the module is opened. Off, the
       // routes are never declared and the API answers 404, which is the truth: there is
       // nothing there. A flag decides what is deployed, never who may use it.
@@ -392,6 +453,14 @@ export function buildApp(options: BuildAppOptions) {
       // Off until the accountancy confirms the shape of the record is acceptable, which is a
       // conversation and not a deployment. See `docs/specifications/attendance.md`.
       if (isFeatureEnabled(featureFlags, "attendance")) registerAttendanceRoutes({ ...context, attendance });
+      if (isFeatureEnabled(featureFlags, "credential_catalog") && options.connectorKeyRing) {
+        const credentialRepository = new PostgresCredentialCatalogRepository(database);
+        const credentialVault = new CredentialCatalogReferenceVault(options.connectorKeyRing);
+        registerCredentialCatalogRoutes({
+          ...context,
+          credentials: new CredentialCatalogService(credentialRepository, credentialVault, credentialVault)
+        });
+      }
       if (isFeatureEnabled(featureFlags, "connectors")) registerConnectorRoutes(context);
       if (isFeatureEnabled(featureFlags, "usage_costs"))
         registerUsageRoutes({ ...context, usage: new UsageService(new PostgresUsageRepository(database)) });
@@ -419,12 +488,32 @@ export function buildApp(options: BuildAppOptions) {
         });
     }
 
+    // Unauthenticated by design and therefore outside the block above: a client has to read the
+    // discovery documents and reach the token endpoint before it holds any session at all.
+    registerMcpRoutes({
+      app,
+      database,
+      featureFlags,
+      issuer: options.mcpIssuer,
+      auth: options.auth,
+      appOrigin: options.appOrigin
+    });
     registerPublicRoutes({ app, database, invitationAuth: options.invitationAuth });
     registerObservabilityRoutes();
     registerHealthRoutes();
   });
 
   const metrics = createMetrics("control-hub-api");
+  for (const secret of options.secretSnapshot?.secrets ?? []) {
+    metrics.secretConfigured.set(
+      { secret: secret.name, source: secret.source, health: secret.health },
+      secret.configured === true ? 1 : 0
+    );
+    if (secret.loadedAt)
+      metrics.secretLoadedTimestamp.set({ secret: secret.name }, new Date(secret.loadedAt).getTime() / 1000);
+    if (secret.lastRotatedAt)
+      metrics.secretRotatedTimestamp.set({ secret: secret.name }, new Date(secret.lastRotatedAt).getTime() / 1000);
+  }
   app.addHook("onResponse", (request, reply, done) => {
     // The route pattern, not request.url: labelling by resolved path would create a new time
     // series for every customer identifier that has ever been fetched.
@@ -451,11 +540,28 @@ export function buildApp(options: BuildAppOptions) {
     const keyRing = options.connectorKeyRing ?? null;
     const vault = keyRing ? new CredentialVault(keyRing) : null;
     const ingress = vault ? new ConnectorIngressService(repository, connectorRegistry, vault, nodeIngressCrypto) : null;
+    const oauth =
+      vault && isFeatureEnabled(featureFlags, "connector_oauth")
+        ? new ConnectorOAuthService(
+            repository,
+            new PostgresConnectorOAuthRepository(database),
+            connectorRegistry,
+            vault,
+            options.oauthClientIds ?? {}
+          )
+        : null;
+    const actions =
+      vault && isFeatureEnabled(featureFlags, "connector_actions")
+        ? new ConnectorActionService(repository, new PostgresConnectorActionRepository(database), connectorRegistry)
+        : null;
     registerIntegrationRoutes({
       ...context,
       connectors: new ConnectorService(repository, connectorRegistry, createConnectorHealthCheckQueue(connectorQueue)),
       credentials: vault ? new ConnectorCredentialService(repository, vault) : null,
-      ingress
+      ingress,
+      oauth,
+      appOrigin: options.appOrigin,
+      actions
     });
     // The public route exists only where a signature can be verified. Without a ring there is
     // nothing to compare against, and a route that accepted deliveries it cannot authenticate

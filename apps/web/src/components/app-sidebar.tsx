@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAttendanceStatus } from "@/components/attendance-provider";
 import { useFeature } from "@/components/feature-provider";
 
@@ -31,6 +32,8 @@ type Labels = {
   companySubscriptions: string;
   projects: string;
   support: string;
+  supportTickets: string;
+  supportMail: string;
   attendance: string;
   attendanceOverview: string;
   attendanceCalendar: string;
@@ -43,6 +46,10 @@ type Labels = {
   usageCosts: string;
   usageBudgets: string;
   settings: string;
+  settingsSecurity: string;
+  settingsSecrets: string;
+  settingsPasswords: string;
+  settingsMcp: string;
 };
 
 export function AppSidebar({ locale, labels, ready }: { locale: string; labels: Labels; ready?: string }) {
@@ -55,7 +62,22 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
   const connectorsEnabled = useFeature("connectors");
   const infrastructureEnabled = useFeature("infrastructure");
   const usageEnabled = useFeature("usage_costs");
+  const mailEnabled = useFeature("mail");
+  const mcpEnabled = useFeature("mcp");
+  const credentialCatalogEnabled = useFeature("credential_catalog");
   const attendanceStatus = useAttendanceStatus();
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/v1/me", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const payload = (await response.json()) as { context: { roles: string[] } };
+        setIsOwner(payload.context.roles.includes("owner"));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const attendanceMonth = searchParams.get("month");
   const item = (href: string, label: string, Icon?: typeof Package, exact = false, active?: boolean) => (
     <Link
@@ -104,7 +126,17 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
           <div>{item(`/${locale}/expenses/subscriptions`, labels.companySubscriptions)}</div>
         </details>
         {projectsEnabled && item(`/${locale}/projects`, labels.projects, FolderKanban)}
-        {item(`/${locale}/support`, labels.support, Headphones)}
+        <details className="nav-group" open={pathname.startsWith(`/${locale}/support`)}>
+          <summary>
+            <Headphones size={19} />
+            <span>{labels.support}</span>
+            <ChevronDown size={15} />
+          </summary>
+          <div>
+            {item(`/${locale}/support`, labels.supportTickets, undefined, true, pathname === `/${locale}/support`)}
+            {mailEnabled && item(`/${locale}/support/mail`, labels.supportMail)}
+          </div>
+        </details>
         {attendanceEnabled && (
           <details className="nav-group" open={pathname.startsWith(`/${locale}/attendance`)}>
             <summary>
@@ -161,7 +193,25 @@ export function AppSidebar({ locale, labels, ready }: { locale: string; labels: 
             </div>
           </details>
         )}
-        {item(`/${locale}/security`, labels.settings, Settings)}
+        {/* Two jobs that only share a heading: who may sign in, and which agents may ask. They were
+            one page until the agents arrived and made it a place you scroll past what you came for. */}
+        <details
+          className="nav-group"
+          open={pathname.startsWith(`/${locale}/security`) || pathname.startsWith(`/${locale}/mcp`)}
+        >
+          <summary>
+            <Settings size={19} />
+            <span>{labels.settings}</span>
+            <ChevronDown size={15} />
+          </summary>
+          <div>
+            {item(`/${locale}/security`, labels.settingsSecurity, undefined, true)}
+            {isOwner && item(`/${locale}/security/secrets`, labels.settingsSecrets, undefined, true)}
+            {credentialCatalogEnabled &&
+              item(`/${locale}/security/passwords`, labels.settingsPasswords, undefined, true)}
+            {mcpEnabled && item(`/${locale}/mcp`, labels.settingsMcp, undefined, true)}
+          </div>
+        </details>
       </nav>
       {ready && (
         <div className="sidebar-footer">

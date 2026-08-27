@@ -1,0 +1,20 @@
+services:
+  api:
+    environment:
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:?MICROSOFT_OAUTH_CLIENT_ID is required}
+
+  worker:
+    environment:
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:?MICROSOFT_OAUTH_CLIENT_ID is required}
+      MICROSOFT_OAUTH_CLIENT_SECRET: !reset null
+      MICROSOFT_OAUTH_CLIENT_SECRET_FILE: /run/secrets/microsoft_oauth_client_secret
+    secrets:
+      - source: microsoft_oauth_client_secret
+        target: microsoft_oauth_client_secret
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+secrets:
+  microsoft_oauth_client_secret:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/microsoft_oauth_client_secret

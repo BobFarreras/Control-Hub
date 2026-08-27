@@ -113,7 +113,9 @@ export function catalogueResponse(entry: ConnectorCatalogueEntry) {
     capabilities: {
       egress: entry.capabilities.egress,
       operations: Object.keys(entry.capabilities.operations),
-      ingress: entry.capabilities.ingress
+      actions: Object.keys(entry.capabilities.actions ?? {}),
+      ingress: entry.capabilities.ingress,
+      oauth: entry.capabilities.oauth ? { provider: entry.capabilities.oauth.provider } : null
     }
   };
 }
@@ -165,7 +167,10 @@ export function registerIntegrationRoutes({
   auth,
   connectors,
   credentials,
-  ingress
+  ingress,
+  oauth,
+  actions,
+  appOrigin
 }: IntegrationsContext) {
   /**
    * A permission refused is a thing that happened, and the audit log is where it is recorded.
@@ -209,6 +214,179 @@ export function registerIntegrationRoutes({
       };
     }
   );
+
+  if (oauth && appOrigin) {
+    app.post<{ Params: { instanceId: string }; Body: { locale: "ca" | "es" | "en" } }>(
+      "/api/v1/integrations/:instanceId/oauth/authorizations",
+      {
+        schema: {
+          params: instanceParams,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["locale"],
+            properties: { locale: { type: "string", enum: ["ca", "es", "en"] } }
+          },
+          tags: ["integrations"],
+          summary: "Start delegated OAuth authorization"
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        const result = await oauth.begin(context, request.params.instanceId, appOrigin, request.body.locale);
+        await writeAudit(database, context, request, {
+          action: "connector_oauth.started",
+          targetType: "connector_instance",
+          targetId: request.params.instanceId,
+          outcome: "success"
+        });
+        return result;
+      }
+    );
+    app.get<{ Params: { instanceId: string } }>(
+      "/api/v1/integrations/:instanceId/oauth/grant",
+      { schema: { params: instanceParams, tags: ["integrations"], summary: "Read OAuth grant metadata" } },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        return { grant: await oauth.getGrant(context, request.params.instanceId) };
+      }
+    );
+    app.get<{ Params: { connectorType: string }; Querystring: { state: string; code?: string; error?: string } }>(
+      "/api/v1/integrations/oauth/callback/:connectorType",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          hide: true,
+          params: {
+            type: "object",
+            additionalProperties: false,
+            required: ["connectorType"],
+            properties: { connectorType: { type: "string", minLength: 1, maxLength: 64 } }
+          },
+          querystring: {
+            type: "object",
+            additionalProperties: false,
+            required: ["state"],
+            properties: {
+              state: { type: "string", pattern: "^[A-Za-z0-9_-]{43}$" },
+              code: { type: "string", minLength: 1, maxLength: 8192 },
+              error: { type: "string", minLength: 1, maxLength: 120 }
+            }
+          }
+        }
+      },
+      async (request, reply) => {
+        const result = await oauth.callback({ connectorType: request.params.connectorType, ...request.query });
+        return reply
+          .header("referrer-policy", "no-referrer")
+          .redirect(new URL(result.redirectPath, appOrigin).toString(), 303);
+      }
+    );
+  }
+
+  if (actions) {
+    const actionParams = {
+      type: "object",
+      additionalProperties: false,
+      required: ["instanceId", "action"],
+      properties: {
+        instanceId: { type: "string", format: "uuid" },
+        action: { type: "string", minLength: 1, maxLength: 64 }
+      }
+    } as const;
+    const mailBody = {
+      type: "object",
+      additionalProperties: false,
+      required: ["ticketId", "body"],
+      properties: {
+        ticketId: { type: "string", format: "uuid" },
+        body: { type: "string", minLength: 1, maxLength: 20_000 }
+      }
+    } as const;
+    app.post<{ Params: { instanceId: string; action: string }; Body: { ticketId: string; body: string } }>(
+      "/api/v1/integrations/:instanceId/actions/:action/confirmation",
+      {
+        schema: {
+          params: actionParams,
+          body: mailBody,
+          tags: ["integrations"],
+          summary: "Confirm connector action content"
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        return actions.confirmation(context, request.params.instanceId, request.params.action, request.body);
+      }
+    );
+    app.post<{
+      Params: { instanceId: string; action: string };
+      Body: { ticketId: string; body: string; confirmation: string };
+      Headers: { "idempotency-key"?: string };
+    }>(
+      "/api/v1/integrations/:instanceId/actions/:action",
+      {
+        schema: {
+          params: actionParams,
+          body: {
+            ...mailBody,
+            required: ["ticketId", "body", "confirmation"],
+            properties: {
+              ...mailBody.properties,
+              confirmation: { type: "string", pattern: "^[A-Za-z0-9_-]{43}$" }
+            }
+          },
+          headers: {
+            type: "object",
+            required: ["idempotency-key"],
+            properties: { "idempotency-key": { type: "string", minLength: 16, maxLength: 128 } }
+          },
+          tags: ["integrations"],
+          summary: "Queue a confirmed connector action"
+        }
+      },
+      async (request, reply) => {
+        const context = await resolveTenantContext(auth, database, request);
+        const result = await actions.executeMailReply(
+          context,
+          request.params.instanceId,
+          request.params.action,
+          request.body,
+          request.body.confirmation,
+          request.headers["idempotency-key"]!
+        );
+        await writeAudit(database, context, request, {
+          action: "connector_action.queued",
+          targetType: "connector_action",
+          targetId: result.id,
+          outcome: "success",
+          metadata: { connectorInstanceId: request.params.instanceId, action: request.params.action }
+        });
+        return reply.code(202).send({ request: result });
+      }
+    );
+    app.get<{ Params: { instanceId: string; requestId: string } }>(
+      "/api/v1/integrations/:instanceId/actions/:requestId",
+      {
+        schema: {
+          params: {
+            type: "object",
+            additionalProperties: false,
+            required: ["instanceId", "requestId"],
+            properties: {
+              instanceId: { type: "string", format: "uuid" },
+              requestId: { type: "string", format: "uuid" }
+            }
+          },
+          tags: ["integrations"],
+          summary: "Read connector action result"
+        }
+      },
+      async (request) => {
+        const context = await resolveTenantContext(auth, database, request);
+        return { request: await actions.get(context, request.params.instanceId, request.params.requestId) };
+      }
+    );
+  }
 
   app.get(
     "/api/v1/integrations",

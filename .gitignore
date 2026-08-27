@@ -4,6 +4,7 @@ node_modules/
 dist/
 coverage/
 .turbo/
+.turbo-workspace/
 *.tsbuildinfo
 playwright-report/
 test-results/
@@ -14,6 +15,11 @@ test-results/
 .env.*
 !.env.example
 !.env.verify.example
+# Written into an installation directory from a release manifest, and rewritten on every update.
+# The two rules above do not cover these: `.env` matches that exact name and `.env.*` matches
+# `.env.<something>`, neither of which is `release.env`.
+release.env
+release.json
 # The end to end fixture writes the throwaway account's TOTP secret here.
 .e2e/
 *.pem
@@ -42,4 +48,9 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 
+# Per-workspace identity, generated secrets and lifecycle metadata.
+.agent/
+/deploy/secrets/bitwarden.manifest.json
+
 .next-verify/
+.next-agent/

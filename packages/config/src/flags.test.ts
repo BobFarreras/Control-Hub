@@ -36,6 +36,20 @@ describe("feature flags", () => {
     expect(isFeatureEnabled(usageOnly, "mail")).toBe(false);
   });
 
+  it("keeps MCP off unless it is asked for by name", () => {
+    // The flag gates an authorisation surface, so the closed state is the one worth asserting:
+    // nothing else in the registry may switch it on as a side effect.
+    expect(isFeatureEnabled(parseFeatureFlags(""), "mcp")).toBe(false);
+    expect(isFeatureEnabled(parseFeatureFlags("connectors,usage_costs"), "mcp")).toBe(false);
+    expect(isFeatureEnabled(parseFeatureFlags("mcp"), "mcp")).toBe(true);
+    expect(unknownFeatureFlags("mcp")).toEqual([]);
+  });
+
+  it("keeps the human credential catalogue off by default", () => {
+    expect(isFeatureEnabled(parseFeatureFlags(""), "credential_catalog")).toBe(false);
+    expect(isFeatureEnabled(parseFeatureFlags("credential_catalog"), "credential_catalog")).toBe(true);
+  });
+
   it("gives every declared flag an owner and a date to be gone by", () => {
     for (const [name, flag] of Object.entries(featureFlags)) {
       expect(flag.owner, name).toBeTruthy();

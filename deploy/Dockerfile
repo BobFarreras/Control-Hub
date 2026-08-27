@@ -26,6 +26,12 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
+# Which build this is, when several share a version number. Declared here rather than in a runtime
+# stage because it is stamped into the bundle by tsup, not read at boot: the runtime carries no
+# manifest and no git. Absent on a plain `docker compose build`, and `src/version.ts` reports
+# `development` for that rather than guessing.
+ARG CONTROL_HUB_BUILD=""
+ENV CONTROL_HUB_BUILD=$CONTROL_HUB_BUILD
 RUN pnpm build
 # The standalone output expects the static assets beside it rather than in .next.
 RUN cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
@@ -66,7 +72,8 @@ COPY --from=pruned --chown=node:node /out/database/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages/database/dist ./dist
 # migrate.js resolves the directory relative to itself, so it must sit beside dist.
 COPY --from=builder --chown=node:node /app/packages/database/migrations ./migrations
-CMD ["node", "dist/migrate.js"]
+COPY --chmod=0555 --chown=node:node deploy/load-secret-and-exec.sh /usr/local/bin/load-secret-and-exec
+CMD ["load-secret-and-exec", "MIGRATION_DATABASE_URL", "node", "dist/migrate.js"]
 
 FROM runtime AS web
 # Next's standalone output already carries the only dependencies it needs.

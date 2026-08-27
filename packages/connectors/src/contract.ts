@@ -1,4 +1,4 @@
-import type { ConnectorFailureKind } from "@control-hub/domain";
+import type { ConnectorFailureKind, Permission } from "@control-hub/domain";
 import type { ZodType } from "zod";
 
 /**
@@ -71,6 +71,66 @@ export type LoggerPort = {
 
 export type ClockPort = { now(): Date };
 
+export type MailFolder = {
+  id: string;
+  name: string;
+};
+
+export type MailCursor = {
+  folderId: string;
+  /** Opaque and monotonic within the selected folder. */
+  cursor: string | null;
+  limit: number;
+};
+
+export type MailMessageRef = {
+  folderId: string;
+  messageId: string;
+};
+
+export type MailReadLimits = {
+  maxHeaderBytes: number;
+  maxBodyBytes: number;
+};
+
+export type MailChange = {
+  messageId: string;
+  receivedAt: Date;
+};
+
+export type MailChangePage = {
+  changes: readonly MailChange[];
+  cursor: string;
+};
+
+export type MailAddress = {
+  address: string;
+  name: string | null;
+};
+
+export type MailMessage = {
+  id: string;
+  threadId: string | null;
+  messageIdHeader: string | null;
+  subject: string | null;
+  from: MailAddress | null;
+  to: readonly MailAddress[];
+  receivedAt: Date;
+  text: string | null;
+};
+
+/**
+ * High-level mailbox access owned by the worker adapter.
+ *
+ * Deliberately absent are sockets, arbitrary destinations and raw MIME streams. The adapter owns
+ * DNS, TLS, authentication, byte limits and timeouts; a connector only asks mailbox questions.
+ */
+export type MailboxPort = {
+  listFolders(): Promise<readonly MailFolder[]>;
+  changes(input: MailCursor): Promise<MailChangePage>;
+  message(input: MailMessageRef, limits: MailReadLimits): Promise<MailMessage>;
+};
+
 /**
  * What a handler is given. Note what is absent: no database, no global `fetch`, no `process.env`
  * and no tenant identifier — a connector has nothing to do per tenant, and handing it one would
@@ -84,6 +144,8 @@ export type ConnectorContext<Config> = {
   secrets: SecretsPort;
   logger: LoggerPort;
   clock: ClockPort;
+  /** Present only for a connector whose manifest declares a mailbox policy. */
+  mailbox?: MailboxPort;
 };
 
 /** Where a connector is allowed to connect. Never an address somebody typed into a form. */
@@ -95,6 +157,27 @@ export type EgressPolicy = {
    * an internal service on the same host is reached without a tenant being able to name it.
    */
   destination: "configured_base_url" | "operator_allowlist";
+};
+
+export type MailboxPolicy = {
+  ports: readonly (993 | 143)[];
+  tls: "direct" | "starttls";
+};
+
+export type OAuthDeclaration = {
+  provider: "google" | "microsoft";
+  authorizationUrl: string;
+  tokenUrl: string;
+  revocationUrl: string;
+  scopes: readonly string[];
+};
+
+export type ActionDeclaration = {
+  permission: Permission;
+  confirmation: "explicit";
+  requiresMfa: boolean;
+  reversible: boolean;
+  retry: "before-delivery-only" | "idempotent-provider";
 };
 
 /**
@@ -140,7 +223,12 @@ export type OperationDeclaration = {
 export type CapabilityManifest = {
   egress: EgressPolicy | null;
   operations: Readonly<Record<string, OperationDeclaration>>;
+  actions?: Readonly<Record<string, ActionDeclaration>>;
   ingress: boolean;
+  /** Absence means this connector must never receive mailbox access. */
+  mailbox?: MailboxPolicy;
+  /** Fixed provider metadata used by the platform OAuth flow; never tenant configuration. */
+  oauth?: OAuthDeclaration;
 };
 
 /**
@@ -176,6 +264,10 @@ export type OperationResult = {
   /** Opaque continuation token. The runtime stores it and hands it back unread. */
   cursor: string | null;
 };
+
+export type ActionInput = Readonly<Record<string, RecordValue>>;
+export type ActionResult = { externalId: string | null };
+export type ConnectorAction<Config> = (context: ConnectorContext<Config>, input: ActionInput) => Promise<ActionResult>;
 
 export type ConnectorOperation<Config> = (
   context: ConnectorContext<Config>,
@@ -267,6 +359,7 @@ export type ConnectorDefinition<Config> = {
   capabilities: CapabilityManifest;
   health(context: ConnectorContext<Config>): Promise<HealthReport>;
   operations: Readonly<Record<string, ConnectorOperation<Config>>>;
+  actions?: Readonly<Record<string, { schema: ZodType<ActionInput>; handle: ConnectorAction<Config> }>>;
   ingress?: { signature: IngressSignature; handle: IngressHandler<Config> };
 };
 
@@ -291,6 +384,7 @@ export type RegisteredConnector = {
   parseConfig(value: unknown): ConfigResult;
   health(context: ConnectorContext<unknown>): Promise<HealthReport>;
   run(operation: string, context: ConnectorContext<unknown>, input: OperationInput): Promise<OperationResult>;
+  act(action: string, context: ConnectorContext<unknown>, input: unknown): Promise<ActionResult>;
   ingest(context: ConnectorContext<unknown>, request: IngressRequest): Promise<IngressResult>;
 };
 
@@ -382,6 +476,12 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   const implemented = new Set(Object.keys(definition.operations));
   for (const name of declared) if (!implemented.has(name)) throw new ConnectorError("OPERATION_NOT_IMPLEMENTED");
   for (const name of implemented) if (!declared.has(name)) throw new ConnectorError("OPERATION_NOT_DECLARED");
+  const declaredActions = new Set(Object.keys(definition.capabilities.actions ?? {}));
+  const implementedActions = new Set(Object.keys(definition.actions ?? {}));
+  for (const name of declaredActions)
+    if (!implementedActions.has(name)) throw new ConnectorError("ACTION_NOT_IMPLEMENTED");
+  for (const name of implementedActions)
+    if (!declaredActions.has(name)) throw new ConnectorError("ACTION_NOT_DECLARED");
   for (const declaration of Object.values(definition.capabilities.operations)) {
     const every = declaration.everySeconds;
     if (every === undefined) continue;
@@ -400,7 +500,7 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
   const typedContext = (context: ConnectorContext<unknown>): ConnectorContext<Config> => {
     const result = definition.configSchema.safeParse(context.config);
     if (!result.success) throw new ConnectorError("INVALID_CONFIG");
-    return {
+    const typed: ConnectorContext<Config> = {
       instanceId: context.instanceId,
       config: result.data,
       http: context.http,
@@ -408,6 +508,11 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
       logger: context.logger,
       clock: context.clock
     };
+    if (definition.capabilities.mailbox) {
+      if (!context.mailbox) throw new ConnectorError("MAILBOX_PORT_REQUIRED");
+      typed.mailbox = context.mailbox;
+    }
+    return typed;
   };
 
   return {
@@ -425,6 +530,13 @@ export function defineConnector<Config>(definition: ConnectorDefinition<Config>)
       const handler = declared.has(operation) ? definition.operations[operation] : undefined;
       if (!handler) throw new ConnectorError("UNKNOWN_OPERATION");
       return await handler(typedContext(context), input);
+    },
+    act: async (action, context, input) => {
+      const implementation = declaredActions.has(action) ? definition.actions?.[action] : undefined;
+      if (!implementation) throw new ConnectorError("UNKNOWN_ACTION");
+      const parsed = implementation.schema.safeParse(input);
+      if (!parsed.success) throw new ConnectorError("INVALID_ACTION_INPUT");
+      return await implementation.handle(typedContext(context), parsed.data);
     },
     ingest: async (context, request) => {
       const ingress = definition.ingress;

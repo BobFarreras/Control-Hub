@@ -30,6 +30,10 @@ export const permissionCodes = [
   "usage:read",
   "usage:manage",
   "budgets:manage",
+  "credentials:read",
+  "credentials:open",
+  "credentials:manage",
+  "vault:manage",
   "security:manage"
 ] as const;
 
@@ -63,7 +67,10 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "infrastructure:read",
     "integrations:read",
     "usage:read",
-    "budgets:manage"
+    "budgets:manage",
+    "credentials:read",
+    "credentials:open",
+    "credentials:manage"
   ],
   technical: [
     "audit:read",
@@ -84,6 +91,8 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "integrations:read",
     "integrations:manage",
     "credentials:rotate",
+    "credentials:read",
+    "credentials:open",
     "usage:read",
     "security:manage"
   ]
@@ -236,4 +245,7 @@ export * from "./egress.js";
 export * from "./infrastructure.js";
 export * from "./connector-diagnosis.js";
 export * from "./usage.js";
+export * from "./mcp.js";
+export * from "./mcp-oauth.js";
+export * from "./credential-catalog.js";
 export { localDay, localParts, type LocalParts } from "./tenant-clock.js";

@@ -1,5 +1,6 @@
 import {
   connectorKeyRingWarning,
+  mcpIssuerWarning,
   parseApiEnvironment,
   parseFeatureFlags,
   unknownFeatureFlags
@@ -7,8 +8,10 @@ import {
 import { buildApp } from "./app.js";
 import { createAuth } from "./auth.js";
 import { createMailSender } from "./email.js";
+import { platformSecretSnapshot } from "./secret-observability.js";
 
 const environment = parseApiEnvironment(process.env);
+const secretSnapshot = platformSecretSnapshot(process.env, environment);
 const sendMail = createMailSender({
   host: environment.SMTP_HOST,
   port: environment.SMTP_PORT,
@@ -26,8 +29,20 @@ const app = buildApp({
   exposeApiDocs: environment.NODE_ENV !== "production",
   featureFlags: parseFeatureFlags(environment.CONTROL_HUB_FLAGS),
   connectorKeyRing: environment.connectorKeyRing,
-  connectorEgressAllowlist: environment.connectorEgressAllowlist
+  connectorEgressAllowlist: environment.connectorEgressAllowlist,
+  oauthClientIds: environment.oauthClientIds,
+  mcpIssuer: environment.MCP_ISSUER,
+  secretSnapshot
 });
+app.log.info(
+  {
+    provider: secretSnapshot.provider.kind,
+    providerHealth: secretSnapshot.provider.health,
+    configuredSecrets: secretSnapshot.secrets.filter((secret) => secret.configured === true).length,
+    unobservedSecrets: secretSnapshot.secrets.filter((secret) => secret.configured === null).length
+  },
+  "platform secret metadata loaded"
+);
 
 // A flag name nobody declared is a typo that would otherwise be indistinguishable from a
 // capability that is simply off, and somebody would spend an afternoon on it.
@@ -38,6 +53,11 @@ if (unknown.length > 0) app.log.warn({ unknown }, "ignoring feature flags that a
 // credential routes are not there, rather than failing when somebody first tries to save one.
 const keyRingWarning = connectorKeyRingWarning(environment);
 if (keyRingWarning) app.log.warn(keyRingWarning);
+
+// Same shape, same reason: MCP on with nothing to call this server means the routes are not
+// declared, and that is worth one line at boot rather than a 404 nobody can explain later.
+const issuerWarning = mcpIssuerWarning(environment);
+if (issuerWarning) app.log.warn(issuerWarning);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutdown requested");

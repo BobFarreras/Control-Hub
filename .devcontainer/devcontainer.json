@@ -1,0 +1,20 @@
+{
+  "name": "Control Hub agent workspace",
+  "build": { "dockerfile": "Dockerfile" },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "remoteUser": "node",
+  "postCreateCommand": "pnpm install --frozen-lockfile",
+  "forwardPorts": [3001, 4000, 8025],
+  "portsAttributes": {
+    "3001": { "label": "Control Hub" },
+    "4000": { "label": "Control Hub API" },
+    "8025": { "label": "Mailpit" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "ms-playwright.playwright"]
+    }
+  }
+}

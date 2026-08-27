@@ -2,17 +2,43 @@
 
 import { getDictionary, isLocale } from "@control-hub/i18n";
 import { Command, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 import { formValue } from "@/lib/form";
 import { eventHandler } from "@/lib/handlers";
+import { internalPath } from "@/lib/internal-path";
 
+/**
+ * The form is a child so that `useSearchParams` sits behind a Suspense boundary.
+ *
+ * Reading the query string opts a client component out of being rendered ahead of time, and Next
+ * refuses to build a page that does it without one. The boundary is the whole answer: there is
+ * nothing to show while the address is read, so the fallback is nothing.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const localeParam = String(useParams().locale);
   const locale = isLocale(localeParam) ? localeParam : "ca";
   const t = getDictionary(locale).auth;
   const router = useRouter();
+  /**
+   * Where to go once this is over.
+   *
+   * Almost always the dashboard, because almost always the person came from the panel. The one
+   * exception is the consent screen, which is opened from a link an agent composed and which is
+   * meaningless to arrive at without the request it was carrying. `internalPath` is what keeps
+   * that from turning this form into an open redirect for anybody who can send a link.
+   */
+  const next = internalPath(useSearchParams().get("next"));
+  const destination = next ?? `/${locale}`;
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +55,7 @@ export default function LoginPage() {
     setBusy(false);
     if (result.error) return setError(t.error);
     if (result.data && "twoFactorRedirect" in result.data && result.data.twoFactorRedirect) return setStep("otp");
-    router.replace(`/${locale}`);
+    router.replace(destination);
     router.refresh();
   }
   async function verify(event: FormEvent<HTMLFormElement>) {
@@ -49,7 +75,7 @@ export default function LoginPage() {
     const result = await authClient.twoFactor.verifyTotp({ code, trustDevice: true });
     setBusy(false);
     if (result.error) return setError(t.error);
-    router.replace(`/${locale}`);
+    router.replace(destination);
     router.refresh();
   }
   return (

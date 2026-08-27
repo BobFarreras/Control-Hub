@@ -61,6 +61,13 @@ describe("RBAC", () => {
     expect(rolePermissions.technical).not.toContain("financials:read");
     expect(rolePermissions.technical).not.toContain("budgets:manage");
   });
+  it("keeps password manager configuration owner-only while granting scoped catalog access", () => {
+    expect(rolePermissions.owner).toContain("vault:manage");
+    expect(rolePermissions.administrator).toContain("credentials:manage");
+    expect(rolePermissions.administrator).not.toContain("vault:manage");
+    expect(rolePermissions.technical).toContain("credentials:open");
+    expect(rolePermissions.technical).not.toContain("credentials:manage");
+  });
   it("denies permissions absent from the resolved membership", () =>
     expect(hasPermission(context(["owner"], []), "tenant:manage")).toBe(false));
 });

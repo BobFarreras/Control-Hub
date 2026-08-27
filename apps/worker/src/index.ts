@@ -1,4 +1,4 @@
-import { AlertEngine, UsageService } from "@control-hub/application";
+import { AlertEngine, ConnectorSecretReader, SupportMailboxIngestor, UsageService } from "@control-hub/application";
 import {
   connectorKeyRingWarning,
   isFeatureEnabled,
@@ -10,15 +10,22 @@ import { connectorQueueName, systemQueueName } from "@control-hub/contracts/jobs
 import { createDatabaseClient } from "@control-hub/database";
 import { createLogger } from "@control-hub/observability";
 import {
+  CredentialVault,
+  PostgresConnectorActionRepository,
   PostgresConnectorRepository,
+  PostgresConnectorOAuthRepository,
   PostgresInfrastructureRepository,
+  PostgresSupportMailboxRepository,
   PostgresUsageRepository
 } from "@control-hub/persistence";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import { connectorActionJobName, runConnectorActionJob } from "./connectors/action-job.js";
 import { CircuitStore } from "./connectors/circuit-store.js";
 import { connectorIngressJobName, runConnectorIngressJob } from "./connectors/ingress-job.js";
 import { connectorJobName, jobContext, runConnectorJob } from "./connectors/job.js";
+import { connectorOAuthExchangeJobName, exchangeConnectorOAuthCode } from "./connectors/oauth-exchange.js";
+import { OAuthTokenProvider } from "./connectors/oauth-token-provider.js";
 import { purgeConnectorRecords } from "./connectors/purge.js";
 import { reconcileConnectorSchedules, schedulableInstances } from "./connectors/schedule.js";
 import { createConnectorRuntime } from "./connectors/wiring.js";
@@ -26,7 +33,9 @@ import { sweepAlertsAcrossTenants } from "./infrastructure/alert-sweep.js";
 import { purgeResolvedAlerts } from "./infrastructure/purge.js";
 import { sweepSupportEscalations } from "./support-escalation.js";
 import { processSystemJob } from "./system-job.js";
+import { runUpdateCheck, updateCheckJobName, valkeyUpdateStore } from "./update-check.js";
 import { UsageRecordIngestor } from "./usage/ingestion.js";
+import { workerVersion } from "./version.js";
 
 const environment = parseWorkerEnvironment(process.env);
 const logger = createLogger("control-hub-worker", environment.LOG_LEVEL);
@@ -47,11 +56,21 @@ const ESCALATION_JOB = "support-escalation";
 const RECORD_PURGE_JOB = "connector-record-purge";
 const SCHEDULE_RECONCILE_JOB = "connector-schedule-reconcile";
 const ALERT_SWEEP_JOB = "infrastructure-alert-sweep";
+const OAUTH_OUTBOX_JOB = "connector-oauth-outbox";
+const ACTION_OUTBOX_JOB = "connector-action-outbox";
+const UPDATE_CHECK_JOB = updateCheckJobName;
 
 // Read once at boot, like every other flag decision in a composition root. Turning the phase
 // off is a restart, and a restart is what the reconciler needs anyway to stop scheduling.
 const infrastructureEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "infrastructure");
 const usageEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "usage_costs");
+const mailEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "mail");
+const oauthEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_oauth");
+const actionsEnabled = isFeatureEnabled(parseFeatureFlags(environment.CONTROL_HUB_FLAGS), "connector_actions");
+const mailConnectorTypes = new Set(["imap", "gmail", "microsoft_graph_mail"]);
+// Not a feature flag: this is the one thing this process does that leaves the building, so it is
+// its own variable and it is named after what it does. See `docs/runbooks/installation.md`.
+const updateCheckEnabled = environment.CONTROL_HUB_UPDATE_CHECK;
 
 /**
  * One more connection to Valkey, for the circuit breaker.
@@ -74,6 +93,21 @@ const circuits = new CircuitStore({ client: circuitClient });
 const usageIngestor = usageEnabled
   ? new UsageRecordIngestor(new UsageService(new PostgresUsageRepository(database)))
   : undefined;
+const mailIngestor = mailEnabled
+  ? new SupportMailboxIngestor(new PostgresSupportMailboxRepository(database))
+  : undefined;
+const oauthRepository = new PostgresConnectorOAuthRepository(database);
+const actionRepository = new PostgresConnectorActionRepository(database);
+const oauthVault = environment.connectorKeyRing ? new CredentialVault(environment.connectorKeyRing) : null;
+const oauthTokens =
+  oauthEnabled && oauthVault
+    ? new OAuthTokenProvider(
+        oauthRepository,
+        oauthVault,
+        environment.oauthClients,
+        new ConnectorSecretReader(connectorRepository, oauthVault)
+      )
+    : undefined;
 
 const connectorRuntime = createConnectorRuntime({
   repository: connectorRepository,
@@ -81,6 +115,8 @@ const connectorRuntime = createConnectorRuntime({
   allowlist: environment.connectorEgressAllowlist,
   circuits,
   logger,
+  ...(mailIngestor ? { mail: mailIngestor } : {}),
+  ...(oauthTokens ? { oauthTokens } : {}),
   ...(usageIngestor ? { usage: usageIngestor } : {})
 });
 
@@ -97,6 +133,9 @@ const worker = new Worker(
       return { ...records, alerts };
     }
     if (job.name === ALERT_SWEEP_JOB) return sweepAlerts();
+    if (job.name === UPDATE_CHECK_JOB) return checkForUpdate();
+    if (job.name === OAUTH_OUTBOX_JOB) return relayOAuthOutbox();
+    if (job.name === ACTION_OUTBOX_JOB) return relayActionOutbox();
     if (job.name === ESCALATION_JOB) {
       const sweep = await sweepSupportEscalations(database);
       for (const failure of sweep.failed) {
@@ -127,6 +166,29 @@ const connectorWorker = new Worker(
     if (job.name === connectorIngressJobName) {
       return runConnectorIngressJob(connectorRepository, connectorRegistry, usageIngestor, job);
     }
+    if (job.name === connectorOAuthExchangeJobName) {
+      if (!oauthEnabled || !oauthVault) return { status: "skipped", reason: "oauth_unavailable" };
+      const data = job.data as { tenantId?: unknown; attemptId?: unknown; connectorType?: unknown };
+      if (
+        typeof data.tenantId !== "string" ||
+        typeof data.attemptId !== "string" ||
+        typeof data.connectorType !== "string"
+      )
+        throw new Error("OAUTH_JOB_PAYLOAD_INVALID");
+      return exchangeConnectorOAuthCode({
+        repository: oauthRepository,
+        vault: oauthVault,
+        clients: environment.oauthClients,
+        appOrigin: environment.APP_ORIGIN,
+        context: jobContext(data.tenantId),
+        attemptId: data.attemptId,
+        connectorType: data.connectorType
+      });
+    }
+    if (job.name === connectorActionJobName) {
+      if (!actionsEnabled || !connectorRuntime) return { status: "skipped", reason: "actions_unavailable" };
+      return runConnectorActionJob(actionRepository, connectorRuntime, job.data);
+    }
     if (!connectorRuntime) {
       logger.warn({ jobId: job.id }, "connector job skipped: this installation has no key ring");
       return { status: "skipped", reason: "no_key_ring" };
@@ -155,15 +217,81 @@ async function reconcileSchedules() {
   const sweep = await reconcileConnectorSchedules({
     queue: connectorQueue,
     jobName: connectorJobName,
-    instances,
+    instances: infrastructureEnabled
+      ? instances
+      : instances.filter((instance) => mailEnabled && mailConnectorTypes.has(instance.connectorType)),
     registry: connectorRegistry,
     circuitOpen: async (key) => (await circuits.state(key.tenantId, key.instanceId, key.operation)).state === "open",
-    enabled: infrastructureEnabled
+    enabled: infrastructureEnabled || mailEnabled
   });
 
   // Silent when it changed nothing, which is what every pass after the first should be.
   if (sweep.upserted > 0 || sweep.removed > 0) logger.info(sweep, "connector schedules reconciled");
   return sweep;
+}
+
+async function relayOAuthOutbox() {
+  if (!oauthEnabled) return { published: 0 };
+  const tenants = await database<{ id: string }[]>`select id from tenants order by created_at asc`;
+  let published = 0;
+  for (const tenant of tenants) {
+    const context = jobContext(tenant.id);
+    for (const attemptId of await oauthRepository.pendingOutbox(context)) {
+      const attempt = await oauthRepository.exchangeAttempt(context, attemptId);
+      if (!attempt) continue;
+      const instance = await connectorRepository.getInstance(context, attempt.instanceId);
+      if (!instance) continue;
+      await connectorQueue.add(
+        connectorOAuthExchangeJobName,
+        { tenantId: tenant.id, attemptId, connectorType: instance.connectorType },
+        { jobId: `oauth-${attemptId}`, attempts: 3, removeOnComplete: 100, removeOnFail: 100 }
+      );
+      await oauthRepository.markPublished(context, attemptId);
+      published += 1;
+    }
+  }
+  return { published };
+}
+
+async function relayActionOutbox() {
+  if (!actionsEnabled) return { published: 0 };
+  const tenants = await database<{ id: string }[]>`select id from tenants order by created_at asc`;
+  let published = 0;
+  for (const tenant of tenants) {
+    const context = jobContext(tenant.id);
+    for (const requestId of await actionRepository.pendingOutbox(context)) {
+      await connectorQueue.add(
+        connectorActionJobName,
+        { tenantId: tenant.id, requestId },
+        { jobId: `action-${requestId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 100 }
+      );
+      await actionRepository.markPublished(context, requestId);
+      published += 1;
+    }
+  }
+  return { published };
+}
+
+/**
+ * The daily look at whether a newer version has been published.
+ *
+ * The store rides on the breaker's connection rather than opening a fifth one. One `GET` and one
+ * `SET` a day do not need a client of their own, and this is the connection that is deliberately
+ * not the one BullMQ blocks on.
+ *
+ * Nothing here throws. A check that cannot reach GitHub is not a failed job -- it is a question
+ * that will be asked again tomorrow -- and a red job on somebody's queue for an unreachable
+ * network is noise that teaches people to ignore red jobs.
+ */
+async function checkForUpdate() {
+  const outcome = await runUpdateCheck({
+    version: workerVersion(),
+    store: valkeyUpdateStore(circuitClient),
+    enabled: updateCheckEnabled
+  });
+  if (outcome.status === "unreachable") logger.warn(outcome, "could not read the published release manifest");
+  if (outcome.status === "available") logger.info(outcome, "a newer version has been published");
+  return outcome;
 }
 
 /**
@@ -201,6 +329,16 @@ await queue.upsertJobScheduler(
   ESCALATION_JOB,
   { every: 5 * 60 * 1000 },
   { name: ESCALATION_JOB, opts: { removeOnComplete: 50, removeOnFail: 50 } }
+);
+await queue.upsertJobScheduler(
+  OAUTH_OUTBOX_JOB,
+  { every: 60 * 1000 },
+  { name: OAUTH_OUTBOX_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
+);
+await queue.upsertJobScheduler(
+  ACTION_OUTBOX_JOB,
+  { every: 30 * 1000 },
+  { name: ACTION_OUTBOX_JOB, opts: { removeOnComplete: 20, removeOnFail: 20 } }
 );
 
 /**
@@ -241,6 +379,28 @@ if (infrastructureEnabled) {
   await queue.removeJobScheduler(ALERT_SWEEP_JOB);
 }
 
+/**
+ * Once a day, and removed outright when the variable says no.
+ *
+ * Removed rather than merely not created, for the same reason as the alert sweep above: a switch
+ * that only stopped new schedules would leave the one the last release installed still making the
+ * request, and this is the request somebody switched off. `CONTROL_HUB_UPDATE_CHECK=false` has to
+ * mean nothing leaves this machine, not «nothing new leaves it».
+ *
+ * The interval is the schedule's part of «once a day». The other part is in `runUpdateCheck`,
+ * which sends no request at all if it finds a recent answer -- so restarts, replicas and manual
+ * triggers cannot add up to more than one look a day between them.
+ */
+if (updateCheckEnabled) {
+  await queue.upsertJobScheduler(
+    UPDATE_CHECK_JOB,
+    { every: 24 * 60 * 60 * 1000 },
+    { name: UPDATE_CHECK_JOB, opts: { removeOnComplete: 7, removeOnFail: 7 } }
+  );
+} else {
+  await queue.removeJobScheduler(UPDATE_CHECK_JOB);
+}
+
 for (const [name, instance] of [
   ["system", worker],
   ["connectors", connectorWorker]
@@ -267,9 +427,18 @@ logger.info(
       ESCALATION_JOB,
       RECORD_PURGE_JOB,
       SCHEDULE_RECONCILE_JOB,
-      ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : [])
+      OAUTH_OUTBOX_JOB,
+      ACTION_OUTBOX_JOB,
+      ...(infrastructureEnabled ? [ALERT_SWEEP_JOB] : []),
+      ...(updateCheckEnabled ? [UPDATE_CHECK_JOB] : [])
     ],
-    infrastructure: infrastructureEnabled
+    infrastructure: infrastructureEnabled,
+    mail: mailEnabled,
+    oauth: oauthEnabled,
+    actions: actionsEnabled,
+    // Logged at boot so that «is this installation talking to the internet» is answerable from
+    // the first line of the log rather than by reading the configuration.
+    updateCheck: updateCheckEnabled
   },
   "worker ready"
 );

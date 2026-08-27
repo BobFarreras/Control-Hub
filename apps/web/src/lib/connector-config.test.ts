@@ -166,12 +166,13 @@ describe("deciding whether creating an integration should ask for a secret", () 
     capabilities: {
       egress: { schemes: ["https"], destination: "operator_allowlist" },
       operations: ["pull_workflows"],
-      ingress: true
+      ingress: true,
+      oauth: null
     }
   };
   const inboundOnly = {
     credentialKinds: ["ingress_signing"],
-    capabilities: { egress: null, operations: [], ingress: true }
+    capabilities: { egress: null, operations: [], ingress: true, oauth: null }
   };
 
   it("asks for the first kind a connector that calls out declares", () => {
@@ -180,6 +181,15 @@ describe("deciding whether creating an integration should ask for a secret", () 
 
   it("asks for nothing from a connector that only receives", () => {
     expect(connectCredentialKind(inboundOnly)).toBeNull();
+  });
+
+  it("never asks somebody to paste a platform-managed OAuth token", () => {
+    expect(
+      connectCredentialKind({
+        ...outbound,
+        capabilities: { ...outbound.capabilities, oauth: { provider: "google" as const } }
+      })
+    ).toBeNull();
   });
 
   it("asks for nothing when no connector has been chosen yet", () => {
