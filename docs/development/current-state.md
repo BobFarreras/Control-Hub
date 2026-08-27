@@ -186,8 +186,32 @@ vermell.
 llegint una pantalla de configuracio: `ghcr.io/bobfarreras/control-hub-{api,worker,migrate,web}`
 responen HTTP 200 sense credencials.
 
-**El seguent increment es P6**: el banner d'avis i la comprovacio diaria del worker. Ara te sentit,
-perque el comandament que el banner dira que s'executi ja existeix.
+**P6 esta fet** (mateixa branca). Un cop al dia el worker demana el manifest publicat, el compara
+amb la versio que corre i deixa el resultat a Valkey; `GET /api/v1/settings/installation` el serveix
+a `Owner` i `Administrator`, i la pantalla en fa un banner amb la feina que representa
+l'actualitzacio --quantes migracions, si canvia configuracio--, l'enllac a les notes i `./update.sh`
+per copiar. **Sense boto que actualitzi**: l'alternativa demana el socket de Docker des del
+navegador.
+
+Les tres condicions de D5 no son comentaris, son proves. `scripts/update-check.test.mjs` subjecta
+cadascuna alli on viu --que `CONTROL_HUB_UPDATE_CHECK` arribi de debo al contenidor pel `compose.yaml`,
+que apagar-lo **esborri** l'horari de BullMQ en comptes de nomes no crear-ne un de nou, que hi hagi
+una sola adreca i sigui una constant, que la peticio no porti res que identifiqui la instal·lacio,
+que la ruta de l'API no consulti res, i que el runbook digui l'adreca exacta i com aturar-ho. Sis
+mutacions que afluixin qualsevol d'aquestes coses la posen vermella.
+
+**El manifest te dos lectors i son dos programes diferents** --`scripts/release-manifest.mjs` en
+Node pelat l'escriu, `packages/contracts/src/release.ts` en TypeScript el llegeix--, i aixo es un
+risc que es respon en comptes d'acceptar-lo: la prova de contracte construeix manifests amb el codi
+del publicador i els llegeix amb el del lector.
+
+Dues coses que semblen detall i no ho son: la comparacio **ordena** versions en comptes de comparar
+igualtat, perque `1.10.0` contra `1.9.0` es on una comparacio de cadenes menteix i un avis que
+menteix un cop es un avis que ningu no torna a llegir; i una fallada de xarxa **no esborra** el que
+se sabia, perque una comprovacio que no ha arribat a GitHub no sap res de nou.
+
+**El seguent increment es P7**: l'instal·lador interactiu, l'ultim de l'especificacio. Despres
+d'aixo, el desplegament a la VPS.
 
 **S11 i S12 de la Fase 12 no bloquegen aixo, perque no son codi.** S11 es el stack Bitwarden a la
 VPS --reverse proxy, hardening, backups, monitoratge i runbooks-- i S12 es un pilot, un simulacre

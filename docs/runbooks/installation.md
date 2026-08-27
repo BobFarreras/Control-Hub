@@ -129,6 +129,43 @@ release instal·lable a tercers.
 `pnpm dev` nomes inicia processos. `pnpm dev:all` prepara infraestructura, aplica
 migracions i inicia l'aplicacio.
 
+## Comprovacio d'actualitzacions
+
+Un cop al dia, **el worker** demana un fitxer i compara aqui. Quan hi ha una versio nova, els rols
+`Owner` i `Administrator` veuen un avis a dalt de qualsevol pantalla que diu **quina feina
+representa** --quantes migracions porta i si canvia configuracio-- amb l'enllac a les notes i el
+comandament a copiar. L'avis no te cap boto que actualitzi: aplicar una actualitzacio vol dir
+substituir contenidors, i una pantalla que ho pogues fer necessitaria el socket de Docker.
+
+**Que surt d'aquesta maquina, exactament:**
+
+| | |
+| --- | --- |
+| Peticio | `GET https://github.com/BobFarreras/Control-Hub/releases/latest/download/release.json` |
+| Cos | cap |
+| Capceleres | nomes `accept: application/json` |
+| Frequencia | una cada 24 hores, com a maxim |
+| Qui la fa | el contenidor `worker`. **Mai el navegador** |
+
+No s'envia la versio instal·lada, ni el nombre d'usuaris, ni cap identificador, ni res que
+distingeixi una instal·lacio d'una altra: el fitxer es el mateix per a tothom i la comparacio es fa
+aqui. El que igualment es revela es la IP del servidor i que existeix, i aixo no es pot evitar
+consultant --per aixo es pot apagar.
+
+**Per apagar-ho**, a `.env`:
+
+```sh
+CONTROL_HUB_UPDATE_CHECK=false
+```
+
+i reiniciar el worker. No vol dir «deixa d'avisar»: vol dir que **no surt res** d'aquesta maquina.
+La comprovacio programada s'esborra en arrencar, de manera que la que hi hagues deixat la versio
+anterior tampoc no queda corrent. Amb aixo apagat, saber que hi ha una versio nova es feina de qui
+la va instal·lar.
+
+El navegador no consulta res, ni amb aixo ences ni amb aixo apagat. Llegeix el que aquesta
+instal·lacio ja sabia.
+
 ## Actualitzacio
 
 Un comandament al directori d'instal·lacio:

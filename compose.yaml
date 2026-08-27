@@ -74,6 +74,9 @@ services:
       LOG_LEVEL: info
       DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
+      # Named here or the variable never reaches the process, and switching the check off in
+      # .env would change nothing at all. See docs/runbooks/installation.md.
+      CONTROL_HUB_UPDATE_CHECK: ${CONTROL_HUB_UPDATE_CHECK:-true}
     depends_on:
       migrate:
         condition: service_completed_successfully

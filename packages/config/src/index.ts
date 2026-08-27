@@ -64,7 +64,20 @@ export const apiEnvironmentSchema = baseSchema.extend({
     .optional()
 });
 
-export const workerEnvironmentSchema = baseSchema;
+export const workerEnvironmentSchema = baseSchema.extend({
+  /**
+   * Whether this installation may look for a newer version once a day.
+   *
+   * On by default and switchable off, which is the third of the three conditions
+   * `docs/specifications/deployment.md` (D5) attaches to checking at all. It lives on the worker
+   * schema alone because the worker is the only process that asks -- the browser never does, and
+   * a variable the API also read would suggest otherwise.
+   *
+   * `docs/runbooks/installation.md` says what the request contains and where it goes, so that
+   * turning it off is a decision somebody can make on the facts rather than on suspicion.
+   */
+  CONTROL_HUB_UPDATE_CHECK: z.stringbool().default(true)
+});
 
 /**
  * `connectorKeyRing` is resolved at boot rather than at the first credential.

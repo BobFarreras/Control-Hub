@@ -2247,6 +2247,63 @@ export function getUnreachableDictionary(locale: Locale) {
   return unreachableDictionaries[locale];
 }
 
+/**
+ * The update notice, shown to Owner and Administrator only.
+ *
+ * It says what work the update represents rather than merely that one exists, because a notice
+ * that only says «there is a new version» moves the decision without giving anybody anything to
+ * decide it with. There is no button here and there is not meant to be: applying an update means
+ * replacing containers, and a screen that could do that would need the Docker socket.
+ */
+const updateDictionaries = {
+  ca: {
+    label: "Actualitzacio disponible",
+    available: "Versio disponible:",
+    installed: "aquesta instal·lacio porta la",
+    migrationsOne: "porta 1 migracio",
+    migrationsMany: "porta {count} migracions",
+    configuration: "canvia la configuracio",
+    noWork: "no porta migracions ni canvis de configuracio",
+    commandHint: "Al directori d'instal·lacio del servidor:",
+    copy: "Copia el comandament",
+    copied: "Copiat",
+    notes: "Notes de la versio",
+    checked: "Comprovat el"
+  },
+  es: {
+    label: "Actualizacion disponible",
+    available: "Version disponible:",
+    installed: "esta instalacion lleva la",
+    migrationsOne: "trae 1 migracion",
+    migrationsMany: "trae {count} migraciones",
+    configuration: "cambia la configuracion",
+    noWork: "no trae migraciones ni cambios de configuracion",
+    commandHint: "En el directorio de instalacion del servidor:",
+    copy: "Copiar el comando",
+    copied: "Copiado",
+    notes: "Notas de la version",
+    checked: "Comprobado el"
+  },
+  en: {
+    label: "Update available",
+    available: "Version available:",
+    installed: "this installation runs",
+    migrationsOne: "brings 1 migration",
+    migrationsMany: "brings {count} migrations",
+    configuration: "changes configuration",
+    noWork: "brings no migrations and no configuration change",
+    commandHint: "In the installation directory on the server:",
+    copy: "Copy the command",
+    copied: "Copied",
+    notes: "Release notes",
+    checked: "Checked"
+  }
+} as const;
+
+export function getUpdateDictionary(locale: Locale) {
+  return updateDictionaries[locale];
+}
+
 const projectDictionaries = {
   ca: {
     eyebrow: "ENTREGUES",

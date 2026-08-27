@@ -9,6 +9,7 @@
  * These declarations mirror the handlers in `apps/api/src`. When one of those changes, this
  * changes with it.
  */
+import type { UpdateCheckState } from "@control-hub/contracts/release";
 
 export type TablePreference = {
   tableId: string;
@@ -1143,8 +1144,13 @@ export type McpServiceAccountsResponse = { serviceAccounts: McpServiceAccountRow
 /**
  * Which version and which build. `build` is `development` outside a release, which is a statement
  * about where the code came from rather than a missing value, and the screen says so in words.
+ *
+ * `updateCheck` is what the worker found the last time it read the published release manifest,
+ * and null when no check has run -- which includes every installation that has switched the check
+ * off. Nothing in it can be acted on from the browser: no image, no digest and no URL, because
+ * there is no button.
  */
-export type InstallationResponse = { version: string; build: string };
+export type InstallationResponse = { version: string; build: string; updateCheck: UpdateCheckState | null };
 
 export type SecretMetadataResponse = {
   provider: {

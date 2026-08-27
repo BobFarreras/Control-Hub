@@ -320,7 +320,10 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
 - **P5** — *Fet.* El comandament d'actualitzacio: valida la release, fa el backup, descarrega per
   digest, migra, i nomes despres reemplaca. POSIX sh i docker, res mes --una instal·lacio de client
   no te repositori ni Node, i aquest no es el fitxer que ha de comencar a demanar-ne.
-- **P6** — El banner i la comprovacio diaria del worker.
+- **P6** — *Fet.* El banner i la comprovacio diaria del worker: el worker demana el manifest un
+  cop al dia i compara aqui, i `Owner` i `Administrator` veuen quina feina representa
+  l'actualitzacio.
+  Sense boto, i sense que el navegador consulti res --les tres condicions de D5.
 - **P7** — L'instal·lador interactiu.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
@@ -425,6 +428,56 @@ vermell: acceptar una etiqueta en comptes d'un digest, acceptar dos registres, a
 mes, saltar-se la versio, deixar de verificar el backup, acceptar-ne un de buit, i reemplacar abans
 de migrar.
 
+
+### El que P6 en va concretar
+
+**On es guarda el que el worker troba: a Valkey, no a una taula.** El que es guarda es un fet sobre
+un fitxer del servidor d'algu altre, cert fins a la propera mirada; es de la instal·lacio i de cap
+tenant, o sigui que una fila en un esquema amb `tenant_id` hauria d'inventar-li un propietari.
+Sobreviu un reinici, caduca sol al cap d'una setmana si ningu torna a mirar, i no costa cap
+migracio --que per a un fet tan prescindible es el canvi bo en totes direccions. La clau viu a
+`packages/contracts`, com un nom de cua: es un acord entre dos processos.
+
+**El manifest te dos lectors i son dos programes diferents.** `scripts/release-manifest.mjs`
+l'escriu --Node pelat, dins el workflow, sobre un checkout que ningu ha construit-- i
+`packages/contracts/src/release.ts` el llegeix, en TypeScript, dins el worker. Que un format tingui
+dues implementacions es un risc de debo, i es respon en comptes d'acceptar-lo: `release.test.ts`
+construeix manifests amb el codi del publicador i els llegeix amb el del lector, de manera que el
+dia que una banda es desviï de l'altra la suite ho diu.
+
+**La comparacio ordena versions, no en compara la igualtat.** Sembla el mateix i no ho es: una
+instal·lacio deliberadament per davant de l'etiqueta publicada --una imatge `edge` que s'esta
+provant-- rebria «actualitza» cap enrere. I `1.10.0` contra `1.9.0` es on la comparacio de cadenes
+es equivoca. Un avis que menteix un cop es un avis que ningu no torna a llegir.
+
+**Una fallada de xarxa no esborra el que se sabia.** Si la peticio falla, l'estat guardat no es toca:
+una comprovacio que no ha pogut arribar a GitHub no sap res de nou, i convertir una actualitzacio
+pendent en silenci perque ha fallat un DNS es exactament el fracas que el banner existeix per
+evitar.
+
+**«Un cop al dia» te dues meitats.** L'horari de BullMQ n'es una; l'altra es dins la funcio, que no
+envia cap peticio si troba una resposta de fa menys de vint hores. Amb aixo, ni reinicis ni repliques
+ni execucions manuals poden sumar mes d'una mirada al dia.
+
+**Apagar-ho esborra l'horari, no nomes deixa de crear-ne.** Una branca que nomes s'estalvies
+`upsertJobScheduler` deixaria corrent el que hi hagues posat la versio anterior, i llavors
+`CONTROL_HUB_UPDATE_CHECK=false` voldria dir «no en surt cap de nova» en comptes de «no en surt cap».
+La variable tambe s'anomena explicitament al servei `worker` de `compose.yaml`: aquell fitxer
+enumera l'entorn del contenidor, i una variable que no hi es no hi arriba mai --silenciosament.
+
+**El que les proves d'unitat no podien cobrir** es exactament aixo: el cablejat. `scripts/update-check.test.mjs`
+subjecta les tres condicions de D5 alli on viuen --que l'interruptor arribi al proces, que apagar-lo
+esborri l'horari, que nomes hi hagi una adreca i sigui una constant, que la peticio no porti res que
+identifiqui la instal·lacio, que la ruta de l'API no consulti res, i que el runbook digui l'adreca
+exacta i com aturar-ho. Sis mutacions que afluixen qualsevol d'aquestes coses la posen vermella.
+
+**El banner no te boto i el navegador no consulta res.** L'API llegeix el que el worker va deixar i
+no arriba enlloc; la pantalla rep la feina --quantes migracions, si canvia configuracio-- l'enllac a
+les notes, construit a partir del numero de versio i no transportat pel manifest, i el comandament a
+copiar. Nomes per a `Owner` i `Administrator`, i comprovat contra la versio que corre abans de
+servir-lo: el worker neteja una actualitzacio pendent a la passada seguent, i sense aquesta
+comparacio hi hauria fins a un dia en que el banner anomenaria la versio que la persona acaba
+d'instal·lar --justament el dia que mira la pantalla per confirmar que ha anat be.
 
 **El rollback nomes existeix si les migracions el permeten.** Es el risc mes facil de creure resolt
 sense estar-ho: el `compose` amb el digest antic torna enrere en segons i dona la sensacio que el

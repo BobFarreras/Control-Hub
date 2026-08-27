@@ -13,6 +13,7 @@ import {
   getInfrastructureDictionary,
   getIntegrationsDictionary,
   getMcpDictionary,
+  getUpdateDictionary,
   locales,
   mcpErrorMessage,
   mcpScopeLabel
@@ -50,6 +51,13 @@ describe("dictionaries", () => {
 
   it("does the same for the consent screen", () => {
     expectSameShapeInEveryLocale(getMcpDictionary);
+  });
+
+  it("does the same for the update notice, which appears on every screen there is", () => {
+    expectSameShapeInEveryLocale(getUpdateDictionary);
+    // The count is interpolated rather than concatenated, and a locale that lost the placeholder
+    // would render «brings migrations» without anything going red anywhere else.
+    for (const locale of locales) expect(getUpdateDictionary(locale).migrationsMany).toContain("{count}");
   });
 });
 
