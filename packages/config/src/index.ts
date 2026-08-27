@@ -4,12 +4,24 @@ import { isFeatureEnabled, parseFeatureFlags } from "./flags.js";
 import { parseKeyRing, type KeyRing } from "./key-ring.js";
 import { resolveSecretFiles } from "./secret-file.js";
 
-const apiSecretVariables = ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET", "CONNECTOR_KEY_RING"] as const;
+const apiSecretVariables = [
+  "DATABASE_URL",
+  "REDIS_URL",
+  "BETTER_AUTH_SECRET",
+  "CONNECTOR_KEY_RING",
+  "SMTP_PASSWORD"
+] as const;
 const workerSecretVariables = [
   ...apiSecretVariables,
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "MICROSOFT_OAUTH_CLIENT_SECRET"
 ] as const;
+
+/** An optional value where a variable present but empty means the same thing as an absent one. */
+const blankAsUnset = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().min(1).optional()
+);
 
 const baseSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -22,6 +34,15 @@ const baseSchema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_FROM: z.email().default("control-hub@localhost.test"),
+  // Both or neither, checked below. A relay that wants no credentials -- Mailpit in development,
+  // a relay on the same network in production -- leaves both unset and the transport authenticates
+  // nothing, which is the only way an unauthenticated relay was ever meant to be configured.
+  //
+  // Blank counts as unset, and has to: `SMTP_USER=` in a `.env` and an unset variable interpolated
+  // by compose both arrive as an empty string, and refusing to boot over one is refusing to boot
+  // over a line somebody left in place, which is not what either of them meant.
+  SMTP_USER: blankAsUnset,
+  SMTP_PASSWORD: blankAsUnset,
   SECRETS_PROVIDER: z.enum(["environment", "runtime_files", "bitwarden"]).default("environment"),
   WEBAUTHN_RP_ID: z.string().min(1).default("localhost"),
   WEBAUTHN_ORIGIN: z.url().default("http://localhost:3001"),
@@ -170,6 +191,9 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
     MICROSOFT_OAUTH_CLIENT_SECRET: _microsoftSecret,
     ...environment
   } = apiEnvironmentSchema.parse(resolveSecretFiles(source, apiSecretVariables, { environment: source.NODE_ENV }));
+  if (Boolean(environment.SMTP_USER) !== Boolean(environment.SMTP_PASSWORD)) {
+    throw new Error("SMTP_USER and SMTP_PASSWORD must be configured together");
+  }
   return hideProperties(
     {
       ...environment,
@@ -180,7 +204,7 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
         ...(MICROSOFT_OAUTH_CLIENT_ID ? { microsoft: MICROSOFT_OAUTH_CLIENT_ID } : {})
       }
     },
-    ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"]
+    ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET", "SMTP_PASSWORD"]
   );
 }
 

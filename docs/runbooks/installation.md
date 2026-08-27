@@ -46,11 +46,16 @@ nom del primer Owner**, **organitzacio**, **SMTP**, **quins moduls**, i **on van
 resposta es valida alli mateix --el domini ha de resoldre, l'SMTP ha d'acceptar una connexio-- i no
 tres passos mes tard, quan tornar enrere vol dir tornar a fer-ho tot.
 
-**No demana cap contrasenya, ni la de la base de dades ni la de l'Owner.** Genera els sis secrets
-ell mateix amb `/dev/urandom` i els escriu directament a `$SECRETS_DIRECTORY` com a fitxers `0400`
-propietat de `root`: `postgres_admin_password`, `postgres_app_password`, `better_auth_secret`,
-`database_url`, `migration_database_url` i `connector_key_ring`. Cap valor passa per la pantalla ni
-per `.env`. El que no s'escriu no s'enganxa a cap historial.
+**No demana cap contrasenya que pugui generar.** Els sis secrets seus surten de `/dev/urandom` i
+van directament a `$SECRETS_DIRECTORY` com a fitxers `0400` propietat de `root`:
+`postgres_admin_password`, `postgres_app_password`, `better_auth_secret`, `database_url`,
+`migration_database_url` i `connector_key_ring`. Cap d'aquests valors passa per la pantalla ni per
+`.env`. **La de l'Owner tampoc la demana**: rep un enllac i se la posa ell. El que no s'escriu no
+s'enganxa a cap historial.
+
+L'unica que pregunta es la del relay SMTP, que no es seva i no se la pot inventar. S'escriu amb
+l'eco apagat i acaba a `smtp_password`, un sete fitxer `0400` de `root`, sense passar mai per
+`.env`.
 
 **Es pot tornar a executar.** Cada resposta ja donada surt com a valor per defecte llegit de `.env`,
 cap secret ja escrit es regenera --refer-lo deixaria PostgreSQL amb el vell, perque el rol es crea
@@ -68,6 +73,40 @@ hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi l
 es com una instal·lacio en tomba una altra. El que fa es escriure `traefik-control-hub.yaml` al
 directori d'instal·lacio, i copiar-lo al directori de configuracio dinamica de Traefik i recarregar
 es una passa manual i deliberada. **Fins que no es faci, res no es accessible des de fora.**
+
+#### El relay SMTP i la seva credencial
+
+Gairebe cap relay transaccional accepta una sessio sense autenticar, i el primer missatge que
+rebutjaria es l'enllac amb que l'Owner entra al seu propi compte. Per aixo l'instal·lador pregunta
+l'usuari del relay i, si n'hi ha, la contrasenya.
+
+Cap proveidor concret no esta cablejat enlloc: el que cal es un host, un port i, gairebe sempre,
+una credencial. A Resend l'usuari es literalment `resend` i la contrasenya es una API key, cosa
+que va be al model d'aqui --se'n genera una de nova, es respon la pregunta i la vella es revoca,
+sense tocar res mes. Sigui quin sigui, el domini del remitent s'ha de verificar amb SPF i DKIM
+**abans** d'instal·lar: l'instal·lador prova la connexio al relay, i el bootstrap hi envia
+l'enllac de l'Owner tot seguit.
+
+**Totes dues o cap.** Un usuari sense contrasenya autentica amb una de buida i el relay rebutja
+cada missatge; una contrasenya sense usuari es un secret muntat que ningu no llegeix. La
+configuracio refusa arrencar amb mitja credencial, i l'instal·lador s'atura abans d'escriure res.
+Deixar l'usuari en blanc es la manera --l'unica-- de configurar un relay sense credencials: Mailpit
+en desenvolupament, o un relay a la mateixa xarxa de confianca.
+
+| On viu | Que hi ha |
+| --- | --- |
+| `SMTP_USER` a `.env` | L'usuari. No es secret, i es el que decideix si es carrega l'overlay. |
+| `smtp_password` a `$SECRETS_DIRECTORY` | La contrasenya, `0400` de `root`, muntada a `api` i `bootstrap`. |
+| `compose.production.smtp.yaml` | El muntatge. Nomes es carrega quan `SMTP_USER` te valor. |
+
+L'overlay va a part de `compose.production.yaml` perque una entrada `secrets:` anomena un cami que
+ha d'existir: una instal·lacio sense credencial no podria arrencar amb aquest bloc al fitxer base.
+El `worker` no el rep --no envia correu-- i el `web` no rep cap secret.
+
+En una segona execucio l'usuari torna a sortir com a valor per defecte i la contrasenya es pot
+deixar en blanc per conservar la que hi ha. Aquest es l'unic secret que l'instal·lador si que
+reescriu quan se n'escriu un de nou: es d'algu altre i canvia. Si s'esborra l'usuari, el fitxer es
+queda on era i l'overlay deixa de carregar-se; esborrar-lo es una decisio manual.
 
 #### Moduls
 
@@ -102,6 +141,7 @@ acabat opcionalment amb un salt de linia:
 | `postgres_admin_password` | UID de PostgreSQL |
 | `postgres_app_password` | UID de PostgreSQL |
 | `connector_key_ring` | UID 1000, API i worker, nomes amb connectors |
+| `smtp_password` | UID 1000, API i bootstrap, nomes si el relay demana credencials |
 | `google_oauth_client_secret` | UID 1000, worker, nomes si Google esta configurat |
 | `microsoft_oauth_client_secret` | UID 1000, worker, nomes si Microsoft esta configurat |
 
@@ -117,6 +157,9 @@ SECRETS_DIRECTORY=/etc/control-hub/secrets docker compose \
   --env-file .env --env-file release.env \
   -f compose.yaml -f compose.release.yaml -f compose.production.yaml up -d --wait
 ```
+
+Si el relay demana credencials, afegir `-f compose.production.smtp.yaml` --es el que munta
+`smtp_password` a `api` i `bootstrap`, i exigeix `SMTP_USER`.
 
 Amb el vault de connectors, afegir `-f compose.production.connectors.yaml`. Per Gmail, afegir
 `-f compose.production.google.yaml`; per Microsoft 365,

@@ -3,7 +3,7 @@ import type { ApiEnvironment } from "@control-hub/config";
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
 import { Pool } from "pg";
-import { createMailSender } from "./email.js";
+import { createMailSender, mailConfiguration } from "./email.js";
 
 /**
  * How recently somebody must have proved who they are for a sensitive operation to be allowed.
@@ -15,12 +15,7 @@ import { createMailSender } from "./email.js";
 export const sessionFreshAge = 60 * 10;
 
 export function createAuth(environment: ApiEnvironment, options: { allowSignUp?: boolean } = {}) {
-  const sendMail = createMailSender({
-    host: environment.SMTP_HOST,
-    port: environment.SMTP_PORT,
-    secure: environment.SMTP_SECURE,
-    from: environment.SMTP_FROM
-  });
+  const sendMail = createMailSender(mailConfiguration(environment));
   const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 10 });
 
   const auth = betterAuth({

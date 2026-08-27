@@ -40,8 +40,10 @@ const hasNetcat = (() => {
  *
  * A piped answer stream and a conditional question do not mix: where the question is skipped every
  * answer after it lands on the wrong one, and the failure surfaces several questions later as an
- * address or a port nobody typed. Two of the installer's questions are conditional, so both are
- * pinned here instead of being left to the machine.
+ * address or a port nobody typed. Three of the installer's questions are conditional, so all three
+ * are pinned here instead of being left to the machine. The relay password is the third: it is
+ * asked only when a relay user was given, so the default stream leaves the user blank and never
+ * reaches it, and the test that does supply one adds the answer itself.
  *
  * Both hosts are `.invalid`, which RFC 6761 reserves so that it can never be installed in the DNS.
  * That makes «this name does not resolve» true everywhere, so the domain warning always appears and
@@ -61,6 +63,12 @@ const answers = {
   smtpPort: "",
   smtpSecure: "",
   from: "",
+  relayUser: "",
+  // `null` rather than "": the question is not asked at all when the user above is blank, so an
+  // empty answer here would be consumed by the next question. `run` drops it, and a test that does
+  // supply a user overrides it in place -- which is the only way to keep it in the right position,
+  // since a key added through `given` would be appended after every other answer.
+  relayPassword: null,
   ...(hasNetcat ? { mailAnyway: "y" } : {}),
   modules: "",
   backups: "",
@@ -78,7 +86,12 @@ const answers = {
 function packageDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "control-hub-install-"));
   mkdirSync(join(directory, "deploy", "postgres"), { recursive: true });
-  for (const file of ["compose.yaml", "compose.release.yaml", "compose.production.yaml"]) {
+  for (const file of [
+    "compose.yaml",
+    "compose.release.yaml",
+    "compose.production.yaml",
+    "compose.production.smtp.yaml"
+  ]) {
     writeFileSync(join(directory, file), "# fixture\n");
   }
   writeFileSync(join(directory, "deploy", "postgres", "init-app-user.sh"), "# fixture\n");
@@ -96,7 +109,10 @@ function run(
     const stdout = execFileSync("sh", [script, ...args], {
       cwd: directory,
       encoding: "utf8",
-      input: Object.values(replies).join("\n") + "\n",
+      input:
+        Object.values(replies)
+          .filter((answer) => answer !== null)
+          .join("\n") + "\n",
       env: {
         ...process.env,
         SECRETS_DIRECTORY: join(directory, "secrets"),
@@ -142,20 +158,26 @@ test("it installs from the answers and writes what the stack reads", () => {
   });
 });
 
-test("nothing it asks for is a password, and no secret reaches the screen", () => {
-  // Invariant 8. The installer generates every secret and writes it straight to a file; a value
-  // that reached the terminal would be in the scrollback of whoever installed it, and a value in
-  // `.env` would be on disk in plain text for the life of the installation.
+test("the only password it asks for is the one it cannot generate, and no secret reaches the screen", () => {
+  // Invariant 8. The installer generates every secret it can and writes it straight to a file; a
+  // value that reached the terminal would be in the scrollback of whoever installed it, and a value
+  // in `.env` would be on disk in plain text for the life of the installation.
   cleanly((directory) => {
     const result = run(directory);
     assert.ok(result.ok, result.output);
-    // No question it asks is about a password, and nothing it reads is one. Asserted on the script
-    // rather than on the transcript, because the transcript also carries the sentence explaining
-    // that it does not ask -- and a check that a word is absent from prose is a check that breaks
-    // the next time somebody rewords the prose.
+    // No visible question is about a password, and the one password question is not visible.
+    // Asserted on the script rather than on the transcript, because the transcript also carries the
+    // prose explaining the rule -- and a check that a word is absent from prose is a check that
+    // breaks the next time somebody rewords it.
     for (const [, prompt] of install.matchAll(/^ask "([^"]*)"/gm)) {
-      assert.doesNotMatch(prompt, /password|secret|key/i, `the installer asks: ${prompt}`);
+      assert.doesNotMatch(prompt, /password|secret|key/i, `the installer asks in the clear: ${prompt}`);
     }
+    // The relay password is the single exception, and it is an exception because the credential
+    // belongs to somebody else's relay. It goes through `ask_hidden`, which turns the echo off --
+    // and this is the assertion that stops a future edit from moving a prompt back to `ask`.
+    const hidden = [...install.matchAll(/^\s*ask_hidden "([^"]*)"/gm)].map(([, prompt]) => prompt);
+    assert.deepEqual(hidden, ["Relay password"], "the set of hidden questions changed");
+    assert.match(install, /stty -echo/, "the relay password is typed in the clear");
     assert.doesNotMatch(install, /read -r *(password|secret)/i, "the installer reads a secret from the terminal");
 
     const environment = readFileSync(join(directory, ".env"), "utf8");
@@ -178,10 +200,66 @@ test("nothing it asks for is a password, and no secret reaches the screen", () =
   });
 });
 
+test("a relay credential becomes a mounted secret, and a relay without one mounts nothing", () => {
+  // The three defects P8 fixes all had the same shape: the installer assumed the state of the
+  // machine instead of looking at it. This is the mail half. An installation whose relay refuses
+  // unauthenticated sessions -- which is nearly all of them -- could not send the Owner their link,
+  // and the failure arrived after the install reported success.
+  cleanly((directory) => {
+    const result = run(directory, { given: { relayUser: "hub@example.com", relayPassword: "relay-password" } });
+    assert.ok(result.ok, result.output);
+
+    const stored = readFileSync(join(directory, "secrets", "smtp_password"), "utf8");
+    assert.equal(stored, "relay-password");
+    assert.ok(!result.output.includes("relay-password"), "the relay password was printed to the terminal");
+
+    const environment = readFileSync(join(directory, ".env"), "utf8");
+    assert.match(environment, /^SMTP_USER=hub@example\.com$/m);
+    assert.ok(!environment.includes("relay-password"), "the relay password was written into .env");
+  });
+
+  cleanly((directory) => {
+    const result = run(directory);
+    assert.ok(result.ok, result.output);
+    assert.equal(existsSync(join(directory, "secrets", "smtp_password")), false);
+    // Blank, not absent: the configuration layer reads an empty value as «no credential», and a
+    // line that is present is a line somebody can fill in later without knowing the variable exists.
+    assert.match(readFileSync(join(directory, ".env"), "utf8"), /^SMTP_USER=$/m);
+  });
+});
+
+test("a relay user with no password is refused rather than half-configured", () => {
+  // Half a credential is not a smaller version of one. The transport would offer AUTH with an empty
+  // password, the relay would refuse every message, and nothing would say so until the first one
+  // mattered -- and the first one that matters is the Owner's only way into the installation.
+  cleanly((directory) => {
+    const result = run(directory, { given: { relayUser: "hub@example.com", relayPassword: "" } });
+    assert.equal(result.ok, false, "the installer accepted a relay user with no password");
+    assert.match(result.output, /password/i);
+  });
+});
+
+test("the installer and the update command load the same relay overlay", () => {
+  // Decided by `SMTP_USER` in both, and it has to be: the overlay ships in every package, so its
+  // presence on disk says nothing about whether this installation has a credential. An overlay one
+  // script loads and the other does not is an installation that loses the mount on its first
+  // update -- and the symptom is mail that stopped working after an upgrade nobody connects to it.
+  const update = read("deploy/update.sh");
+  for (const [name, source] of [
+    ["install.sh", install],
+    ["update.sh", update]
+  ]) {
+    assert.match(source, /compose\.production\.smtp\.yaml/, `${name} never loads the relay overlay`);
+    assert.match(source, /smtp_user/, `${name} does not decide the overlay from SMTP_USER`);
+  }
+});
+
 test("the secrets are files only root can read", () => {
   // Read off the script rather than off the filesystem: the test suite does not run as root, and
   // the tests run on Windows too, where a mode is not a mode. The mutation that matters is somebody
   // dropping the chown or widening the mode, and that is visible here.
+  assert.match(install, /chown root:root "\$SECRETS_DIRECTORY\/smtp_password"/, "the relay password is not root's");
+  assert.match(install, /chmod 0400 "\$SECRETS_DIRECTORY\/smtp_password"/, "the relay password is not 0400");
   assert.match(install, /chown root:root "\$path"/, "the secret files are not given to root");
   assert.match(install, /chmod 0400 "\$path"/, "the secret files are not 0400");
   assert.match(install, /chmod 0700 "\$SECRETS_DIRECTORY"/, "the secrets directory is readable by others");
@@ -200,15 +278,40 @@ test("running it again reproduces the installation instead of a second one", () 
 
     // Every question left blank: the second run has to find all six answers in `.env`. The
     // confirmations keep theirs -- they are not questions, and a blank one means «no» and stops.
+    // A `null` default stays null: it marks a question this run does not reach, and turning it into
+    // a blank answer would put a line back into the stream that nothing consumes.
     const blank = Object.fromEntries(
       Object.keys(answers)
-        .filter((key) => !/Anyway$/.test(key) && key !== "go")
+        .filter((key) => !/Anyway$/.test(key) && key !== "go" && answers[key] !== null)
         .map((key) => [key, ""])
     );
     const again = run(directory, { given: blank });
     assert.ok(again.ok, again.output);
     assert.equal(readFileSync(join(directory, "secrets", "database_url"), "utf8"), first);
     assert.equal(readFileSync(join(directory, ".env"), "utf8"), environment);
+  });
+});
+
+test("a second run keeps the stored relay password, and a typed one replaces it", () => {
+  // The one secret here the installer does not own. Every other file is written once and never
+  // rewritten, because regenerating a database password would leave PostgreSQL holding the old one
+  // -- but a relay password belongs to the relay and does change, so this one has to be replaceable
+  // without making the operator retype it on every unrelated re-run.
+  cleanly((directory) => {
+    const stored = join(directory, "secrets", "smtp_password");
+    assert.ok(run(directory, { given: { relayUser: "hub@example.com", relayPassword: "first" } }).ok);
+    assert.equal(readFileSync(stored, "utf8"), "first");
+
+    // The user comes back from `.env`, so the question is asked again and the blank answer means
+    // «keep it». A run that demanded the password again would be a run somebody performs from a
+    // password manager, in a terminal, under time pressure.
+    const kept = run(directory, { given: { relayUser: "", relayPassword: "" } });
+    assert.ok(kept.ok, kept.output);
+    assert.equal(readFileSync(stored, "utf8"), "first");
+
+    const rotated = run(directory, { given: { relayUser: "", relayPassword: "second" } });
+    assert.ok(rotated.ok, rotated.output);
+    assert.equal(readFileSync(stored, "utf8"), "second");
   });
 });
 

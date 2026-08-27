@@ -100,6 +100,22 @@ ask() {
   [ -n "$reply" ] || reply="${2:-}"
 }
 
+# The one answer that is not the installer's to generate, and so the one place invariant 8 has to
+# be kept by hand: echo off while it is typed, and it reaches a 0400 file without passing through a
+# variable that anything prints. Terminals without `stty` fall through to a visible prompt rather
+# than to no prompt -- a relay credential that cannot be entered is an installation that cannot mail.
+ask_hidden() {
+  printf '%s: ' "$1"
+  if [ -t 0 ] && command -v stty >/dev/null 2>&1; then
+    stty -echo 2>/dev/null || true
+    if ! IFS= read -r reply; then reply=""; fi
+    stty echo 2>/dev/null || true
+    printf '\n'
+  else
+    if ! IFS= read -r reply; then reply=""; fi
+  fi
+}
+
 confirm() {
   printf '%s [y/N]: ' "$1"
   if ! IFS= read -r reply; then reply="n"; fi
@@ -199,6 +215,32 @@ case "$smtp_from" in
   *) fail "«$smtp_from» is not an email address." ;;
 esac
 
+# Almost every relay worth pointing at refuses an unauthenticated session, and the message it
+# refuses first is the Owner's only way into their own account. Asked rather than generated: this
+# credential belongs to the relay, not to this installation.
+say ""
+say "  Leave the user blank for a relay that accepts mail from this machine without credentials."
+say ""
+ask "Relay user" "$(existing SMTP_USER)"
+smtp_user="$reply"
+smtp_password=""
+if [ -n "$smtp_user" ]; then
+  if [ -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+    say ""
+    say "  A relay password is already stored. Leave this blank to keep it."
+  fi
+  ask_hidden "Relay password"
+  smtp_password="$reply"
+  reply=""
+  if [ -z "$smtp_password" ] && [ ! -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+    fail "a relay user without a password authenticates with an empty one, and the relay refuses every message."
+  fi
+elif [ -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+  say ""
+  say "  No relay user, so the stored password in $SECRETS_DIRECTORY is no longer used."
+  say "  It is left in place; delete it by hand if the relay credential is gone for good."
+fi
+
 # A connection, and deliberately not a delivery. An installer that proves it can send mail has to
 # send it to somebody, and the only address it knows belongs to a person who has not been told any
 # of this is happening. The Owner's link is the first real message; this is what makes it likely to
@@ -216,7 +258,11 @@ if command -v nc >/dev/null 2>&1; then
 else
   say "  No nc on this machine, so $smtp_host:$smtp_port was not contacted."
 fi
-remember "Mail:          $smtp_host:$smtp_port as $smtp_from"
+if [ -n "$smtp_user" ]; then
+  remember "Mail:          $smtp_host:$smtp_port as $smtp_from, authenticating as $smtp_user"
+else
+  remember "Mail:          $smtp_host:$smtp_port as $smtp_from, unauthenticated"
+fi
 
 heading "5 of 6 -- which modules are on"
 say "Comma separated, and changeable later by editing CONTROL_HUB_FLAGS in .env. A name that is"
@@ -279,7 +325,23 @@ secret database_url "postgres://control_hub_app:${app_password}@postgres:5432/co
 # is an installation that cannot turn the module on later without somebody coming back to it.
 secret connector_key_ring \
   "{\"activeKeyId\":\"k1\",\"keys\":{\"k1\":\"$(head -c 32 /dev/urandom | base64 | tr -d '\n')\"}}" > /dev/null
-say "  Six files, mode 0400, owned by root."
+# Not through `secret()`. That helper exists to never rewrite what it generated -- regenerating a
+# database password would leave PostgreSQL holding the old one -- and this is the one secret here
+# that somebody else owns and can legitimately change under us. A blank answer keeps what is stored.
+if [ -n "$smtp_password" ]; then
+  # Made writable for the moment of the rewrite. Root is allowed to write a 0400 file anyway, but
+  # depending on that would make the one path this script has that overwrites a secret work only
+  # because of who is running it -- and the failure, when it came, would be a redirection error
+  # after every question had been answered.
+  [ -f "$SECRETS_DIRECTORY/smtp_password" ] && chmod 0600 "$SECRETS_DIRECTORY/smtp_password"
+  (umask 077 && printf '%s' "$smtp_password" > "$SECRETS_DIRECTORY/smtp_password")
+  [ "$dry_run" = yes ] || chown root:root "$SECRETS_DIRECTORY/smtp_password"
+  chmod 0400 "$SECRETS_DIRECTORY/smtp_password"
+  smtp_password=""
+  say "  Seven files, mode 0400, owned by root."
+else
+  say "  Six files, mode 0400, owned by root."
+fi
 
 # --- configuration ------------------------------------------------------------------------------
 
@@ -313,6 +375,7 @@ SMTP_HOST=$smtp_host
 SMTP_PORT=$smtp_port
 SMTP_SECURE=$smtp_secure
 SMTP_FROM=$smtp_from
+SMTP_USER=$smtp_user
 CONTROL_HUB_FLAGS=$flags
 CONTROL_HUB_UPDATE_CHECK=true
 CONTROL_HUB_BACKUP_DIR=$backup_dir
@@ -403,9 +466,16 @@ fi
 
 # --- starting -------------------------------------------------------------------------------------
 
+# The relay overlay joins the invocation only when there is a credential to mount. It ships in
+# every package, so its presence on disk says nothing; what decides is `SMTP_USER`, the half that
+# lives in `.env`. `deploy/update.sh` reads the same variable to reach the same decision, and
+# `scripts/install.test.mjs` holds the two to it: an overlay one script loads and the other does
+# not is an installation that silently loses a mount on its first update.
+overlays="-f compose.yaml -f compose.release.yaml -f compose.production.yaml"
+[ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+
 compose() {
-  docker compose --env-file .env --env-file release.env \
-    -f compose.yaml -f compose.release.yaml -f compose.production.yaml "$@"
+  docker compose --env-file .env --env-file release.env $overlays "$@"
 }
 
 say ""

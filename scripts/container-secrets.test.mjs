@@ -6,6 +6,7 @@ const production = readFileSync(new URL("../compose.production.yaml", import.met
 const connectors = readFileSync(new URL("../compose.production.connectors.yaml", import.meta.url), "utf8");
 const google = readFileSync(new URL("../compose.production.google.yaml", import.meta.url), "utf8");
 const microsoft = readFileSync(new URL("../compose.production.microsoft.yaml", import.meta.url), "utf8");
+const smtp = readFileSync(new URL("../compose.production.smtp.yaml", import.meta.url), "utf8");
 const compose = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../deploy/Dockerfile", import.meta.url), "utf8");
 const migrationEntrypoint = readFileSync(new URL("../deploy/load-secret-and-exec.sh", import.meta.url), "utf8");
@@ -113,6 +114,19 @@ test("connector and provider overlays grant only the selected integration", () =
   assert.match(microsoft, /MICROSOFT_OAUTH_CLIENT_SECRET_FILE: \/run\/secrets\/microsoft_oauth_client_secret/);
   assert.match(microsoft, /MICROSOFT_OAUTH_CLIENT_SECRET: !reset null/);
   assert.doesNotMatch(microsoft, /GOOGLE/);
+});
+
+test("the relay overlay reaches the two runtimes that send mail and no others", () => {
+  // A relay password is the one platform secret somebody else chose, so it is likelier than any
+  // generated value to be reused elsewhere -- which makes mounting it where nothing reads it a
+  // worse trade than usual. The worker sends no mail and the web tier holds no secret at all.
+  assert.match(serviceBlock(smtp, "api"), /SMTP_PASSWORD_FILE: \/run\/secrets\/smtp_password/);
+  assert.match(serviceBlock(smtp, "bootstrap"), /SMTP_PASSWORD_FILE: \/run\/secrets\/smtp_password/);
+  assert.doesNotMatch(smtp, /^ {2}(?:web|worker|migrate|postgres):/m);
+
+  // And the base production file carries neither half, because a `secrets:` entry names a path
+  // that has to exist: an installation whose relay wants no credentials could not start.
+  assert.doesNotMatch(production, /SMTP_USER|SMTP_PASSWORD|smtp_password/);
 });
 
 test("images receive no secret through build arguments or copied environment files", () => {
