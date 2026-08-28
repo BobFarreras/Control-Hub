@@ -451,6 +451,54 @@ dues sola hauria vist les quatre:
 Aixo tanca la verificacio que P2 va deixar oberta: aixecar l'stack de produccio de debo, encara que
 sigui amb imatges construides al moment en comptes de descarregades per digest.
 
+**I dos defectes mes, que van sortir de les guardes el primer cop que es van executar.** Val la pena
+deixar-ho escrit perque es l'argument sencer a favor de la guarda executada: no van ser trobats
+llegint codi, sino perque hi havia una comprovacio nova que preguntava una cosa que abans no
+preguntava ningu.
+
+**El `worker` no havia arrencat mai.** Ni en desenvolupament ni en produccio, des de la primera
+release. `BETTER_AUTH_SECRET` era al schema base que els dos processos estenen, aixi que el worker
+exigia una clau de signatura de sessions que no llegeix enlloc --el nom no apareix en cap fitxer
+fora de `packages/config` i `apps/api`-- i cap fitxer de compose li'n donava cap. El proces moria a
+l'arrencada, es reiniciava, i tornava a morir. Amb ell queien la comprovacio de versio nova (o sigui
+que **el banner d'actualitzacio no ha pogut apareixer mai**), les alertes, els horaris dels
+connectors i la recollida de consum.
+
+Ningu no ho reportava, i aquesta es la part que importa: `docker compose up -d --wait` espera un
+healthcheck, el worker no en te, i un servei amb `restart: unless-stopped` te el mateix aspecte
+arrencant que morint en bucle. La correccio va en la direccio que va perque el worker no autentica
+ningu: donar-li la clau ampliaria on viu un secret de sessions sense comprar res. La guarda nova es
+que **cap contenidor pot haver-se reiniciat sol** despres d'aixecar l'stack.
+
+**Una correccio que viu en un fitxer de compose no arribava a cap maquina instal·lada.**
+`update.sh` descarregava nomes `release.env` --quatre imatges per digest-- i mai els fitxers de
+compose, l'script d'inici de PostgreSQL ni l'instal·lador. Tot aixo es quedava a la versio que havia
+fet la instal·lacio. La v0.4.2 arregla el menu lateral buit anomenant `CONTROL_HUB_FLAGS` a
+`compose.yaml`: amb el comandament vell, una instal·lacio actualitzada hauria continuat amb el menu
+buit i qui l'operes hauria conclos, raonablement, que la release no funcionava. Una correccio
+publicada que no pot arribar a una maquina que corre no es una correccio.
+
+Ara el comandament llegeix tambe el paquet d'instal·lacio, que ja es publicava i que porta
+exactament els fitxers que son d'una release i cap dels que son de la maquina. Aixo darrer es
+comprova, no es confia: el paquet arriba per la xarxa i esta a punt d'escriure's al directori, aixi
+que es rebutja si porta un cami que en surt (`..` o absolut) o qualsevol de `.env`, `release.env` i
+`compose.proxy.yaml`. Els fitxers que substitueix es guarden a `previous/`, perque a partir d'ara un
+rollback necessita les definicions velles dels serveis i no nomes els digests vells.
+
+I la substitucio va **despres del backup i abans del `pull`**, no al final amb `release.env`: el job
+de migracions s'executa a partir d'aquestes definicions, i migrar una base de dades nova amb la idea
+que tenia la release anterior de que es el servei `migrate` es una questio de correccio, no
+d'ordre. Els contenidors que corren no els toca res --compose llegeix aquests fitxers, no els
+vigila-- aixi que una migracio fallida segueix deixant dreta la versio anterior, que es la promesa
+que fa el comandament.
+
+**El que aixo encara no cobreix.** Res no executa `install.sh` ni `update.sh` a CI: la meitat de
+`update.sh` que hi ha sota la sortida de `--check` no s'havia executat mai enlloc, i les proves que
+la cobrien llegien el text de l'script. Ara les proves l'executen sencer amb un `docker` fals que
+apunta el que se li demana, cosa que es el que permet afirmar que un `compose.yaml` publicat arriba
+a disc. Executar-lo contra docker de debo, amb dues versions publicades i dades a dins, segueix
+pendent.
+
 ## Traefik i els limits de compartir maquina
 
 Tots els ports de `compose.yaml` es publiquen a `127.0.0.1`, cosa que ja es la meitat de la feina:
@@ -505,6 +553,10 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
   `.env`-- i, sobretot, les dues guardes que els haurien vist: la comprovacio estatica del que
   `.env` promet i el que el compose entrega, i un CI que aixeca l'stack de produccio i li demana
   una ruta `/api` a traves del contenidor `web`. Tanca la verificacio que P2 va deixar oberta.
+  Les guardes en van trobar dos mes el primer cop que es van executar: el `worker` no havia
+  arrencat mai --exigia un `BETTER_AUTH_SECRET` que no llegeix i que ningu no li donava, i amb ell
+  queia el banner d'actualitzacio-- i `update.sh` no reemplacava cap fitxer de compose, o sigui que
+  cap correccio que no vises dins d'una imatge podia arribar a una maquina instal·lada.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
 algu pot provar a ma.

@@ -386,8 +386,37 @@ Un comandament al directori d'instal·lacio:
 ./update.sh           # actualitza
 ```
 
-Fa, en aquest ordre: llegeix la release nova i la valida, **fa el backup**, descarrega les imatges
-per digest, executa el job de migracions, i **nomes si aixo acaba be** reemplaca els serveis.
+Fa, en aquest ordre: llegeix la release nova i la valida, llegeix el paquet d'instal·lacio i
+comprova que porta el que ha de portar, **fa el backup**, substitueix els fitxers del producte,
+descarrega les imatges per digest, executa el job de migracions, i **nomes si aixo acaba be**
+reemplaca els serveis.
+
+**Que substitueix i que no.** Fins a la v0.4.2 aquest comandament descarregava nomes `release.env`
+--les quatre imatges per digest-- i per tant no podia entregar cap correccio que visques en un
+fitxer de compose, a l'script d'inici de PostgreSQL o al mateix instal·lador. Ara llegeix tambe
+`control-hub-install.tar.gz`, que porta exactament els fitxers que son d'una release:
+
+| Es substitueix | No es toca mai |
+| --- | --- |
+| `compose.yaml`, `compose.release.yaml`, `compose.production*.yaml` | `.env` --les respostes d'aquesta maquina |
+| `deploy/postgres/init-app-user.sh` | `compose.proxy.yaml` --el va generar `install.sh` mirant el proxy |
+| `install.sh`, `update.sh` | `release.env`, `backups/` i el directori de secrets |
+
+El paquet es rebutja, abans de tocar res, si porta un cami que surt del directori o qualsevol dels
+fitxers de la columna dreta. Els fitxers substituits queden a `previous/`.
+
+> **Una vegada, en passar de la v0.4.1 a la v0.4.2.** La v0.4.1 va instal·lar el seu propi
+> `update.sh`, i aquell no sap llegir el paquet. Cal agafar el comandament nou primer, o
+> l'actualitzacio arreglara les imatges i deixara el menu lateral buit:
+>
+> ```sh
+> curl -fsSLo update.sh https://github.com/BobFarreras/Control-Hub/releases/latest/download/update.sh
+> chmod +x update.sh
+> ./update.sh
+> ```
+>
+> A partir d'aqui no cal mes: cada actualitzacio deixa a disc el `update.sh` de la versio que
+> instal·la, i la seguent el fa servir.
 
 Si les migracions fallen s'atura alli. L'stack anterior segueix dret --no se n'ha tocat res-- i el
 comandament diu que ha fet i que conserva: el backup, el `release.env` que encara anomena la versio
@@ -401,9 +430,11 @@ pas 2 --el backup-- es el que se salta, perque els altres sis semblen la feina d
 verificar no s'exigeix; qui vulgui pot fer-ho a part amb `cosign verify`), i no valida els fluxos
 critics despres d'arrencar --aixo segueix sent feina de qui actualitza.
 
-**Rollback.** Mentre duri la finestra d'una versio: `cp release.env.previous release.env` i tornar a
-aixecar l'stack. Si les migracions ja havien passat, cal restaurar tambe el backup, i el comandament
-imprimeix les tres linies exactes quan aixo passa.
+**Rollback.** Mentre duri la finestra d'una versio: tornar a posar els fitxers de `previous/`,
+`cp release.env.previous release.env`, i tornar a aixecar l'stack. Calen les dues coses --els
+digests vells i les definicions velles dels serveis-- des que el comandament substitueix fitxers de
+compose. Si les migracions ja havien passat, cal restaurar tambe el backup, i el comandament
+imprimeix les linies exactes quan aixo passa.
 
 ## Desinstal·lacio i exportacio
 

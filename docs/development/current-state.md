@@ -105,21 +105,42 @@ la primera prova d'integracio d'aquell cami, i per aixo en van sortir quatre de 
 - **`NEXT_PUBLIC_DEFAULT_LOCALE` no el llegia ningu**, ni tan sols al codi: `defaultLocale` es una
   constant de `packages/i18n`. Escrit en cinc llocs i honrat en cap.
 
-**P9 tanca els quatre, i sobretot afegeix les guardes que els haurien vist**, que es l'unica part
-que impedeix el cinque: una comprovacio estatica que exigeix que cada nom que `install.sh` escriu a
-`.env` l'anomeni algun fitxer de compose --o consti amb el seu motiu com a llegit nomes a la
-maquina-- i que cap compose declari `uid`, `gid` o `mode`; i un `Container image` que demana al
-contenidor `web` una ruta `/api`, comprova que els moduls escollits han arribat als tres serveis
-que els llegeixen, i torna a aixecar l'stack amb `compose.production.yaml` i els secrets com a
-fitxers muntats amb la propietat que `install.sh` els dona. Aixo tanca la verificacio que P2 va
-deixar oberta.
+**P9 tanca els quatre, i sobretot afegeix les guardes que els haurien vist**: una comprovacio
+estatica que exigeix que cada nom que `install.sh` escriu a `.env` l'anomeni algun fitxer de compose
+--o consti amb el seu motiu com a llegit nomes a la maquina-- i que cap compose declari `uid`, `gid`
+o `mode`; i un `Container image` que demana al contenidor `web` una ruta `/api`, comprova que els
+moduls escollits han arribat als tres serveis que els llegeixen, i torna a aixecar l'stack amb
+`compose.production.yaml` i els secrets com a fitxers muntats amb la propietat que `install.sh` els
+dona. Aixo tanca la verificacio que P2 va deixar oberta.
+
+**I les guardes en van trobar dos mes el primer cop que es van executar**, cosa que es el millor
+argument que se'ls pot demanar:
+
+- **El `worker` no havia arrencat mai.** Ni en desenvolupament ni en produccio, des de la primera
+  release. Exigia `BETTER_AUTH_SECRET` --heretat del schema base-- i no el llegeix enlloc: el nom
+  no surt de `packages/config` i `apps/api`. Cap fitxer de compose li'n donava, o sigui que moria a
+  l'arrencada i es reiniciava en bucle, i amb ell queien **la comprovacio de versio nova** --el
+  banner d'actualitzacio no ha pogut apareixer mai--, les alertes, els horaris dels connectors i la
+  recollida de consum. `up -d --wait` no ho veia: el worker no te healthcheck, i amb
+  `restart: unless-stopped` un servei que ressuscita cada dos segons te el mateix aspecte que un
+  que funciona. La guarda nova es que cap contenidor pot haver-se reiniciat sol.
+- **`update.sh` no entregava cap correccio que no fos dins d'una imatge.** Descarregava nomes
+  `release.env`; els fitxers de compose, l'script d'inici de PostgreSQL i l'instal·lador es
+  quedaven a la versio que havia instal·lat la maquina. Ara llegeix tambe el paquet publicat,
+  comprova que no porti cap cami que surti del directori ni cap fitxer de la maquina (`.env`,
+  `release.env`, `compose.proxy.yaml`), i deixa el que substitueix a `previous/`.
 
 **La instal·lacio de la VPS corre amb dos pedacos fets a ma**, cap dels dos a cap release: el
 `chown` dels set fitxers de `/etc/control-hub/secrets` --imprescindible, i que la `v0.4.2` fara
 sola-- i un `compose.apiroute.yaml` que encamina `/api` cap al contenidor `api` per Traefik per
 esquivar el rewrite gravat. El segon s'ha d'**esborrar** en actualitzar, no arrossegar: `update.sh`
-no el carrega, o sigui que una actualitzacio abans de la `v0.4.2` deixaria la instal·lacio sense
-l'un i sense l'altre.
+no el carrega.
+
+**En actualitzar aquella maquina cal agafar el `update.sh` nou primer.** El que te instal·lat es el
+de la `v0.4.1` i aquell nomes sap llegir `release.env`, aixi que arreglaria l'API i deixaria el menu
+lateral buit. Les tres linies son a `docs/runbooks/installation.md`, seccio «Actualitzacio». Es una
+sola vegada: a partir de la `v0.4.2` cada actualitzacio deixa a disc el comandament de la versio que
+instal·la.
 
 **P8 fusionat a `develop` el 28 d'agost de 2026** (PR #55, `e6823bc`). Tres defectes, tots amb la
 mateixa forma --l'instal·lador donava per suposat l'estat de la maquina en comptes de mirar-lo--,
