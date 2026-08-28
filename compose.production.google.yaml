@@ -11,9 +11,6 @@ services:
     secrets:
       - source: google_oauth_client_secret
         target: google_oauth_client_secret
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
 
 secrets:
   google_oauth_client_secret:

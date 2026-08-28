@@ -4,6 +4,66 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.4.2 - 2026-08-28
+
+La versio que surt de la primera instal·lacio que va **arrencar**. La v0.4.1 va fer que
+l'instal·lador funciones en una maquina de debo; aquesta arregla el que va passar despres, i les
+sis coses tenen la mateixa forma: **res no havia executat mai l'stack composat de produccio**. Les
+proves end-to-end arrenquen les aplicacions a `localhost`, on `127.0.0.1:4000` es l'API de debo i
+on les variables hi son perque les posa el propi job.
+
+> **En actualitzar des de la v0.4.1, cal agafar el comandament nou primer.** El `update.sh` que va
+> instal·lar la v0.4.1 nomes sap descarregar `release.env`, aixi que no et portaria cap d'aquestes
+> correccions que no visqui dins d'una imatge. Una sola vegada:
+>
+> ```sh
+> curl -fsSLo update.sh https://github.com/BobFarreras/Control-Hub/releases/latest/download/update.sh
+> chmod +x update.sh
+> ./update.sh
+> ```
+
+### Correccions
+
+- **El menu lateral ja mostra els moduls escollits.** `CONTROL_HUB_FLAGS` s'escrivia a `.env`, es
+  reportava a la pantalla final de la instal·lacio i no sortia mai d'alli: cap fitxer de compose
+  l'anomenava, i el `--env-file` interpola el fitxer, no exporta res. Una instal·lacio que havia
+  demanat un modul arrencava amb tots apagats, que es indistingible d'una que no n'ha demanat cap.
+  `MCP_ISSUER` tenia el mateix forat, adormit darrere una bandera.
+- **Els enllacos del correu ja funcionen.** Tota peticio del navegador cap a `/api` responia
+  `Internal Server Error`, incloent l'enllac amb que el primer Owner es posa la contrasenya. La
+  destinacio d'un rewrite de Next es grava quan es compila la imatge i el `pnpm build` corria sense
+  `API_INTERNAL_URL`, o sigui que la imatge publicada apuntava a ella mateixa.
+- **Els contenidors poden llegir els seus secrets.** Compose ignora `uid`, `gid` i `mode` en un
+  secret --son atributs de Swarm-- i els mostrava com un avis a cada execucio. Els set fitxers
+  arribaven amb la propietat que tenien al host, que era `root`, i PostgreSQL inicialitza com a uid
+  70. L'instal·lador assigna ara la propietat **a cada execucio**, no nomes quan crea el fitxer, de
+  manera que tornar-lo a executar repara una instal·lacio feta amb la v0.4.1.
+- **El worker arrenca.** No ho havia fet mai, en cap versio: exigia un `BETTER_AUTH_SECRET` que no
+  llegeix enlloc i que cap fitxer de compose li donava, aixi que moria a l'arrencada i es
+  reiniciava en bucle. Amb ell queien **la comprovacio de versio nova** --el banner
+  d'actualitzacio no havia pogut apareixer mai--, les alertes, els horaris dels connectors i la
+  recollida de consum. Si vens de qualsevol versio anterior, aquestes quatre coses comencen a
+  funcionar ara.
+- **Una actualitzacio entrega tambe el que no viu dins d'una imatge.** `update.sh` descarregava
+  nomes `release.env`; els fitxers de compose, l'script d'inici de PostgreSQL i l'instal·lador es
+  quedaven a la versio que havia instal·lat la maquina. Ara llegeix tambe el paquet publicat, i
+  substitueix els fitxers del producte i cap dels teus: `.env`, `release.env` i
+  `compose.proxy.yaml` no es toquen mai, i un paquet que en porti cap --o un cami que surti del
+  directori-- es rebutja abans de reemplacar res. El que substitueix queda a `previous/`, que es el
+  que necessita un rollback juntament amb `release.env.previous`.
+- `NEXT_PUBLIC_DEFAULT_LOCALE` ja no existeix. No el llegia ningu: `defaultLocale` es una constant.
+
+### El que ho impedeix a partir d'ara
+
+- Cada nom que l'instal·lador escriu a `.env` l'ha d'anomenar algun fitxer de compose, o constar
+  amb el seu motiu com a llegit nomes a la maquina.
+- La construccio d'imatges de CI aixeca l'stack i li demana al contenidor `web` una ruta `/api`
+  --l'unica peticio que distingeix una imatge ben construida d'una que respondra 500 a tothom--,
+  comprova que cap contenidor s'hagi reiniciat sol, i torna a aixecar-ho tot amb els secrets com a
+  fitxers muntats amb la propietat que els dona l'instal·lador.
+- Les proves executen `update.sh` sencer. Tota la meitat que hi ha sota `--check` no s'havia
+  executat mai enlloc.
+
 ## v0.4.1 - 2026-08-28
 
 La versio que fa que l'instal·lador arrenqui en una maquina de debo. Preparant la primera

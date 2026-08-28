@@ -9,6 +9,13 @@ services:
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
+      # Named here or the modules the operator chose reach nothing. The installer asks which ones
+      # to turn on, writes them to .env and reports them back -- and until this line existed every
+      # container started with the variable unset, which the registry reads as «none». A first
+      # installation came up with an empty sidebar having just been told a module was on. Same
+      # defect as CONTROL_HUB_UPDATE_CHECK below, which was fixed for itself alone;
+      # scripts/install.test.mjs now holds every name in .env to this.
+      CONTROL_HUB_FLAGS: ${CONTROL_HUB_FLAGS:-}
     ports:
       - "127.0.0.1:${WEB_PORT:?WEB_PORT is required}:3001"
     depends_on:
@@ -43,6 +50,9 @@ services:
       WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:3001}
       DATABASE_URL: postgres://control_hub_app:${POSTGRES_APP_PASSWORD:-}@postgres:5432/control_hub
       REDIS_URL: redis://valkey:6379
+      # The same list the web tier gets. A flag on in one service and off in the other is a screen
+      # that renders against routes that answer 404, so they are read from one place.
+      CONTROL_HUB_FLAGS: ${CONTROL_HUB_FLAGS:-}
     ports:
       - "127.0.0.1:${API_PORT:?API_PORT is required}:4000"
     depends_on:
@@ -77,6 +87,10 @@ services:
       # Named here or the variable never reaches the process, and switching the check off in
       # .env would change nothing at all. See docs/runbooks/installation.md.
       CONTROL_HUB_UPDATE_CHECK: ${CONTROL_HUB_UPDATE_CHECK:-true}
+      # And the flags, for the same reason. Here they decide work rather than a screen: with
+      # `infrastructure` unreadable the worker schedules no connector operation and removes any it
+      # finds, so an installation that asked for the module got a worker that quietly undid it.
+      CONTROL_HUB_FLAGS: ${CONTROL_HUB_FLAGS:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

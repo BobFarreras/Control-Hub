@@ -17,10 +17,16 @@
 #   ./update.sh --check    say whether an update exists, change nothing
 #
 # CONTROL_HUB_RELEASE_URL   where to read the release from (default: the latest GitHub release)
+# CONTROL_HUB_PACKAGE_URL   where to read the installation package from (default: beside the release)
 # CONTROL_HUB_BACKUP_DIR    where the backup goes (default: ./backups)
 set -eu
 
 RELEASE_URL="${CONTROL_HUB_RELEASE_URL:-https://github.com/BobFarreras/Control-Hub/releases/latest/download/release.env}"
+# Beside the release file by default rather than spelled out again, so that pointing
+# CONTROL_HUB_RELEASE_URL at a mirror moves both halves of a release together. A machine that read
+# its digests from one place and its compose files from another would be assembling a version that
+# was never published as a whole.
+PACKAGE_URL="${CONTROL_HUB_PACKAGE_URL:-${RELEASE_URL%/*}/control-hub-install.tar.gz}"
 BACKUP_DIR="${CONTROL_HUB_BACKUP_DIR:-./backups}"
 SERVICES="API WORKER MIGRATE WEB"
 
@@ -36,6 +42,7 @@ for file in compose.yaml compose.release.yaml .env release.env; do
   [ -f "$file" ] || fail "no $file here. Run this from the installation directory."
 done
 command -v docker >/dev/null 2>&1 || fail "docker is not on PATH."
+command -v tar >/dev/null 2>&1 || fail "tar is not on PATH."
 
 # compose.production.yaml is part of a production installation and absent from a local one, so it
 # joins the invocation only when it exists rather than being demanded above.
@@ -123,6 +130,57 @@ fi
 compose_new() { docker compose --env-file .env --env-file release.env.new $overlays "$@"; }
 compose_now() { docker compose --env-file .env --env-file release.env $overlays "$@"; }
 
+# --- reading the product files ---------------------------------------------------------------------
+#
+# `release.env` names four images and nothing else, so until v0.4.2 this command could deliver only
+# what lived inside an image. Everything else a release changes -- the compose files, the PostgreSQL
+# init script, the installer itself -- stayed on the machine at whatever version installed it.
+#
+# That is not a small gap. v0.4.2 fixes an empty sidebar by naming `CONTROL_HUB_FLAGS` in
+# `compose.yaml`; on an installation updated the old way the sidebar would have stayed empty and the
+# operator would have concluded, reasonably, that the release did not work. A published fix that
+# cannot reach a running machine is not a fix.
+#
+# So the package is read too. It carries exactly the files a release owns and none this machine
+# owns -- no `.env`, no `release.env`, no `compose.proxy.yaml`, which install.sh generated from the
+# answers somebody typed -- and that property is checked rather than trusted, because it arrives
+# over the network and it is about to be written into this directory.
+STAGING=.control-hub-package
+
+say ""
+say "Reading the product files for $version"
+download "$PACKAGE_URL" package.tar.gz.new || { rm -f release.env.new; fail "could not read the package from $PACKAGE_URL. Nothing has changed; $current is still running."; }
+
+entries=$(tar -tzf package.tar.gz.new) || { rm -f release.env.new package.tar.gz.new; fail "the package at $PACKAGE_URL is not a readable archive. Nothing has changed."; }
+refuse() { rm -f release.env.new package.tar.gz.new; fail "$1 Nothing has changed; $current is still running."; }
+
+for entry in $entries; do
+  # The archive is rooted at `.`, and that prefix has to come off before the name is judged: an
+  # absolute path inside such an archive arrives as `.//etc/passwd`, which begins with neither `/`
+  # nor `..` and would walk straight past a check that read the entry as tar printed it.
+  name=${entry#./}
+  case "$name" in
+    "" | */) continue ;;
+  esac
+  # An archive is a list of paths chosen by whoever built it, and the two that matter are a path
+  # that climbs out of this directory and a path that never was relative to begin with. GNU tar
+  # strips both on extraction and says so, but a warning on somebody's terminal is not a control.
+  case "$name" in
+    /*|*..*) refuse "the package carries $name, which would write outside this directory." ;;
+  esac
+  # And the files this installation owns. A release has no business shipping any of them; if one
+  # ever does, that is a mistake in the release and not something to apply quietly.
+  case "$name" in
+    .env|release.env|release.env.previous|compose.proxy.yaml)
+      refuse "the package carries $name, which belongs to this installation and not to a release." ;;
+  esac
+done
+
+case "$entries" in
+  *compose.yaml*) ;;
+  *) refuse "the package at $PACKAGE_URL carries no compose.yaml, so it is not an installation package." ;;
+esac
+
 # --- the backup, before anything is pulled or run ------------------------------------------------
 
 mkdir -p "$BACKUP_DIR"
@@ -146,17 +204,53 @@ failed=$(mktemp)
     echo yes > "$failed"; } | gzip > "$backup"
 
 if [ -s "$failed" ]; then
-  rm -f "$failed" "$backup" release.env.new
+  rm -f "$failed" "$backup" release.env.new package.tar.gz.new
   fail "the backup failed -- see the output above. Nothing has changed; $current is still running."
 fi
 rm -f "$failed"
 
 # Belt and braces behind the real check above: unreadable or implausibly small means something went
 # wrong in a way pg_dump did not report.
-gzip -t "$backup" 2>/dev/null || { rm -f release.env.new; fail "the backup at $backup is not readable. Nothing has changed."; }
+gzip -t "$backup" 2>/dev/null || { rm -f release.env.new package.tar.gz.new; fail "the backup at $backup is not readable. Nothing has changed."; }
 size=$(wc -c < "$backup")
-[ "$size" -gt 1000 ] || { rm -f release.env.new; fail "the backup at $backup is only $size bytes. Nothing has changed."; }
+[ "$size" -gt 1000 ] || { rm -f release.env.new package.tar.gz.new; fail "the backup at $backup is only $size bytes. Nothing has changed."; }
 say "Backup written, $size bytes."
+
+# --- the product files, once there is a backup and before anything is pulled ----------------------
+#
+# Here rather than beside `release.env` at the end, because `pull` and the migration job run from
+# these definitions. Replacing them afterwards would mean migrating a new database with the old
+# release's idea of what the migrate service is, which is a correctness question rather than a
+# tidiness one.
+#
+# The running containers are not touched by any of this -- compose reads these files, it does not
+# watch them -- so a migration that fails still leaves the previous version up, which is the promise
+# this command makes. What changes is that a rollback now needs the outgoing definitions as well as
+# the outgoing digests, and `previous/` is where they are.
+say ""
+say "Replacing the product files"
+rm -rf "$STAGING" previous.new
+mkdir -p "$STAGING" previous.new
+tar -xzf package.tar.gz.new -C "$STAGING" ||
+  { rm -rf "$STAGING" previous.new; rm -f release.env.new package.tar.gz.new; fail "the package could not be unpacked. Nothing has changed; $current is still running."; }
+
+for file in $(cd "$STAGING" && find . -type f | sed 's|^\./||'); do
+  directory=$(dirname "$file")
+  [ "$directory" = "." ] || mkdir -p "previous.new/$directory" "$directory"
+  [ -f "$file" ] && cp -p "$file" "previous.new/$file"
+  # Renamed into place rather than written over. This script is one of the files being replaced and
+  # sh reads it as it goes, so overwriting it in place would change the source under a running
+  # interpreter; a rename leaves the old inode open and this run finishes reading the file it
+  # started with. The new one is what the next update uses.
+  cp "$STAGING/$file" "$file.incoming" && mv "$file.incoming" "$file"
+done
+
+[ -f install.sh ] && chmod +x install.sh
+[ -f update.sh ] && chmod +x update.sh
+rm -rf previous && mv previous.new previous
+rm -rf "$STAGING"
+rm -f package.tar.gz.new
+say "Product files replaced; the outgoing set is in previous/."
 
 # --- pull, then migrate, and stop here if that fails ----------------------------------------------
 
@@ -174,6 +268,8 @@ if ! compose_new run --rm migrate; then
   say "  Still running:  $current, untouched -- the new images were pulled but never started."
   say "  Kept:           $backup"
   say "  Kept:           release.env, still naming $current."
+  say "  Replaced:       the product files are now $version's. previous/ holds the outgoing set,"
+  say "                  which is what the running containers were started from."
   say ""
   say "Nothing was rolled back because nothing was changed. Send the output above to support"
   say "before running this again: a migration that failed once fails the same way twice."
@@ -194,6 +290,7 @@ if ! compose_now up -d; then
   say "The new version did not start. The database is already migrated, so going back means"
   say "restoring the backup as well as the images:"
   say ""
+  say "  cp -p previous/. . 2>/dev/null || cp -Rp previous/. ."
   say "  cp release.env.previous release.env"
   say "  docker compose --env-file .env --env-file release.env $overlays up -d"
   say "  gunzip -c $backup | docker compose exec -T postgres psql -U control_hub_admin -d control_hub"
@@ -204,5 +301,6 @@ say ""
 say "Now running $version."
 say ""
 say "  Backup:            $backup"
-say "  Previous version:  release.env.previous names $current, and its images are still on this"
-say "                     machine. Do not prune them until this version has run for a day."
+say "  Previous version:  release.env.previous names $current and previous/ holds the compose files"
+say "                     it ran with; its images are still on this machine. Do not prune them"
+say "                     until this version has run for a day."
