@@ -59,22 +59,11 @@ suite("PostgresUsageRepository", () => {
   });
 
   afterAll(async () => {
-    const evidenceTables = [
-      "usage_valuation_lines",
-      "usage_valuations",
-      "usage_budget_events",
-      "usage_monthly_snapshots",
-      "usage_adjustment_quantities",
-      "usage_adjustments",
-      "usage_event_quantities",
-      "usage_events",
-      "usage_rate_tiers",
-      "usage_rates",
-      "exchange_rates"
-    ];
-    for (const table of evidenceTables) {
-      await admin.unsafe(`alter table ${table} disable trigger user`);
-    }
+    // The evidence tables are append-only by trigger, and the list of which ones used to live here
+    // so each could be named in an `alter table`. Relaxing the session covers all of them and, more
+    // to the point, covers only this connection: the list is one fewer thing to keep in step with
+    // the migrations.
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from usage_valuation_lines where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from usage_valuations where tenant_id in (${tenantA}, ${tenantB})`;
@@ -93,9 +82,7 @@ suite("PostgresUsageRepository", () => {
       await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
       await admin`delete from "user" where id = ${userId}`;
     } finally {
-      for (const table of evidenceTables) {
-        await admin.unsafe(`alter table ${table} enable trigger user`);
-      }
+      await admin`set session_replication_role = 'origin'`;
       await database.end({ timeout: 5 });
       await admin.end({ timeout: 5 });
     }

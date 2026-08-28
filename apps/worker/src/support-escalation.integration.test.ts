@@ -53,18 +53,14 @@ suite("support escalation sweep", () => {
   });
 
   afterAll(async () => {
-    for (const table of ["ticket_messages", "ticket_events", "sla_targets"]) {
-      await admin.unsafe(`alter table ${table} disable trigger ${table}_append_only`);
-    }
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from ticket_events where tenant_id = ${tenantId}`;
       await admin`delete from ticket_messages where tenant_id = ${tenantId}`;
       await admin`delete from sla_targets where tenant_id = ${tenantId}`;
       await admin`delete from tickets where tenant_id = ${tenantId}`;
     } finally {
-      for (const table of ["ticket_messages", "ticket_events", "sla_targets"]) {
-        await admin.unsafe(`alter table ${table} enable trigger ${table}_append_only`);
-      }
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id = ${tenantId}`;
     await admin`delete from "user" where id = ${userId}`;

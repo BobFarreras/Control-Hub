@@ -44,9 +44,7 @@ suite("PostgresCommerceRepository", () => {
   });
 
   afterAll(async () => {
-    await admin`alter table subscription_events disable trigger subscription_events_append_only`;
-    await admin`alter table customer_service_events disable trigger customer_service_events_append_only`;
-    await admin`alter table plan_prices disable trigger plan_prices_append_only`;
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from subscription_events where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from customer_service_events where tenant_id in (${tenantA}, ${tenantB})`;
@@ -58,9 +56,7 @@ suite("PostgresCommerceRepository", () => {
       await admin`delete from product_versions where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from products where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      await admin`alter table subscription_events enable trigger subscription_events_append_only`;
-      await admin`alter table customer_service_events enable trigger customer_service_events_append_only`;
-      await admin`alter table plan_prices enable trigger plan_prices_append_only`;
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id = ${userId}`;

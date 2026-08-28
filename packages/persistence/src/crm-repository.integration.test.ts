@@ -35,12 +35,13 @@ suite("PostgresCrmRepository", () => {
     await admin`insert into tenants (id, slug, name) values (${tenantA}, ${`crm-${tenantA}`}, 'CRM A'), (${tenantB}, ${`crm-${tenantB}`}, 'CRM B')`;
   });
   afterAll(async () => {
-    await admin`alter table crm_activity disable trigger crm_activity_append_only`;
-    await admin`delete from crm_activity where tenant_id in (${tenantA}, ${tenantB})`;
-    await admin`alter table crm_activity enable trigger crm_activity_append_only`;
-    await admin`alter table customer_product_interest_events disable trigger customer_product_interest_events_append_only`;
-    await admin`delete from customer_product_interest_events where tenant_id in (${tenantA}, ${tenantB})`;
-    await admin`alter table customer_product_interest_events enable trigger customer_product_interest_events_append_only`;
+    await admin`set session_replication_role = 'replica'`;
+    try {
+      await admin`delete from crm_activity where tenant_id in (${tenantA}, ${tenantB})`;
+      await admin`delete from customer_product_interest_events where tenant_id in (${tenantA}, ${tenantB})`;
+    } finally {
+      await admin`set session_replication_role = 'origin'`;
+    }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });

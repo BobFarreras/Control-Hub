@@ -50,11 +50,11 @@ suite("member invitations", () => {
   });
 
   afterAll(async () => {
-    await admin`alter table audit_log disable trigger audit_log_append_only`;
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from audit_log where tenant_id in (${tenantId}, ${otherTenantId})`;
     } finally {
-      await admin`alter table audit_log enable trigger audit_log_append_only`;
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantId}, ${otherTenantId})`;
     await admin`delete from "user" where id in (${inviterId}, ${inviteeId})`;

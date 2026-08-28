@@ -69,11 +69,11 @@ suite("PostgresMcpSessionRepository", () => {
     // on -- so the rows this suite wrote are removed with the trigger off, as admin, and the
     // protection is put back before anything else can notice it was gone.
     await admin`delete from mcp_service_accounts where tenant_id in (${tenantA}, ${tenantB})`;
-    await admin`alter table audit_log disable trigger audit_log_append_only`;
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from audit_log where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      await admin`alter table audit_log enable trigger audit_log_append_only`;
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id in (${userId}, ${otherUserId})`;
