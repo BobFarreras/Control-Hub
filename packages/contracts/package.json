@@ -1,6 +1,6 @@
 {
   "name": "@control-hub/contracts",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "//": "The job names have a subpath of their own because the web tier takes this package from the root and a bundler resolving `./connector-jobs.js` against a `.ts` file fails the build. Same shape as `@control-hub/config/flags`, for the same reason: a consumer takes what it needs.",

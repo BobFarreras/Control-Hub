@@ -43,6 +43,13 @@ for file in compose.yaml compose.release.yaml .env release.env; do
 done
 command -v docker >/dev/null 2>&1 || fail "docker is not on PATH."
 command -v tar >/dev/null 2>&1 || fail "tar is not on PATH."
+# The same guard `install.sh` carries, for the same reason and one more. This replaces files in a
+# directory root owns and reads a `.env` mode 0600, so a non-root run cannot finish. What makes it a
+# guard rather than a courtesy is where it would otherwise stop: the migrations run before any file
+# is replaced, so a run with just enough permission to reach them and not enough to finish leaves a
+# database migrated with the old code still in front of it. It has to fail before the backup, not
+# halfway through. `--check` is not exempt: it writes `release.env.new` here like every other run.
+[ "$(id -u)" = "0" ] || fail "run this as root: the update replaces files this directory owns."
 
 # compose.production.yaml is part of a production installation and absent from a local one, so it
 # joins the invocation only when it exists rather than being demanded above.
@@ -55,6 +62,16 @@ overlays="-f compose.yaml -f compose.release.yaml"
 # environment and one stray line in it should not become one here.
 smtp_user=$(sed -n 's/^SMTP_USER=//p' .env | head -1)
 [ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+
+# The connector overlay mounts the key ring. Loaded when the flag is on, read from `.env` for the
+# same reason as `SMTP_USER` above. `install.sh` reaches the same decision from the variable it
+# has in memory; this one reads the file, and the two must agree or an update silently drops a
+# mount the installation needs.
+flag_active() {
+  case ",${2:-}," in *,"$1",*) return 0 ;; *) return 1 ;; esac
+}
+control_hub_flags=$(sed -n 's/^CONTROL_HUB_FLAGS=//p' .env | head -1)
+flag_active connectors "$control_hub_flags" && overlays="$overlays -f compose.production.connectors.yaml"
 
 # The routing, where install.sh could read the proxy well enough to write it. Presence is the signal
 # for this one, and it can be: nothing ships it, so it exists only where it was generated. Leaving it

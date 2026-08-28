@@ -382,9 +382,14 @@ instal·lacio ja sabia.
 Un comandament al directori d'instal·lacio:
 
 ```sh
-./update.sh --check   # que hi ha de nou, sense tocar res
-./update.sh           # actualitza
+sudo ./update.sh --check   # que hi ha de nou, sense tocar res
+sudo ./update.sh           # actualitza
 ```
+
+Com l'instal·lador, es nega a arrencar si no l'executa `root`, i per la mateixa rao: substitueix
+fitxers d'un directori que es de `root` i llegeix un `.env` en mode `0600`. `--check` tampoc no
+n'esta exempt, perque tambe escriu aqui. La comprovacio posterior amb `docker inspect` vol `sudo`
+igualment: el `docker compose ps` de dins ha de poder llegir el `.env`.
 
 Fa, en aquest ordre: llegeix la release nova i la valida, llegeix el paquet d'instal·lacio i
 comprova que porta el que ha de portar, **fa el backup**, substitueix els fitxers del producte,
@@ -410,9 +415,9 @@ fitxers de la columna dreta. Els fitxers substituits queden a `previous/`.
 > l'actualitzacio arreglara les imatges i deixara el menu lateral buit:
 >
 > ```sh
-> curl -fsSLo update.sh https://github.com/BobFarreras/Control-Hub/releases/latest/download/update.sh
-> chmod +x update.sh
-> ./update.sh
+> sudo curl -fsSLo update.sh https://github.com/BobFarreras/Control-Hub/releases/latest/download/update.sh
+> sudo chmod +x update.sh
+> sudo ./update.sh
 > ```
 >
 > A partir d'aqui no cal mes: cada actualitzacio deixa a disc el `update.sh` de la versio que

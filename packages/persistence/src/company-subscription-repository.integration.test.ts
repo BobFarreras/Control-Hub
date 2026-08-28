@@ -40,12 +40,12 @@ suite("PostgresCompanySubscriptionRepository", () => {
   });
 
   afterAll(async () => {
-    await admin`alter table company_subscription_events disable trigger company_subscription_events_append_only`;
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from company_subscription_events where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from company_subscriptions where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      await admin`alter table company_subscription_events enable trigger company_subscription_events_append_only`;
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id = ${userId}`;

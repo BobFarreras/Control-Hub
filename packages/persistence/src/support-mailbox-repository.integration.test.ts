@@ -58,16 +58,14 @@ suite("PostgresSupportMailboxRepository", () => {
   afterAll(async () => {
     await admin`delete from support_inbound_messages where tenant_id in (${tenantA}, ${tenantB})`;
     await admin`delete from support_mailbox_channels where tenant_id in (${tenantA}, ${tenantB})`;
-    for (const table of ["ticket_messages", "ticket_events", "sla_targets"])
-      await admin.unsafe(`alter table ${table} disable trigger ${table}_append_only`);
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from ticket_messages where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from ticket_events where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from sla_targets where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from tickets where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      for (const table of ["ticket_messages", "ticket_events", "sla_targets"])
-        await admin.unsafe(`alter table ${table} enable trigger ${table}_append_only`);
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from connector_instances where tenant_id in (${tenantA}, ${tenantB})`;
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;

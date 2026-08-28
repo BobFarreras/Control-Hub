@@ -4,6 +4,32 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.4.3 - 2026-08-28
+
+Una versio que fa que l'instal·lador proposi tots els moduls per defecte, en lloc de nomes
+`projects_and_time`. El connector key ring es genera sempre (com abans) i ara tambe es carrega
+l'overlay `compose.production.connectors.yaml` quan la flag `connectors` es activa, tant a
+`install.sh` com a `update.sh`. Aquesta simetria evita que una actualitzacio perdi el muntatge del
+key ring.
+
+### Instal·lacio
+
+- **L'instal·lador proposa tots els deu moduls per defecte.** Fins ara el default era
+  `projects_and_time` i un operador que volia mes havia de teclejar la llista sencera. Un nom
+  mal escrit s'ignora silenciosament, i el simptoma --un modul que no apareix-- es indistingible
+  d'un modul que no s'ha encés. Ara el default es
+  `projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp`,
+  i un operador treu el que no necessita en lloc de recordar el que necessita.
+- **`install.sh` i `update.sh` carreguen els mateixos overlays.** L'overlay de connectors es
+  carrega quan la flag `connectors` es activa, tant a la instal·lacio com a l'actualitzacio.
+  Abans nomes el carregava `install.sh`, i una actualitzacio hauria perdut el muntatge del key
+  ring sense deixar rastre a cap log.
+- **Avis sobre OAuth quan `connector_oauth` es activa.** L'informe final de l'instal·lador diu
+  ara que cal registrar aplicacions a Google Cloud i Azure AD i configurar les variables
+  `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_ID` i
+  `MICROSOFT_OAUTH_CLIENT_SECRET`. El modul s'encen pero els proveïdors no funcionen fins que
+  es configurin.
+
 ## v0.4.2 - 2026-08-28
 
 La versio que surt de la primera instal·lacio que va **arrencar**. La v0.4.1 va fer que

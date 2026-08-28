@@ -86,6 +86,15 @@ sempre. Cal agafar el `update.sh` nou primer --el que hi ha instal·lat es de la
 sap llegir `release.env`-- i esborrar `compose.apiroute.yaml`, que la `v0.4.2` fa innecessari. Les
 ordres exactes son a `docs/runbooks/installation.md`, seccio «Actualitzacio».
 
+**L'instal·lador ara proposa tots els deu moduls per defecte** (`projects_and_time,attendance,
+connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp`),
+en lloc de nomes `projects_and_time`. El connector key ring es genera sempre (com abans) i ara
+tambe es carrega l'overlay `compose.production.connectors.yaml` quan la flag `connectors` es activa,
+tant a `install.sh` com a `update.sh`. Aquest canvi encara no es a cap release; caldra publicar una
+versio nova i tornar a executar l'instal·lador a la VPS per aplicar-ho. El modul `connector_oauth`
+queda encés pero requereix credencials OAuth externes (Google Cloud, Azure AD) que no es generen
+automaticament.
+
 I despres queda **una cosa que aquesta versio no pot demostrar**: el banner d'actualitzacio. Amb la
 `v0.4.2` instal·lada el worker existira per primer cop i preguntara --a la seguent frontera de
 00:00 UTC, no immediatament: BullMQ programa `every: 24h` a la seguent frontera de 24 hores des de

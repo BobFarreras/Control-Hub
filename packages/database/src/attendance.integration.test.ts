@@ -48,11 +48,11 @@ suite("attendance schema", () => {
   });
 
   afterAll(async () => {
-    await admin.unsafe("alter table attendance_events disable trigger attendance_events_append_only");
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from attendance_events where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      await admin.unsafe("alter table attendance_events enable trigger attendance_events_append_only");
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from memberships where tenant_id in (${tenantA}, ${tenantB})`;
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;

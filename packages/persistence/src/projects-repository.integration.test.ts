@@ -65,10 +65,10 @@ suite("PostgresProjectsRepository", () => {
   });
 
   afterAll(async () => {
-    // `sla_targets` is append-only too, and the tenant delete below cascades into it, so its
-    // trigger has to come down as well or the whole teardown fails on somebody else's table.
-    const appendOnly = ["project_events", "member_cost_rates", "billing_rates", "sla_targets"];
-    for (const table of appendOnly) await admin.unsafe(`alter table ${table} disable trigger ${table}_append_only`);
+    // This teardown reaches `sla_targets`, which the tenant delete cascades into and which another
+    // package's suite also cleans up. Relaxing the session rather than the table is what keeps the
+    // two out of each other's way: `replica` applies to this connection and nobody else's.
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from time_entries where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from project_events where tenant_id in (${tenantA}, ${tenantB})`;
@@ -79,7 +79,7 @@ suite("PostgresProjectsRepository", () => {
       await admin`delete from service_types where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from sla_targets where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      for (const table of appendOnly) await admin.unsafe(`alter table ${table} enable trigger ${table}_append_only`);
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id in (${userA}, ${userB})`;
