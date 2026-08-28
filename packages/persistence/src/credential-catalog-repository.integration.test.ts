@@ -42,12 +42,18 @@ suite("PostgresCredentialCatalogRepository", () => {
   });
 
   afterAll(async () => {
+    // `replica` suppresses foreign-key and cascade triggers along with the append-only one, so a
+    // `delete from tenants` inside this window would leave every child row behind and the delete
+    // below would then fail on the membership that still points at this user. The window covers the
+    // append-only table and nothing else; by the time the tenants go, there is nothing left in it
+    // for the cascade to run into.
     await admin`set session_replication_role = 'replica'`;
     try {
-      await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
+      await admin`delete from credential_catalog_events where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
       await admin`set session_replication_role = 'origin'`;
     }
+    await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });
     await admin.end({ timeout: 5 });

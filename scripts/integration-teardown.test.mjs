@@ -52,7 +52,10 @@ test("no integration teardown disables a trigger for every other suite at once",
     offenders,
     [],
     "these change a trigger for the whole database while other packages are using it. " +
-      "Use `set session_replication_role = 'replica'` and `'origin'` on the admin connection instead:\n  " +
+      "Use `set session_replication_role = 'replica'` and `'origin'` on the admin connection instead. " +
+      "Keep the window around the append-only deletes only: `replica` suppresses foreign-key and " +
+      "cascade triggers too, so a delete that relies on `on delete cascade` leaves its children " +
+      "behind and fails later on the constraint.\n  " +
       offenders.join("\n  ")
   );
 });

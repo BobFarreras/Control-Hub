@@ -860,3 +860,9 @@ falla per atzar ensenya a reexecutar sense llegir.
 **Solucio.** Cap suite ho fa ja: es fa servir `set session_replication_role = 'replica'` i
 `'origin'` sobre la connexio d'administracio, que val nomes per a aquella sessio. Ho guarda
 `scripts/integration-teardown.test.mjs`, que falla si algu hi torna.
+
+**Compte en fer el canvi.** `session_replication_role = 'replica'` no es equivalent a
+`disable trigger`: tambe suprimeix els disparadors de clau forana, o sigui que dins d'aquella
+finestra els `on delete cascade` no es disparen. Un `delete from tenants` alli deixa totes les files
+filles enrere i peta despres contra la restriccio. La finestra ha de cobrir nomes els `delete` de les
+taules append-only.
