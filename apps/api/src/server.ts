@@ -7,17 +7,12 @@ import {
 } from "@control-hub/config";
 import { buildApp } from "./app.js";
 import { createAuth } from "./auth.js";
-import { createMailSender } from "./email.js";
+import { createMailSender, mailConfiguration } from "./email.js";
 import { platformSecretSnapshot } from "./secret-observability.js";
 
 const environment = parseApiEnvironment(process.env);
 const secretSnapshot = platformSecretSnapshot(process.env, environment);
-const sendMail = createMailSender({
-  host: environment.SMTP_HOST,
-  port: environment.SMTP_PORT,
-  secure: environment.SMTP_SECURE,
-  from: environment.SMTP_FROM
-});
+const sendMail = createMailSender(mailConfiguration(environment));
 const app = buildApp({
   databaseUrl: environment.DATABASE_URL,
   redisUrl: environment.REDIS_URL,

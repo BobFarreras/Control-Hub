@@ -76,12 +76,33 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El codi del desplegament esta acabat i etiquetat.** `docs/specifications/deployment.md` es
-sencera --P1 a P7-- i la `v0.4.0` es la primera etiqueta que passa per la canonada. **El seguent
-pas ja no es escriure res: es instal·lar-la a la VPS** darrere el Traefik que ja hi corre, seguint
-`docs/runbooks/installation.md`. Queda obert un buit conegut de P3: les imatges de tercers
---PostgreSQL, Valkey i Mailpit-- segueixen anant per etiqueta i no per digest, o sigui que dues
-instal·lacions de la mateixa versio poden no portar el mateix PostgreSQL.
+**El seguent pas es instal·lar a la VPS**, darrere el Traefik que ja hi corre, seguint
+`docs/runbooks/installation.md`. La `v0.4.0` es la primera etiqueta que va passar per la canonada,
+pero l'instal·lador d'aquella versio no arrenca en aquella maquina: P8 arregla les tres coses que
+ho impedien i encara no esta fusionat.
+
+**P8 esta fet a la branca `agent/claude/ch-015-installer-adapts`, pendent de PR contra `develop`.**
+Tres defectes, tots amb la mateixa forma --l'instal·lador donava per suposat l'estat de la maquina
+en comptes de mirar-lo--, en tres commits:
+
+- **El relay SMTP no es podia autenticar.** `SMTP_USER` i `SMTP_PASSWORD`, totes dues o cap, amb la
+  contrasenya com a sete fitxer `0400` de `root` i un overlay propi,
+  `compose.production.smtp.yaml`. Sense aixo cap proveidor transaccional accepta el correu, i el
+  primer que rebutjaria es l'enllac amb que l'Owner entra al seu compte.
+- **Els ports anaven escrits a foc.** `POSTGRES_PORT=5432` xocava amb el `supabase-pooler`. Ara
+  mira que hi ha escoltant abans d'escriure `.env`, agafa el seguent lliure i ho diu; una segona
+  execucio conserva els que ja hi havia i no torna a mirar.
+- **El fitxer de Traefik descrivia un Traefik que no era el d'alli.** Ara inspecciona el que corre
+  i, si va per etiquetes, escriu `compose.proxy.yaml` amb el resolver, l'entrypoint i la xarxa
+  reals --llegits dels arguments de Traefik o, si alli no hi son, de les etiquetes dels contenidors
+  que ja encamina. Si no ho pot determinar, ho diu i no s'ho inventa.
+
+Verificat en un contenidor Linux amb el 5432 ocupat i un Traefik d'etiquetes simulat: tria el 5433,
+escriu les etiquetes amb el resolver del vei i deixa els altres tres ports on eren.
+
+Queda obert un buit conegut de P3: les imatges de tercers --PostgreSQL, Valkey i Mailpit--
+segueixen anant per etiqueta i no per digest, o sigui que dues instal·lacions de la mateixa versio
+poden no portar el mateix PostgreSQL.
 
 **Desplegar a la VPS es va decidir el 26 d'agost de 2026**, despres de
 fusionar la Fase 10 i la Fase 12 a `develop` el mateix dia (PR #43 i PR #44, `develop` a `2197c06`).

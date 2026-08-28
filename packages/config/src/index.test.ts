@@ -100,6 +100,49 @@ describe("parseApiEnvironment", () => {
     expect(JSON.stringify(environment)).not.toContain(databaseFile);
   });
 
+  it("takes the relay password from a file and keeps it out of anything serialized", async () => {
+    const directory = join(tmpdir(), `control-hub-config-${randomUUID()}`);
+    await mkdir(directory, { mode: 0o700 });
+    const passwordFile = join(directory, "smtp_password");
+    await writeFile(passwordFile, "relay-password\n", { mode: 0o600 });
+    await chmod(passwordFile, 0o600);
+
+    const environment = parseApiEnvironment({
+      ...base,
+      SMTP_USER: "control-hub@example.com",
+      SMTP_PASSWORD_FILE: passwordFile
+    });
+    expect(environment.SMTP_PASSWORD).toBe("relay-password");
+    // Every other mounted secret is held to this, and a relay password is a password somebody
+    // else chose: it is likelier to be reused elsewhere than any value this installation generates.
+    expect(JSON.stringify(environment)).not.toContain("relay-password");
+    expect(JSON.stringify(environment)).not.toContain(passwordFile);
+  });
+
+  it("refuses half a relay credential, in either direction", () => {
+    // Half of it is not a smaller version of it: a user with no password authenticates with an
+    // empty one and the relay refuses every message, and a password with no user is a value
+    // mounted into the process that nothing will ever read. Both are silent until the first mail
+    // matters, and the first mail that matters is the Owner's only way into the installation.
+    expect(() => parseApiEnvironment({ ...base, SMTP_USER: "relay-user" })).toThrow(/SMTP_USER/);
+    expect(() => parseApiEnvironment({ ...base, SMTP_PASSWORD: "relay-password" })).toThrow(/SMTP_USER/);
+  });
+
+  it("authenticates nothing when neither half is configured", () => {
+    const environment = parseApiEnvironment(base);
+    expect(environment.SMTP_USER).toBeUndefined();
+    expect(environment.SMTP_PASSWORD).toBeUndefined();
+  });
+
+  it("reads a blank half as no half rather than as a broken one", () => {
+    // `SMTP_USER=` in a .env file and an unset variable interpolated by compose both arrive here
+    // as an empty string. Refusing to boot over one would be refusing to boot over a commented
+    // intention -- and, worse, the pair check above would report it as half a credential.
+    const environment = parseApiEnvironment({ ...base, SMTP_USER: "", SMTP_PASSWORD: "  " });
+    expect(environment.SMTP_USER).toBeUndefined();
+    expect(environment.SMTP_PASSWORD).toBeUndefined();
+  });
+
   it("keeps worker OAuth secrets callable but non-enumerable", () => {
     const secret = "microsoft-secret-value";
     const environment = parseWorkerEnvironment({

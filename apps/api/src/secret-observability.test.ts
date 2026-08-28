@@ -40,6 +40,41 @@ describe("safe secret boot observations", () => {
     expect(json).not.toContain("identity-secret-that-is-long-enough");
   });
 
+  it("reports the relay password as inapplicable when the relay wants no credentials", () => {
+    // Not every installation has one. Mailpit in development and a relay on the same network both
+    // authenticate nothing, and an Owner should see that as a decision rather than as a gap.
+    const environment = parseApiEnvironment(base);
+    const snapshot = platformSecretSnapshot(base, environment, "2026-08-26T08:00:00.000Z");
+
+    expect(snapshot.secrets.find((item) => item.name === "SMTP_PASSWORD")).toMatchObject({
+      source: "not_applicable",
+      configured: false,
+      health: "not_applicable"
+    });
+  });
+
+  it("observes a mounted relay password without disclosing it or its path", () => {
+    const raw = {
+      ...base,
+      SMTP_USER: "control-hub@example.com",
+      SMTP_PASSWORD_FILE: "/run/secrets/smtp_password"
+    };
+    const environment = parseApiEnvironment({
+      ...base,
+      SMTP_USER: "control-hub@example.com",
+      SMTP_PASSWORD: "relay-password"
+    });
+    const snapshot = platformSecretSnapshot(raw, environment, "2026-08-26T08:00:00.000Z");
+
+    expect(snapshot.secrets.find((item) => item.name === "SMTP_PASSWORD")).toMatchObject({
+      source: "file",
+      configured: true,
+      health: "available"
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("relay-password");
+    expect(JSON.stringify(snapshot)).not.toContain("/run/secrets");
+  });
+
   it("identifies Bitwarden-backed files without exposing their path or external ID", () => {
     const raw = {
       ...base,
