@@ -47,11 +47,20 @@ function installation(currentVersion = "1.0.0") {
 function run(directory, published, args = ["--check"]) {
   const source = join(directory, "published.env");
   writeFileSync(source, published);
+  // Same reason as in `fullRun`: the script is root-only and the suite is not root. See the note
+  // there for why the guard is faked past rather than made conditional.
+  const bin = join(directory, "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "id"), "#!/bin/sh\nprintf '%s\\n' 0\n", { mode: 0o755 });
   try {
     const stdout = execFileSync("sh", [script, ...args], {
       cwd: directory,
       encoding: "utf8",
-      env: { ...process.env, CONTROL_HUB_RELEASE_URL: pathToFileURL(source).href },
+      env: {
+        ...process.env,
+        PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
+        CONTROL_HUB_RELEASE_URL: pathToFileURL(source).href
+      },
       stdio: ["ignore", "pipe", "pipe"]
     });
     return { ok: true, output: stdout };
@@ -72,9 +81,13 @@ function run(directory, published, args = ["--check"]) {
  * everything else, which is the shape of an update that works. What is being tested is not docker;
  * it is which files this directory ends up with.
  */
-function fullRun(directory, published, packagePaths, { args = [], archive: prebuilt } = {}) {
+function fullRun(directory, published, packagePaths, { args = [], archive: prebuilt, uid = "0" } = {}) {
   const bin = join(directory, "bin");
   mkdirSync(bin, { recursive: true });
+  // The script refuses to run as anybody but root, and this suite is not root. Faking `id` keeps the
+  // guard in the path under test rather than exempting the script from it: every run below takes the
+  // same branch a real root run takes, and the test that the guard bites passes its own uid here.
+  writeFileSync(join(bin, "id"), `#!/bin/sh\nprintf '%s\\n' ${uid}\n`, { mode: 0o755 });
   const log = join(directory, "docker.log");
   writeFileSync(
     join(bin, "docker"),
@@ -130,6 +143,41 @@ const packageContents = {
   "update.sh": "#!/bin/sh\n# update.sh from 1.1.0\n",
   "deploy/postgres/init-app-user.sh": "#!/bin/sh\n# init from 1.1.0\n"
 };
+
+test("a run that is not root stops before it has touched anything", () => {
+  const directory = installation("1.0.0");
+  try {
+    const dotEnv = "SECRETS_DIRECTORY=/etc/control-hub/secrets\nAPP_ORIGIN=https://hub.example\n";
+    writeFileSync(join(directory, ".env"), dotEnv);
+
+    const result = fullRun(directory, releaseFile("1.1.0"), packageContents, { uid: "1000" });
+
+    assert.equal(result.ok, false, "the update ran as a normal user");
+    assert.match(result.output, /run this as root/);
+
+    // Where it stops is the whole point. The migrations run before any file is replaced, so a run
+    // that got as far as the database and no further would leave it migrated with the old code in
+    // front of it. Nothing may have happened yet: no backup, no docker, not even the release read.
+    assert.equal(existsSync(join(directory, "docker.log")), false, "it reached docker");
+    assert.equal(existsSync(join(directory, "release.env.new")), false, "it wrote the incoming release");
+    assert.equal(existsSync(join(directory, "backups")), false, "it took a backup");
+    assert.equal(readFileSync(join(directory, "compose.yaml"), "utf8"), "# fixture\n", "compose.yaml was replaced");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("--check is not exempt from the root guard, because it writes here too", () => {
+  const directory = installation("1.0.0");
+  try {
+    writeFileSync(join(directory, ".env"), "APP_ORIGIN=https://hub.example\n");
+    const result = fullRun(directory, releaseFile("1.1.0"), packageContents, { uid: "1000", args: ["--check"] });
+    assert.equal(result.ok, false, "--check ran as a normal user");
+    assert.match(result.output, /run this as root/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("an update delivers the fixes that live in a compose file, not only the images", () => {
   const directory = installation("1.0.0");

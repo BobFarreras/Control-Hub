@@ -43,6 +43,13 @@ for file in compose.yaml compose.release.yaml .env release.env; do
 done
 command -v docker >/dev/null 2>&1 || fail "docker is not on PATH."
 command -v tar >/dev/null 2>&1 || fail "tar is not on PATH."
+# The same guard `install.sh` carries, for the same reason and one more. This replaces files in a
+# directory root owns and reads a `.env` mode 0600, so a non-root run cannot finish. What makes it a
+# guard rather than a courtesy is where it would otherwise stop: the migrations run before any file
+# is replaced, so a run with just enough permission to reach them and not enough to finish leaves a
+# database migrated with the old code still in front of it. It has to fail before the backup, not
+# halfway through. `--check` is not exempt: it writes `release.env.new` here like every other run.
+[ "$(id -u)" = "0" ] || fail "run this as root: the update replaces files this directory owns."
 
 # compose.production.yaml is part of a production installation and absent from a local one, so it
 # joins the invocation only when it exists rather than being demanded above.
