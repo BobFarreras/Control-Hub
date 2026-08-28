@@ -1,0 +1,37 @@
+# The relay credential, for the installations that have one.
+#
+# A separate file rather than a block in `compose.production.yaml`, for the same reason the
+# connector and provider overlays are separate: a `secrets:` entry names a path that has to exist,
+# so an installation whose relay wants no credentials could not start with this in the base
+# production file. Both halves live here together, which makes the invariant the configuration
+# layer enforces -- user and password or neither -- a property of which files were written rather
+# than of what somebody remembered to set.
+#
+# `worker` is deliberately absent. It sends no mail, and a secret mounted where nothing reads it is
+# a secret one more process can leak.
+services:
+  api:
+    environment:
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required when the relay overlay is loaded}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets:
+      - source: smtp_password
+        target: smtp_password
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+  bootstrap:
+    environment:
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required when the relay overlay is loaded}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets:
+      - source: smtp_password
+        target: smtp_password
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+
+secrets:
+  smtp_password:
+    file: ${SECRETS_DIRECTORY:?SECRETS_DIRECTORY is required}/smtp_password

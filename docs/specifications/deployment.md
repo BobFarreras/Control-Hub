@@ -272,8 +272,10 @@ aqui abans de continuar, que l'SMTP accepti una connexio abans de donar-lo per b
 que nomes falla tres passos mes tard es una configuracio que s'ha de tornar a fer sencera.
 
 Genera els secrets ell mateix, amb entropia criptografica, i els escriu com els fitxers `0400`
-propietat de `root` que `installation.md` ja especifica. **No demana cap contrasenya a l'usuari**:
-el que no s'escriu no s'enganxa a cap historial.
+propietat de `root` que `installation.md` ja especifica. **No demana cap contrasenya que pugui
+generar** --i, sobretot, no demana la de l'Owner: el que no s'escriu no s'enganxa a cap historial.
+L'unica que pregunta es la del relay SMTP, que no es seva i no se la pot inventar; P8 diu com
+la tracta.
 
 Al final imprimeix que ha fet i on ha deixat cada cosa, i **que no ha fet**: quins moduls han quedat
 apagats, quins connectors falten per configurar, i quan toca el primer backup.
@@ -325,7 +327,8 @@ persona a qui ningu no ha avisat que tot aixo estigui passant.
 serveis d'altra gent. L'instal·lador escriu `traefik-control-hub.yaml` al seu propi directori i diu
 on copiar-lo; editar la configuracio viva d'un proxy compartit es com una instal·lacio en tomba una
 altra. La consequencia es diu clarament al final: **fins que algu no hi copii el fitxer, res no es
-accessible des de fora**.
+accessible des de fora**. *(El contingut d'aquell fitxer era el mateix per a tothom, cosa que P8 va
+haver de corregir: la regla de no tocar el proxy es manté, la de no mirar-lo no.)*
 
 **El paquet es un arbre de fitxers, no un YAML.** Es el buit 3 que P3 va destapar: `compose.yaml`
 munta `deploy/postgres/init-app-user.sh` des del host, i sense aquell fitxer PostgreSQL arrenca
@@ -348,6 +351,58 @@ runbook publica es compara amb el registre de `packages/config/src/flags.ts`, pe
 shell no pot contenir aquella llista sense que se n'aparti. Dotze mutacions sobre `install.sh` --el
 `chown`, el mode, la reexecucio, cada peca de la validacio, el domini, l'adreca de l'Owner-- posen
 la suite vermella.
+
+### El que P8 en va concretar
+
+P7 es va escriure contra una instal·lacio de mentida. La primera maquina de debo --la de D2, amb
+Supabase, n8n i el Traefik dels clients a sobre-- va trobar tres coses en cinc minuts, i totes tres
+tenien la mateixa forma: **l'instal·lador donava per suposat l'estat de la maquina en comptes de
+mirar-lo**.
+
+**El relay SMTP vol autenticar-se, i el producte no en sabia.** `createMailSender` construia el
+transport amb `host`, `port`, `secure` i `from`. Cap proveidor transaccional --Brevo, SendGrid,
+Mailgun, Postmark, SES-- accepta correu sense usuari i clau, o sigui que la unica configuracio
+possible era un relay obert, que a la practica vol dir cap. I aixo no es un detall de configuracio:
+l'invariant que diu que el correu de l'Owner es l'unic cami cap al compte converteix «no es pot
+configurar el correu» en «la instal·lacio no te amo».
+
+Aixi que ara pregunta l'usuari i, si n'hi ha, la contrasenya. **L'invariant 8 es mante i no
+s'afluixa**: la resposta no s'ecoa a la pantalla, no passa per cap linia d'ordres i no arriba a
+`.env` --va a `smtp_password`, un sete fitxer `0400` de `root`, i el contenidor la rep com
+`SMTP_PASSWORD_FILE` com qualsevol altre secret. La diferencia amb la de l'Owner es que aquella
+l'instal·lador se la pot inventar i aquesta no. Sense usuari no hi ha fitxer i el transport no
+autentica, que es el cas de desenvolupament i el d'un relay a la mateixa xarxa.
+
+**Els ports fixos xoquen amb qui ja hi viu.** `.env` portava `POSTGRES_PORT=5432` escrit a foc, i a
+la maquina de D2 aquell port es del `supabase-pooler` des del primer dia. El simptoma arribava tard i
+lluny de la causa --`docker compose up` amb *port is already allocated*, despres de generar secrets i
+escriure configuracio-- i el pitjor era que **no es podia corregir**: `.env` es reescriu sencer a
+cada execucio, o sigui que editar-lo i tornar a executar l'instal·lador desfeia l'edicio.
+
+Ara mira quins ports estan lliures abans d'escriure'ls i, si el que voldria esta ocupat, n'agafa un
+de lliure i ho diu. **No ho pregunta**, deliberadament: son ports de `127.0.0.1` que ningu no teclegia
+mai, i una pregunta condicional mes es una pregunta que en una maquina no surt i desplaça totes les
+respostes seguents --el defecte que P7 ja va pagar. I una segona execucio conserva el que hi havia,
+com ja fa amb totes les altres respostes: el port es una resposta mes, no una constant.
+
+**El fitxer de Traefik descrivia un Traefik que no era el d'alli.** L'instal·lador escrivia sempre
+el mateix `traefik-control-hub.yaml`, amb `certResolver: letsencrypt` i un servei a
+`http://127.0.0.1:3001`. A la maquina de D2 les dues coses son falses: el resolver es diu
+`myresolver`, i `127.0.0.1` dins del contenidor de Traefik es el propi Traefik. Pitjor: aquell
+Traefik corre amb `--providers.docker=true` **i cap provider de fitxers**, o sigui que el fitxer no
+tenia on anar. Escrivia una cosa que semblava correcta, que es la pitjor de les tres maneres de
+fallar.
+
+La regla de D2 no canvia --**l'instal·lador no edita la configuracio d'un proxy compartit**-- pero
+mirar no es intervenir. Ara inspecciona el proxy que ja corre i actua segons el que troba: si va per
+etiquetes, escriu `compose.proxy.yaml` amb les etiquetes del seu propi servei `web`, el resolver i
+l'entrypoint que aquell Traefik fa servir de debo, i la xarxa externa per on hi arribara; si troba un
+provider de fitxers, escriu el YAML amb el resolver real; i **si no ho pot determinar, no s'ho
+inventa**: ho diu, escriu el fitxer generic i avisa que el nom del resolver s'ha de comprovar.
+Configurar el seu propi servei perque un proxy el trobi es feina seva; tocar el proxy, no.
+
+`update.sh` carrega `compose.proxy.yaml` si hi es, perque altrament la primera actualitzacio
+despublicaria la instal·lacio en silenci.
 
 ## Traefik i els limits de compartir maquina
 
@@ -394,6 +449,10 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
   mateix; genera tots els secrets ell mateix i no en demana cap; es pot tornar a executar; i crea el
   primer Owner sense que ningu no triï cap contrasenya. Tanca dos dels tres buits que P3 va
   destapar.
+- **P8** — L'instal·lador mira la maquina abans d'escriure-hi: autenticacio del relay SMTP com a
+  sete secret muntat, ports triats entre els que estan lliures i conservats entre execucions, i la
+  configuracio del proxy escrita segons el proxy que hi ha de debo --o, si no es pot determinar, dit
+  en comptes d'endevinat. Surt de la primera instal·lacio real, no d'una idea.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
 algu pot provar a ma.

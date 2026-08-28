@@ -4,7 +4,7 @@ Plataforma empresarial autohosted per centralitzar clients, leads, productes, su
 
 ## Estat
 
-Versio publicada: **v0.4.0**.
+Versio publicada: **v0.4.1**.
 
 La Fase 2 proporciona identitat Better Auth, tenants, RBAC, MFA, passkeys, sessions revocables, RLS i auditoria append-only. La Fase 3 afegeix el CRM professional. La Fase 4 incorpora cataleg versionat, subscripcions, renovacions, alertes i metriques recurrents auditables per moneda. La Fase 5 tanca suport, tickets i SLA amb rellotge d'horari laboral, escalats al worker i proves end-to-end amb sessio iniciada. La Fase 5B hi afegeix projectes per client, imputacio de temps, barems de cost i de venda versionats per data d'efecte, i rendibilitat per moneda; queda darrere la feature flag `projects_and_time`. La Fase 6 aporta la plataforma de connectors —contracte, vault de credencials i webhooks signats— i la Fase 7.1 el connector n8n amb la pantalla d'infraestructura.
 
@@ -74,7 +74,7 @@ Control Hub queda disponible a `http://localhost:3001`. Per executar tot el core
 
 ## Roadmap immediat
 
-1. **Instal·lar la v0.4.0 a la VPS** darrere el Traefik que ja hi corre, que es el primer cop que el cami d'instal·lacio es recorre de debo i no en una instal·lacio de mentida.
+1. **Instal·lar la v0.4.1 a la VPS** darrere el Traefik que ja hi corre, que es el primer cop que el cami d'instal·lacio es recorre de debo i no en una instal·lacio de mentida.
 2. **Encendre les flags dels moduls que ja estan llestos** --`connectors`, `infrastructure`, `usage_costs`, `connector_oauth`, `connector_actions`, `mail`, `mcp` i `credential_catalog`--, una decisio operativa separada de publicar-les.
 3. **Fixar les imatges de tercers per digest** --PostgreSQL, Valkey i Mailpit encara van per etiqueta, o sigui que dues instal·lacions de la mateixa versio poden no portar el mateix PostgreSQL.
 

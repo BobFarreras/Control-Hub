@@ -98,16 +98,21 @@ export function platformSecretSnapshot(
       ),
       workerOnly("GOOGLE_OAUTH_CLIENT_SECRET", Boolean(environment.oauthClientIds.google)),
       workerOnly("MICROSOFT_OAUTH_CLIENT_SECRET", Boolean(environment.oauthClientIds.microsoft)),
-      {
-        name: "SMTP_PASSWORD",
-        source: "not_applicable",
-        configured: false,
-        consumers: ["api"],
-        loadedAt: null,
-        lastRotatedAt: null,
-        version: null,
-        health: "not_applicable"
-      }
+      // A relay that authenticates nothing is a configuration, not a missing secret: Mailpit in
+      // development and a relay on the same trusted network both work that way. Reporting either as
+      // `not_observed` would leave an Owner a permanent row they can never resolve.
+      environment.SMTP_PASSWORD === undefined
+        ? {
+            name: "SMTP_PASSWORD",
+            source: "not_applicable" as const,
+            configured: false,
+            consumers: ["api"],
+            loadedAt: null,
+            lastRotatedAt: null,
+            version: null,
+            health: "not_applicable" as const
+          }
+        : runtime("SMTP_PASSWORD", ["api"])
     ]
   };
 }

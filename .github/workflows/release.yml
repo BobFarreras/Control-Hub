@@ -250,6 +250,7 @@ jobs:
           rm -rf package && mkdir -p package/deploy/postgres
           cp compose.yaml compose.release.yaml compose.production.yaml package/
           cp compose.production.connectors.yaml compose.production.google.yaml compose.production.microsoft.yaml package/
+          cp compose.production.smtp.yaml package/
           cp deploy/postgres/init-app-user.sh package/deploy/postgres/
           # The two commands sit at the top so they are `./install.sh` and `./update.sh` from the
           # directory somebody extracted into, which is what the runbook tells them to type.

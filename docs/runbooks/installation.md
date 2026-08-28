@@ -1,11 +1,11 @@
 # Runbook d'instal·lacio de Control Hub
 
-> **El que encara no es pot fer.** Aquest runbook ja no descriu passos inexistents: l'instal·lador,
-> el comandament d'actualitzacio, les imatges per digest i la comprovacio de versions existeixen i
-> tenen proves. El que falta es d'una altra mena: **ningu ha publicat encara cap versio**, o sigui
-> que no hi ha cap `release.json` a llegir, i el reverse proxy no viu en aquest repositori --
-> l'instal·lador escriu la configuracio de Traefik i la copia la persona que instal·la.
-> `docs/specifications/deployment.md` diu per que.
+> **On es aixo.** L'instal·lador, el comandament d'actualitzacio, les imatges per digest i la
+> comprovacio de versions existeixen i tenen proves, i la `v0.4.0` es la primera etiqueta que la
+> canonada va publicar de debo: hi ha un `release.json` a llegir. **Encara no s'ha instal·lat
+> enlloc.** El reverse proxy no viu en aquest repositori i no s'edita mai: l'instal·lador mira el
+> que ja corre i, o be escriu les etiquetes que aquell proxy llegeix sol, o be deixa un fitxer que
+> copia la persona que instal·la. `docs/specifications/deployment.md` diu per que.
 
 ## Model d'alta
 
@@ -46,11 +46,16 @@ nom del primer Owner**, **organitzacio**, **SMTP**, **quins moduls**, i **on van
 resposta es valida alli mateix --el domini ha de resoldre, l'SMTP ha d'acceptar una connexio-- i no
 tres passos mes tard, quan tornar enrere vol dir tornar a fer-ho tot.
 
-**No demana cap contrasenya, ni la de la base de dades ni la de l'Owner.** Genera els sis secrets
-ell mateix amb `/dev/urandom` i els escriu directament a `$SECRETS_DIRECTORY` com a fitxers `0400`
-propietat de `root`: `postgres_admin_password`, `postgres_app_password`, `better_auth_secret`,
-`database_url`, `migration_database_url` i `connector_key_ring`. Cap valor passa per la pantalla ni
-per `.env`. El que no s'escriu no s'enganxa a cap historial.
+**No demana cap contrasenya que pugui generar.** Els sis secrets seus surten de `/dev/urandom` i
+van directament a `$SECRETS_DIRECTORY` com a fitxers `0400` propietat de `root`:
+`postgres_admin_password`, `postgres_app_password`, `better_auth_secret`, `database_url`,
+`migration_database_url` i `connector_key_ring`. Cap d'aquests valors passa per la pantalla ni per
+`.env`. **La de l'Owner tampoc la demana**: rep un enllac i se la posa ell. El que no s'escriu no
+s'enganxa a cap historial.
+
+L'unica que pregunta es la del relay SMTP, que no es seva i no se la pot inventar. S'escriu amb
+l'eco apagat i acaba a `smtp_password`, un sete fitxer `0400` de `root`, sense passar mai per
+`.env`.
 
 **Es pot tornar a executar.** Cada resposta ja donada surt com a valor per defecte llegit de `.env`,
 cap secret ja escrit es regenera --refer-lo deixaria PostgreSQL amb el vell, perque el rol es crea
@@ -63,11 +68,105 @@ de la maquina.
 
 #### El domini i el TLS
 
-L'instal·lador no instal·la cap reverse proxy i no n'edita cap. A la VPS que D2 descriu, Traefik ja
-hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi la configuracio viva
-es com una instal·lacio en tomba una altra. El que fa es escriure `traefik-control-hub.yaml` al
-directori d'instal·lacio, i copiar-lo al directori de configuracio dinamica de Traefik i recarregar
-es una passa manual i deliberada. **Fins que no es faci, res no es accessible des de fora.**
+L'instal·lador no instal·la cap reverse proxy i **no n'edita cap**. A la VPS que D2 descriu, Traefik
+ja hi corre i es compartit amb serveis d'altra gent; un instal·lador que n'editi la configuracio
+viva es com una instal·lacio en tomba una altra.
+
+Pero mirar no es intervenir. Abans, escrivia sempre el mateix `traefik-control-hub.yaml`, amb
+`certResolver: letsencrypt` i un servei a `http://127.0.0.1:3001`. A la maquina de D2 les dues coses
+son falses --el resolver es diu una altra cosa, i `127.0.0.1` dins del contenidor de Traefik es el
+propi Traefik-- i aquell Traefik ni tan sols llegeix fitxers: corre amb `--providers.docker`. O
+sigui que el fitxer no tenia on anar. Escrivia una cosa que semblava correcta, que es la pitjor de
+les tres maneres de fallar.
+
+Ara inspecciona el proxy que ja corre i fa una de tres coses:
+
+| El que troba | El que fa |
+| --- | --- |
+| Traefik amb `--providers.docker`, i en pot llegir xarxa, entrypoint i resolver | Escriu `compose.proxy.yaml` amb les etiquetes del seu propi servei `web`. **No s'ha de copiar res**: es carrega amb la resta de la pila i Traefik el troba sol. |
+| Traefik amb un provider de fitxers | Escriu `traefik-control-hub.yaml` amb el resolver i l'entrypoint reals. Copiar-lo al directori dinamic i recarregar. |
+| Res, o no prou per estar-ne segur | Escriu `traefik-control-hub.yaml` generic, **diu quins valors son una suposicio** i quins ha pogut llegir. |
+
+El resolver i l'entrypoint els busca primer als arguments del mateix Traefik
+(`--certificatesresolvers.<nom>.acme...`, `--entrypoints.<nom>.address=:443`) i, si alli no hi son
+--es habitual tenir-los en un fitxer estatic--, a les etiquetes dels contenidors que aquell Traefik
+ja encamina. Llegir-ho d'un vei segueix sent llegir aquesta maquina. **El que no fa mai es
+inventar-se un nom**: un resolver inventat es una configuracio que sembla acabada i no treu mai cap
+certificat, i per aixo, quan no el sap, no escriu les etiquetes.
+
+A `compose.proxy.yaml` el port del `loadbalancer` es el **3001, el de dins del contenidor**, i no el
+que s'ha publicat a `127.0.0.1`: Traefik arriba al web per la xarxa compartida, on el port publicat
+no existeix. I el servei `web` es queda a les dues xarxes (`application` i la del proxy) perque una
+llista en un overlay substitueix en comptes de fusionar-se, i deixar-hi nomes la del proxy seria un
+web que Traefik veu i que no arriba a la seva propia API.
+
+`update.sh` carrega `compose.proxy.yaml` si hi es. Sense aixo, la primera actualitzacio tornaria a
+aixecar els contenidors sense les etiquetes i l'adreça deixaria de respondre sense res a cap log.
+
+**Si s'ha escrit el fitxer i no les etiquetes, fins que no es copii res no es accessible des de
+fora.**
+
+#### Els ports de 127.0.0.1
+
+Quatre serveis publiquen un port a `127.0.0.1`: el web, l'API, PostgreSQL i Redis. En una maquina
+compartida no tots quatre estan lliures --a la de D2, el `5432` es del `supabase-pooler` des del
+primer dia-- i abans es donaven per bons: `docker compose up` fallava amb *port is already
+allocated* despres d'haver generat els secrets i escrit la configuracio.
+
+Ara l'instal·lador mira que hi ha escoltant abans d'escriure `.env`, i si el port que voldria esta
+ocupat n'agafa el seguent lliure i ho diu:
+
+```
+Ports
+  web: 3001 is taken, using 3002.
+  postgres: 5432 is taken, using 5433.
+```
+
+**No ho pregunta.** Son ports interns que ningu no teclegia mai, i una pregunta condicional mes es
+una pregunta que en segons quina maquina no surt i desplaça totes les respostes seguents.
+
+**Una segona execucio conserva els que ja hi havia i no torna a mirar**, perque en un re-run qui
+te aquells ports ocupats es la mateixa instal·lacio: mirar-ho la faria fugir dels seus propis
+ports, i amb ells de l'adreça que se li va donar al reverse proxy. Si cal canviar-ne un, s'edita
+`.env` i el valor editat es el que la seguent execucio llegira com a seu.
+
+En una maquina sense `ss` ni un `netstat` POSIX no es pot mirar res: es queden els ports preferits
+i, si un esta ocupat, torna a fallar a `docker compose up` com abans. No hi ha manera de fer-ho
+millor sense demanar-li a la maquina alguna cosa que no te.
+
+#### El relay SMTP i la seva credencial
+
+Gairebe cap relay transaccional accepta una sessio sense autenticar, i el primer missatge que
+rebutjaria es l'enllac amb que l'Owner entra al seu propi compte. Per aixo l'instal·lador pregunta
+l'usuari del relay i, si n'hi ha, la contrasenya.
+
+Cap proveidor concret no esta cablejat enlloc: el que cal es un host, un port i, gairebe sempre,
+una credencial. A Resend l'usuari es literalment `resend` i la contrasenya es una API key, cosa
+que va be al model d'aqui --se'n genera una de nova, es respon la pregunta i la vella es revoca,
+sense tocar res mes. Sigui quin sigui, el domini del remitent s'ha de verificar amb SPF i DKIM
+**abans** d'instal·lar: l'instal·lador prova la connexio al relay, i el bootstrap hi envia
+l'enllac de l'Owner tot seguit.
+
+**Totes dues o cap.** Un usuari sense contrasenya autentica amb una de buida i el relay rebutja
+cada missatge; una contrasenya sense usuari es un secret muntat que ningu no llegeix. La
+configuracio refusa arrencar amb mitja credencial, i l'instal·lador s'atura abans d'escriure res.
+Deixar l'usuari en blanc es la manera --l'unica-- de configurar un relay sense credencials: Mailpit
+en desenvolupament, o un relay a la mateixa xarxa de confianca.
+
+| On viu | Que hi ha |
+| --- | --- |
+| `SMTP_USER` a `.env` | L'usuari. No es secret, i es el que decideix si es carrega l'overlay. |
+| `smtp_password` a `$SECRETS_DIRECTORY` | La contrasenya, `0400` de `root`, muntada a `api` i `bootstrap`. |
+| `compose.production.smtp.yaml` | El muntatge. Nomes es carrega quan `SMTP_USER` te valor. |
+
+L'overlay va a part de `compose.production.yaml` perque una entrada `secrets:` anomena un cami que
+ha d'existir: una instal·lacio sense credencial no podria arrencar amb aquest bloc al fitxer base.
+El `worker` no el rep --no envia correu-- i el `web` no rep cap secret.
+
+En una segona execucio l'usuari torna a sortir com a valor per defecte i la contrasenya es pot
+deixar en blanc per conservar la que hi ha. Aquest es l'unic secret que l'instal·lador si que
+reescriu quan se n'escriu un de nou: es d'algu altre i canvia. Si s'esborra l'usuari, el fitxer es
+queda on era i l'overlay deixa de carregar-se; esborrar-lo es una decisio manual.
 
 #### Moduls
 
@@ -102,6 +201,7 @@ acabat opcionalment amb un salt de linia:
 | `postgres_admin_password` | UID de PostgreSQL |
 | `postgres_app_password` | UID de PostgreSQL |
 | `connector_key_ring` | UID 1000, API i worker, nomes amb connectors |
+| `smtp_password` | UID 1000, API i bootstrap, nomes si el relay demana credencials |
 | `google_oauth_client_secret` | UID 1000, worker, nomes si Google esta configurat |
 | `microsoft_oauth_client_secret` | UID 1000, worker, nomes si Microsoft esta configurat |
 
@@ -117,6 +217,9 @@ SECRETS_DIRECTORY=/etc/control-hub/secrets docker compose \
   --env-file .env --env-file release.env \
   -f compose.yaml -f compose.release.yaml -f compose.production.yaml up -d --wait
 ```
+
+Si el relay demana credencials, afegir `-f compose.production.smtp.yaml` --es el que munta
+`smtp_password` a `api` i `bootstrap`, i exigeix `SMTP_USER`.
 
 Amb el vault de connectors, afegir `-f compose.production.connectors.yaml`. Per Gmail, afegir
 `-f compose.production.google.yaml`; per Microsoft 365,

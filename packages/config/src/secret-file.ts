@@ -41,7 +41,8 @@ export const runtimeSecretVariables = [
   "BETTER_AUTH_SECRET",
   "CONNECTOR_KEY_RING",
   "GOOGLE_OAUTH_CLIENT_SECRET",
-  "MICROSOFT_OAUTH_CLIENT_SECRET"
+  "MICROSOFT_OAUTH_CLIENT_SECRET",
+  "SMTP_PASSWORD"
 ] as const;
 
 export function secretFileVariable(variable: string): string {

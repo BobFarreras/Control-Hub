@@ -100,6 +100,22 @@ ask() {
   [ -n "$reply" ] || reply="${2:-}"
 }
 
+# The one answer that is not the installer's to generate, and so the one place invariant 8 has to
+# be kept by hand: echo off while it is typed, and it reaches a 0400 file without passing through a
+# variable that anything prints. Terminals without `stty` fall through to a visible prompt rather
+# than to no prompt -- a relay credential that cannot be entered is an installation that cannot mail.
+ask_hidden() {
+  printf '%s: ' "$1"
+  if [ -t 0 ] && command -v stty >/dev/null 2>&1; then
+    stty -echo 2>/dev/null || true
+    if ! IFS= read -r reply; then reply=""; fi
+    stty echo 2>/dev/null || true
+    printf '\n'
+  else
+    if ! IFS= read -r reply; then reply=""; fi
+  fi
+}
+
 confirm() {
   printf '%s [y/N]: ' "$1"
   if ! IFS= read -r reply; then reply="n"; fi
@@ -199,6 +215,32 @@ case "$smtp_from" in
   *) fail "«$smtp_from» is not an email address." ;;
 esac
 
+# Almost every relay worth pointing at refuses an unauthenticated session, and the message it
+# refuses first is the Owner's only way into their own account. Asked rather than generated: this
+# credential belongs to the relay, not to this installation.
+say ""
+say "  Leave the user blank for a relay that accepts mail from this machine without credentials."
+say ""
+ask "Relay user" "$(existing SMTP_USER)"
+smtp_user="$reply"
+smtp_password=""
+if [ -n "$smtp_user" ]; then
+  if [ -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+    say ""
+    say "  A relay password is already stored. Leave this blank to keep it."
+  fi
+  ask_hidden "Relay password"
+  smtp_password="$reply"
+  reply=""
+  if [ -z "$smtp_password" ] && [ ! -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+    fail "a relay user without a password authenticates with an empty one, and the relay refuses every message."
+  fi
+elif [ -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+  say ""
+  say "  No relay user, so the stored password in $SECRETS_DIRECTORY is no longer used."
+  say "  It is left in place; delete it by hand if the relay credential is gone for good."
+fi
+
 # A connection, and deliberately not a delivery. An installer that proves it can send mail has to
 # send it to somebody, and the only address it knows belongs to a person who has not been told any
 # of this is happening. The Owner's link is the first real message; this is what makes it likely to
@@ -216,7 +258,11 @@ if command -v nc >/dev/null 2>&1; then
 else
   say "  No nc on this machine, so $smtp_host:$smtp_port was not contacted."
 fi
-remember "Mail:          $smtp_host:$smtp_port as $smtp_from"
+if [ -n "$smtp_user" ]; then
+  remember "Mail:          $smtp_host:$smtp_port as $smtp_from, authenticating as $smtp_user"
+else
+  remember "Mail:          $smtp_host:$smtp_port as $smtp_from, unauthenticated"
+fi
 
 heading "5 of 6 -- which modules are on"
 say "Comma separated, and changeable later by editing CONTROL_HUB_FLAGS in .env. A name that is"
@@ -279,7 +325,91 @@ secret database_url "postgres://control_hub_app:${app_password}@postgres:5432/co
 # is an installation that cannot turn the module on later without somebody coming back to it.
 secret connector_key_ring \
   "{\"activeKeyId\":\"k1\",\"keys\":{\"k1\":\"$(head -c 32 /dev/urandom | base64 | tr -d '\n')\"}}" > /dev/null
-say "  Six files, mode 0400, owned by root."
+# Not through `secret()`. That helper exists to never rewrite what it generated -- regenerating a
+# database password would leave PostgreSQL holding the old one -- and this is the one secret here
+# that somebody else owns and can legitimately change under us. A blank answer keeps what is stored.
+if [ -n "$smtp_password" ]; then
+  # Made writable for the moment of the rewrite. Root is allowed to write a 0400 file anyway, but
+  # depending on that would make the one path this script has that overwrites a secret work only
+  # because of who is running it -- and the failure, when it came, would be a redirection error
+  # after every question had been answered.
+  [ -f "$SECRETS_DIRECTORY/smtp_password" ] && chmod 0600 "$SECRETS_DIRECTORY/smtp_password"
+  (umask 077 && printf '%s' "$smtp_password" > "$SECRETS_DIRECTORY/smtp_password")
+  [ "$dry_run" = yes ] || chown root:root "$SECRETS_DIRECTORY/smtp_password"
+  chmod 0400 "$SECRETS_DIRECTORY/smtp_password"
+  smtp_password=""
+  say "  Seven files, mode 0400, owned by root."
+else
+  say "  Six files, mode 0400, owned by root."
+fi
+
+# --- ports ----------------------------------------------------------------------------------------
+
+# Which ports this machine already has something listening on. Asked once: `ss` is a process spawn,
+# and asking it per port would run it four times to answer one question.
+#
+# Only the port number is kept. What is listening on 127.0.0.1:5432 and what is listening on
+# 0.0.0.0:5432 are different things to a network engineer and the same thing to `docker compose up`,
+# which refuses the bind either way.
+listening_ports() {
+  if command -v ss > /dev/null 2>&1; then
+    ss -ltn 2>/dev/null | awk 'NR > 1 { print $4 }'
+  elif command -v netstat > /dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk '/^tcp/ { print $4 }'
+  fi
+}
+
+# A machine with neither tool answers «nothing is listening», and the preferred ports are kept. That
+# is the same outcome as before any of this existed, which is the right way to be wrong here: the
+# installation either starts, or fails at `docker compose up` with the error it always gave.
+taken=$(listening_ports | sed 's/.*://' | grep -E '^[0-9]+$' | sort -u || true)
+
+free_port() {
+  candidate=$1
+  attempts=0
+  while printf '%s\n' "$taken" | grep -qx "$candidate"; do
+    candidate=$((candidate + 1))
+    attempts=$((attempts + 1))
+    # A bound, not a policy. A machine with fifty consecutive ports taken from the preferred one has
+    # something wrong with it that a fifty-first port would not fix.
+    [ "$attempts" -lt 50 ] || fail "no free port between $1 and $candidate. Something is very wrong with this machine."
+  done
+  printf '%s' "$candidate"
+}
+
+# What an earlier run chose wins, and is never probed. On a re-run the installation itself is what is
+# holding these ports, so looking would find every one of them busy and walk the configuration off
+# its own ports -- an update that moves the address Traefik was told about.
+choose_port() {
+  chosen=$(existing "$1")
+  [ -n "$chosen" ] || chosen=$(free_port "$2")
+  printf '%s' "$chosen"
+}
+
+# Not questions, deliberately. These are 127.0.0.1 ports nobody has ever typed, and one more
+# conditional question is one more question that does not appear on some machine and shifts every
+# answer after it onto the wrong prompt -- the defect P7 already paid for.
+web_port=$(choose_port WEB_PORT 3001)
+api_port=$(choose_port API_PORT 4000)
+postgres_port=$(choose_port POSTGRES_PORT 5432)
+redis_port=$(choose_port REDIS_PORT 6379)
+
+say ""
+say "Ports"
+moved=no
+for pair in "web 3001 $web_port" "api 4000 $api_port" "postgres 5432 $postgres_port" "redis 6379 $redis_port"; do
+  # Positional, because `set --` inside a function would eat the function's own arguments and this
+  # is the one place three fields have to be read out of one string.
+  name=${pair%% *}
+  rest=${pair#* }
+  wanted=${rest%% *}
+  got=${rest#* }
+  if [ "$wanted" != "$got" ]; then
+    say "  $name: $wanted is taken, using $got."
+    moved=yes
+  fi
+done
+[ "$moved" = yes ] || say "  The usual four are free: $web_port, $api_port, $postgres_port, $redis_port."
 
 # --- configuration ------------------------------------------------------------------------------
 
@@ -296,10 +426,10 @@ NODE_ENV=production
 SECRETS_DIRECTORY=$SECRETS_DIRECTORY
 SECRETS_PROVIDER=runtime_files
 LOG_LEVEL=info
-WEB_PORT=3001
-API_PORT=4000
-POSTGRES_PORT=5432
-REDIS_PORT=6379
+WEB_PORT=$web_port
+API_PORT=$api_port
+POSTGRES_PORT=$postgres_port
+REDIS_PORT=$redis_port
 MAILPIT_SMTP_PORT=1025
 MAILPIT_UI_PORT=8025
 API_HOST=127.0.0.1
@@ -313,6 +443,7 @@ SMTP_HOST=$smtp_host
 SMTP_PORT=$smtp_port
 SMTP_SECURE=$smtp_secure
 SMTP_FROM=$smtp_from
+SMTP_USER=$smtp_user
 CONTROL_HUB_FLAGS=$flags
 CONTROL_HUB_UPDATE_CHECK=true
 CONTROL_HUB_BACKUP_DIR=$backup_dir
@@ -324,28 +455,128 @@ EOF
 chmod 0600 .env
 say "  .env written, mode 0600."
 
-# The reverse proxy is neither installed nor owned by this script. On the machine D2 describes,
-# Traefik is already running and is shared with other people's services, so the installer writes
-# the routing beside the installation and says where to copy it. An installer that edits a shared
-# proxy's live configuration is how one installation takes another one down.
-cat > "$TRAEFIK_FILE" <<EOF
+# --- the reverse proxy ----------------------------------------------------------------------------
+
+# The rule from D2 does not change: this installer does not edit a shared proxy's configuration.
+# But looking is not intervening, and the file it used to write was written blind. It always said
+# `certResolver: letsencrypt` and always pointed a service at `http://127.0.0.1:3001`, and on the
+# machine D2 describes both are false -- the resolver is called something else, and 127.0.0.1
+# inside the Traefik container is Traefik. Worse, that Traefik runs with `--providers.docker` and
+# no file provider at all, so the file had nowhere to go. It wrote something that looked correct,
+# which is the worst of the three ways to fail.
+
+proxy_mode=unknown
+proxy_network=""
+proxy_resolver=""
+proxy_entrypoint=""
+
+if command -v docker > /dev/null 2>&1; then
+  # By image name, because that is the only thing a proxy container reliably has in common with
+  # another one. Names are chosen by whoever wrote the compose file.
+  proxy_id=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep -i traefik | head -1 | cut -d' ' -f1 || true)
+  if [ -n "$proxy_id" ]; then
+    # Entrypoint and command together: an image can carry the flags in either, and which one it
+    # uses is a packaging decision that has nothing to do with how Traefik is configured.
+    proxy_flags=$(docker inspect --format '{{range .Config.Entrypoint}}{{.}} {{end}}{{range .Config.Cmd}}{{.}} {{end}}' "$proxy_id" 2>/dev/null || true)
+    proxy_words=$(printf '%s' "$proxy_flags" | tr ' ' '\n')
+
+    # File first, labels second, so that a Traefik running both ends up on labels. Labels are the
+    # mode where nothing of the proxy's has to be touched at all: the routing is a property of
+    # this installation's own container, and Traefik was already told to read those.
+    case "$proxy_flags" in *--providers.file*) proxy_mode=file ;; esac
+    case "$proxy_flags" in *--providers.docker*) proxy_mode=labels ;; esac
+
+    proxy_resolver=$(printf '%s\n' "$proxy_words" | sed -n 's/^--certificatesresolvers\.\([A-Za-z0-9_-][A-Za-z0-9_-]*\)\..*$/\1/p' | head -1)
+    proxy_entrypoint=$(printf '%s\n' "$proxy_words" | sed -n 's/^--entrypoints\.\([A-Za-z0-9_-][A-Za-z0-9_-]*\)\.address=:443.*$/\1/p' | head -1)
+    # The network Traefik shares with the services it routes to. `bridge`, `host` and `none` are
+    # Docker's own and are never that network.
+    proxy_network=$(docker inspect --format '{{range $name, $config := .NetworkSettings.Networks}}{{$name}} {{end}}' "$proxy_id" 2>/dev/null | tr ' ' '\n' | grep -vxE 'bridge|host|none|' | head -1 || true)
+
+    # Traefik can declare its resolvers and entrypoints in a static file rather than on the command
+    # line, and then the only place those names appear is on the containers already routed by it.
+    # Reading one off a neighbour is still reading this machine; the alternative is a guess, and a
+    # guessed resolver name is a configuration that looks finished and never gets a certificate.
+    if [ -z "$proxy_resolver" ] || [ -z "$proxy_entrypoint" ]; then
+      neighbour_labels=$(
+        docker ps -q 2>/dev/null | while read -r id; do
+          docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
+{{end}}' "$id" 2>/dev/null || true
+        done
+      )
+      [ -n "$proxy_resolver" ] ||
+        proxy_resolver=$(printf '%s\n' "$neighbour_labels" | sed -n 's/^traefik\.http\.routers\..*\.tls\.certresolver=\(.*\)$/\1/p' | head -1)
+      [ -n "$proxy_entrypoint" ] ||
+        proxy_entrypoint=$(printf '%s\n' "$neighbour_labels" | sed -n 's/^traefik\.http\.routers\..*\.entrypoints=\([A-Za-z0-9_-]*\).*$/\1/p' | head -1)
+    fi
+  fi
+fi
+
+say ""
+say "Reverse proxy"
+rm -f compose.proxy.yaml
+if [ "$proxy_mode" = labels ] && [ -n "$proxy_network" ] && [ -n "$proxy_resolver" ] && [ -n "$proxy_entrypoint" ]; then
+  # The port here is 3001, the port inside the container, and not the one on 127.0.0.1 that the
+  # rest of this file chose. Traefik reaches the web service across the shared network, where the
+  # published port does not exist and never did.
+  cat > compose.proxy.yaml <<EOF
+# Routing for this installation, written by install.sh from the Traefik running on this machine.
+#
+# That Traefik reads Docker labels, so this file is this installation describing its own web
+# service to it. Nothing of the proxy's is touched: a label belongs to this container, and Traefik
+# was already told to read labels.
+services:
+  web:
+    networks: [application, $proxy_network]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "$proxy_network"
+      traefik.http.routers.control-hub.rule: "Host(\`$domain\`)"
+      traefik.http.routers.control-hub.entrypoints: "$proxy_entrypoint"
+      traefik.http.routers.control-hub.tls.certresolver: "$proxy_resolver"
+      traefik.http.services.control-hub.loadbalancer.server.port: "3001"
+
+networks:
+  $proxy_network:
+    external: true
+EOF
+  say "  Traefik here reads labels. compose.proxy.yaml written:"
+  say "    network $proxy_network, entrypoint $proxy_entrypoint, resolver $proxy_resolver."
+  say "  Nothing to copy anywhere; it is loaded with the rest of the stack."
+else
+  # Everything else writes the file, and says plainly which parts of it were read off this machine
+  # and which are a guess. A resolver name this script invented would be a configuration that
+  # looks finished and produces no certificate.
+  resolver=${proxy_resolver:-letsencrypt}
+  entrypoint=${proxy_entrypoint:-websecure}
+  cat > "$TRAEFIK_FILE" <<EOF
 # Routing for this installation, for the Traefik already running on this machine.
 # Copy it into Traefik's dynamic configuration directory; it is not read from here.
 http:
   routers:
     control-hub:
       rule: "Host(\`$domain\`)"
-      entryPoints: [websecure]
+      entryPoints: [$entrypoint]
       service: control-hub
       tls:
-        certResolver: letsencrypt
+        certResolver: $resolver
   services:
     control-hub:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:3001"
+          - url: "http://127.0.0.1:$web_port"
 EOF
-say "  $TRAEFIK_FILE written."
+  say "  $TRAEFIK_FILE written."
+  if [ "$proxy_mode" = file ]; then
+    say "  Traefik here reads a file provider. Copy it into that directory and reload."
+  elif [ "$proxy_mode" = labels ]; then
+    say "  Traefik here reads labels, but not everything needed for them could be read off it:"
+    say "    network «${proxy_network:-unknown}», entrypoint «${proxy_entrypoint:-unknown}», resolver «${proxy_resolver:-unknown}»."
+    say "  Nothing was invented. Fill the gaps in by hand, or use the file above."
+  else
+    say "  No Traefik was found running here, so nothing about it could be read."
+  fi
+  [ -n "$proxy_resolver" ] || say "  «$resolver» is a guess: check what the certificate resolver is really called."
+fi
 
 # --- the release ----------------------------------------------------------------------------------
 
@@ -403,9 +634,19 @@ fi
 
 # --- starting -------------------------------------------------------------------------------------
 
+# The relay overlay joins the invocation only when there is a credential to mount. It ships in
+# every package, so its presence on disk says nothing; what decides is `SMTP_USER`, the half that
+# lives in `.env`. `deploy/update.sh` reads the same variable to reach the same decision, and
+# `scripts/install.test.mjs` holds the two to it: an overlay one script loads and the other does
+# not is an installation that silently loses a mount on its first update.
+overlays="-f compose.yaml -f compose.release.yaml -f compose.production.yaml"
+[ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+# Presence is the signal for this one, and it can be: it is written by this script rather than
+# shipped, so it exists only where the proxy was read successfully.
+[ -f compose.proxy.yaml ] && overlays="$overlays -f compose.proxy.yaml"
+
 compose() {
-  docker compose --env-file .env --env-file release.env \
-    -f compose.yaml -f compose.release.yaml -f compose.production.yaml "$@"
+  docker compose --env-file .env --env-file release.env $overlays "$@"
 }
 
 say ""
@@ -437,7 +678,11 @@ fi
 say ""
 say "Control Hub $version is running."
 say ""
-say "  Address:       https://$domain, once $TRAEFIK_FILE reaches Traefik"
+if [ -f compose.proxy.yaml ]; then
+  say "  Address:       https://$domain, as soon as Traefik notices the labels"
+else
+  say "  Address:       https://$domain, once $TRAEFIK_FILE reaches Traefik"
+fi
 say "  Owner:         $owner_email, $owner_state"
 say "  Configuration: .env, here in $(pwd)"
 say "  Secrets:       $SECRETS_DIRECTORY, mode 0400, owned by root"
@@ -445,8 +690,13 @@ say "  Release:       release.env names $version"
 say ""
 say "What this installer did not do:"
 say ""
-say "  - It did not touch Traefik. Copy $TRAEFIK_FILE into its dynamic configuration"
-say "    directory and reload it; nothing is reachable from outside until you do."
+if [ -f compose.proxy.yaml ]; then
+  say "  - It did not touch Traefik. compose.proxy.yaml gives this installation the labels"
+  say "    that Traefik already reads, and nothing of the proxy's own was changed."
+else
+  say "  - It did not touch Traefik. Copy $TRAEFIK_FILE into its dynamic configuration"
+  say "    directory and reload it; nothing is reachable from outside until you do."
+fi
 say "  - Modules that are off: everything not in «${flags:-none}». Turn one on by editing"
 say "    CONTROL_HUB_FLAGS in .env and starting the stack again."
 say "  - No connector is configured. Mail, calendar and the rest are set up from the panel by"

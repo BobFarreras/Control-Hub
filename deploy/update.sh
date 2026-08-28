@@ -42,6 +42,20 @@ command -v docker >/dev/null 2>&1 || fail "docker is not on PATH."
 overlays="-f compose.yaml -f compose.release.yaml"
 [ -f compose.production.yaml ] && overlays="$overlays -f compose.production.yaml"
 
+# The relay overlay is decided by configuration rather than by presence: it ships in every package,
+# so the file being here says nothing, and `SMTP_USER` is what `install.sh` writes when there is a
+# credential to mount. Reading the file rather than sourcing it, because `.env` is not this script's
+# environment and one stray line in it should not become one here.
+smtp_user=$(sed -n 's/^SMTP_USER=//p' .env | head -1)
+[ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+
+# The routing, where install.sh could read the proxy well enough to write it. Presence is the signal
+# for this one, and it can be: nothing ships it, so it exists only where it was generated. Leaving it
+# out would take the installation off the proxy on the first update, silently -- the containers would
+# come back up without the labels Traefik routes by, and the address would stop answering with
+# nothing in any log to say why.
+[ -f compose.proxy.yaml ] && overlays="$overlays -f compose.proxy.yaml"
+
 # --- reading the new release ---------------------------------------------------------------------
 
 download() {
