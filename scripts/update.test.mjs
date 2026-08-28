@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -10,6 +10,10 @@ const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), "utf
 const script = fileURLToPath(new URL("../deploy/update.sh", import.meta.url));
 const workflow = read(".github/workflows/release.yml");
 const update = read("deploy/update.sh");
+
+// GNU tar reads `C:\...` as a remote host and tries to resolve it. The flag is for building the
+// fixtures on this machine; nothing about the command under test depends on it.
+const tarFlags = process.platform === "win32" ? ["--force-local"] : [];
 
 const registry = "ghcr.io/bobfarreras";
 const digest = (byte) => `sha256:${byte.repeat(64)}`;
@@ -55,6 +59,168 @@ function run(directory, published, args = ["--check"]) {
     return { ok: false, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
   }
 }
+
+/**
+ * A whole update, with docker replaced by a script that records what it was asked to do.
+ *
+ * Everything below the `--check` exit had never been executed anywhere: no CI job runs this file
+ * or `install.sh`, and the tests that cover the second half read the source. That is exactly how a
+ * command that only ever refreshed `release.env` went four releases without anybody noticing that
+ * a fix living in a compose file could not reach an installed machine.
+ *
+ * The stub answers `pg_dump` with enough bytes to pass the backup checks and succeeds at
+ * everything else, which is the shape of an update that works. What is being tested is not docker;
+ * it is which files this directory ends up with.
+ */
+function fullRun(directory, published, packagePaths, { args = [], archive: prebuilt } = {}) {
+  const bin = join(directory, "bin");
+  mkdirSync(bin, { recursive: true });
+  const log = join(directory, "docker.log");
+  writeFileSync(
+    join(bin, "docker"),
+    [
+      "#!/bin/sh",
+      `printf '%s\\n' "$*" >> ${JSON.stringify(log)}`,
+      // Only the dump writes to stdout, and it has to clear the 1000-byte floor the script applies
+      // to the compressed result -- so the payload is random enough not to gzip down to nothing.
+      'case "$*" in *pg_dump*) head -c 40000 /dev/urandom | od -An -tx1 ;; esac',
+      "exit 0"
+    ].join("\n") + "\n",
+    { mode: 0o755 }
+  );
+
+  // The published package, built the way the release workflow builds it: a tree rooted at `.`.
+  const staging = join(directory, "package-source");
+  mkdirSync(staging, { recursive: true });
+  for (const [path, contents] of Object.entries(packagePaths)) {
+    mkdirSync(dirname(join(staging, path)), { recursive: true });
+    writeFileSync(join(staging, path), contents);
+  }
+  const archive = prebuilt ?? join(directory, "control-hub-install.tar.gz");
+  if (!prebuilt) execFileSync("tar", [...tarFlags, "-czf", archive, "-C", staging, "."]);
+
+  const source = join(directory, "published.env");
+  writeFileSync(source, published);
+  const env = {
+    ...process.env,
+    PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
+    CONTROL_HUB_RELEASE_URL: pathToFileURL(source).href,
+    CONTROL_HUB_PACKAGE_URL: pathToFileURL(archive).href
+  };
+  try {
+    return {
+      ok: true,
+      output: execFileSync("sh", [script, ...args], {
+        cwd: directory,
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "pipe"]
+      })
+    };
+  } catch (error) {
+    return { ok: false, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+  }
+}
+
+const packageContents = {
+  "compose.yaml": "# compose.yaml from 1.1.0\n",
+  "compose.release.yaml": "# compose.release.yaml from 1.1.0\n",
+  "compose.production.yaml": "# compose.production.yaml from 1.1.0\n",
+  "install.sh": "#!/bin/sh\n# install.sh from 1.1.0\n",
+  "update.sh": "#!/bin/sh\n# update.sh from 1.1.0\n",
+  "deploy/postgres/init-app-user.sh": "#!/bin/sh\n# init from 1.1.0\n"
+};
+
+test("an update delivers the fixes that live in a compose file, not only the images", () => {
+  const directory = installation("1.0.0");
+  try {
+    // What the machine has now: the files a 1.0.0 installation was given, plus the two this
+    // directory owns and no release may ever overwrite.
+    writeFileSync(join(directory, "compose.proxy.yaml"), "# routing this machine generated\n");
+    const dotEnv = "SECRETS_DIRECTORY=/etc/control-hub/secrets\nAPP_ORIGIN=https://hub.example\n";
+    writeFileSync(join(directory, ".env"), dotEnv);
+
+    const result = fullRun(directory, releaseFile("1.1.0"), packageContents);
+    assert.ok(result.ok, result.output);
+
+    // The point of the whole exercise: the compose file on disk is the new one. Four releases'
+    // worth of fixes to it could not reach a machine before this.
+    for (const file of Object.keys(packageContents)) {
+      assert.equal(readFileSync(join(directory, file), "utf8"), packageContents[file], `${file} was not replaced`);
+    }
+    assert.match(readFileSync(join(directory, "release.env"), "utf8"), /CONTROL_HUB_VERSION=1\.1\.0/);
+
+    // And what the release must never touch, because this machine and not a release wrote it.
+    assert.equal(readFileSync(join(directory, ".env"), "utf8"), dotEnv, ".env was overwritten by the update");
+    assert.match(readFileSync(join(directory, "compose.proxy.yaml"), "utf8"), /this machine generated/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("the files it replaced are kept where a rollback can reach them", () => {
+  const directory = installation("1.0.0");
+  try {
+    writeFileSync(join(directory, "compose.yaml"), "# the compose.yaml that was working\n");
+    const result = fullRun(directory, releaseFile("1.1.0"), packageContents);
+    assert.ok(result.ok, result.output);
+
+    // Rolling back means the previous images *and* the previous definitions of the services that
+    // run them. release.env.previous alone stopped being enough the moment this file started
+    // replacing compose files.
+    assert.match(readFileSync(join(directory, "previous", "compose.yaml"), "utf8"), /that was working/);
+    assert.match(readFileSync(join(directory, "release.env.previous"), "utf8"), /CONTROL_HUB_VERSION=1\.0\.0/);
+    assert.match(result.output, /previous/, "the closing report does not say the old files were kept");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a package that would write outside the installation directory is refused", () => {
+  for (const hostile of ["../escaped.yaml", "/etc/hostile.yaml"]) {
+    const directory = installation("1.0.0");
+    try {
+      // Built by hand rather than through the helper, because tar refuses to make some of these
+      // without being told to, and the archive is the thing under test.
+      const staging = join(directory, "hostile");
+      mkdirSync(staging, { recursive: true });
+      writeFileSync(join(staging, "compose.yaml"), "# fixture\n");
+      const archive = join(directory, "hostile.tar.gz");
+      execFileSync(
+        "tar",
+        [...tarFlags, "-czf", archive, "-C", staging, "-P", "--transform", `s|compose\\.yaml|${hostile}|`, "."],
+        { stdio: "ignore" }
+      );
+      const escapee = join(directory, "..", "escaped.yaml");
+      rmSync(escapee, { force: true });
+      const result = fullRun(directory, releaseFile("1.1.0"), packageContents, { archive });
+
+      assert.equal(result.ok, false, `an archive carrying ${hostile} was accepted:\n${result.output}`);
+      assert.match(result.output, /outside this directory/);
+      assert.equal(existsSync(escapee), false, "the update wrote outside the installation directory");
+      // Refused before it touched anything, not after.
+      assert.match(readFileSync(join(directory, "release.env"), "utf8"), /CONTROL_HUB_VERSION=1\.0\.0/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a package carrying this installation's own files is refused before anything is replaced", () => {
+  const directory = installation("1.0.0");
+  try {
+    const dotEnv = "SECRETS_DIRECTORY=/etc/control-hub/secrets\n";
+    writeFileSync(join(directory, ".env"), dotEnv);
+    // A release has no business shipping the file that holds this machine's answers. If one ever
+    // does, the update stops rather than quietly replacing it.
+    const result = fullRun(directory, releaseFile("1.1.0"), { ...packageContents, ".env": "SECRETS_DIRECTORY=/tmp\n" });
+    assert.equal(result.ok, false, result.output);
+    assert.equal(readFileSync(join(directory, ".env"), "utf8"), dotEnv);
+    assert.match(readFileSync(join(directory, "release.env"), "utf8"), /CONTROL_HUB_VERSION=1\.0\.0/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("it reports an update without changing anything", () => {
   const directory = installation("1.0.0");
@@ -180,8 +346,31 @@ test("the release publishes what the update command reads", () => {
   // it, and a test that pins the exact line turns adding an asset into a test failure that says
   // nothing about whether anything broke.
   const upload = workflow.slice(workflow.indexOf('gh release upload "$GITHUB_REF_NAME"'));
-  for (const asset of ["release.json", "release.env", "deploy/update.sh"]) {
+  // The package joined this list the moment the command started reading it. Dropping the asset
+  // would leave every installed machine unable to update at all, which is a worse failure than the
+  // one that made the command read it.
+  for (const asset of ["release.json", "release.env", "deploy/update.sh", "control-hub-install.tar.gz"]) {
     assert.ok(upload.slice(0, 400).includes(asset), `the release does not publish ${asset}`);
+  }
+});
+
+test("the package the update command reads carries the product files and none of the machine's", () => {
+  const build = workflow.slice(
+    workflow.indexOf("Build the installation package"),
+    workflow.indexOf("Attach the manifest")
+  );
+  for (const file of [
+    "compose.yaml",
+    "compose.production.yaml",
+    "deploy/postgres/init-app-user.sh",
+    "deploy/install.sh"
+  ]) {
+    assert.ok(build.includes(file), `the package does not carry ${file}`);
+  }
+  // `update.sh` refuses a package carrying any of these, so a release that started shipping one
+  // would stop every installation from updating. Better to fail here, where it is one line to fix.
+  for (const owned of [/^\s*cp .*\s\.env\s/m, /release\.env package/, /compose\.proxy\.yaml/]) {
+    assert.doesNotMatch(build, owned, "the package carries a file the installation owns");
   }
 });
 

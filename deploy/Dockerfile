@@ -32,6 +32,17 @@ FROM dependencies AS builder
 # `development` for that rather than guessing.
 ARG CONTROL_HUB_BUILD=""
 ENV CONTROL_HUB_BUILD=$CONTROL_HUB_BUILD
+# Where the web tier reaches the API, and it has to be here rather than only on the running
+# container. `apps/web/next.config.ts` proxies `/api` and `/health` through a Next rewrite, and a
+# rewrite destination is resolved when the bundle is compiled: whatever this says is written into
+# the route manifest and no environment variable changes it afterwards. Supplying it only at
+# runtime reaches `apps/web/src/lib/api.ts`, which is a different code path -- server-side fetches
+# worked, which is exactly why this took a real installation to find.
+#
+# Built without it, the image fell back to `http://127.0.0.1:4000` and proxied every browser
+# request to `/api` at itself. It matches `compose.yaml`, and `scripts/container-secrets.test.mjs`
+# holds the two together.
+ENV API_INTERNAL_URL=http://api:4000
 RUN pnpm build
 # The standalone output expects the static assets beside it rather than in .next.
 RUN cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static

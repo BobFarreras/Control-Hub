@@ -4,6 +4,10 @@ import { isFeatureEnabled, parseFeatureFlags } from "./flags.js";
 import { parseKeyRing, type KeyRing } from "./key-ring.js";
 import { resolveSecretFiles } from "./secret-file.js";
 
+// Written out rather than one list extending the other, because the two processes hold different
+// secrets and the difference is the point. `BETTER_AUTH_SECRET` signs sessions and belongs to the
+// API alone; the worker authenticates nobody. The provider secrets are the mirror image -- the
+// worker calls the providers, the API only ever names them.
 const apiSecretVariables = [
   "DATABASE_URL",
   "REDIS_URL",
@@ -12,7 +16,10 @@ const apiSecretVariables = [
   "SMTP_PASSWORD"
 ] as const;
 const workerSecretVariables = [
-  ...apiSecretVariables,
+  "DATABASE_URL",
+  "REDIS_URL",
+  "CONNECTOR_KEY_RING",
+  "SMTP_PASSWORD",
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "MICROSOFT_OAUTH_CLIENT_SECRET"
 ] as const;
@@ -29,7 +36,6 @@ const baseSchema = z.object({
   DATABASE_URL: z.url().startsWith("postgres"),
   REDIS_URL: z.url().startsWith("redis"),
   APP_ORIGIN: z.url().default("http://localhost:3001"),
-  BETTER_AUTH_SECRET: z.string().min(32),
   SMTP_HOST: z.string().min(1).default("127.0.0.1"),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
   SMTP_SECURE: z.stringbool().default(false),
@@ -63,6 +69,17 @@ const baseSchema = z.object({
 export const apiEnvironmentSchema = baseSchema.extend({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   API_HOST: z.string().min(1).default("127.0.0.1"),
+  /**
+   * The key sessions are signed with. On the API schema alone, for the same reason
+   * `CONTROL_HUB_UPDATE_CHECK` is on the worker's: the API is the only process that authenticates
+   * anybody, and a variable both schemas read would say otherwise.
+   *
+   * It was on the shared base until v0.4.2, which meant the worker refused to start without a key
+   * no line of it has ever read. No compose file gave it one, so the container died on boot and
+   * was restarted, release after release, taking the update check, the alerts, the connector
+   * schedules and the usage collection with it -- while `up -d --wait` reported a healthy stack.
+   */
+  BETTER_AUTH_SECRET: z.string().min(32),
   /**
    * The public origin an MCP client reaches this API at, and therefore the OAuth issuer.
    *
@@ -239,7 +256,7 @@ export function parseWorkerEnvironment(source: NodeJS.ProcessEnv): WorkerEnviron
           : {})
       }
     },
-    ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"]
+    ["DATABASE_URL", "REDIS_URL"]
   );
 }
 

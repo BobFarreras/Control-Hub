@@ -179,6 +179,38 @@ describe("parseApiEnvironment", () => {
 });
 
 /**
+ * What the worker needs to boot, and what it must not need.
+ *
+ * `BETTER_AUTH_SECRET` sat on the schema both processes extend, so the worker demanded a
+ * session-signing key it has never read: the name appears in no file outside this package and
+ * `apps/api`. No compose file gave the worker one, so the container died on boot and was
+ * restarted, from the first release onwards -- no update check, no alerts, no connector
+ * schedules, no usage collection, in development and in production alike.
+ *
+ * Nothing reported it. `docker compose up -d --wait` waits for a healthcheck, the worker has
+ * none, and a service with `restart: unless-stopped` looks the same starting as crash-looping.
+ * The fix is the direction it is because the worker authenticates nobody: giving it the key
+ * would widen where a session-signing secret lives to buy nothing.
+ */
+describe("what the worker needs to boot", () => {
+  const workerBase = { DATABASE_URL: base.DATABASE_URL, REDIS_URL: base.REDIS_URL };
+
+  it("starts without a session-signing key it never uses", () => {
+    const environment = parseWorkerEnvironment(workerBase);
+    expect(environment.CONTROL_HUB_UPDATE_CHECK).toBe(true);
+    expect(environment).not.toHaveProperty("BETTER_AUTH_SECRET");
+  });
+
+  it("does not offer the worker a secret file for a variable it does not read", () => {
+    expect(Object.keys(workerEnvironmentSchema.shape)).not.toContain("BETTER_AUTH_SECRET");
+  });
+
+  it("still refuses to start the API without one", () => {
+    expect(() => parseApiEnvironment(workerBase)).toThrow(/BETTER_AUTH_SECRET/);
+  });
+});
+
+/**
  * Every variable this package reads has to survive the task runner.
  *
  * Turbo runs tasks in strict env mode: a variable it was not told about is not passed on, and the

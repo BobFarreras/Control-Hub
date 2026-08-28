@@ -100,7 +100,13 @@ if (migrationDatabase !== runtimeDatabase)
  */
 function flagsDeclaredByCi() {
   const workflow = readFileSync(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
-  const job = workflow.slice(workflow.indexOf("authenticated-end-to-end:"));
+  // Bounded at the next job rather than running to the end of the file. `container-image` declares
+  // a list of its own now -- one flag, enough to prove the variable reaches a container at all --
+  // and an unbounded slice would fall through to it the day this job stopped naming its own,
+  // narrowing the gate to a single module without failing anything.
+  const rest = workflow.slice(workflow.indexOf("authenticated-end-to-end:"));
+  const next = rest.slice(1).search(/^ {2}[a-z][a-z0-9-]*:$/m);
+  const job = next === -1 ? rest : rest.slice(0, next + 1);
   const declared = /^\s*CONTROL_HUB_FLAGS:\s*(\S+)\s*$/m.exec(job);
   return declared
     ? declared[1]
