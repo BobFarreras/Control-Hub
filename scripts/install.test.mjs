@@ -526,7 +526,7 @@ test("the installer detects n8n and adds it to CONNECTOR_INTERNAL_ALLOWLIST", ()
   // Detecting it here means the operator does not have to know about CONNECTOR_INTERNAL_ALLOWLIST;
   // the installer adds it automatically.
   assert.match(install, /n8n_id=\$\(docker ps/, "install.sh does not detect n8n containers");
-  assert.match(install, /n8n_host=.*traefik/, "install.sh does not read n8n host from Traefik labels");
+  assert.match(install, /docker inspect.*traefik/, "install.sh does not read n8n host from Traefik labels");
   assert.match(install, /CONNECTOR_INTERNAL_ALLOWLIST=\$n8n_url/, "install.sh does not write n8n URL to .env");
 });
 
