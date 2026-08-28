@@ -109,7 +109,8 @@ function packageDirectory() {
     "compose.yaml",
     "compose.release.yaml",
     "compose.production.yaml",
-    "compose.production.smtp.yaml"
+    "compose.production.smtp.yaml",
+    "compose.production.connectors.yaml"
   ]) {
     writeFileSync(join(directory, file), "# fixture\n");
   }
@@ -484,6 +485,42 @@ test("the installer and the update command load the same relay overlay", () => {
   ]) {
     assert.match(source, /compose\.production\.smtp\.yaml/, `${name} never loads the relay overlay`);
     assert.match(source, /smtp_user/, `${name} does not decide the overlay from SMTP_USER`);
+  }
+});
+
+test("the installer and the update command load the same connector overlay", () => {
+  // Decided by `CONTROL_HUB_FLAGS` in both, and it has to be: the overlay ships in every package,
+  // so its presence on disk says nothing about whether this installation has connectors on. The
+  // same symmetry rule as the relay overlay applies: an overlay one script loads and the other
+  // does not is an installation that loses the key ring mount on its first update.
+  const update = read("deploy/update.sh");
+  for (const [name, source] of [
+    ["install.sh", install],
+    ["update.sh", update]
+  ]) {
+    assert.match(
+      source,
+      /compose\.production\.connectors\.yaml/,
+      `${name} never loads the connector overlay`
+    );
+    assert.match(source, /flag_active/, `${name} does not decide the overlay from the flags`);
+  }
+});
+
+test("the default modules include every flag the release knows", () => {
+  // Until this test, the default was `projects_and_time` and an operator who wanted more had to
+  // type the list by hand. A name misspelt is silently ignored, and the symptom -- a module that
+  // does not appear -- looks exactly like a module that was never turned on. The default is now
+  // every declared flag, so a fresh installation gets the whole product and an operator removes
+  // what they do not need rather than remembering what they do.
+  const flagsSource = read("packages/config/src/flags.ts");
+  const flagNames = [...flagsSource.matchAll(/^\s{2}(\w+):\s*\{$/gm)].map(([, name]) => name);
+  assert.ok(flagNames.length >= 10, `expected at least 10 flags, found ${flagNames.length}`);
+  const allFlagsLine = install.match(/all_flags="([^"]+)"/m);
+  assert.ok(allFlagsLine, "install.sh has no all_flags variable");
+  const allFlags = allFlagsLine[1].split(",");
+  for (const name of flagNames) {
+    assert.ok(allFlags.includes(name), `all_flags is missing «${name}» from flags.ts`);
   }
 });
 

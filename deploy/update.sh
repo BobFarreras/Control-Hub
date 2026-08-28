@@ -63,6 +63,16 @@ overlays="-f compose.yaml -f compose.release.yaml"
 smtp_user=$(sed -n 's/^SMTP_USER=//p' .env | head -1)
 [ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
 
+# The connector overlay mounts the key ring. Loaded when the flag is on, read from `.env` for the
+# same reason as `SMTP_USER` above. `install.sh` reaches the same decision from the variable it
+# has in memory; this one reads the file, and the two must agree or an update silently drops a
+# mount the installation needs.
+flag_active() {
+  case ",${2:-}," in *,"$1",*) return 0 ;; *) return 1 ;; esac
+}
+control_hub_flags=$(sed -n 's/^CONTROL_HUB_FLAGS=//p' .env | head -1)
+flag_active connectors "$control_hub_flags" && overlays="$overlays -f compose.production.connectors.yaml"
+
 # The routing, where install.sh could read the proxy well enough to write it. Presence is the signal
 # for this one, and it can be: nothing ships it, so it exists only where it was generated. Leaving it
 # out would take the installation off the proxy on the first update, silently -- the containers would

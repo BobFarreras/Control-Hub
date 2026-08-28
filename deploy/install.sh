@@ -269,8 +269,10 @@ say "Comma separated, and changeable later by editing CONTROL_HUB_FLAGS in .env.
 say "not a module is ignored, and the API says which at startup."
 say ""
 say "  The list this release knows is in docs/runbooks/installation.md."
+say "  The default is every module on; remove the ones this installation does not need."
 say ""
-ask "Modules" "$(existing CONTROL_HUB_FLAGS projects_and_time)"
+all_flags="projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp"
+ask "Modules" "$(existing CONTROL_HUB_FLAGS "$all_flags")"
 flags="$reply"
 remember "Modules:       ${flags:-none}"
 
@@ -657,6 +659,15 @@ fi
 
 # --- starting -------------------------------------------------------------------------------------
 
+# Whether a flag name is in a comma-separated list. The same list the API parses; a name that is
+# not in the registry is ignored there and is ignored here for the same reason. Used to decide
+# which overlays join the invocation: an overlay that names a secret the installation has no
+# module for is a mount that nothing reads, and one that is needed and missing is a module that
+# cannot seal or open credentials.
+flag_active() {
+  case ",${2:-}," in *,"$1",*) return 0 ;; *) return 1 ;; esac
+}
+
 # The relay overlay joins the invocation only when there is a credential to mount. It ships in
 # every package, so its presence on disk says nothing; what decides is `SMTP_USER`, the half that
 # lives in `.env`. `deploy/update.sh` reads the same variable to reach the same decision, and
@@ -664,6 +675,10 @@ fi
 # not is an installation that silently loses a mount on its first update.
 overlays="-f compose.yaml -f compose.release.yaml -f compose.production.yaml"
 [ -n "$smtp_user" ] && overlays="$overlays -f compose.production.smtp.yaml"
+# The connector overlay mounts the key ring the installer generated above. Loaded when the flag is
+# on, which is the default; an installation that turned connectors off would not need it, but the
+# ring is generated anyway so that turning the module on later does not require a second pass.
+flag_active connectors "$flags" && overlays="$overlays -f compose.production.connectors.yaml"
 # Presence is the signal for this one, and it can be: it is written by this script rather than
 # shipped, so it exists only where the proxy was read successfully.
 [ -f compose.proxy.yaml ] && overlays="$overlays -f compose.proxy.yaml"
@@ -724,6 +739,12 @@ say "  - Modules that are off: everything not in «${flags:-none}». Turn one on
 say "    CONTROL_HUB_FLAGS in .env and starting the stack again."
 say "  - No connector is configured. Mail, calendar and the rest are set up from the panel by"
 say "    the Owner, after signing in."
+if flag_active connector_oauth "$flags"; then
+  say "  - connector_oauth is on, but no OAuth credentials are configured. Register apps at"
+  say "    Google Cloud and Azure AD, then set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,"
+  say "    MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET in .env (or as secret files)"
+  say "    and load compose.production.google.yaml / compose.production.microsoft.yaml overlays."
+fi
 say "  - No backup exists yet. The first one is taken by ./update.sh, which backs up before it"
 say "    changes anything; nothing here has taken one because there was nothing to lose."
 say "  - Nothing copies $backup_dir off this machine. That one is still yours."
