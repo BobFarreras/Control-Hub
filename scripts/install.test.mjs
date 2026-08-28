@@ -498,11 +498,7 @@ test("the installer and the update command load the same connector overlay", () 
     ["install.sh", install],
     ["update.sh", update]
   ]) {
-    assert.match(
-      source,
-      /compose\.production\.connectors\.yaml/,
-      `${name} never loads the connector overlay`
-    );
+    assert.match(source, /compose\.production\.connectors\.yaml/, `${name} never loads the connector overlay`);
     assert.match(source, /flag_active/, `${name} does not decide the overlay from the flags`);
   }
 });
