@@ -548,6 +548,35 @@ jobs:
       - name: Start the stack and wait for it to be healthy
         run: docker compose up -d --wait
 
+      - name: Check nothing came back up on its own
+        # `up -d --wait` waits on healthchecks, and a service without one only has to reach
+        # `running` -- which a container that dies and is restarted does, over and over. The worker
+        # has no healthcheck, demanded a BETTER_AUTH_SECRET no compose file gave it and no line of
+        # it reads, and crash-looped from the first release: no update check, no alerts, no
+        # connector schedules, no usage collection, in every installation there has ever been.
+        # Every check in this job passed throughout, because none of them asked.
+        #
+        # A restart count above zero a few seconds in means the process is not surviving boot. The
+        # pause is what makes that true rather than racy: a loop that fast has restarted by then.
+        run: |
+          set -euo pipefail
+          sleep 15
+          failed=no
+          for id in $(docker compose ps -aq); do
+            name=$(docker inspect -f '{{.Name}}' "$id")
+            restarts=$(docker inspect -f '{{.RestartCount}}' "$id")
+            state=$(docker inspect -f '{{.State.Status}}' "$id")
+            exited=$(docker inspect -f '{{.State.ExitCode}}' "$id")
+            echo "$name: $state, exit $exited, $restarts restart(s)"
+            # `migrate` is meant to run once and exit 0; anything else must still be running.
+            case "$name:$state:$exited" in
+              *:exited:0) ;;
+              *:running:*) [ "$restarts" -eq 0 ] || failed=yes ;;
+              *) failed=yes ;;
+            esac
+          done
+          [ "$failed" = no ] || { echo "a service is not surviving its own boot"; exit 1; }
+
       - name: Check the running services answer
         run: |
           set -euo pipefail

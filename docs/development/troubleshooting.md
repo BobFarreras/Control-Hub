@@ -96,6 +96,31 @@ que no n'ha triat cap.
 `scripts/install.test.mjs` exigeix que **cada** nom que `install.sh` escriu a `.env` l'anomeni
 algun fitxer de compose o consti a la llista del que es llegeix nomes a la maquina.
 
+### No arriba mai l'avis de versio nova, i els connectors no se sincronitzen sols
+
+**Simptoma.** El banner d'actualitzacio no apareix encara que hi hagi una versio publicada, cap
+alerta no s'envia, i els connectors nomes fan res quan algu els executa a ma. L'stack sembla sa:
+`docker compose up -d --wait` va acabar be i la web i l'API responen.
+
+**Causa.** El `worker` no esta corrent. Mira-t'ho amb la columna d'estat i el comptador de
+reinicis, no amb `ps` a seques:
+
+```sh
+docker compose ps -a
+docker inspect -f '{{.Name}} {{.State.Status}} {{.RestartCount}}' $(docker compose ps -aq)
+```
+
+Un `RestartCount` que puja vol dir que el proces no sobreviu a l'arrencada. Fins a la v0.4.2 el
+worker exigia `BETTER_AUTH_SECRET` --heretat del schema que comparteix amb l'API-- i cap fitxer de
+compose li'n donava cap, aixi que moria en bucle a totes les instal·lacions que hi ha hagut mai.
+`--wait` no ho veia perque el worker no te healthcheck, i amb `restart: unless-stopped` un servei
+que ressuscita cada dos segons te el mateix aspecte que un que funciona.
+
+**Solucio.** Actualitzar a la v0.4.2 o posterior. El worker ja no demana una clau que no llegeix
+--no autentica ningu-- i CI comprova que cap contenidor s'hagi reiniciat sol despres d'aixecar
+l'stack. Si l'estat es un altre, el log del contenidor diu quina variable falta:
+`docker compose logs worker | head -40`.
+
 ### `Applied migration changed` sense que ningu hagi tocat la migracio
 
 **Causa.** Els checksums es calculaven sobre els bytes crus, i un checkout Windows i un Linux
