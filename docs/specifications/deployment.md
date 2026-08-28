@@ -368,7 +368,7 @@ configurar el correu» en «la instal·lacio no te amo».
 
 Aixi que ara pregunta l'usuari i, si n'hi ha, la contrasenya. **L'invariant 8 es mante i no
 s'afluixa**: la resposta no s'ecoa a la pantalla, no passa per cap linia d'ordres i no arriba a
-`.env` --va a `smtp_password`, un sete fitxer `0400` de `root`, i el contenidor la rep com
+`.env` --va a `smtp_password`, un sete fitxer `0400` d'uid 1000, i el contenidor la rep com
 `SMTP_PASSWORD_FILE` com qualsevol altre secret. La diferencia amb la de l'Owner es que aquella
 l'instal·lador se la pot inventar i aquesta no. Sense usuari no hi ha fitxer i el transport no
 autentica, que es el cas de desenvolupament i el d'un relay a la mateixa xarxa.
@@ -403,6 +403,53 @@ Configurar el seu propi servei perque un proxy el trobi es feina seva; tocar el 
 
 `update.sh` carrega `compose.proxy.yaml` si hi es, perque altrament la primera actualitzacio
 despublicaria la instal·lacio en silenci.
+
+### El que P9 en va concretar
+
+P8 va sortir de la primera instal·lacio real; P9 surt de la primera que va **arrencar**. Amb
+l'instal·lador ja adaptat a la maquina, la `v0.4.1` va aixecar-se i despres va fallar quatre
+vegades seguides, i les quatre tenien la mateixa forma: **res no havia executat mai l'stack
+composat de produccio**. Els E2E arrenquen les aplicacions a `localhost`, on `127.0.0.1:4000` es
+l'API de debo i on les variables hi son perque les posa el propi job. La feina que fan `compose`,
+`install.sh` i les imatges publicades no la comprovava ningu, i la instal·lacio d'un client va ser
+la primera prova d'integracio d'aquell cami.
+
+**Compose ignora la propietat que li demanes per un secret.** `uid`, `gid` i `mode` son atributs de
+Swarm; Compose els avisa i els descarta a cada execucio, i un secret declarat amb `file:` es un
+bind mount que arriba amb la propietat que te al host. Els vint-i-sis atributs escampats pels
+fitxers de compose llegien com si la questio estigues resolta --i `installation.md` ja advertia que
+no ho estava, cosa que ningu no va creure fins que va passar. Els set fitxers eren de `root`,
+PostgreSQL inicialitza com a uid 70, i cap contenidor podia obrir el seu. Ara els atributs no hi
+son, `install.sh` fa el `chown` a cada execucio --no nomes quan crea el fitxer, o una instal·lacio
+existent no es podria reparar tornant-lo a executar-- i una prova impedeix que tornin.
+
+**Una destinacio de rewrite es grava quan es compila.** `apps/web/next.config.ts` reenvia `/api` i
+`/health` cap a `API_INTERNAL_URL`, i el `pnpm build` del Dockerfile corria sense aquella variable:
+la imatge publicada portava a dins `http://127.0.0.1:4000` --ella mateixa-- i responia
+`Internal Server Error` a tota peticio del navegador cap a `/api`, l'enllac de verificacio del
+primer Owner inclos. El valor en temps d'execucio arriba a `apps/web/src/lib/api.ts`, que es un
+cami diferent, aixi que el servidor funcionava i el navegador no.
+
+**Una variable que cap fitxer de compose anomena no arriba enlloc.** `CONTROL_HUB_FLAGS` i
+`MCP_ISSUER` s'escrivien a `.env`, es reportaven a la pantalla final i no sortien mai d'alli: el
+`--env-file` interpola el fitxer, no exporta res. Una instal·lacio que havia demanat un modul
+arrencava amb tots apagats, que es indistingible d'una que no n'ha demanat cap.
+`NEXT_PUBLIC_DEFAULT_LOCALE` era pitjor encara: no el llegia ningu, ni tan sols al codi.
+
+I la guarda, que es el que fa que P9 no sigui nomes quatre correccions. Dues, perque cap de les
+dues sola hauria vist les quatre:
+
+- **Estatica.** Cada nom que `install.sh` escriu a `.env` l'ha d'anomenar algun fitxer de compose,
+  o constar amb el seu motiu a la llista del que es llegeix nomes a la maquina. I cap fitxer de
+  compose pot declarar `uid`, `gid` o `mode` en un secret.
+- **Executada.** El job `Container image` ja aixecava l'stack; ara tambe demana al contenidor `web`
+  una ruta `/api` --l'unica peticio que distingeix una imatge ben construida d'una que respondra
+  500 a tothom-- comprova que els moduls escollits han arribat als tres serveis que els llegeixen,
+  i torna a aixecar-ho tot amb `compose.production.yaml` i els secrets com a fitxers muntats amb la
+  propietat que `install.sh` els dona.
+
+Aixo tanca la verificacio que P2 va deixar oberta: aixecar l'stack de produccio de debo, encara que
+sigui amb imatges construides al moment en comptes de descarregades per digest.
 
 ## Traefik i els limits de compartir maquina
 
@@ -453,6 +500,11 @@ limits de recursos als serveis; el dia que molesti, la sortida ja esta escrita a
   sete secret muntat, ports triats entre els que estan lliures i conservats entre execucions, i la
   configuracio del proxy escrita segons el proxy que hi ha de debo --o, si no es pot determinar, dit
   en comptes d'endevinat. Surt de la primera instal·lacio real, no d'una idea.
+- **P9** — Els quatre defectes que va destapar la primera instal·lacio que va arrencar --propietat
+  dels secrets, adreca interna de l'API gravada a la imatge, moduls i emissor MCP que no sortien de
+  `.env`-- i, sobretot, les dues guardes que els haurien vist: la comprovacio estatica del que
+  `.env` promet i el que el compose entrega, i un CI que aixeca l'stack de produccio i li demana
+  una ruta `/api` a traves del contenidor `web`. Tanca la verificacio que P2 va deixar oberta.
 
 Cada increment ha de deixar el sistema instal·lable. P2 sense P3 ja te valor: hi ha imatges que
 algu pot provar a ma.

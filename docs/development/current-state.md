@@ -76,16 +76,57 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El seguent pas es instal·lar la `v0.4.1` a la VPS**, darrere el Traefik que ja hi corre, seguint
-`docs/runbooks/installation.md`. La `v0.4.0` va ser la primera etiqueta que va passar per la
-canonada, pero el seu instal·lador no arrenca en aquella maquina; la `v0.4.1` es la que si.
+**El seguent pas es publicar la `v0.4.2`** i tornar la instal·lacio de la VPS a un paquet publicat.
+Ara corre amb pedacos fets a ma que no son a cap release, i mentre hi corri no se sap si funciona
+la versio o nomes aquella maquina.
+
+**La `v0.4.1` es va instal·lar el 28 d'agost de 2026** a la VPS, darrere el Traefik que ja hi
+corria, amb Resend com a relay i el certificat emes per `myresolver` sense copiar cap fitxer
+enlloc. Tot el que P8 havia previst va passar tal com deia --ports, etiquetes, proxy--, i despres
+van sortir **quatre defectes que P8 no podia haver vist**, perque no son de l'instal·lador sino del
+que l'instal·lador aixeca. Tots quatre tenen la mateixa forma: **res no havia executat mai l'stack
+composat de produccio**. Els E2E corren les aplicacions a `localhost`, on `127.0.0.1:4000` es l'API
+de debo i on les variables hi son perque les posa el propi job. La instal·lacio d'aquell dia va ser
+la primera prova d'integracio d'aquell cami, i per aixo en van sortir quatre de cop.
+
+- **Compose ignora `uid`, `gid` i `mode` en un secret** --son atributs de Swarm, i ho avisa a cada
+  execucio-- aixi que un secret arriba amb la propietat que te al host. Els set eren de `root`,
+  PostgreSQL inicialitza com a uid 70, i cap contenidor podia obrir el seu. Els vint-i-sis atributs
+  escampats pels fitxers de compose feien semblar que allo estava decidit; `installation.md` ja
+  advertia que no.
+- **La destinacio d'un rewrite de Next es grava quan es compila.** El `pnpm build` del Dockerfile
+  corria sense `API_INTERNAL_URL`, o sigui que la imatge portava `http://127.0.0.1:4000` --ella
+  mateixa-- i tota peticio del navegador cap a `/api` responia `Internal Server Error`, incloent
+  l'enllac de verificacio del primer Owner. El valor en execucio arriba a `lib/api.ts`, que es un
+  altre cami: el servidor funcionava i el navegador no.
+- **`CONTROL_HUB_FLAGS` no l'anomenava cap fitxer de compose**, i el `--env-file` interpola pero no
+  exporta. Una instal·lacio que havia demanat `projects_and_time` arrencava amb tots els moduls
+  apagats i un menu lateral buit. **`MCP_ISSUER`** tenia el mateix forat, adormit.
+- **`NEXT_PUBLIC_DEFAULT_LOCALE` no el llegia ningu**, ni tan sols al codi: `defaultLocale` es una
+  constant de `packages/i18n`. Escrit en cinc llocs i honrat en cap.
+
+**P9 tanca els quatre, i sobretot afegeix les guardes que els haurien vist**, que es l'unica part
+que impedeix el cinque: una comprovacio estatica que exigeix que cada nom que `install.sh` escriu a
+`.env` l'anomeni algun fitxer de compose --o consti amb el seu motiu com a llegit nomes a la
+maquina-- i que cap compose declari `uid`, `gid` o `mode`; i un `Container image` que demana al
+contenidor `web` una ruta `/api`, comprova que els moduls escollits han arribat als tres serveis
+que els llegeixen, i torna a aixecar l'stack amb `compose.production.yaml` i els secrets com a
+fitxers muntats amb la propietat que `install.sh` els dona. Aixo tanca la verificacio que P2 va
+deixar oberta.
+
+**La instal·lacio de la VPS corre amb dos pedacos fets a ma**, cap dels dos a cap release: el
+`chown` dels set fitxers de `/etc/control-hub/secrets` --imprescindible, i que la `v0.4.2` fara
+sola-- i un `compose.apiroute.yaml` que encamina `/api` cap al contenidor `api` per Traefik per
+esquivar el rewrite gravat. El segon s'ha d'**esborrar** en actualitzar, no arrossegar: `update.sh`
+no el carrega, o sigui que una actualitzacio abans de la `v0.4.2` deixaria la instal·lacio sense
+l'un i sense l'altre.
 
 **P8 fusionat a `develop` el 28 d'agost de 2026** (PR #55, `e6823bc`). Tres defectes, tots amb la
 mateixa forma --l'instal·lador donava per suposat l'estat de la maquina en comptes de mirar-lo--,
 en tres commits:
 
 - **El relay SMTP no es podia autenticar.** `SMTP_USER` i `SMTP_PASSWORD`, totes dues o cap, amb la
-  contrasenya com a sete fitxer `0400` de `root` i un overlay propi,
+  contrasenya com a sete fitxer `0400` --d'uid 1000 des de la `v0.4.2`-- i un overlay propi,
   `compose.production.smtp.yaml`. Sense aixo cap proveidor transaccional accepta el correu, i el
   primer que rebutjaria es l'enllac amb que l'Owner entra al seu compte.
 - **Els ports anaven escrits a foc.** `POSTGRES_PORT=5432` xocava amb el `supabase-pooler`. Ara
@@ -99,11 +140,11 @@ en tres commits:
 Verificat en un contenidor Linux amb el 5432 ocupat i un Traefik d'etiquetes simulat: tria el 5433,
 escriu les etiquetes amb el resolver del vei i deixa els altres tres ports on eren.
 
-**El que queda per fer a la maquina**, i en aquest ordre: el registre DNS del subdomini cap a la
-VPS --el TTL es de quatre hores i l'instal·lador comprova que resolgui--, el domini del remitent
-verificat amb SPF i DKIM al proveidor de correu i una API key seva, i llavors el recorregut de
-`installation.md`. El proveidor triat es Resend, on l'usuari del relay es literalment `resend` i la
-contrasenya es l'API key; res del codi no en depen.
+**El que calia fer a la maquina ja esta fet**: el registre DNS del subdomini, el domini del
+remitent verificat amb SPF i DKIM, i l'API key. El proveidor triat es Resend, on l'usuari del relay
+es literalment `resend` i la contrasenya es l'API key; res del codi no en depen. El correu funciona
+d'extrem a extrem --verificacio i restabliment de contrasenya arriben-- i el lloc respon per HTTPS
+amb certificat valid.
 
 Dues coses que ningu no mira i haurien de mirar-se, cap de les dues bloquejant: `shellcheck` no
 corre ni a CI ni enlloc, i `install.sh` i `update.sh` son el codi mes depenent de la maquina de
