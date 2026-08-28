@@ -843,3 +843,20 @@ Windows. Git retira el registre del worktree abans d'acabar de suprimir tots els
 `node_modules`, `.next*`, `.turbo*`, `dist`, coverage i reports. Tambe retira el `.env` i el
 manifest `.agent` locals. Git continua sent qui elimina tot el codi versionat. No s'utilitza un
 glob ni es toca cap directori pare.
+
+### Una prova d'integracio falla amb `append-only` a la neteja, i al segon intent passa
+
+**Simptoma.** Un `afterAll` peta amb `support history is append-only` (o el disparador equivalent
+d'una altra taula) mentre les proves del mateix fitxer passen totes. Es reexecuta la mateixa feina
+sense canviar res i surt verda.
+
+**Causa.** `alter table ... disable trigger` es DDL: afecta tota la base de dades, no la sessio que
+l'executa. Turbo executa `test:integration` de catorze paquets en paral·lel contra una sola
+`TEST_DATABASE_URL`, aixi que el `finally` d'una altra suite pot tornar a apujar el disparador entre
+el `disable` d'aquesta i el seu `delete`. Nomes pot produir vermells falsos --un disparador reactivat
+fa fallar una neteja, no pot fer que una assercio d'append-only passi en silenci--, pero un CI que
+falla per atzar ensenya a reexecutar sense llegir.
+
+**Solucio.** Cap suite ho fa ja: es fa servir `set session_replication_role = 'replica'` i
+`'origin'` sobre la connexio d'administracio, que val nomes per a aquella sessio. Ho guarda
+`scripts/integration-teardown.test.mjs`, que falla si algu hi torna.

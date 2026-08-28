@@ -42,11 +42,11 @@ suite("PostgresCredentialCatalogRepository", () => {
   });
 
   afterAll(async () => {
-    await admin`alter table credential_catalog_events disable trigger credential_catalog_events_immutable`;
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     } finally {
-      await admin`alter table credential_catalog_events enable trigger credential_catalog_events_immutable`;
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from "user" where id = ${userId}`;
     await database.end({ timeout: 5 });

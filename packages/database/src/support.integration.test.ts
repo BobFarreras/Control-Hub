@@ -42,9 +42,7 @@ suite("support schema", () => {
   });
 
   afterAll(async () => {
-    for (const table of ["ticket_messages", "ticket_events", "sla_targets"]) {
-      await admin.unsafe(`alter table ${table} disable trigger ${table}_append_only`);
-    }
+    await admin`set session_replication_role = 'replica'`;
     try {
       await admin`delete from ticket_messages where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from ticket_events where tenant_id in (${tenantA}, ${tenantB})`;
@@ -52,9 +50,7 @@ suite("support schema", () => {
       await admin`delete from tickets where tenant_id in (${tenantA}, ${tenantB})`;
       await admin`delete from customers where tenant_id in (${tenantA}, ${tenantB})`;
     } finally {
-      for (const table of ["ticket_messages", "ticket_events", "sla_targets"]) {
-        await admin.unsafe(`alter table ${table} enable trigger ${table}_append_only`);
-      }
+      await admin`set session_replication_role = 'origin'`;
     }
     await admin`delete from tenants where id in (${tenantA}, ${tenantB})`;
     await database.end({ timeout: 5 });
