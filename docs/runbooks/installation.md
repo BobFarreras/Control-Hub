@@ -1,11 +1,11 @@
 # Runbook d'instal·lacio de Control Hub
 
-> **El que encara no es pot fer.** Aquest runbook ja no descriu passos inexistents: l'instal·lador,
-> el comandament d'actualitzacio, les imatges per digest i la comprovacio de versions existeixen i
-> tenen proves. El que falta es d'una altra mena: **ningu ha publicat encara cap versio**, o sigui
-> que no hi ha cap `release.json` a llegir, i el reverse proxy no viu en aquest repositori --
-> l'instal·lador escriu la configuracio de Traefik i la copia la persona que instal·la.
-> `docs/specifications/deployment.md` diu per que.
+> **On es aixo.** L'instal·lador, el comandament d'actualitzacio, les imatges per digest i la
+> comprovacio de versions existeixen i tenen proves, i la `v0.4.0` es la primera etiqueta que la
+> canonada va publicar de debo: hi ha un `release.json` a llegir. **Encara no s'ha instal·lat
+> enlloc.** El reverse proxy no viu en aquest repositori i no s'edita mai: l'instal·lador mira el
+> que ja corre i, o be escriu les etiquetes que aquell proxy llegeix sol, o be deixa un fitxer que
+> copia la persona que instal·la. `docs/specifications/deployment.md` diu per que.
 
 ## Model d'alta
 
