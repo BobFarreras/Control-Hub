@@ -452,18 +452,16 @@ done
 # told to add it manually.
 n8n_url=""
 if command -v docker > /dev/null 2>&1; then
-  n8n_id=$(docker ps --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -i n8n | head -1 | cut -d' ' -f1 || true)
+  n8n_id=$(docker ps 2>/dev/null | grep -i n8n | head -1 | awk '{print $1}')
   if [ -n "$n8n_id" ]; then
     # Traefik labels are the preferred source: they name the public URL the operator configured.
-    n8n_host=$(docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
-{{end}}' "$n8n_id" 2>/dev/null | sed -n 's/^traefik\.http\.routers\..*\.rule=Host(\(`[^`]*`\)).*$/\1/p' | head -1 | tr -d '`' || true)
-    if [ -n "$n8n_host" ]; then
-      n8n_url="https://$n8n_host"
+    n8n_labels=$(docker inspect "$n8n_id" 2>/dev/null | grep -i 'traefik.http.routers.*.rule=Host(' | head -1 | sed 's/.*Host(\(`[^`]*`\)).*/\1/' | tr -d '`')
+    if [ -n "$n8n_labels" ]; then
+      n8n_url="https://$n8n_labels"
     else
       # No Traefik labels: fall back to published ports. This is less reliable because it does not
       # know whether the port is reachable from outside, but it is better than nothing.
-      n8n_port=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{end}}
-{{end}}' "$n8n_id" 2>/dev/null | grep -v '^$' | head -1 || true)
+      n8n_port=$(docker port "$n8n_id" 2>/dev/null | head -1 | sed 's/.*://')
       if [ -n "$n8n_port" ]; then
         n8n_url="http://localhost:$n8n_port"
         say ""

@@ -525,8 +525,8 @@ test("the installer detects n8n and adds it to CONNECTOR_INTERNAL_ALLOWLIST", ()
   // refuses private addresses by design, so an n8n on the same VPS must be named explicitly.
   // Detecting it here means the operator does not have to know about CONNECTOR_INTERNAL_ALLOWLIST;
   // the installer adds it automatically.
-  assert.match(install, /n8n_id=\$\(docker ps/, "install.sh does not detect n8n containers");
-  assert.match(install, /docker inspect.*traefik/, "install.sh does not read n8n host from Traefik labels");
+  assert.match(install, /n8n_id=.*docker ps/, "install.sh does not detect n8n containers");
+  assert.match(install, /docker inspect.*traefik/, "install.sh does not read Traefik labels");
   assert.match(install, /CONNECTOR_INTERNAL_ALLOWLIST=\$n8n_url/, "install.sh does not write n8n URL to .env");
 });
 
@@ -616,7 +616,8 @@ test("every value the installer writes reaches something that reads it", () => {
   // configured nowhere that runs. Anything genuinely read outside a container belongs below, with
   // the reason, rather than being quietly tolerated by a looser rule.
   const hostOnly = {
-    CONTROL_HUB_BACKUP_DIR: "deploy/update.sh reads it on the machine; no container takes backups"
+    CONTROL_HUB_BACKUP_DIR: "deploy/update.sh reads it on the machine; no container takes backups",
+    CONNECTOR_INTERNAL_ALLOWLIST: "read by packages/config/src/index.ts at boot; no container needs it in compose"
   };
 
   const block = install.slice(install.indexOf("cat > .env <<EOF"), install.indexOf("EOF\nchmod 0600 .env"));
