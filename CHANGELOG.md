@@ -4,6 +4,35 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.4.1 - 2026-08-28
+
+La versio que fa que l'instal·lador arrenqui en una maquina de debo. Preparant la primera
+instal·lacio real van sortir tres coses, totes amb la mateixa forma: **donava per suposat l'estat
+de la maquina en comptes de mirar-lo.**
+
+### Instal·lacio
+
+- **El relay SMTP es pot autenticar.** `SMTP_USER` i `SMTP_PASSWORD`, totes dues o cap.
+  L'instal·lador demana l'usuari i la contrasenya del relay, la contrasenya s'escriu amb l'eco
+  apagat i acaba en un sete fitxer `0400` de `root`, muntat a `api` i `bootstrap` per
+  `compose.production.smtp.yaml`. No passa mai per `.env` ni per cap historial. Sense aixo cap
+  proveidor transaccional accepta el correu, i el primer missatge que rebutjaria es l'enllac amb
+  que el primer Owner entra al seu propi compte. Deixar l'usuari en blanc segueix sent la manera
+  de configurar un relay sense credencials.
+- **Els ports es trien mirant quins son lliures.** Anaven escrits a foc, i el 5432 xoca amb
+  qualsevol PostgreSQL que ja corri a la maquina. Ara mira que hi ha escoltant abans d'escriure
+  `.env`, agafa el seguent lliure i ho diu. Una segona execucio conserva els que ja hi havia.
+- **La configuracio del reverse proxy descriu el proxy que hi ha.** Abans escrivia sempre el
+  mateix `traefik-control-hub.yaml`, amb un resolver que es diu `letsencrypt` i un servei a
+  `127.0.0.1`; en una VPS amb Traefik llegint etiquetes de Docker les dues coses son falses i el
+  fitxer no te on anar. Ara inspecciona el proxy que ja corre i, o be escriu `compose.proxy.yaml`
+  amb les etiquetes reals --resolver, entrypoint i xarxa llegits d'aquella maquina--, o be escriu
+  el fitxer amb els valors reals per a un provider de fitxers, o be escriu el generic **dient**
+  **quins valors son una suposicio**. No s'inventa mai un nom de resolver: un d'inventat es una
+  configuracio que sembla acabada i no treu mai cap certificat.
+- `update.sh` carrega els dos overlays nous quan toca. Sense aixo, la primera actualitzacio
+  trauria la instal·lacio del proxy sense deixar res a cap log.
+
 ## v0.4.0 - 2026-08-27
 
 Una versio que es publica, s'instal·la i s'actualitza sola, i la frontera per on un agent extern
