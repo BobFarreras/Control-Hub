@@ -265,10 +265,9 @@ fi
 # CONNECTOR_INTERNAL_ALLOWLIST; the update adds it.
 current_allowlist=$(sed -n 's/^CONNECTOR_INTERNAL_ALLOWLIST=//p' .env | head -1)
 if [ -z "$current_allowlist" ] && command -v docker > /dev/null 2>&1; then
-  n8n_id=$(docker ps --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -i n8n | head -1 | cut -d' ' -f1 || true)
+  n8n_id=$(docker ps 2>/dev/null | grep -i n8n | head -1 | awk '{print $1}')
   if [ -n "$n8n_id" ]; then
-    n8n_host=$(docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
-{{end}}' "$n8n_id" 2>/dev/null | sed -n 's/^traefik\.http\.routers\..*\.rule=Host(\(`[^`]*`\)).*$/\1/p' | head -1 | tr -d '`' || true)
+    n8n_host=$(docker inspect "$n8n_id" 2>/dev/null | grep -i 'traefik.http.routers.*.rule=Host(' | head -1 | sed 's/.*Host(\(`[^`]*`\)).*/\1/' | tr -d '`')
     if [ -n "$n8n_host" ]; then
       n8n_url="https://$n8n_host"
       say ""

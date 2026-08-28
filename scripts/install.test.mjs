@@ -520,6 +520,45 @@ test("the default modules include every flag the release knows", () => {
   }
 });
 
+test("the installer detects n8n and adds it to CONNECTOR_INTERNAL_ALLOWLIST", () => {
+  // When an n8n is running on the same machine, connectors need to reach it. The egress allowlist
+  // refuses private addresses by design, so an n8n on the same VPS must be named explicitly.
+  // Detecting it here means the operator does not have to know about CONNECTOR_INTERNAL_ALLOWLIST;
+  // the installer adds it automatically.
+  assert.match(install, /n8n_id=.*docker ps/, "install.sh does not detect n8n containers");
+  assert.match(install, /docker inspect.*traefik/, "install.sh does not read Traefik labels");
+  assert.match(install, /CONNECTOR_INTERNAL_ALLOWLIST=\$n8n_url/, "install.sh does not write n8n URL to .env");
+});
+
+test("the update command upgrades CONTROL_HUB_FLAGS from the old default", () => {
+  // When the release adds new modules to the default set, an installation that was created with an
+  // older installer has a `.env` that names only the old default. This script respects the
+  // operator's choices, but a `.env` that says `projects_and_time` alone is not a choice -- it is
+  // the default from before the installer offered all ten modules. Updating such a `.env` to the
+  // new default is not overriding the operator; it is completing a configuration that was made
+  // with incomplete information.
+  const update = read("deploy/update.sh");
+  assert.match(update, /current_flags=.*CONTROL_HUB_FLAGS/, "update.sh does not read CONTROL_HUB_FLAGS");
+  assert.match(update, /projects_and_time/, "update.sh does not check for the old default");
+  assert.match(update, /all_flags=.*projects_and_time.*attendance/, "update.sh does not define the new default");
+  assert.match(update, /sed.*CONTROL_HUB_FLAGS/, "update.sh does not update CONTROL_HUB_FLAGS");
+});
+
+test("the update command detects n8n and adds it to CONNECTOR_INTERNAL_ALLOWLIST", () => {
+  // When an n8n is running on the same machine and CONNECTOR_INTERNAL_ALLOWLIST is empty,
+  // connectors cannot reach it. The egress allowlist refuses private addresses by design, so an
+  // n8n on the same VPS must be named explicitly. Detecting it here means the operator does not
+  // have to know about CONNECTOR_INTERNAL_ALLOWLIST; the update adds it.
+  const update = read("deploy/update.sh");
+  assert.match(
+    update,
+    /current_allowlist=.*CONNECTOR_INTERNAL_ALLOWLIST/,
+    "update.sh does not read CONNECTOR_INTERNAL_ALLOWLIST"
+  );
+  assert.match(update, /n8n_id=\$\(docker ps/, "update.sh does not detect n8n containers");
+  assert.match(update, /sed.*CONNECTOR_INTERNAL_ALLOWLIST/, "update.sh does not update CONNECTOR_INTERNAL_ALLOWLIST");
+});
+
 test("each secret is owned by the user that reads it, and by nobody else", () => {
   // Read off the script rather than off the filesystem: the test suite does not run as root, and
   // the tests run on Windows too, where a mode is not a mode. The mutation that matters is somebody
@@ -577,7 +616,8 @@ test("every value the installer writes reaches something that reads it", () => {
   // configured nowhere that runs. Anything genuinely read outside a container belongs below, with
   // the reason, rather than being quietly tolerated by a looser rule.
   const hostOnly = {
-    CONTROL_HUB_BACKUP_DIR: "deploy/update.sh reads it on the machine; no container takes backups"
+    CONTROL_HUB_BACKUP_DIR: "deploy/update.sh reads it on the machine; no container takes backups",
+    CONNECTOR_INTERNAL_ALLOWLIST: "read by packages/config/src/index.ts at boot; no container needs it in compose"
   };
 
   const block = install.slice(install.indexOf("cat > .env <<EOF"), install.indexOf("EOF\nchmod 0600 .env"));
