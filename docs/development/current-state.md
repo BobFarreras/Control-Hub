@@ -76,9 +76,21 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El seguent pas es publicar la `v0.4.2`** i tornar la instal·lacio de la VPS a un paquet publicat.
-Ara corre amb pedacos fets a ma que no son a cap release, i mentre hi corri no se sap si funciona
-la versio o nomes aquella maquina.
+**El seguent pas es actualitzar la VPS a la `v0.4.2`**, que ja esta publicada. Aquella maquina
+corre amb pedacos fets a ma que no son a cap release, i mentre hi corri no se sap si funciona la
+versio o nomes aquella maquina.
+
+Es **la primera actualitzacio de debo**, amb dades a dins, que es el que
+`docs/specifications/deployment.md` diu que es la prova que compta: instal·lar de zero funciona
+sempre. Cal agafar el `update.sh` nou primer --el que hi ha instal·lat es de la `v0.4.1` i nomes
+sap llegir `release.env`-- i esborrar `compose.apiroute.yaml`, que la `v0.4.2` fa innecessari. Les
+ordres exactes son a `docs/runbooks/installation.md`, seccio «Actualitzacio».
+
+I despres queda **una cosa que aquesta versio no pot demostrar**: el banner d'actualitzacio. Amb la
+`v0.4.2` instal·lada el worker existira per primer cop i preguntara --a la seguent frontera de
+00:00 UTC, no immediatament: BullMQ programa `every: 24h` a la seguent frontera de 24 hores des de
+l'epoch-- pero la resposta sera «esteu al dia». El banner nomes es pot veure quan existeixi una
+`v0.4.3`.
 
 **La `v0.4.1` es va instal·lar el 28 d'agost de 2026** a la VPS, darrere el Traefik que ja hi
 corria, amb Resend com a relay i el certificat emes per `myresolver` sense copiar cap fitxer
