@@ -76,14 +76,13 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El seguent pas es instal·lar a la VPS**, darrere el Traefik que ja hi corre, seguint
-`docs/runbooks/installation.md`. La `v0.4.0` es la primera etiqueta que va passar per la canonada,
-pero l'instal·lador d'aquella versio no arrenca en aquella maquina: P8 arregla les tres coses que
-ho impedien i encara no esta fusionat.
+**El seguent pas es instal·lar la `v0.4.1` a la VPS**, darrere el Traefik que ja hi corre, seguint
+`docs/runbooks/installation.md`. La `v0.4.0` va ser la primera etiqueta que va passar per la
+canonada, pero el seu instal·lador no arrenca en aquella maquina; la `v0.4.1` es la que si.
 
-**P8 esta fet a la branca `agent/claude/ch-015-installer-adapts`, pendent de PR contra `develop`.**
-Tres defectes, tots amb la mateixa forma --l'instal·lador donava per suposat l'estat de la maquina
-en comptes de mirar-lo--, en tres commits:
+**P8 fusionat a `develop` el 28 d'agost de 2026** (PR #55, `e6823bc`). Tres defectes, tots amb la
+mateixa forma --l'instal·lador donava per suposat l'estat de la maquina en comptes de mirar-lo--,
+en tres commits:
 
 - **El relay SMTP no es podia autenticar.** `SMTP_USER` i `SMTP_PASSWORD`, totes dues o cap, amb la
   contrasenya com a sete fitxer `0400` de `root` i un overlay propi,
@@ -99,6 +98,18 @@ en comptes de mirar-lo--, en tres commits:
 
 Verificat en un contenidor Linux amb el 5432 ocupat i un Traefik d'etiquetes simulat: tria el 5433,
 escriu les etiquetes amb el resolver del vei i deixa els altres tres ports on eren.
+
+**El que queda per fer a la maquina**, i en aquest ordre: el registre DNS del subdomini cap a la
+VPS --el TTL es de quatre hores i l'instal·lador comprova que resolgui--, el domini del remitent
+verificat amb SPF i DKIM al proveidor de correu i una API key seva, i llavors el recorregut de
+`installation.md`. El proveidor triat es Resend, on l'usuari del relay es literalment `resend` i la
+contrasenya es l'API key; res del codi no en depen.
+
+Dues coses que ningu no mira i haurien de mirar-se, cap de les dues bloquejant: `shellcheck` no
+corre ni a CI ni enlloc, i `install.sh` i `update.sh` son el codi mes depenent de la maquina de
+tot el repositori; i el `Dockerfile` copia el codi abans del `pnpm install`, o sigui que qualsevol
+canvi de codi torna a fer la instal·lacio de dependencies sencera i cada publicacio costa mitja
+hora.
 
 Queda obert un buit conegut de P3: les imatges de tercers --PostgreSQL, Valkey i Mailpit--
 segueixen anant per etiqueta i no per digest, o sigui que dues instal·lacions de la mateixa versio
