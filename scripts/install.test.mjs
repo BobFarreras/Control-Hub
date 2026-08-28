@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -487,16 +487,85 @@ test("the installer and the update command load the same relay overlay", () => {
   }
 });
 
-test("the secrets are files only root can read", () => {
+test("each secret is owned by the user that reads it, and by nobody else", () => {
   // Read off the script rather than off the filesystem: the test suite does not run as root, and
   // the tests run on Windows too, where a mode is not a mode. The mutation that matters is somebody
   // dropping the chown or widening the mode, and that is visible here.
-  assert.match(install, /chown root:root "\$SECRETS_DIRECTORY\/smtp_password"/, "the relay password is not root's");
-  assert.match(install, /chmod 0400 "\$SECRETS_DIRECTORY\/smtp_password"/, "the relay password is not 0400");
-  assert.match(install, /chown root:root "\$path"/, "the secret files are not given to root");
+  //
+  // Every file went to root until the first real installation, where nothing could read its own
+  // secret. The Compose files each named an owner and Compose discarded all of them -- `uid` and
+  // `gid` are Swarm attributes -- so the ownership a secret really has is the one it is given here.
+  // PostgreSQL initialises as uid 70 and the Node images run as uid 1000.
+  assert.match(install, /^POSTGRES_UID=70$/m, "PostgreSQL's uid is not named");
+  assert.match(install, /^NODE_UID=1000$/m, "the Node images' uid is not named");
+  assert.match(install, /chown "\$3:\$3" "\$path"/, "the secret files are given to no particular owner");
   assert.match(install, /chmod 0400 "\$path"/, "the secret files are not 0400");
+  assert.match(
+    install,
+    /chown "\$NODE_UID:\$NODE_UID" "\$SECRETS_DIRECTORY\/smtp_password"/,
+    "the relay password does not reach the runtime that sends the mail"
+  );
+  assert.match(install, /chmod 0400 "\$SECRETS_DIRECTORY\/smtp_password"/, "the relay password is not 0400");
   assert.match(install, /chmod 0700 "\$SECRETS_DIRECTORY"/, "the secrets directory is readable by others");
   assert.match(install, /\[ "\$\(id -u\)" = "0" \]/, "a non-root installer would leave the secrets readable");
+
+  // One invocation at a time, bounded at the end of its own command. Reading to the next uid
+  // anywhere in the file would let a call with no owner at all be satisfied by the following one's.
+  const invocation = (name) => {
+    const start = install.indexOf(`secret ${name} `);
+    assert.notEqual(start, -1, `${name} is never written`);
+    for (let at = start; ;) {
+      const line = install.indexOf("\n", at);
+      if (line === -1) return install.slice(start);
+      if (install[line - 1] !== "\\") return install.slice(start, line);
+      at = line + 1;
+    }
+  };
+
+  for (const [name, uid] of Object.entries({
+    postgres_admin_password: "POSTGRES_UID",
+    postgres_app_password: "POSTGRES_UID",
+    better_auth_secret: "NODE_UID",
+    migration_database_url: "NODE_UID",
+    database_url: "NODE_UID",
+    connector_key_ring: "NODE_UID"
+  })) {
+    assert.match(invocation(name), new RegExp(`"\\$${uid}"`), `${name} is not given to $${uid}`);
+  }
+});
+
+test("every value the installer writes reaches something that reads it", () => {
+  // `.env` is the whole of an installation's configuration, and a name written there that no
+  // compose file names never reaches a container at all. Three did not: the module flags -- so an
+  // installation started with every module off, whatever the operator had answered and whatever the
+  // closing report told them -- the MCP issuer, and a locale nothing in the codebase has ever read.
+  //
+  // The failure mode is the expensive one: the value is visibly configured on the machine, and
+  // configured nowhere that runs. Anything genuinely read outside a container belongs below, with
+  // the reason, rather than being quietly tolerated by a looser rule.
+  const hostOnly = {
+    CONTROL_HUB_BACKUP_DIR: "deploy/update.sh reads it on the machine; no container takes backups"
+  };
+
+  const block = install.slice(install.indexOf("cat > .env <<EOF"), install.indexOf("EOF\nchmod 0600 .env"));
+  const written = [...block.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map(([, name]) => name);
+  assert.ok(written.length > 20, "the .env block was not found; this test is asserting nothing");
+
+  const composeFiles = readdirSync(new URL("../", import.meta.url)).filter((f) => /^compose.*\.yaml$/.test(f));
+  const sources = composeFiles.map((name) => read(name));
+
+  const orphaned = written.filter(
+    (name) =>
+      !(name in hostOnly) &&
+      // Either interpolated from `.env` or named as a key of an environment block. Both reach a
+      // container; a mention inside a comment does not, and neither form matches one.
+      !sources.some((source) => new RegExp(`^\\s*${name}:|\\$\\{${name}[:}]`, "m").test(source))
+  );
+  assert.deepEqual(orphaned, [], `written to .env and read by no container: ${orphaned.join(", ")}`);
+
+  for (const name of Object.keys(hostOnly)) {
+    assert.ok(written.includes(name), `${name} is excused from a rule it is no longer subject to`);
+  }
 });
 
 test("running it again reproduces the installation instead of a second one", () => {

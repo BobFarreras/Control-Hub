@@ -41,6 +41,61 @@ tres fallant per una variable absent en comptes de per res real.
 **Solucio.** Exporta `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD` i `BETTER_AUTH_SECRET`
 a l'ambit que cobreixi **totes** les ordres de compose. A CI, a nivell de job.
 
+### Un contenidor diu `Permission denied` sobre un fitxer de `/run/secrets`
+
+**Simptoma.** PostgreSQL no arriba a `healthy` i el log diu `cat: can't open
+'/run/secrets/postgres_app_password': Permission denied`, o `migrate` acaba amb el mateix error
+sobre `migration_database_url`. Els fitxers existeixen i el `compose` els declara amb `uid`, `gid`
+i `mode` correctes.
+
+**Causa.** Compose **ignora** `uid`, `gid` i `mode` en un secret: son atributs de Swarm. Ho diu a
+cada execucio amb `WARN[0000] secrets uid, gid and mode are not supported, they will be ignored`,
+i despres munta el fitxer amb la propietat que te **a la maquina**. Un secret d'arrel es un secret
+que el contenidor no pot llegir, digui el que digui el fitxer de compose. PostgreSQL inicialitza
+com a uid 70 i les imatges de Node corren com a uid 1000.
+
+**Solucio.** Torna a executar `deploy/install.sh`: des de la `v0.4.2` assigna la propietat a cada
+execucio, no nomes quan crea el fitxer. Si has de fer-ho a ma, `chown 70:70` als dos de PostgreSQL
+i `chown 1000:1000` a la resta, amb mode `0400` i el directori `0700` d'arrel. Els secrets d'OAuth
+que crees tu (`google_oauth_client_secret`, `microsoft_oauth_client_secret`) tambe son uid 1000.
+
+Si PostgreSQL ja havia arrencat amb el volum a mitges, el `chown` sol no n'hi ha prou: el script
+que crea el rol `control_hub_app` corre nomes sobre un directori de dades buit. Cal
+`docker compose down` i esborrar el volum `<projecte>_postgres-data` abans de tornar-hi.
+
+### L'enllac de verificacio del correu respon `Internal Server Error`
+
+**Simptoma.** Qualsevol ruta `/api/...` demanada des del navegador dona 500. El log del contenidor
+`web` diu `Failed to proxy http://127.0.0.1:4000/api/... Error: connect ECONNREFUSED`. Les pagines
+es renderitzen be i l'API respon si se li demana directament.
+
+**Causa.** `apps/web/next.config.ts` reenvia `/api` i `/health` amb un *rewrite* de Next, i la
+destinacio d'un rewrite es **resol quan es compila**, no quan arrenca el servidor. La imatge
+publicada s'havia construit sense `API_INTERNAL_URL`, aixi que portava gravat
+`http://127.0.0.1:4000` --ella mateixa, des de dins del seu contenidor-- i cap variable d'entorn
+en temps d'execucio ho canvia. El valor del contenidor arriba a `apps/web/src/lib/api.ts`, que es
+un cami diferent: per aixo les crides del servidor funcionaven.
+
+**Solucio.** Ja resolt: `deploy/Dockerfile` posa `ENV API_INTERNAL_URL` abans del `pnpm build`, i
+`scripts/container-secrets.test.mjs` obliga que coincideixi amb el que dona `compose.yaml`. Si
+torna a apareixer, mira si algu ha afegit un rewrite nou amb un valor que nomes existeix en temps
+d'execucio.
+
+### El menu lateral surt buit amb moduls actius a `.env`
+
+**Simptoma.** `CONTROL_HUB_FLAGS` es a `.env` amb els moduls escollits, l'instal·lador els va
+reportar al final, i no n'apareix cap. `docker exec <contenidor> printenv CONTROL_HUB_FLAGS` no
+imprimeix res.
+
+**Causa.** Cap fitxer de compose anomenava la variable, i una variable que el compose no anomena
+no arriba mai al contenidor --el `--env-file` serveix per interpolar el fitxer, no per exportar-la.
+El registre llegeix l'absencia com a «cap modul», que es identic a una instal·lacio ben connectada
+que no n'ha triat cap.
+
+**Solucio.** Ja resolt: `compose.yaml` la passa a `web`, `api` i `worker`, i
+`scripts/install.test.mjs` exigeix que **cada** nom que `install.sh` escriu a `.env` l'anomeni
+algun fitxer de compose o consti a la llista del que es llegeix nomes a la maquina.
+
 ### `Applied migration changed` sense que ningu hagi tocat la migracio
 
 **Causa.** Els checksums es calculaven sobre els bytes crus, i un checkout Windows i un Linux

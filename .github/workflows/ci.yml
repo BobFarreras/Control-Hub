@@ -394,7 +394,6 @@ jobs:
       API_PORT: "4000"
       API_INTERNAL_URL: http://127.0.0.1:4000
       LOG_LEVEL: warn
-      NEXT_PUBLIC_DEFAULT_LOCALE: ca
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: "1025"
       SMTP_SECURE: "false"
@@ -531,6 +530,11 @@ jobs:
       REDIS_PORT: 6379
       MAILPIT_SMTP_PORT: 1025
       MAILPIT_UI_PORT: 8025
+      # Deliberately not empty. An installation chooses its modules here and the value has to
+      # travel from `.env` through the compose files into three separate containers; with the
+      # variable unset every one of them reads «no modules», which is also what a correctly
+      # plumbed stack looks like. Naming one is what makes the check below able to fail.
+      CONTROL_HUB_FLAGS: projects_and_time
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -549,6 +553,71 @@ jobs:
           set -euo pipefail
           curl -fsS http://127.0.0.1:4000/health/ready | tee /dev/stderr | grep -q '"status":"ready"'
           curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/ca/login | grep -q 200
+
+      - name: Ask the web tier for an API path, not only for a page
+        # The request nobody was making. `apps/web/next.config.ts` proxies /api and /health onward
+        # with a Next rewrite, and a rewrite destination is compiled into the bundle rather than
+        # read at boot -- so an image built without API_INTERNAL_URL proxies to itself and answers
+        # `Internal Server Error` to every browser, while every check above still passes. That
+        # shipped, and was found by an operator clicking the verification link in their own mail.
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:3001/health/ready | tee /dev/stderr | grep -q '"status":"ready"'
+          status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/auth/get-session)
+          echo "/api/auth/get-session through the web tier: $status"
+          # Any answer from the API is an answer. A 5xx here is the web tier failing to reach it,
+          # which is the whole defect; asserting a particular status would tie this to Better Auth.
+          case "$status" in 5??) echo "the web tier could not reach the API"; exit 1 ;; esac
+
+      - name: Check the chosen modules reached every service that reads them
+        # Three containers, because a flag on in one and off in another is a screen that renders
+        # against routes answering 404. No compose file named this variable at all until an
+        # installation was told a module was on and came up with an empty sidebar.
+        run: |
+          set -euo pipefail
+          for service in web api worker; do
+            # `|| true` so an unset variable arrives here as an empty string and fails on the
+            # comparison, which names the service, rather than on printenv's exit code.
+            value=$(docker compose exec -T "$service" printenv CONTROL_HUB_FLAGS 2>/dev/null | tr -d '\r' || true)
+            echo "$service: ${value:-<unset>}"
+            test "$value" = "$CONTROL_HUB_FLAGS"
+          done
+
+      - name: Start it again the way an installation does, with the secrets as mounted files
+        # Everything above runs the development composition, where the credentials are environment
+        # values. A real installation mounts them as files, and that is a different mechanism with
+        # its own failure: Compose ignores `uid`, `gid` and `mode` on a secret -- they are Swarm
+        # attributes it warns about and discards -- so a secret arrives owned by whoever owns it on
+        # the host. All seven were root, PostgreSQL initialises as uid 70, and the first real
+        # installation could not read a single one of its own. The ownership below is the
+        # ownership `deploy/install.sh` assigns, and it is the point of this step.
+        env:
+          SECRETS_DIRECTORY: /tmp/control-hub-secrets
+          MCP_ISSUER: https://ci.invalid
+          SMTP_HOST: 127.0.0.1
+          SMTP_FROM: control-hub@ci.invalid
+        run: |
+          set -euo pipefail
+          docker compose down -v
+
+          mkdir -p "$SECRETS_DIRECTORY"
+          printf '%s' "$POSTGRES_ADMIN_PASSWORD" > "$SECRETS_DIRECTORY/postgres_admin_password"
+          printf '%s' "$POSTGRES_APP_PASSWORD" > "$SECRETS_DIRECTORY/postgres_app_password"
+          printf '%s' "$BETTER_AUTH_SECRET" > "$SECRETS_DIRECTORY/better_auth_secret"
+          printf '%s' "postgres://control_hub_admin:$POSTGRES_ADMIN_PASSWORD@postgres:5432/control_hub" \
+            > "$SECRETS_DIRECTORY/migration_database_url"
+          printf '%s' "postgres://control_hub_app:$POSTGRES_APP_PASSWORD@postgres:5432/control_hub" \
+            > "$SECRETS_DIRECTORY/database_url"
+          sudo chown 70:70 "$SECRETS_DIRECTORY/postgres_admin_password" "$SECRETS_DIRECTORY/postgres_app_password"
+          sudo chown 1000:1000 \
+            "$SECRETS_DIRECTORY/better_auth_secret" \
+            "$SECRETS_DIRECTORY/migration_database_url" \
+            "$SECRETS_DIRECTORY/database_url"
+          sudo chmod 0400 "$SECRETS_DIRECTORY"/*
+          ls -ln "$SECRETS_DIRECTORY"
+
+          docker compose -f compose.yaml -f compose.production.yaml up -d --wait
+          curl -fsS http://127.0.0.1:3001/health/ready | tee /dev/stderr | grep -q '"status":"ready"'
 
       - name: Show what failed
         if: failure()

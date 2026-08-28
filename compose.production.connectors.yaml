@@ -6,9 +6,6 @@ services:
     secrets:
       - source: connector_key_ring
         target: connector_key_ring
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
 
   worker:
     environment:
@@ -17,9 +14,6 @@ services:
     secrets:
       - source: connector_key_ring
         target: connector_key_ring
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
 
 secrets:
   connector_key_ring:

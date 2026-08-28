@@ -11,6 +11,16 @@ const compose = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8"
 const dockerfile = readFileSync(new URL("../deploy/Dockerfile", import.meta.url), "utf8");
 const migrationEntrypoint = readFileSync(new URL("../deploy/load-secret-and-exec.sh", import.meta.url), "utf8");
 
+// Every file that can declare a secret, by the name somebody would go and open.
+const files = {
+  "compose.production.yaml": production,
+  "compose.production.connectors.yaml": connectors,
+  "compose.production.google.yaml": google,
+  "compose.production.microsoft.yaml": microsoft,
+  "compose.production.smtp.yaml": smtp,
+  "compose.yaml": compose
+};
+
 // A service block runs from its own key to the next thing at that level or above -- computed here
 // rather than named by the caller. Naming the following service worked until one was inserted
 // between two others: the block quietly grew to include its neighbour, and an assertion about one
@@ -135,6 +145,47 @@ test("images receive no secret through build arguments or copied environment fil
   assert.match(dockerfile, /COPY --chmod=0555 .*load-secret-and-exec\.sh/);
   assert.match(migrationEntrypoint, /exec "\$@"/);
   assert.doesNotMatch(migrationEntrypoint, /echo.*secret_value/);
+});
+
+test("no compose file asks for an ownership Compose ignores", () => {
+  // `uid`, `gid` and `mode` on a secret are Swarm attributes. Compose parses them, prints
+  // `secrets uid, gid and mode are not supported, they will be ignored` on every single run, and
+  // then bind-mounts the file carrying whatever ownership it has on the host.
+  //
+  // Every secret here declared all three, and every one of them read as if the question had been
+  // settled. It had not been settled anywhere: the first real installation came up with seven files
+  // owned by root and not one container able to read its own, and the two hours that cost were
+  // spent editing this file. `deploy/install.sh` decides the owner now, because the host is the
+  // only place where deciding it has any effect.
+  for (const [name, source] of Object.entries(files)) {
+    const ignored = source.split(/\r?\n/).filter((line) => /^\s+(?:uid|gid|mode):/.test(line));
+    assert.deepEqual(ignored, [], `${name} asks for an ownership Compose will discard`);
+  }
+});
+
+test("the web image is built with the internal API address it will run with", () => {
+  // A Next.js rewrite destination is resolved when the bundle is compiled, not when the server
+  // starts. `apps/web/next.config.ts` proxies `/api` and `/health` to `API_INTERNAL_URL`, so the
+  // value has to be in the environment of the build; supplying it at runtime reaches
+  // `apps/web/src/lib/api.ts` and nothing else.
+  //
+  // Built without it, the published image carried `http://127.0.0.1:4000` in its route manifest --
+  // itself, from inside its own container -- and every browser request to `/api` was refused. The
+  // pipeline stayed green throughout, because the job that runs the composed stack asked the web
+  // service only for pages, never for an API path. It asks for both now.
+  const address = serviceBlock(compose, "web").match(/^\s+API_INTERNAL_URL: (\S+)$/m)?.[1];
+  assert.ok(address, "compose.yaml gives the web service no API_INTERNAL_URL");
+
+  const builder = dockerfile.slice(dockerfile.indexOf("AS builder"), dockerfile.indexOf("AS pruned"));
+  assert.match(
+    builder,
+    new RegExp(`^ENV API_INTERNAL_URL=${address.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"),
+    `the builder stage does not build against ${address}, so the runtime value and the bundle disagree`
+  );
+  assert.ok(
+    builder.indexOf("ENV API_INTERNAL_URL") < builder.indexOf("RUN pnpm build"),
+    "the address is set after the build that bakes it in"
+  );
 });
 
 test("base services retain container hardening", () => {

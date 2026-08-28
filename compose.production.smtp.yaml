@@ -17,9 +17,6 @@ services:
     secrets:
       - source: smtp_password
         target: smtp_password
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
 
   bootstrap:
     environment:
@@ -28,9 +25,6 @@ services:
     secrets:
       - source: smtp_password
         target: smtp_password
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
 
 secrets:
   smtp_password:

@@ -1,11 +1,14 @@
 # Runbook d'instal·lacio de Control Hub
 
-> **On es aixo.** L'instal·lador, el comandament d'actualitzacio, les imatges per digest i la
-> comprovacio de versions existeixen i tenen proves, i la `v0.4.0` es la primera etiqueta que la
-> canonada va publicar de debo: hi ha un `release.json` a llegir. **Encara no s'ha instal·lat
-> enlloc.** El reverse proxy no viu en aquest repositori i no s'edita mai: l'instal·lador mira el
-> que ja corre i, o be escriu les etiquetes que aquell proxy llegeix sol, o be deixa un fitxer que
-> copia la persona que instal·la. `docs/specifications/deployment.md` diu per que.
+> **On es aixo.** La `v0.4.1` es va instal·lar el 28 d'agost de 2026 en una VPS compartida amb
+> altres serveis, darrere un Traefik que ja hi corria, amb un relay real i un domini real: aquest
+> document ja no descriu un cami previst, sino un que algu ha recorregut. En va destapar quatre
+> defectes --la propietat dels secrets, l'adreca interna de l'API gravada a la imatge, els moduls
+> que no arribaven als contenidors i l'emissor MCP-- tots amb la mateixa forma: res no havia
+> executat mai l'stack composat de produccio. La `v0.4.2` els tanca i afegeix a CI el pas que els
+> hauria vist. El reverse proxy no viu en aquest repositori i no s'edita mai: l'instal·lador mira
+> el que ja corre i, o be escriu les etiquetes que aquell proxy llegeix sol, o be deixa un fitxer
+> que copia la persona que instal·la. `docs/specifications/deployment.md` diu per que.
 
 ## Model d'alta
 
@@ -47,14 +50,24 @@ resposta es valida alli mateix --el domini ha de resoldre, l'SMTP ha d'acceptar 
 tres passos mes tard, quan tornar enrere vol dir tornar a fer-ho tot.
 
 **No demana cap contrasenya que pugui generar.** Els sis secrets seus surten de `/dev/urandom` i
-van directament a `$SECRETS_DIRECTORY` com a fitxers `0400` propietat de `root`:
-`postgres_admin_password`, `postgres_app_password`, `better_auth_secret`, `database_url`,
-`migration_database_url` i `connector_key_ring`. Cap d'aquests valors passa per la pantalla ni per
-`.env`. **La de l'Owner tampoc la demana**: rep un enllac i se la posa ell. El que no s'escriu no
-s'enganxa a cap historial.
+van directament a `$SECRETS_DIRECTORY` com a fitxers `0400`: `postgres_admin_password`,
+`postgres_app_password`, `better_auth_secret`, `database_url`, `migration_database_url` i
+`connector_key_ring`. Cap d'aquests valors passa per la pantalla ni per `.env`. **La de l'Owner
+tampoc la demana**: rep un enllac i se la posa ell. El que no s'escriu no s'enganxa a cap
+historial.
+
+Cada fitxer es propietat del **usuari que el llegeix**, no de `root`: uid 70 els dos de PostgreSQL
+i uid 1000 la resta. No es una preferencia --es l'unic lloc on aixo es pot decidir. Compose ignora
+`uid`, `gid` i `mode` en un secret, i munta el fitxer amb la propietat que te a la maquina, aixi
+que un secret de `root` es un secret que el seu contenidor no pot obrir. El directori segueix sent
+`0700` de `root`, o sigui que anomenar un propietari aqui no dona acces a ningu que no en tingues.
+
+L'instal·lador aplica la propietat **a cada execucio**, no nomes quan crea el fitxer: una
+instal·lacio feta amb la `v0.4.1` te els set fitxers de `root` i no arrenca, i tornar a executar
+l'instal·lador es com es repara sense que ningu hagi de saber quin fitxer cal canviar.
 
 L'unica que pregunta es la del relay SMTP, que no es seva i no se la pot inventar. S'escriu amb
-l'eco apagat i acaba a `smtp_password`, un sete fitxer `0400` de `root`, sense passar mai per
+l'eco apagat i acaba a `smtp_password`, un sete fitxer `0400` d'uid 1000, sense passar mai per
 `.env`.
 
 **Es pot tornar a executar.** Cada resposta ja donada surt com a valor per defecte llegit de `.env`,
@@ -156,7 +169,7 @@ en desenvolupament, o un relay a la mateixa xarxa de confianca.
 | On viu | Que hi ha |
 | --- | --- |
 | `SMTP_USER` a `.env` | L'usuari. No es secret, i es el que decideix si es carrega l'overlay. |
-| `smtp_password` a `$SECRETS_DIRECTORY` | La contrasenya, `0400` de `root`, muntada a `api` i `bootstrap`. |
+| `smtp_password` a `$SECRETS_DIRECTORY` | La contrasenya, `0400` d'uid 1000, muntada a `api` i `bootstrap`. |
 | `compose.production.smtp.yaml` | El muntatge. Nomes es carrega quan `SMTP_USER` te valor. |
 
 L'overlay va a part de `compose.production.yaml` perque una entrada `secrets:` anomena un cami que
@@ -206,9 +219,22 @@ acabat opcionalment amb un salt de linia:
 | `microsoft_oauth_client_secret` | UID 1000, worker, nomes si Microsoft esta configurat |
 
 El directori no pot ser llegible pel grup o altres. Els fitxers d'aplicacio han de ser `0400` i
-llegibles per UID 1000; els dos de PostgreSQL, pel UID de la imatge fixada. Compose declara
-`mode: 0400`, pero amb fonts `file` algunes versions implementen el secret com un bind mount i no
-canvien owner ni mode: s'han de validar al host abans del deploy.
+propietat de l'UID 1000; els dos de PostgreSQL, de l'UID 70 de la imatge fixada.
+
+**La propietat es decideix aqui i enlloc mes.** Compose ignora `uid`, `gid` i `mode` en un secret
+--son atributs de Swarm, i ho avisa a cada execucio-- i un secret declarat amb `file:` es un bind
+mount que arriba al contenidor amb la propietat que te al host. Aquest document ja ho advertia i
+els fitxers de compose el contradeien declarant els tres atributs, cosa que llegia com si la
+questio estigues resolta; la primera instal·lacio real va arrencar amb els set fitxers de `root` i
+cap contenidor podent obrir el seu. Els atributs ja no hi son: `deploy/install.sh` fa el `chown` i
+`scripts/container-secrets.test.mjs` impedeix que tornin.
+
+Si prepares el directori a ma --els dos secrets d'OAuth no els crea l'instal·lador-- valida-ho al
+host abans de desplegar:
+
+```bash
+ls -ln "$SECRETS_DIRECTORY"
+```
 
 Arrencada del nucli:
 

@@ -296,17 +296,32 @@ confirm "Go ahead?" || fail "stopped. Nothing has been written."
 # from the one that was set fails at connect time with nothing to point at.
 random_hex() { od -An -tx1 -N"$1" /dev/urandom | tr -d ' \n'; }
 
+# Who reads each of these, because that is the only place it can be decided.
+#
+# Compose ignores `uid`, `gid` and `mode` on a secret -- they are Swarm attributes, and it prints
+# a warning saying so on every run. A secret declared with `file:` is bind-mounted carrying the
+# ownership it has *here*, so a file left to root is a file the container cannot read no matter
+# what the Compose file asks for. PostgreSQL runs its initialisation as uid 70 and the Node
+# images run as uid 1000; the directory stays 0700 root, so naming an owner here gives nobody on
+# this machine access it did not already have.
+POSTGRES_UID=70
+NODE_UID=1000
+
 # Written once and never rewritten, which is most of what makes a second run safe. Regenerating a
 # password would leave PostgreSQL holding the old one -- the script that creates the role runs on
 # an empty data directory and never again -- so the re-run would produce a configuration that
 # cannot connect to its own database, and would look like a corrupted volume.
+#
+# The ownership, unlike the value, is applied on every run and not only on creation: an
+# installation made by 0.4.1 has all seven owned by root and cannot start, and re-running the
+# installer is how that is repaired without anybody having to be told which file to chown.
 secret() {
   path="$SECRETS_DIRECTORY/$1"
   if [ ! -f "$path" ]; then
     (umask 077 && printf '%s' "$2" > "$path")
-    [ "$dry_run" = yes ] || chown root:root "$path"
-    chmod 0400 "$path"
   fi
+  [ "$dry_run" = yes ] || chown "$3:$3" "$path"
+  chmod 0400 "$path"
   cat "$path"
 }
 
@@ -316,15 +331,16 @@ chmod 0700 "$SECRETS_DIRECTORY"
 
 say ""
 say "Secrets in $SECRETS_DIRECTORY"
-admin_password=$(secret postgres_admin_password "$(random_hex 32)")
-app_password=$(secret postgres_app_password "$(random_hex 32)")
-secret better_auth_secret "$(random_hex 32)" > /dev/null
-secret migration_database_url "postgres://control_hub_admin:${admin_password}@postgres:5432/control_hub" > /dev/null
-secret database_url "postgres://control_hub_app:${app_password}@postgres:5432/control_hub" > /dev/null
+admin_password=$(secret postgres_admin_password "$(random_hex 32)" "$POSTGRES_UID")
+app_password=$(secret postgres_app_password "$(random_hex 32)" "$POSTGRES_UID")
+secret better_auth_secret "$(random_hex 32)" "$NODE_UID" > /dev/null
+secret migration_database_url "postgres://control_hub_admin:${admin_password}@postgres:5432/control_hub" "$NODE_UID" > /dev/null
+secret database_url "postgres://control_hub_app:${app_password}@postgres:5432/control_hub" "$NODE_UID" > /dev/null
 # Generated whether or not connectors are on today. An unused key ring is one file; a missing one
 # is an installation that cannot turn the module on later without somebody coming back to it.
 secret connector_key_ring \
-  "{\"activeKeyId\":\"k1\",\"keys\":{\"k1\":\"$(head -c 32 /dev/urandom | base64 | tr -d '\n')\"}}" > /dev/null
+  "{\"activeKeyId\":\"k1\",\"keys\":{\"k1\":\"$(head -c 32 /dev/urandom | base64 | tr -d '\n')\"}}" \
+  "$NODE_UID" > /dev/null
 # Not through `secret()`. That helper exists to never rewrite what it generated -- regenerating a
 # database password would leave PostgreSQL holding the old one -- and this is the one secret here
 # that somebody else owns and can legitimately change under us. A blank answer keeps what is stored.
@@ -335,13 +351,21 @@ if [ -n "$smtp_password" ]; then
   # after every question had been answered.
   [ -f "$SECRETS_DIRECTORY/smtp_password" ] && chmod 0600 "$SECRETS_DIRECTORY/smtp_password"
   (umask 077 && printf '%s' "$smtp_password" > "$SECRETS_DIRECTORY/smtp_password")
-  [ "$dry_run" = yes ] || chown root:root "$SECRETS_DIRECTORY/smtp_password"
+  [ "$dry_run" = yes ] || chown "$NODE_UID:$NODE_UID" "$SECRETS_DIRECTORY/smtp_password"
   chmod 0400 "$SECRETS_DIRECTORY/smtp_password"
   smtp_password=""
-  say "  Seven files, mode 0400, owned by root."
-else
-  say "  Six files, mode 0400, owned by root."
+elif [ -f "$SECRETS_DIRECTORY/smtp_password" ]; then
+  # Kept in step even on the run that does not rewrite it. Leaving a blank answer is how a stored
+  # relay password is preserved, and it was also the way an installation upgraded from 0.4.1 would
+  # have kept the one file that still could not be read.
+  [ "$dry_run" = yes ] || chown "$NODE_UID:$NODE_UID" "$SECRETS_DIRECTORY/smtp_password"
 fi
+
+# Counted rather than guessed. The old message named a number from which branch it was in, so a
+# second run that kept a stored relay password reported six files while seven sat on the disk.
+stored=$(find "$SECRETS_DIRECTORY" -maxdepth 1 -type f | wc -l | tr -d ' ')
+say "  $stored files, mode 0400, each owned by the user that reads it:"
+say "    uid $POSTGRES_UID for PostgreSQL's two, uid $NODE_UID for the rest."
 
 # --- ports ----------------------------------------------------------------------------------------
 
@@ -438,7 +462,6 @@ APP_ORIGIN=https://$domain
 MCP_ISSUER=https://$domain
 WEBAUTHN_RP_ID=$domain
 WEBAUTHN_ORIGIN=https://$domain
-NEXT_PUBLIC_DEFAULT_LOCALE=ca
 SMTP_HOST=$smtp_host
 SMTP_PORT=$smtp_port
 SMTP_SECURE=$smtp_secure
