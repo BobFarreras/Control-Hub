@@ -233,6 +233,54 @@ size=$(wc -c < "$backup")
 [ "$size" -gt 1000 ] || { rm -f release.env.new package.tar.gz.new; fail "the backup at $backup is only $size bytes. Nothing has changed."; }
 say "Backup written, $size bytes."
 
+# --- the .env, before anything is pulled or run ---------------------------------------------------
+#
+# When the release adds new modules to the default set, an installation that was created with an
+# older installer has a `.env` that names only the old default. This script respects the operator's
+# choices, but a `.env` that says `projects_and_time` alone is not a choice -- it is the default
+# from before the installer offered all ten modules. Updating such a `.env` to the new default is
+# not overriding the operator; it is completing a configuration that was made with incomplete
+# information.
+#
+# The test is exact: if `CONTROL_HUB_FLAGS` is exactly `projects_and_time`, it is the old default.
+# If it is anything else -- empty, a subset, a superset, or the new full list -- it is a choice,
+# and this script leaves it alone.
+current_flags=$(sed -n 's/^CONTROL_HUB_FLAGS=//p' .env | head -1)
+if [ "$current_flags" = "projects_and_time" ]; then
+  say ""
+  say "Updating CONTROL_HUB_FLAGS to include all modules"
+  say "  The previous value was the old default (projects_and_time)."
+  say "  The new default includes all ten modules."
+  all_flags="projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp"
+  # Renamed into place rather than written over, for the same reason as the product files above:
+  # sed reads the file as it goes, so overwriting it in place would change the source under a
+  # running interpreter.
+  sed "s/^CONTROL_HUB_FLAGS=.*/CONTROL_HUB_FLAGS=$all_flags/" .env > .env.incoming && mv .env.incoming .env
+  say "  CONTROL_HUB_FLAGS is now $all_flags"
+fi
+
+# When an n8n is running on this machine and CONNECTOR_INTERNAL_ALLOWLIST is empty, connectors
+# cannot reach it. The egress allowlist refuses private addresses by design, so an n8n on the same
+# VPS must be named explicitly. Detecting it here means the operator does not have to know about
+# CONNECTOR_INTERNAL_ALLOWLIST; the update adds it.
+current_allowlist=$(sed -n 's/^CONNECTOR_INTERNAL_ALLOWLIST=//p' .env | head -1)
+if [ -z "$current_allowlist" ] && command -v docker > /dev/null 2>&1; then
+  n8n_id=$(docker ps --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -i n8n | head -1 | cut -d' ' -f1 || true)
+  if [ -n "$n8n_id" ]; then
+    n8n_host=$(docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
+{{end}}' "$n8n_id" 2>/dev/null | sed -n 's/^traefik\.http\.routers\..*\.rule=Host(\(`[^`]*`\)).*$/\1/p' | head -1 | tr -d '`' || true)
+    if [ -n "$n8n_host" ]; then
+      n8n_url="https://$n8n_host"
+      say ""
+      say "Adding n8n to CONNECTOR_INTERNAL_ALLOWLIST"
+      say "  An n8n was detected at $n8n_host."
+      say "  Connectors need to reach it, but it is a private address."
+      sed "s/^CONNECTOR_INTERNAL_ALLOWLIST=.*/CONNECTOR_INTERNAL_ALLOWLIST=$n8n_url/" .env > .env.incoming && mv .env.incoming .env
+      say "  CONNECTOR_INTERNAL_ALLOWLIST is now $n8n_url"
+    fi
+  fi
+fi
+
 # --- the product files, once there is a backup and before anything is pulled ----------------------
 #
 # Here rather than beside `release.env` at the end, because `pull` and the migration job run from

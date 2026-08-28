@@ -441,6 +441,40 @@ done
 
 # `.env` is what an operator chose; `release.env` is what the release decided. An update rewrites
 # the second and never touches the first, which is the whole reason they are two files.
+
+# When an n8n is running on this machine, connectors need to reach it. The egress allowlist refuses
+# private addresses by design (to prevent a tenant from pointing a connector at the panel's own
+# database), so an n8n on the same VPS must be named explicitly. Detecting it here means the
+# operator does not have to know about CONNECTOR_INTERNAL_ALLOWLIST; the installer adds it.
+#
+# The detection looks for a container with "n8n" in its name and reads its public URL from the
+# Traefik labels (if present) or the published ports. If neither is available, the operator is
+# told to add it manually.
+n8n_url=""
+if command -v docker > /dev/null 2>&1; then
+  n8n_id=$(docker ps --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -i n8n | head -1 | cut -d' ' -f1 || true)
+  if [ -n "$n8n_id" ]; then
+    # Traefik labels are the preferred source: they name the public URL the operator configured.
+    n8n_host=$(docker inspect --format '{{range $key, $value := .Config.Labels}}{{$key}}={{$value}}
+{{end}}' "$n8n_id" 2>/dev/null | sed -n 's/^traefik\.http\.routers\..*\.rule=Host(\(`[^`]*`\)).*$/\1/p' | head -1 | tr -d '`' || true)
+    if [ -n "$n8n_host" ]; then
+      n8n_url="https://$n8n_host"
+    else
+      # No Traefik labels: fall back to published ports. This is less reliable because it does not
+      # know whether the port is reachable from outside, but it is better than nothing.
+      n8n_port=$(docker inspect --format '{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{end}}
+{{end}}' "$n8n_id" 2>/dev/null | grep -v '^$' | head -1 || true)
+      if [ -n "$n8n_port" ]; then
+        n8n_url="http://localhost:$n8n_port"
+        say ""
+        say "  An n8n was detected on port $n8n_port, but without Traefik labels."
+        say "  The URL $n8n_url has been added to CONNECTOR_INTERNAL_ALLOWLIST."
+        say "  If n8n is reachable at a different public URL, edit .env and update it."
+      fi
+    fi
+  fi
+fi
+
 say ""
 say "Writing .env"
 umask 077
@@ -476,6 +510,7 @@ BOOTSTRAP_OWNER_EMAIL=$owner_email
 BOOTSTRAP_OWNER_NAME=$owner_name
 BOOTSTRAP_TENANT_NAME=$tenant_name
 BOOTSTRAP_TENANT_SLUG=$tenant_slug
+CONNECTOR_INTERNAL_ALLOWLIST=$n8n_url
 EOF
 chmod 0600 .env
 say "  .env written, mode 0600."
