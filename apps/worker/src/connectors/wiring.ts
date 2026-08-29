@@ -1,6 +1,7 @@
 import type { ConnectorRepository, SupportMailboxIngestor } from "@control-hub/application";
 import { ConnectorSecretReader } from "@control-hub/application";
 import type { AllowedDestination, KeyRing } from "@control-hub/config";
+import { urlToAllowedDestination } from "@control-hub/config";
 import { connectorRegistry } from "@control-hub/connectors";
 import type { HttpPort, SecretsPort } from "@control-hub/connectors";
 import { CredentialVault } from "@control-hub/persistence";
@@ -76,6 +77,12 @@ async function mailboxFor(
  * A connector whose manifest declares no egress gets a port that refuses everything rather than
  * no port at all: the contract says `http` is always there, and a handler that calls it despite
  * having declared it would not is a bug we want to see as a refusal, not as a crash.
+ *
+ * For connectors with `destination: "operator_allowlist"`, the instance's configured `baseUrl`
+ * is automatically added to the effective allowlist. This means operators do not have to manually
+ * edit `CONNECTOR_INTERNAL_ALLOWLIST` for every instance they configure through the panel. The
+ * security model is preserved: only URLs that have been explicitly configured by an admin/owner
+ * are allowed, and the SSRF protection still applies to any other address.
  */
 function httpFor(
   instance: { connectorType: string; config: unknown },
@@ -85,7 +92,35 @@ function httpFor(
   const policy = connector?.capabilities.egress;
   if (!policy) return { send: () => Promise.reject(new Error("EGRESS_NOT_DECLARED")) };
 
-  return createGuardedHttp({ policy, baseUrl: baseUrlOf(instance.config), allowlist });
+  const baseUrl = baseUrlOf(instance.config);
+
+  // For operator_allowlist connectors, add the instance's baseUrl to the effective allowlist.
+  // This allows internal services (n8n, Prometheus, etc.) to be reached without manual .env edits.
+  const effectiveAllowlist =
+    policy.destination === "operator_allowlist" && baseUrl ? addBaseUrlToAllowlist(allowlist, baseUrl) : allowlist;
+
+  return createGuardedHttp({ policy, baseUrl, allowlist: effectiveAllowlist });
+}
+
+/**
+ * Adds a base URL to the allowlist if it is not already present.
+ *
+ * Returns the original allowlist if the URL is invalid or already present.
+ */
+function addBaseUrlToAllowlist(
+  allowlist: readonly AllowedDestination[],
+  baseUrl: string
+): readonly AllowedDestination[] {
+  const destination = urlToAllowedDestination(baseUrl);
+  if (!destination) return allowlist;
+
+  // Check if already present
+  const alreadyPresent = allowlist.some(
+    (entry) =>
+      entry.scheme === destination.scheme && entry.hostname === destination.hostname && entry.port === destination.port
+  );
+
+  return alreadyPresent ? allowlist : [...allowlist, destination];
 }
 
 /**
