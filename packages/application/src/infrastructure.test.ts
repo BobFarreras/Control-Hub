@@ -1100,7 +1100,36 @@ describe("the guided check", () => {
 
   it("says it does not know about the far end until a health check has run", async () => {
     seeing();
-    await expect(statuses(owner)).resolves.toMatchObject({ reachable: "unknown", answers_prometheus: "unchecked" });
+    await expect(statuses(owner)).resolves.toMatchObject({ reachable: "unknown", answers: "unchecked" });
+  });
+
+  /** The credential everybody forgets, answered where it belongs instead of at the far end. */
+  it("stops at the prepared rung when the last attempt had no credential to send", async () => {
+    allowlisted.add("https://n8n.exemple.tld");
+    seeing({
+      instance: {
+        id: instanceId,
+        connectorType: "n8n",
+        baseUrl: "https://n8n.exemple.tld",
+        lastAttempt: { ok: false, code: "CREDENTIAL_MISSING" }
+      }
+    });
+
+    const diagnosis = await service.diagnose(owner, instanceId);
+    expect(diagnosis.problem).toBe("prepared");
+    expect(diagnosis.findings.find((finding) => finding.step === "prepared")).toMatchObject({
+      status: "failed",
+      code: "CREDENTIAL_MISSING"
+    });
+    // A call that never left the process proves nothing about the network, and an n8n's chain
+    // ends at the answer rung: neither of the two prometheus rungs may appear in the findings.
+    expect(diagnosis.findings.map((finding) => finding.step)).toEqual([
+      "migrations",
+      "allowlist",
+      "prepared",
+      "reachable",
+      "answers"
+    ]);
   });
 
   /** Acceptance criterion 4: the answer that separates a dead machine from a typo. */
