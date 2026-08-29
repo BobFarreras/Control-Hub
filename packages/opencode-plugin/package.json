@@ -1,6 +1,6 @@
 {
   "name": "@control-hub/opencode",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "description": "Privacy-minimized OpenCode usage integration for Control Hub",
   "type": "module",
   "files": [

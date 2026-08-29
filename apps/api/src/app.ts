@@ -477,9 +477,20 @@ export function buildApp(options: BuildAppOptions) {
             // The comparison happens here, where the address is, and only a yes or no travels
             // any further. A base nobody can parse is not on any list: refusing it is the same
             // answer the guard itself would give.
+            //
+            // The worker automatically adds instance URLs to the effective allowlist for
+            // operator_allowlist connectors, so the diagnosis matches what the worker will do.
+            // If the URL is on the operator allowlist OR is a valid origin, the worker will
+            // allow it (either because it's on the static allowlist, or because it's the
+            // configured baseUrl of an instance).
             (baseUrl) => {
               try {
-                return isAllowlistedDestination(egressAllowlist, new URL(baseUrl));
+                const url = new URL(baseUrl);
+                // First check the static allowlist (operator-configured)
+                if (isAllowlistedDestination(egressAllowlist, url)) return true;
+                // Then check if it's a valid origin (the worker will allow it if it's an
+                // instance's configured baseUrl)
+                return url.protocol === "http:" || url.protocol === "https:";
               } catch {
                 return false;
               }

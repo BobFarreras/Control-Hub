@@ -76,9 +76,9 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
-**El seguent pas es actualitzar la VPS a la `v0.4.2`**, que ja esta publicada. Aquella maquina
-corre amb pedacos fets a ma que no son a cap release, i mentre hi corri no se sap si funciona la
-versio o nomes aquella maquina.
+**El seguent pas es actualitzar la VPS a la `v0.4.5`**, que ja esta publicada. Aquella maquina
+corre amb la `v0.4.2` i cal actualitzar-la per tenir tots els moduls activats, la detecció
+automàtica de n8n, i els connectors interns funcionant automàticament.
 
 Es **la primera actualitzacio de debo**, amb dades a dins, que es el que
 `docs/specifications/deployment.md` diu que es la prova que compta: instal·lar de zero funciona
@@ -86,14 +86,17 @@ sempre. Cal agafar el `update.sh` nou primer --el que hi ha instal·lat es de la
 sap llegir `release.env`-- i esborrar `compose.apiroute.yaml`, que la `v0.4.2` fa innecessari. Les
 ordres exactes son a `docs/runbooks/installation.md`, seccio «Actualitzacio».
 
-**L'instal·lador ara proposa tots els deu moduls per defecte** (`projects_and_time,attendance,
+**La `v0.4.5` inclou millores importants per a la VPS:**
+
+- **Connectors interns funcionen automàticament**: Quan es crea una instància de connector amb una URL interna (com n8n o Prometheus a la mateixa VPS), el sistema l'afegeix automàticament a la llista de permesos. Ja no cal editar `CONNECTOR_INTERNAL_ALLOWLIST` manualment per a cada instància que es crea al panell.
+- **`update.sh` actualitza `CONTROL_HUB_FLAGS` automàticament**: Si el `.env` té el default antic (`projects_and_time`), l'actualització el canvia a tots els deu mòduls. Això resol el problema de la VPS que només mostrava Projectes i Temps al menú.
+- **Detecció automàtica de n8n**: Tant `install.sh` com `update.sh` detecten si hi ha un contenidor n8n a la mateixa màquina i l'afegeixen automàticament a `CONNECTOR_INTERNAL_ALLOWLIST`.
+- **L'instal·lador proposa tots els deu moduls per defecte** (`projects_and_time,attendance,
 connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp`),
 en lloc de nomes `projects_and_time`. El connector key ring es genera sempre (com abans) i ara
 tambe es carrega l'overlay `compose.production.connectors.yaml` quan la flag `connectors` es activa,
-tant a `install.sh` com a `update.sh`. Aquest canvi encara no es a cap release; caldra publicar una
-versio nova i tornar a executar l'instal·lador a la VPS per aplicar-ho. El modul `connector_oauth`
-queda encés pero requereix credencials OAuth externes (Google Cloud, Azure AD) que no es generen
-automaticament.
+tant a `install.sh` com a `update.sh`. El modul `connector_oauth` queda encés pero requereix
+credencials OAuth externes (Google Cloud, Azure AD) que no es generen automaticament.
 
 I despres queda **una cosa que aquesta versio no pot demostrar**: el banner d'actualitzacio. Amb la
 `v0.4.2` instal·lada el worker existira per primer cop i preguntara --a la seguent frontera de

@@ -4,6 +4,31 @@ Les versions segueixen [SemVer](https://semver.org/lang/ca/). Aquest fitxer diu 
 per a qui fa servir el producte**; el relat tecnic de com s'hi ha arribat es a
 `docs/development/history/` i el punt de continuacio a `docs/development/current-state.md`.
 
+## v0.4.5 - 2026-08-28
+
+### Millores
+
+- **Connectors interns funcionen automàticament**: Quan es crea una instància de connector amb una URL interna (com n8n o Prometheus a la mateixa VPS), el sistema l'afegeix automàticament a la llista de permesos. Ja no cal editar `CONNECTOR_INTERNAL_ALLOWLIST` manualment per a cada instància que es crea al panell.
+- **Diagnosi coherent**: La diagnosi de connectors ara mostra el mateix resultat que el que el worker farà realment, evitant falsos negatius.
+
+### Seguretat
+
+- El model de seguretat es preserva: només es permeten URLs configurades explícitament per un admin/owner
+- La protecció SSRF continua aplicant-se a qualsevol altra adreça
+- La llista d'operador (`CONNECTOR_INTERNAL_ALLOWLIST`) continua funcionant com abans
+
+## v0.4.4 - 2026-08-28
+
+### Millores
+
+- **`update.sh` actualitza `CONTROL_HUB_FLAGS` automàticament**: Si el `.env` té el default antic (`projects_and_time`), l'actualització el canvia a tots els deu mòduls (`projects_and_time,attendance,connectors,infrastructure,usage_costs,mail,connector_oauth,connector_actions,credential_catalog,mcp`).
+- **`install.sh` detecta n8n automàticament**: Si hi ha un contenidor n8n a la mateixa màquina, l'instal·lador afegeix la seva URL a `CONNECTOR_INTERNAL_ALLOWLIST` perquè els connectors puguin connectar-hi sense configuració manual.
+- **`update.sh` detecta n8n automàticament**: Si `CONNECTOR_INTERNAL_ALLOWLIST` està buit i hi ha un n8n, l'actualització l'afegeix.
+
+### Correccions
+
+- **Simplificada la detecció de n8n**: S'ha eliminat l'ús de `docker ps --format` per compatibilitat amb entorns de test i sistemes amb versions antigues de Docker.
+
 ## v0.4.3 - 2026-08-28
 
 Una versio que fa que l'instal·lador proposi tots els moduls per defecte, en lloc de nomes

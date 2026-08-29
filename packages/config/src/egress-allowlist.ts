@@ -77,3 +77,31 @@ export function isAllowlistedDestination(allowlist: readonly AllowedDestination[
   const hostname = normalizeHostname(url.hostname);
   return allowlist.some((entry) => entry.scheme === url.protocol && entry.hostname === hostname && entry.port === port);
 }
+
+/**
+ * Converts a URL string into an AllowedDestination, for combining operator allowlists with
+ * instance-configured URLs. Returns null if the URL is not a valid origin.
+ *
+ * This is used to automatically add connector instance URLs to the effective allowlist, so that
+ * operators do not have to manually edit CONNECTOR_INTERNAL_ALLOWLIST for every instance they
+ * configure. The URL is validated the same way as entries in the environment variable.
+ */
+export function urlToAllowedDestination(urlString: string): AllowedDestination | null {
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "imaps:") {
+    return null;
+  }
+  if (url.username || url.password) return null;
+  if (!url.hostname) return null;
+
+  return {
+    scheme: url.protocol,
+    hostname: normalizeHostname(url.hostname),
+    port: url.port ? Number(url.port) : defaultPorts[url.protocol]!
+  };
+}

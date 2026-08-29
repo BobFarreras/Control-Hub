@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAllowlistedDestination, parseEgressAllowlist } from "./egress-allowlist.js";
+import { isAllowlistedDestination, parseEgressAllowlist, urlToAllowedDestination } from "./egress-allowlist.js";
 
 describe("reading the operator's allowlist", () => {
   it("is empty when nobody set one, which is the safe default", () => {
@@ -59,5 +59,51 @@ describe("deciding whether a URL was allowed", () => {
 
   it("allows nothing at all when the list is empty", () => {
     expect(isAllowlistedDestination([], new URL("https://n8n.internal:5678/"))).toBe(false);
+  });
+});
+
+describe("converting a URL to an allowed destination", () => {
+  it("converts a valid HTTPS URL", () => {
+    expect(urlToAllowedDestination("https://n8n.example.com")).toEqual({
+      scheme: "https:",
+      hostname: "n8n.example.com",
+      port: 443
+    });
+  });
+
+  it("converts a valid HTTP URL with a custom port", () => {
+    expect(urlToAllowedDestination("http://localhost:5678")).toEqual({
+      scheme: "http:",
+      hostname: "localhost",
+      port: 5678
+    });
+  });
+
+  it("converts a URL with a path by ignoring the path", () => {
+    expect(urlToAllowedDestination("https://n8n.example.com/api/v1")).toEqual({
+      scheme: "https:",
+      hostname: "n8n.example.com",
+      port: 443
+    });
+  });
+
+  it("returns null for an invalid URL", () => {
+    expect(urlToAllowedDestination("not-a-url")).toBeNull();
+  });
+
+  it("returns null for a URL with credentials", () => {
+    expect(urlToAllowedDestination("https://user:pass@example.com")).toBeNull();
+  });
+
+  it("returns null for an unsupported scheme", () => {
+    expect(urlToAllowedDestination("ftp://example.com")).toBeNull();
+  });
+
+  it("normalizes IPv6 addresses by removing brackets", () => {
+    expect(urlToAllowedDestination("http://[::1]:9090")).toEqual({
+      scheme: "http:",
+      hostname: "::1",
+      port: 9090
+    });
   });
 });
