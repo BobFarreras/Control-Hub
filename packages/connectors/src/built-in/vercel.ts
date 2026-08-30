@@ -361,14 +361,18 @@ export const vercel = defineConnector<VercelConfig>({
     const failure = failureForStatus(response.status);
     if (failure) {
       let body: unknown;
-      try { body = JSON.parse(response.body); } catch { body = null; }
+      try {
+        body = JSON.parse(response.body);
+      } catch {
+        body = null;
+      }
       context.logger.warn(
         {
           instanceId: context.instanceId,
           status: response.status,
           failure,
           teamId: context.config.teamId ?? null,
-          responseBody: body,
+          responseBody: body
         },
         "vercel health check failed"
       );
