@@ -105,7 +105,7 @@ const oauthTokens =
         oauthRepository,
         oauthVault,
         environment.oauthClients,
-        new ConnectorSecretReader(connectorRepository, oauthVault)
+        new ConnectorSecretReader(connectorRepository, oauthVault, logger)
       )
     : undefined;
 

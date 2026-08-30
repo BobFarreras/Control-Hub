@@ -1,11 +1,11 @@
 import { hasPermission, type TenantContext } from "@control-hub/domain";
-import type {
-  ConnectorRepository,
-  CredentialAad,
-  CredentialMetadata,
-  CredentialSealer,
-  CredentialSlot
-} from "./connectors.js";
+import type { ConnectorRepository, CredentialAad, CredentialMetadata, CredentialSealer } from "./connectors.js";
+
+export type CredentialLogger = {
+  info(fields: Record<string, unknown>, message: string): void;
+  warn(fields: Record<string, unknown>, message: string): void;
+  error(fields: Record<string, unknown>, message: string): void;
+};
 
 /**
  * Writing and reading connector credentials, split into two classes on purpose.
@@ -100,15 +100,17 @@ export class ConnectorCredentialService {
       throw new ConnectorCredentialError("ALREADY_EXPIRED");
     }
 
-    const live = await this.repository.readSealedCredentials(context, input.instanceId, kind);
-    const slot = freeSlot(live.map((credential) => credential.slot));
-    if (!slot) throw new ConnectorCredentialError("ROTATION_ALREADY_OPEN");
+    // Revoke any existing live credentials of this kind before writing the new one.
+    // The caller wants to replace the credential, not rotate it: the worker reads the primary,
+    // so a new token that lands in secondary would be invisible until promote() is called.
+    // Revoking first ensures the new credential always becomes the primary.
+    await this.repository.revokeCredentials(context, input.instanceId, kind);
 
     const envelope = this.sealer.seal(input.secret, aadFor(context, input.instanceId));
     return this.repository.putCredential(context, {
       instanceId: input.instanceId,
       kind,
-      slot,
+      slot: "primary",
       ...envelope,
       ...(input.expiresAt ? { expiresAt: input.expiresAt } : {})
     });
@@ -160,16 +162,6 @@ export class ConnectorCredentialService {
 }
 
 /**
- * The secondary is filled first, so the primary keeps working while the new value is installed at
- * the provider. Once both exist, `promote` is the only way forward.
- */
-function freeSlot(taken: readonly CredentialSlot[]): CredentialSlot | null {
-  if (!taken.includes("primary")) return "primary";
-  if (!taken.includes("secondary")) return "secondary";
-  return null;
-}
-
-/**
  * The worker's side of the vault.
  *
  * It takes no permission because there is no person on the other end: a queued job runs under the
@@ -180,7 +172,8 @@ function freeSlot(taken: readonly CredentialSlot[]): CredentialSlot | null {
 export class ConnectorSecretReader {
   constructor(
     private readonly repository: ConnectorRepository,
-    private readonly sealer: CredentialSealer
+    private readonly sealer: CredentialSealer,
+    private readonly logger?: CredentialLogger
   ) {}
 
   /**
@@ -192,10 +185,24 @@ export class ConnectorSecretReader {
   async open(context: TenantContext, instanceId: string, kind: string): Promise<string | null> {
     const live = await this.repository.readSealedCredentials(context, instanceId, kind);
     const primary = live.find((credential) => credential.slot === "primary");
-    if (!primary) return null;
-    const secret = this.sealer.open(primary, credentialAad(context, instanceId, kind));
-    await this.repository.markCredentialUsed(context, primary.id);
-    return secret;
+    if (!primary) {
+      this.logger?.warn(
+        { tenantId: context.tenantId, instanceId, kind, liveCount: live.length },
+        "credential primary not found"
+      );
+      return null;
+    }
+    try {
+      const secret = this.sealer.open(primary, credentialAad(context, instanceId, kind));
+      await this.repository.markCredentialUsed(context, primary.id);
+      return secret;
+    } catch {
+      this.logger?.error(
+        { tenantId: context.tenantId, instanceId, kind, slot: primary.slot, keyId: primary.keyId },
+        "credential vault open failed"
+      );
+      return null;
+    }
   }
 
   /**

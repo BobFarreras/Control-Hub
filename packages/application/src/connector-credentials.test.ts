@@ -176,19 +176,21 @@ describe("writing a credential", () => {
     expect(sealer.sealed[0]?.aad.tenantId).toBe(otherTenantId);
   });
 
-  it("fills the second slot next, leaving the working credential alone", async () => {
+  it("replaces the existing credential, revoking the old one", async () => {
     const first = await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     const second = await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
-    expect([first.slot, second.slot]).toEqual(["primary", "secondary"]);
-    expect(repository.rows.every((row) => !row.revoked)).toBe(true);
+    expect(first.slot).toBe("primary");
+    expect(second.slot).toBe("primary");
+    expect(repository.rows.filter((row) => !row.revoked)).toHaveLength(1);
+    expect(repository.rows.filter((row) => row.revoked)).toHaveLength(1);
   });
 
-  it("refuses a third, because that would be a rotation on top of a rotation", async () => {
+  it("allows writing multiple times, always replacing", async () => {
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
-    await expect(service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_1111bbbb" })).rejects.toThrow(
-      "ROTATION_ALREADY_OPEN"
-    );
+    const third = await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_1111bbbb" });
+    expect(third.slot).toBe("primary");
+    expect(repository.rows.filter((row) => !row.revoked)).toHaveLength(1);
   });
 
   it("counts slots per kind, so a signing secret does not block an api key", async () => {
@@ -274,28 +276,20 @@ describe("who may touch a credential", () => {
   });
 });
 
-describe("finishing a rotation", () => {
-  beforeEach(async () => {
+describe("replacing a credential", () => {
+  it("makes the new secret the one that goes out, revoking the old one", async () => {
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
-  });
-
-  it("makes the new secret the one that goes out, and retires the old one", async () => {
-    const promoted = await service.promote(rotator, instanceId, "api_key");
-    expect(promoted.slot).toBe("primary");
     expect(await reader.open(rotator, instanceId, "api_key")).toBe("sk_live_0000aaaa");
     expect(repository.rows.filter((row) => !row.revoked)).toHaveLength(1);
   });
 
-  it("frees the slot again, so the next rotation can start", async () => {
-    await service.promote(rotator, instanceId, "api_key");
+  it("allows writing again after replacement", async () => {
+    await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
+    await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
     const next = await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_2222cccc" });
-    expect(next.slot).toBe("secondary");
-  });
-
-  it("says so rather than quietly succeeding when no rotation was started", async () => {
-    await service.promote(rotator, instanceId, "api_key");
-    await expect(service.promote(rotator, instanceId, "api_key")).rejects.toThrow("NO_ROTATION_IN_PROGRESS");
+    expect(next.slot).toBe("primary");
+    expect(await reader.open(rotator, instanceId, "api_key")).toBe("sk_live_2222cccc");
   });
 });
 
@@ -312,10 +306,10 @@ describe("revoking", () => {
 });
 
 describe("the worker reading a secret", () => {
-  it("sends the primary out, never the half-installed secondary", async () => {
+  it("sends the latest credential, which is always primary", async () => {
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_0000aaaa" });
-    expect(await reader.open(rotator, instanceId, "api_key")).toBe("sk_live_9f2c8ab4");
+    expect(await reader.open(rotator, instanceId, "api_key")).toBe("sk_live_0000aaaa");
   });
 
   it("answers null rather than throwing when an instance has no credential of that kind", async () => {
@@ -328,24 +322,23 @@ describe("the worker reading a secret", () => {
     expect(repository.rows[0]?.usedAt).toBeInstanceOf(Date);
   });
 
-  it("offers both secrets to verify an inbound signature, the newest first", async () => {
+  it("returns only the current credential for signature verification", async () => {
     await service.write(rotator, { instanceId, kind: "signing_secret", secret: "whsec_old12345" });
     await service.write(rotator, { instanceId, kind: "signing_secret", secret: "whsec_new67890" });
     const candidates = await reader.openAll(rotator, instanceId, "signing_secret");
-    expect(candidates.map((candidate) => candidate.secret)).toEqual(["whsec_new67890", "whsec_old12345"]);
+    expect(candidates.map((candidate) => candidate.secret)).toEqual(["whsec_new67890"]);
   });
 
-  it("marks the one that actually matched, not every one it tried", async () => {
+  it("marks the credential as used", async () => {
     await service.write(rotator, { instanceId, kind: "signing_secret", secret: "whsec_old12345" });
-    await service.write(rotator, { instanceId, kind: "signing_secret", secret: "whsec_new67890" });
     const candidates = await reader.openAll(rotator, instanceId, "signing_secret");
-    await reader.markUsed(rotator, candidates[1]!.id);
+    await reader.markUsed(rotator, candidates[0]!.id);
     expect(repository.rows.filter((row) => row.usedAt !== null).map((row) => row.slot)).toEqual(["primary"]);
   });
 
-  it("cannot open an envelope belonging to another tenant, whatever it was asked", async () => {
+  it("returns null for another tenant, because no credential exists there", async () => {
     await service.write(rotator, { instanceId, kind: "api_key", secret: "sk_live_9f2c8ab4" });
     const intruder = context(["credentials:rotate"], { tenantId: otherTenantId });
-    await expect(reader.open(intruder, instanceId, "api_key")).rejects.toThrow("ENVELOPE_NOT_AUTHENTIC");
+    expect(await reader.open(intruder, instanceId, "api_key")).toBeNull();
   });
 });

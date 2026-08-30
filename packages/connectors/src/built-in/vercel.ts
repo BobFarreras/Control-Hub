@@ -359,7 +359,26 @@ export const vercel = defineConnector<VercelConfig>({
     // and the scope together, which is the pair that has to be right.
     const response = await send(context, "/v9/projects", { limit: "1" });
     const failure = failureForStatus(response.status);
-    return failure ? { status: "failed", failure } : { status: "ok" };
+    if (failure) {
+      let body: unknown;
+      try {
+        body = JSON.parse(response.body);
+      } catch {
+        body = null;
+      }
+      context.logger.warn(
+        {
+          instanceId: context.instanceId,
+          status: response.status,
+          failure,
+          teamId: context.config.teamId ?? null,
+          responseBody: body
+        },
+        "vercel health check failed"
+      );
+      return { status: "failed", failure };
+    }
+    return { status: "ok" };
   },
   operations: {
     pull_projects: (context) => pullProjects(context),

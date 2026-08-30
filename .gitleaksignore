@@ -4,3 +4,4 @@
 # quieten a job. A finding outside a test file does not belong in this file at all.
 5e00719563a855c172ed21e72f6fcc74366b7d88:tests/e2e/totp.spec.ts:generic-api-key:12
 529ca42fc8e7c2357ea8c4ff8dec55d4cffd417e:packages/application/src/connector-credentials.test.ts:generic-api-key:240
+07f99e3adbd28ad1554bb353dfe00f761e5491f5:packages/application/src/connector-credentials.test.ts:generic-api-key:288
