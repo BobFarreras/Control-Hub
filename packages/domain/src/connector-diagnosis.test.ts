@@ -17,6 +17,7 @@ const healthy: ConnectorDiagnosisFacts = {
   missingMigrations: [],
   originAllowlisted: true,
   lastAttempt: { ok: true, code: null },
+  connectorType: "prometheus",
   seenInstances: ["node-exporter:9100"],
   declaredHostnames: ["node-exporter:9100"]
 };
@@ -57,6 +58,7 @@ describe("the shape of an answer", () => {
     expect(diagnosis.problem).toBe("migrations");
     expect(diagnosis.findings.map((finding) => finding.status)).toEqual([
       "failed",
+      "unchecked",
       "unchecked",
       "unchecked",
       "unchecked",
@@ -119,6 +121,39 @@ describe("whether the guard lets the call out at all", () => {
   );
 });
 
+describe("whether the call can even be constructed", () => {
+  /**
+   * The failure the screen meets most often: a connector whose credential nobody has written yet.
+   * Before this rung existed it landed on the catch-all and read as "something answers on that
+   * port, but it is not a Prometheus" -- with the address rung reported as passed on the account
+   * of a call that never left the process.
+   */
+  it.each(["CREDENTIAL_MISSING", "INVALID_CONFIG", "OPERATION_NOT_DECLARED"])(
+    "stops at %s, before anything is said about the network",
+    (code) => {
+      expect(statuses(facts({ lastAttempt: { ok: false, code } }))).toMatchObject({
+        allowlist: "passed",
+        prepared: "failed",
+        reachable: "unchecked",
+        answers: "unchecked"
+      });
+    }
+  );
+
+  it("carries the code so the screen can say which of them it was", () => {
+    expect(findingFor(facts({ lastAttempt: { ok: false, code: "CREDENTIAL_MISSING" } }), "prepared").code).toBe(
+      "CREDENTIAL_MISSING"
+    );
+  });
+
+  /** A call that got past the preparation proves it: whatever it needed, it had. */
+  it("passes when a run failed further up the chain", () => {
+    expect(statuses(facts({ lastAttempt: { ok: false, code: "CONNECT_TIMEOUT" } }))).toMatchObject({
+      prepared: "passed"
+    });
+  });
+});
+
 describe("whether anything answers at the far end", () => {
   /** Acceptance criterion 3: the tunnel is shut, and that is a different fact from a wrong port. */
   it.each(["CONNECT_TIMEOUT", "CONNECTION_FAILED", "CONNECTION_RESET", "TIMEOUT", "DNS_RESOLUTION_FAILED"])(
@@ -126,8 +161,9 @@ describe("whether anything answers at the far end", () => {
     (code) => {
       expect(statuses(facts({ lastAttempt: { ok: false, code } }))).toMatchObject({
         allowlist: "passed",
+        prepared: "passed",
         reachable: "failed",
-        answers_prometheus: "unchecked"
+        answers: "unchecked"
       });
     }
   );
@@ -142,8 +178,9 @@ describe("whether anything answers at the far end", () => {
     expect(diagnosis.problem).toBe("reachable");
     expect(statuses(facts({ lastAttempt: null }))).toMatchObject({
       allowlist: "passed",
+      prepared: "passed",
       reachable: "unknown",
-      answers_prometheus: "unchecked"
+      answers: "unchecked"
     });
   });
 
@@ -156,13 +193,13 @@ describe("whether anything answers at the far end", () => {
   });
 });
 
-describe("whether what answers is a Prometheus", () => {
+describe("whether what answers is what the connector expects", () => {
   it.each(["INVALID_RESPONSE", "NOT_FOUND", "UNAUTHORIZED", "SERVER_ERROR", "RESPONSE_TOO_LARGE"])(
     "reads %s as something else on that port",
     (code) => {
       expect(statuses(facts({ lastAttempt: { ok: false, code } }))).toMatchObject({
         reachable: "passed",
-        answers_prometheus: "failed",
+        answers: "failed",
         scraping: "unchecked"
       });
     }
@@ -175,21 +212,45 @@ describe("whether what answers is a Prometheus", () => {
    */
   it("puts a code it does not recognise here rather than nowhere", () => {
     expect(statuses(facts({ lastAttempt: { ok: false, code: "SOMETHING_NEWER" } }))).toMatchObject({
-      answers_prometheus: "failed"
+      answers: "failed"
     });
   });
 
   it("carries the code so the screen can say which of them it was", () => {
-    expect(findingFor(facts({ lastAttempt: { ok: false, code: "UNAUTHORIZED" } }), "answers_prometheus").code).toBe(
+    expect(findingFor(facts({ lastAttempt: { ok: false, code: "UNAUTHORIZED" } }), "answers").code).toBe(
       "UNAUTHORIZED"
     );
+  });
+});
+
+describe("how far a connector climbs", () => {
+  /**
+   * The two last rungs reason about prometheus record shapes, and an n8n's records carry neither
+   * an `instance` label nor a hostname to join it against. Climbing them anyway would report as a
+   * failure what is only a reading the chain was never built to interpret -- which is exactly the
+   * class of lie this check exists to end.
+   */
+  it("stops a connector that is not prometheus at the answer rung", () => {
+    const diagnosis = diagnoseConnector(facts({ connectorType: "n8n" }));
+    expect(diagnosis.findings.map((finding) => finding.step)).toEqual([
+      "migrations",
+      "allowlist",
+      "prepared",
+      "reachable",
+      "answers"
+    ]);
+    expect(diagnosis.problem).toBeNull();
+  });
+
+  it("climbs the whole chain for a prometheus connector", () => {
+    expect(diagnoseConnector(facts()).findings.map((finding) => finding.step)).toEqual([...connectorDiagnosisSteps]);
   });
 });
 
 describe("whether the collector is scraping anything", () => {
   it("fails when the connector has stored no reading of any target", () => {
     expect(statuses(facts({ seenInstances: [] }))).toMatchObject({
-      answers_prometheus: "passed",
+      answers: "passed",
       scraping: "failed",
       matching: "unchecked"
     });

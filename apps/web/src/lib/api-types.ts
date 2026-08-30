@@ -1006,7 +1006,7 @@ export type InfrastructureServiceResponse = { service: InfrastructureService };
  * answer -- the sentence that needs one is composed in the browser out of what was just typed.
  */
 export type ConnectorDiagnosisStep =
-  "migrations" | "allowlist" | "reachable" | "answers_prometheus" | "scraping" | "matching";
+  "migrations" | "allowlist" | "prepared" | "reachable" | "answers" | "scraping" | "matching";
 
 export type ConnectorDiagnosisStatus = "passed" | "failed" | "unknown" | "unchecked";
 

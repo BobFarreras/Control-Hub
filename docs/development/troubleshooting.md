@@ -705,6 +705,29 @@ fila d'`infra_hosts` a ma.
 que una que no ofereix res: fabrica fitxes mortes que despres ningu pot retirar. Si una llista
 proposa, ha de proposar nomes el que el magatzem pot arribar a casar.
 
+### La comprovacio guiada diu "reachable" quan la credencial falta
+
+**Simptoma.** La comprovacio guiada d'una integracio n8n (o qualsevol que no sigui Prometheus)
+mostra la cadena completa amb l'esglaó `answers` tractat com a "passat", quan en realitat la
+integracio no pot ni comencar perque li falta l'API key o la configuracio basica. A mes, el text
+de l'esglaó `answers` es el de Prometheus en comptes del del connector real.
+
+**Causa.** L'esglaó `answers_prometheus` era un catch-all per a tots els errors de xarxa que no
+eren `UNREACHABLE`, `NETWORK_DNS`, etc. Quan n8n llencava `CREDENTIAL_MISSING` (no podia
+construir la crida perque faltava `api_token`), el codi el classificava com a "respostes
+obtingudes" en comptes de "no es pot intentar". Això feia dues coses falses: (1) la cadena
+tractava la fallada com a evidencia de connectivitat, i (2) el text del panell era el de
+Prometheus.
+
+**Solucio.** Esglaó nou `prepared` abans de `reachable`, amb el seu propi vocabulari
+(`CREDENTIAL_MISSING`, `INVALID_CONFIG`, `OPERATION_NOT_DECLARED`). El text de l'esglaó
+`answers` ara es generic o especific per connector (n8n, Prometheus) segons `connectorType` de
+la instancia. Els rungs de scraping/matching nomes s'emeten per `connectorType === "prometheus"`,
+perque les consultes PromQL i el parseig de registres son especifics de Prometheus.
+
+Per verificar-ho: crea una instancia n8n sense API key, activa-la, i demana la comprovacio guiada.
+L'esglaó `prepared` ha de mostrar l'error i el text d'n8n, i `reachable` no ha d'apareixer.
+
 ### Una variable del `.env` no te el valor que hi has escrit
 
 **Simptoma.** Cada passada d'un connector mor amb `DESTINATION_NOT_ALLOWLISTED` contra una adreca

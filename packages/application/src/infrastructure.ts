@@ -666,6 +666,10 @@ export class InfrastructureService {
       // rung for the same reason: nothing can go out.
       originAllowlisted: baseUrl !== null && this.isOriginAllowlisted(baseUrl),
       lastAttempt: state.instance?.lastAttempt ?? null,
+      // Decides how far the chain climbs: the two last rungs reason about prometheus record
+      // shapes. An instance that is null here has migrations missing, and the chain stops at that
+      // rung before the type could matter.
+      connectorType: state.instance?.connectorType ?? "",
       seenInstances: state.seenInstances,
       declaredHostnames: state.declaredHostnames
     });

@@ -283,6 +283,21 @@ describe("the words the guided check is read in", () => {
     }
   });
 
+  /**
+   * The rung that names the far end names it per connector, because a sentence about Prometheus
+   * on an n8n integration is a sentence about the wrong product. Both connectors the panel is
+   * shown for need their own words, in every locale.
+   */
+  it("names the far end per connector on the answer rung", () => {
+    for (const locale of locales) {
+      const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;
+      for (const variant of ["Prometheus", "N8n"]) {
+        expect(dictionary[`diagnosisStepAnswers${variant}`], `answer step for ${variant} in ${locale}`).toBeTruthy();
+        expect(dictionary[`diagnosisFixAnswers${variant}`], `answer remedy for ${variant} in ${locale}`).toBeTruthy();
+      }
+    }
+  });
+
   it("has a word for each of the four things a rung can be", () => {
     for (const locale of locales) {
       const dictionary = getIntegrationsDictionary(locale) as unknown as Record<string, string>;

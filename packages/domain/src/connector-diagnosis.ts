@@ -33,15 +33,22 @@ import type { ServiceKind } from "./infrastructure.js";
 /**
  * The rungs, in the order they are climbed.
  *
- * The specification lists seven and the first is missing here on purpose: with the
+ * The specification lists eight and the first is missing here on purpose: with the
  * `infrastructure` flag closed there is no route to ask, so "the flag is open" is answered by the
  * 404 rather than by a finding. What is left is what a running module can still get wrong.
+ *
+ * This is the full chain, which is the prometheus shape. A connector whose readings are not
+ * prometheus series -- an n8n today -- climbs only up to `answers`: the two last rungs reason
+ * about `instance` labels and declared hostnames, which only exist in the prometheus record
+ * shapes, and climbing them for another connector would report as a failure what is merely a
+ * reading the chain was never built to interpret.
  */
 export const connectorDiagnosisSteps = [
   "migrations",
   "allowlist",
+  "prepared",
   "reachable",
-  "answers_prometheus",
+  "answers",
   "scraping",
   "matching"
 ] as const;
@@ -92,6 +99,12 @@ export type ConnectorDiagnosisFacts = {
    * has. A successful pass counts as much as a health check: both are a call that got there.
    */
   lastAttempt: { ok: boolean; code: string | null } | null;
+  /**
+   * The connector type of the instance, which decides how far the chain climbs: the two last
+   * rungs reason about prometheus record shapes and are only climbed for a prometheus connector.
+   * It is a plain string because the domain must not depend on the registry that owns the names.
+   */
+  connectorType: string;
   /** Every `instance` label the connector has stored a reading for. */
   seenInstances: readonly string[];
   /** The `hostname` of every machine declared in this tenant. */
@@ -130,18 +143,31 @@ const unreachableCodes: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * What the runtime found missing before a call could even be constructed.
+ *
+ * They answer at their own rung because they prove nothing about the network: a run that failed
+ * here never left the process, so reporting the address rung as passed on its account would be
+ * evidence manufactured out of a call that never happened. This is the failure the screen meets
+ * most often -- a connector whose credential nobody has written yet -- and before this rung
+ * existed it landed on the catch-all below and read as "something answers on that port, but it
+ * is not a Prometheus", which is two lies for the price of one.
+ */
+const preparedCodes: ReadonlySet<string> = new Set(["CREDENTIAL_MISSING", "INVALID_CONFIG", "OPERATION_NOT_DECLARED"]);
+
+/**
  * Which rung a failed check answers at.
  *
- * Anything unrecognised lands on `answers_prometheus`, which is the safe rung rather than an
- * arbitrary one: everything below it is then reported as evidence we genuinely have, and the
- * sentence is about the far end -- which is what a code from a connector newer than this screen
- * most likely means. A code that landed nowhere would leave the whole chain unchecked and say
- * less than the generic sentence this file exists to replace.
+ * Anything unrecognised lands on `answers`, which is the safe rung rather than an arbitrary one:
+ * everything below it is then reported as evidence we genuinely have, and the sentence is about
+ * the far end -- which is what a code from a connector newer than this screen most likely means.
+ * A code that landed nowhere would leave the whole chain unchecked and say less than the generic
+ * sentence this file exists to replace.
  */
 function rungFor(code: string): ConnectorDiagnosisStep {
   if (guardCodes.has(code)) return "allowlist";
+  if (preparedCodes.has(code)) return "prepared";
   if (unreachableCodes.has(code)) return "reachable";
-  return "answers_prometheus";
+  return "answers";
 }
 
 /** One copy of each, in a stable order, so the same state always reads the same way. */
@@ -152,10 +178,12 @@ function distinct(values: readonly string[]): readonly string[] {
 /**
  * The chain, climbed once.
  *
- * The three rungs the health check answers for are decided together, because they read one piece
- * of evidence: a check that succeeded proves all three, and a check that failed proves the ones
- * below whichever it failed at. Splitting them would mean asking the same fact three questions
- * and getting three chances to disagree with itself.
+ * The rungs the health check answers for are decided together, because they read one piece of
+ * evidence: a check that succeeded proves all of them, and a check that failed proves the ones
+ * below whichever it failed at. Splitting them would mean asking the same fact several questions
+ * and getting several chances to disagree with itself. What a failure that never left the
+ * process proves about the network is nothing, so the rungs from `reachable` up stay unjudged
+ * rather than passed on its account.
  */
 export function diagnoseConnector(facts: ConnectorDiagnosisFacts): ConnectorDiagnosis {
   const findings: DiagnosisFinding[] = [];
@@ -209,19 +237,26 @@ export function diagnoseConnector(facts: ConnectorDiagnosisFacts): ConnectorDiag
       : { status: "failed", code: guardFailed ? (failedAt?.code ?? null) : null }
   );
 
+  rung("prepared", checkVerdict("prepared"));
   rung("reachable", checkVerdict("reachable"));
-  rung("answers_prometheus", checkVerdict("answers_prometheus"));
+  rung("answers", checkVerdict("answers"));
 
-  const seen = distinct(facts.seenInstances);
-  const declared = distinct(facts.declaredHostnames);
+  // The two last rungs reason about prometheus record shapes -- `instance` labels under `host:`
+  // and `probe:` readings, and the hostnames they are joined against. Another connector's records
+  // carry neither, so for it the chain ends at `answers`: climbing on would report as a failure
+  // what is only a reading the chain was never built to interpret.
+  if (facts.connectorType === "prometheus") {
+    const seen = distinct(facts.seenInstances);
+    const declared = distinct(facts.declaredHostnames);
 
-  rung("scraping", seen.length > 0 ? { status: "passed" } : { status: "failed" });
+    rung("scraping", seen.length > 0 ? { status: "passed" } : { status: "failed" });
 
-  // Character for character, because that is exactly how a reading is joined to a machine. A
-  // label that is nearly right matches nothing and reads on the screen as "no readings", which is
-  // indistinguishable from a machine that died -- and that is the confusion this rung removes.
-  const matched = seen.some((label) => declared.includes(label));
-  rung("matching", matched ? { status: "passed" } : { status: "failed", evidence: { seen, declared } });
+    // Character for character, because that is exactly how a reading is joined to a machine. A
+    // label that is nearly right matches nothing and reads on the screen as "no readings", which
+    // is indistinguishable from a machine that died -- and that is the confusion this rung removes.
+    const matched = seen.some((label) => declared.includes(label));
+    rung("matching", matched ? { status: "passed" } : { status: "failed", evidence: { seen, declared } });
+  }
 
   return { findings, problem: findings.find((finding) => finding.status !== "passed")?.step ?? null };
 }
