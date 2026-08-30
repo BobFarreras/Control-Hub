@@ -96,13 +96,27 @@ nomes te sentit si l'anterior es cert.
 | 1 | La flag `infrastructure` es oberta | (no arriba: sense flag no existeix la ruta) |
 | 2 | Les migracions que el modul necessita estan aplicades | quina falta i quina ordre l'aplica |
 | 3 | L'origen del `baseUrl` es a `CONNECTOR_INTERNAL_ALLOWLIST` | la linia exacta per copiar a `.env` |
-| 4 | El `guarded-fetch` arriba al `baseUrl` | l'ordre del tunel, amb l'adreca ja substituida |
-| 5 | La resposta es un Prometheus (`vector(1)`) | que respon una altra cosa en aquell port |
-| 6 | El connector veu almenys un `instance` | que Prometheus no raspa res, i on mirar-ho |
-| 7 | Algun `instance` coincideix amb un `hostname` declarat | quins veu i quins hi ha declarats |
+| 4 | La crida es pot construir: credencial escrita, configuracio valida, operacio declarada | el motiu concret del codi; normalment, que falta escriure la credencial |
+| 5 | El `guarded-fetch` arriba al `baseUrl` | l'ordre del tunel, amb l'adreca ja substituida |
+| 6 | La resposta es del proveidor esperat (per a Prometheus, `vector(1)`) | que respon una altra cosa en aquell port |
+| 7 | El connector veu almenys un `instance` | que Prometheus no raspa res, i on mirar-ho |
+| 8 | Algun `instance` coincideix amb un `hostname` declarat | quins veu i quins hi ha declarats |
 
-L'esglao 2 es el que hauria estalviat la tarda. L'esglao 7 es el que separa "la maquina es morta"
+L'esglao 2 es el que hauria estalviat la tarda. L'esglao 8 es el que separa "la maquina es morta"
 de "l'has escrit diferent".
+
+**Una fallada abans de la xarxa no prova mai els esglaons de xarxa.** Els codis dels esglaons 3 i 4
+son fallades d'una crida que no ha sortit del proces; reportar l'esglao 5 com a passat amb
+aquesta evidencia seria fabricar-la, que es exactament la confusio que la comprovacio existeix
+per desfer. Una fallada aixi atura la cadena al seu esglao i deixa els de xarxa sense jutjar.
+
+**La cadena es per connector.** Els esglaons 7 i 8 raonen sobre les formes de registre de
+Prometheus --etiquetes `instance` sota lectures `host:` i `probe:`, i els `hostname` amb que es
+casen-- i nomes es pugen per a un connector prometheus. Per a un altre connector --avui l'n8n--
+la cadena acaba a l'esglao 6: pujar mes amunt reportaria com a fallada el que nomes es una
+lectura que la cadena no va ser construida per interpretar. El text de l'esglao 6 va per
+connector pel mateix motiu: el que respon al final d'una integracio n8n es un n8n, i una frase
+sobre Prometheus alli seria una frase sobre el producte equivocat.
 
 ### Que no pot dir mai
 

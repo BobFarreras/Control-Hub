@@ -291,7 +291,12 @@ export function IntegrationDetailScreen({
             the module that answers it is installed. Anywhere else the button would ask a route
             that is not declared. */}
         {infrastructureEnabled && entry?.capabilities.egress?.destination === "operator_allowlist" && (
-          <DiagnosisPanel instanceId={instance.id} form={configForm} labels={t} />
+          <DiagnosisPanel
+            instanceId={instance.id}
+            connectorType={instance.connectorType}
+            form={configForm}
+            labels={t}
+          />
         )}
 
         {entry?.capabilities.oauth && detail.vaultAvailable && (
@@ -689,12 +694,19 @@ function DeleteDialog({
   );
 }
 
-/** The rungs, in the order they are climbed, so the panel never draws them in another. */
+/**
+ * The rungs, in the order they are climbed, so the panel never draws them in another.
+ *
+ * The full chain, which is the prometheus shape: a connector whose readings are not prometheus
+ * series sends no findings for the two last rungs, and a step with no finding is simply not
+ * drawn.
+ */
 const diagnosisSteps: ConnectorDiagnosisStep[] = [
   "migrations",
   "allowlist",
+  "prepared",
   "reachable",
-  "answers_prometheus",
+  "answers",
   "scraping",
   "matching"
 ];
@@ -742,10 +754,12 @@ const statusTone: Record<ConnectorDiagnosisStatus, StatusTone> = {
  */
 function DiagnosisPanel({
   instanceId,
+  connectorType,
   form,
   labels: t
 }: {
   instanceId: string;
+  connectorType: string;
   form: RefObject<HTMLFormElement | null>;
   labels: Labels;
 }) {
@@ -753,6 +767,18 @@ function DiagnosisPanel({
   const [busy, setBusy] = useState(false);
   const [diagnosis, setDiagnosis] = useState<ConnectorDiagnosis | null>(null);
   const [typedBaseUrl, setTypedBaseUrl] = useState("");
+
+  /**
+   * The rung that names the far end names it per connector: what answers at the end of an n8n
+   * integration is an n8n, and a sentence about Prometheus there is a sentence about the wrong
+   * product. The generic keys are the fallback for a connector nobody has written keys for yet.
+   */
+  const rungKey = (prefix: "diagnosisStep" | "diagnosisFix", step: ConnectorDiagnosisStep): string => {
+    const base = `${prefix}${pascal(step)}`;
+    if (step !== "answers") return base;
+    const specific = `${base}${pascal(connectorType)}`;
+    return t[specific] ? specific : base;
+  };
 
   function copy(value: string) {
     void navigator.clipboard.writeText(value).then(
@@ -804,12 +830,12 @@ function DiagnosisPanel({
                 <li key={step} className="diagnosis-rung" data-status={finding.status}>
                   <div className="diagnosis-rung-head">
                     <StatusPill tone={statusTone[finding.status]} label={t[statusWord[finding.status]] ?? ""} />
-                    <span className="diagnosis-rung-name">{t[`diagnosisStep${pascal(step)}`]}</span>
+                    <span className="diagnosis-rung-name">{t[rungKey("diagnosisStep", step)]}</span>
                   </div>
 
                   {broken && (
                     <div className="diagnosis-remedy">
-                      <p>{t[`diagnosisFix${pascal(step)}`]}</p>
+                      <p>{t[rungKey("diagnosisFix", step)]}</p>
                       {finding.code && <p className="field-help">{runErrorMessage(t, finding.code)}</p>}
 
                       {step === "migrations" && (

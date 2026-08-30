@@ -76,6 +76,20 @@ el tria qui hi ha a l'altra punta del socket.
 
 ## El seguent pas
 
+**Recuperacions recents (29 d'agost de 2026).** S'ha reintegrat `main` a `develop` (`fc8c6b7`),
+fusionant els commits de release v0.4.4/v0.4.5 que mai s'havien tornat a Develop —incloent
+l'auto-allowlist d'instàncies (`82c91f0`). SobreDevelop s'ha creat la branca
+`fix/connector-diagnosis-pre-network` per corregir un defecte del C1: la comprovació guiada de
+connectors no distingia "no s'ha intentat" de "no es pot intentar". Quan n8n faltava l'API key
+(`CREDENTIAL_MISSING`), el codi queia a `answers_prometheus` (el catch-all) i produïa evidència
+falsa de que la integració era accessible, a més de mostrar text específic de Prometheus per a
+una integració n8n. La correcció afegeix un esglaó `prepared` (credential/config) abans de
+`reachable`, renombra `answers_prometheus` → `answers` amb variants per connector
+(`diagnosisStepAnswersN8n`, `diagnosisFixAnswersN8n`), i limita l'emissió de rungs de
+scraping/matching a `connectorType === "prometheus"`. L'especificació C1
+(`connector-onboarding.md`) s'ha actualitzat amb la taula de 8 rungs i la regla de evidència
+pre-xarxa. S'escriu la API key d'n8n des de la secció Credencials de la targeta d'integració.
+
 **El seguent pas es actualitzar la VPS a la `v0.4.5`**, que ja esta publicada. Aquella maquina
 corre amb la `v0.4.2` i cal actualitzar-la per tenir tots els moduls activats, la detecció
 automàtica de n8n, i els connectors interns funcionant automàticament.

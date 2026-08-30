@@ -283,8 +283,9 @@ export function inventoryResponse(inventory: Inventory) {
 const evidenceKeys: Readonly<Record<ConnectorDiagnosisStep, readonly string[]>> = {
   migrations: ["migrations"],
   allowlist: [],
+  prepared: [],
   reachable: [],
-  answers_prometheus: [],
+  answers: [],
   scraping: [],
   matching: ["seen", "declared"]
 };
