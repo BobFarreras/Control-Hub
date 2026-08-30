@@ -335,8 +335,17 @@ export type ConfigFieldKind = "url" | "text" | "number" | "toggle" | "list";
  */
 export type ConfigFieldGroup = "connection" | "behaviour";
 
+/** A condition that controls whether a field is shown in the UI. */
+export type FieldCondition = { field: string; equals: string | number | boolean };
+
 /** What a connector declares: a name, how to draw it, and what it is for. */
-export type ConfigFieldDeclaration = { name: string; kind: ConfigFieldKind; group: ConfigFieldGroup };
+export type ConfigFieldDeclaration = {
+  name: string;
+  kind: ConfigFieldKind;
+  group: ConfigFieldGroup;
+  /** Show this field only when another field has a specific value. */
+  visibleWhen?: FieldCondition;
+};
 
 /** A default a form can put in an input. Anything richer is not something a person types. */
 export type ConfigFieldDefault = string | number | boolean | readonly string[];
@@ -346,6 +355,8 @@ export type ConfigField = ConfigFieldDeclaration & {
   required: boolean;
   /** The schema's own default, or `null` when it has none: not every optional field has one. */
   defaultValue: ConfigFieldDefault | null;
+  /** Carry through so the UI can hide the field when the condition is not met. */
+  visibleWhen?: FieldCondition;
 };
 
 export type ConnectorDefinition<Config> = {

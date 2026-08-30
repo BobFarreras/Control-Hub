@@ -55,6 +55,8 @@ const configSchema = z.strictObject({
    * write is a base that can be pointed at their own host, and the token goes with it.
    */
   baseUrl: z.literal("https://api.vercel.com").default("https://api.vercel.com"),
+  /** False for a personal account token, true for a team token. */
+  tokenType: z.boolean().default(false),
   /**
    * Absent for a personal account, required for a team token -- and the failure of getting it
    * wrong is silent, which is why health checks it: without the team, the same call answers with
@@ -341,7 +343,8 @@ export const vercel = defineConnector<VercelConfig>({
   /** The team first, because it is the one that answers with silence when it is wrong. */
   configFields: [
     { name: "baseUrl", kind: "url", group: "connection" },
-    { name: "teamId", kind: "text", group: "connection" },
+    { name: "tokenType", kind: "toggle", group: "connection" },
+    { name: "teamId", kind: "text", group: "connection", visibleWhen: { field: "tokenType", equals: true } },
     { name: "includePreview", kind: "toggle", group: "behaviour" },
     { name: "deploymentsWindowHours", kind: "number", group: "behaviour" }
   ],

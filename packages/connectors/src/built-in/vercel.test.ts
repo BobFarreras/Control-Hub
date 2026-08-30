@@ -93,6 +93,7 @@ describe("configuration", () => {
       ok: true,
       config: {
         baseUrl: "https://api.vercel.com",
+        tokenType: false,
         includePreview: false,
         deploymentsWindowHours: 24
       }
