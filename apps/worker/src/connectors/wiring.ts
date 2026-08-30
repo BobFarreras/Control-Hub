@@ -36,7 +36,7 @@ export type ConnectorWiringOptions = {
 export function createConnectorRuntime(options: ConnectorWiringOptions): ConnectorRuntime | null {
   if (!options.keyRing) return null;
 
-  const secrets = new ConnectorSecretReader(options.repository, new CredentialVault(options.keyRing));
+  const secrets = new ConnectorSecretReader(options.repository, new CredentialVault(options.keyRing), options.logger);
   const runtimeSecrets = options.oauthTokens
     ? {
         open: (context: Parameters<ConnectorSecretReader["open"]>[0], instanceId: string, kind: string) =>
