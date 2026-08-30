@@ -90,15 +90,17 @@ scraping/matching a `connectorType === "prometheus"`. L'especificació C1
 (`connector-onboarding.md`) s'ha actualitzat amb la taula de 8 rungs i la regla de evidència
 pre-xarxa. S'escriu la API key d'n8n des de la secció Credencials de la targeta d'integració.
 
-**v0.4.7 publicada** (30 d'agost de 2026). Corrigeix el bug de credencials: `write()` ara revoca
+**v0.4.8 publicada** (30 d'agost de 2026). Corrigeix el bug de credencials: `write()` ara revoca
 les credencials existents abans d'escriure, assegurant que el token nou sempre sigui el `primary`
 que el worker llegeix. Abans, cada escrit anava a un slot secundari que el worker mai llegia.
 També afegeix logging detallat al health check de Vercel per capturar la resposta real de l'API
-en cas d'error (status, teamId, responseBody).
+en cas d'error (status, teamId, responseBody). Afegeix el selector de tipus de token de Vercel
+(personal vs. equip) amb `visibleWhen` per a camps condicionals, i arregla la versio reportada
+per la VPS (el package.json es versionava al build time via tsup).
 
-**El seguent pas es actualitzar la VPS a la `v0.4.7`**, que ja esta publicada. Aquella maquina
-corre amb la `v0.4.2` i cal actualitzar-la per tenir tots els moduls activats, la deteccio
-automàtica de n8n, i els connectors interns funcionant automàticament.
+**El seguent pas es actualitzar la VPS a la `v0.4.8`**, que ja esta publicada. Aquella maquina
+corre amb la `v0.4.7` i cal actualitzar-la per tenir el selector de token de Vercel i la versio
+correcta reportada.
 
 Es **la primera actualitzacio de debo**, amb dades a dins, que es el que
 `docs/specifications/deployment.md` diu que es la prova que compta: instal·lar de zero funciona

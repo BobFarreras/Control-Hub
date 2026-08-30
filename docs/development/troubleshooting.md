@@ -889,3 +889,92 @@ falla per atzar ensenya a reexecutar sense llegir.
 finestra els `on delete cascade` no es disparen. Un `delete from tenants` alli deixa totes les files
 filles enrere i peta despres contra la restriccio. La finestra ha de cobrir nomes els `delete` de les
 taules append-only.
+
+## Releases i desplegament
+
+### La release gate rebutja el commit de la tag
+
+**Simptoma.** El release workflow `release.yml` dispara el job `Required checks`, que executa
+`scripts/release-gate.mjs`. El gate mira check-runs pel commit SHA de la tag, pero no en troba
+totes les que calen (n'hi falten algunes de `pending` o simplement no hi son) i rebutja la
+publicacio. La tag ja existeix a GitHub pero no ha publicat res.
+
+**Causa.** `ci.yml` te `concurrency: { group: ..., cancel-in-progress: true }`. Quan es fa push
+d'una tag des de `develop`, el push a `develop` dispara CI sobre el mateix commit SHA que la tag.
+Si la tag es fa gairebe alhora, `cancel-in-progress` cancel·la els check-runs que ja estaven
+corrent sobre aquell SHA —els mateixos que el gate busca— per reemplaçar-los pels de la tag, pero
+els nous encara no han comencat o estan a cua. El gate els mira abans que existeixin i falla.
+
+**Solucio.** Abans de fer push de la tag, crear un commit buit a `main` per donar al tag un SHA
+net:
+
+```bash
+git checkout main
+git commit --allow-empty -m "chore: prepare v0.4.X"
+git push origin main
+git tag v0.4.8
+git push origin v0.4.8
+```
+
+Aixi la tag apunta a un commit de `main` que mai ha corregut CI amb `cancel-in-progress`, i el
+gate troba tots els check-runs.
+
+**Prevencio.** Si `BRANCHING.md` o el procediment de release no ja ho diu, afegir-ho: la tag
+sempre ha d'apuntar a un commit de `main` que no comparteix SHA amb cap push a `develop`.
+
+### La VPS reporta una versio antiga despres de publicar una tag nova
+
+**Simptoma.** Despres de publicar `v0.4.8`, la VPS segueix dient `v0.4.6` (o la versio anterior)
+a `/health/live`. Les imatges Docker s'han actualitzat i el codi nou hi es, pero el numero de
+versio no canvia.
+
+**Causa.** `tsup.config.ts` estampa `__API_VERSION__` llegint `package.json` al moment de
+compilar el bundle (`readFileSync(new URL("package.json", import.meta.url))`). Si `package.json`
+no esta actualitzat quan es construeix la imatge Docker, el bundle porta el numero de versio
+antic. Aixo passa quan es fa la tag sense haver fet commit del bump de versio a `package.json`.
+
+**Solucio.** L'ordre correcta es:
+
+1. Actualitzar `package.json` (arrel, `apps/api`, `apps/worker`) amb la versio nova
+2. Fer commit del bump
+3. Fusionar a `develop` i despres a `main`
+4. Fer push de la tag des de `main`
+
+Mai fer la tag abans del bump de `package.json`. El procediment de release a
+`docs/runbooks/release.md` ho ha de reflectir.
+
+**Com comprovar-ho abans de publicar:**
+
+```bash
+# Verificar que package.json diu la versio correcta
+node -e "console.log(require('./package.json').version)"
+# Hauria de dir 0.4.8
+
+# Verificar que la tag apunta al commit correcto
+git log --oneline -1 v0.4.8
+# Ha de ser el commit que包含 el bump de versio
+```
+
+### write() de credencials crea un slot secundari en lloc de reemplacar el primary
+
+**Simptoma.** Despres de rotar una credencial des del panell d'Integracions, el worker continua
+llegant l'antiga. La pantalla mostra la nova credencial com a activa, pero les operacions del
+connector fallen amb l'error de l'antiga (token caducat, permisos insuficients, etc.).
+
+**Causa.** `write()` a `packages/application/src/connector-credentials.ts` escrivia la credencial
+nova a un slot secundari (rotacion window) en comptes de reemplacar el primary. El worker sempre
+llegeix el `primary`, aixi que la nova credencial es desava pero mai es feia servir.
+
+**Solucio.** `write()` ara crida `repository.revokeCredentials()` abans d'escriure, assegurant
+que la credencial nova sempre sigui el `primary` que el worker llegeix. Les proves
+`connector-credentials.test.ts` comproven el comportament de reemplacament.
+
+**Com verificar-ho:** despres de rotar una credencial, mira a la base de dades que nomes n'hi ha
+una de viva i es la nova:
+
+```bash
+docker exec control-hub-postgres-1 psql "$DATABASE_URL" \
+  -c "SELECT id, slot, revoked_at FROM connector_credentials WHERE instance_id = '<id>' ORDER BY created_at DESC;"
+```
+
+Ha d'haver-hi una sola fila sense `revoked_at`.
