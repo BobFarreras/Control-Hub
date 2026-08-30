@@ -104,6 +104,20 @@ el fitxer d'`allowed_signers`.
 --una etiqueta moguda deixa firmes valides sobre bytes diferents, que es exactament el problema que
 firmar per digest evita-- sino publicar la seguent versio de correccio.
 
+**Atencio: concorrència de CI.** Si `ci.yml` te `cancel-in-progress: true` (que ho te), fer push
+de la tag gairebe alhora que el push a `develop` pot cancel·lar els check-runs sobre el mateix
+commit SHA, fent que el gate rebutgi la release. Per evitar-ho, assegura't que `develop` ja hagi
+passat CI completament (totes les portes verdes) abans de fer push de la tag. Si ja has fet la tag
+i el gate ha fallat, crea un commit buit a `main` i reetiqueta:
+
+```bash
+git checkout main
+git commit --allow-empty -m "chore: prepare release"
+git push origin main
+git tag -a v0.4.X -m "Control Hub v0.4.X"
+git push origin v0.4.X
+```
+
 ## Que passa llavors, i quant triga
 
 1. **Gate.** Consulta els *check runs* del commit i exigeix les nou portes:
