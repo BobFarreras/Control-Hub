@@ -2,7 +2,7 @@
 
 import { KeyRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { SelectField, TextField, ToggleField } from "@/components/form-field";
 import type { StatusTone } from "@/components/status-pill";
 import { useToast } from "@/components/toast";
@@ -128,9 +128,27 @@ export function ConfigFields({
   version: string;
   labels: Labels;
 }) {
+  // Track toggle values for conditional field visibility.
+  const [toggleValues, setToggleValues] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const field of fields) {
+      if (field.kind === "toggle") initial[field.name] = isChecked(field, config);
+    }
+    return initial;
+  });
+
+  const onToggleChange = useCallback((name: string, checked: boolean) => {
+    setToggleValues((prev) => ({ ...prev, [name]: checked }));
+  }, []);
+
   return (
     <>
       {fields.map((field) => {
+        if (field.visibleWhen) {
+          const controllingValue = toggleValues[field.visibleWhen.field] ?? config[field.visibleWhen.field];
+          if (controllingValue !== field.visibleWhen.equals) return null;
+        }
+
         const key = `${version}:${field.name}`;
         const label = fieldLabel(t, type, field.name);
         const hint = fieldHint(t, type, field.name);
@@ -145,6 +163,7 @@ export function ConfigFields({
               defaultChecked={isChecked(field, config)}
               disabled={busy}
               {...(hint ? { hint } : {})}
+              onChange={(e) => onToggleChange(field.name, e.currentTarget.checked)}
             />
           );
         }

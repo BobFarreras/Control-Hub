@@ -690,6 +690,8 @@ export type ConnectorConfigField = {
   required: boolean;
   /** What the connector already answers for this field, or `null` when it answers nothing. */
   defaultValue: string | number | boolean | string[] | null;
+  /** Show this field only when another field has a specific value. */
+  visibleWhen?: { field: string; equals: string | number | boolean };
 };
 
 export type ConnectorCatalogueEntry = {
