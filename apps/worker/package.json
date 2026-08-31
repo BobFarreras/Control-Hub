@@ -21,7 +21,7 @@
     "@control-hub/observability": "workspace:*",
     "@control-hub/persistence": "workspace:*",
     "bullmq": "^6.1.0",
-    "imapflow": "1.7.1",
+    "imapflow": "1.7.6",
     "ioredis": "^6.0.0",
     "pino": "^10.3.1",
     "postal-mime": "3.0.0",
