@@ -7,7 +7,7 @@
 #
 # Each service now gets its own runtime with its own production dependency closure.
 
-FROM node:26.7-alpine AS dependencies
+FROM node:26.8-alpine AS dependencies
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 WORKDIR /app
@@ -59,7 +59,7 @@ RUN cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 FROM builder AS pruned
 RUN pnpm deploy --filter @control-hub/api --prod --legacy /out/api   && pnpm deploy --filter @control-hub/worker --prod --legacy /out/worker   && pnpm deploy --filter @control-hub/database --prod --legacy /out/database
 
-FROM node:26.7-alpine AS runtime
+FROM node:26.8-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 USER node
