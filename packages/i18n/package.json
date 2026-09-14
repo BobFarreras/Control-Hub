@@ -13,6 +13,6 @@
     "@control-hub/connectors": "workspace:*",
     "@control-hub/domain": "workspace:*",
     "typescript": "^6.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.0"
   }
 }
